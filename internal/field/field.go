@@ -69,6 +69,19 @@ func Validate(f appir.Field, v any) error {
 			return fmt.Errorf("%s must be RFC3339", f.Name)
 		}
 	case "uuid", "relation":
+		if f.Type == "relation" && f.Relation != nil && (f.Relation.Kind == "one-to-many" || f.Relation.Kind == "many-to-many") {
+			values, ok := v.([]any)
+			if !ok {
+				return fmt.Errorf("%s must be a list of UUIDs", f.Name)
+			}
+			for _, value := range values {
+				s, valid := value.(string)
+				if !valid || !uuid.MatchString(s) {
+					return fmt.Errorf("%s must be a list of UUIDs", f.Name)
+				}
+			}
+			return nil
+		}
 		s, ok := v.(string)
 		if !ok || !uuid.MatchString(s) {
 			return fmt.Errorf("%s must be a UUID", f.Name)

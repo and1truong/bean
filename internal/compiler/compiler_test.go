@@ -1,9 +1,11 @@
 package compiler_test
 
 import (
+	"encoding/json"
+	"testing"
+
 	"github.com/beanruntime/bean/internal/compiler"
 	"github.com/beanruntime/bean/internal/definition"
-	"testing"
 )
 
 func TestDiagnosticsAreActionable(t *testing.T) {
@@ -28,5 +30,28 @@ func TestGeneratedCRUDUsesActionsAndViews(t *testing.T) {
 	}
 	if _, ok := r.App.Actions["book_create"]; !ok {
 		t.Fatal("generated Action missing")
+	}
+}
+func TestRejectsUnknownFieldsAndUnimplementedSteps(t *testing.T) {
+	entity := definition.Definition{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "book"}, Spec: map[string]any{"fields": []any{}, "mystery": true}}
+	r := compiler.Compile("test", 1, []definition.Definition{entity})
+	if len(r.Diagnostics) == 0 {
+		t.Fatal("unknown field accepted")
+	}
+	entity.Spec = map[string]any{"fields": []any{}}
+	action := definition.Definition{APIVersion: "bean/v1alpha1", Kind: "Action", Metadata: definition.Metadata{Name: "bad"}, Spec: map[string]any{"entity": "book", "operation": "transaction", "steps": []any{map[string]any{"op": "load"}}}}
+	r = compiler.Compile("test", 1, []definition.Definition{entity, action})
+	if len(r.Diagnostics) == 0 {
+		t.Fatal("step without executor accepted")
+	}
+}
+func TestCompilationIsDeterministic(t *testing.T) {
+	d := definition.Definition{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "book"}, Spec: map[string]any{"fields": []any{}}}
+	a := compiler.Compile("test", 1, []definition.Definition{d})
+	b := compiler.Compile("test", 1, []definition.Definition{d})
+	aj, _ := json.Marshal(a.App)
+	bj, _ := json.Marshal(b.App)
+	if string(aj) != string(bj) {
+		t.Fatalf("non-deterministic AppIR\n%s\n%s", aj, bj)
 	}
 }

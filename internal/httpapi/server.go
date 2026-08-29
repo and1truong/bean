@@ -138,17 +138,20 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request) {
 	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-	rows, e := s.Views.Run(r.Context(), a, r.PathValue("name"), view.Params{Filter: queryMap(r), Limit: limit, Offset: offset}, s.ctx(r))
+	result, e := s.Views.RunPage(r.Context(), a, r.PathValue("name"), view.Params{Filter: queryMap(r), Limit: limit, Offset: offset, Cursor: r.URL.Query().Get("cursor")}, s.ctx(r))
 	if e != nil {
 		respondError(w, r, e)
 		return
 	}
-	b, e := render.JSON(rows)
+	b, e := render.JSON(result.Rows)
 	if e != nil {
 		respondError(w, r, e)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if result.NextCursor != "" {
+		w.Header().Set("Bean-Next-Cursor", result.NextCursor)
+	}
 	_, _ = w.Write(b)
 }
 func (s *Server) action(w http.ResponseWriter, r *http.Request) {
@@ -165,6 +168,9 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request) {
 	var in map[string]any
 	if !decode(w, r, &in) {
 		return
+	}
+	if key := r.Header.Get("Idempotency-Key"); key != "" {
+		in["_idempotencyKey"] = key
 	}
 	out, e := s.Actions.Execute(r.Context(), a, r.PathValue("name"), in, c)
 	if e != nil {
@@ -190,7 +196,11 @@ func (s *Server) form(w http.ResponseWriter, r *http.Request) {
 	}
 	c := s.ctx(r)
 	if e := webform.Validate(f, in, c); e != nil {
-		problem(w, 400, "validation", e.Error(), requestID(r))
+		if fields, ok := e.(webform.Errors); ok {
+			write(w, 400, map[string]any{"error": map[string]any{"code": "validation", "message": e.Error(), "requestId": requestID(r), "fields": fields}})
+		} else {
+			problem(w, 400, "validation", e.Error(), requestID(r))
+		}
 		return
 	}
 	out, e := s.Actions.Execute(r.Context(), a, f.Action, in, c)
@@ -291,11 +301,25 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	ctx := map[string]any{}
-	for k, v := range params {
-		ctx[k] = v
+	query := map[string]string{}
+	for key := range r.URL.Query() {
+		query[key] = r.URL.Query().Get(key)
 	}
-	write(w, 200, map[string]any{"tree": page.Node(a, p, ctx)})
+	ctx, e := page.ResolveContext(p, params, query, s.ctx(r))
+	if e != nil {
+		problem(w, 400, "missing_context", "Required page context is missing.", requestID(r))
+		return
+	}
+	tree, allowed, e := page.Node(a, p, ctx, s.ctx(r))
+	if e != nil {
+		problem(w, 400, "missing_context", "Required render context is missing.", requestID(r))
+		return
+	}
+	if !allowed {
+		problem(w, 404, "not_found", "Page not found.", requestID(r))
+		return
+	}
+	write(w, 200, map[string]any{"tree": tree})
 }
 func (s *Server) fallback(w http.ResponseWriter, r *http.Request) {
 	if a, ok := s.Kernel.Active(); ok {
@@ -412,8 +436,14 @@ func decode(w http.ResponseWriter, r *http.Request, out any) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	dec := json.NewDecoder(r.Body)
 	dec.UseNumber()
+	dec.DisallowUnknownFields()
 	if e := dec.Decode(out); e != nil {
 		problem(w, 400, "invalid_json", "Request body is invalid.", requestID(r))
+		return false
+	}
+	var trailing any
+	if e := dec.Decode(&trailing); e != io.EOF {
+		problem(w, 400, "invalid_json", "Request body must contain one JSON value.", requestID(r))
 		return false
 	}
 	return true

@@ -5,6 +5,7 @@ import (
 	"github.com/beanruntime/bean/internal/action"
 	"github.com/beanruntime/bean/internal/appir"
 	beanctx "github.com/beanruntime/bean/internal/context"
+	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/dbal/sqlite"
 	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/kernel"
@@ -14,6 +15,48 @@ import (
 	"path/filepath"
 	"testing"
 )
+
+func TestCompiledQueryPlanAndOpaqueCursor(t *testing.T) {
+	ctx := context.Background()
+	db, e := sqlite.Open(filepath.Join(t.TempDir(), "views.db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	if e = db.ExecuteMigration(ctx, []string{`CREATE TABLE category (id TEXT PRIMARY KEY, name TEXT NOT NULL)`, `CREATE TABLE book (id TEXT PRIMARY KEY, title TEXT NOT NULL, price INTEGER NOT NULL, category_id TEXT NOT NULL)`}); e != nil {
+		t.Fatal(e)
+	}
+	for _, insert := range []dbal.Insert{
+		{Table: "category", Values: map[string]dbal.Value{"id": "c1", "name": "Technical"}},
+		{Table: "book", Values: map[string]dbal.Value{"id": "b1", "title": "Alpha", "price": 2, "category_id": "c1"}},
+		{Table: "book", Values: map[string]dbal.Value{"id": "b2", "title": "Beta", "price": 3, "category_id": "c1"}},
+	} {
+		if _, e = db.Insert(ctx, insert); e != nil {
+			t.Fatal(e)
+		}
+	}
+	app := appir.Empty()
+	app.Entities["book"] = appir.Entity{Name: "book", Fields: []appir.Field{{Name: "title", Type: "string"}, {Name: "price", Type: "integer"}, {Name: "category_id", Type: "relation"}}}
+	app.Entities["category"] = appir.Entity{Name: "category", Fields: []appir.Field{{Name: "name", Type: "string"}}}
+	app.Views["totals"] = appir.View{Name: "totals", Entity: "book", Fields: []string{"category.name"}, Relationships: []appir.ViewRelationship{{Name: "category", Entity: "category", Type: "inner", LocalField: "category_id", TargetField: "id"}}, GroupBy: []string{"category.name"}, Aggregates: []appir.Aggregate{{Function: "sum", Field: "book.price", Alias: "total"}}, Sort: []appir.Sort{{Field: "category.name"}}, DefaultLimit: 10, MaxLimit: 10}
+	service := view.Service{DB: db}
+	rows, e := service.Run(ctx, app, "totals", view.Params{}, beanctx.Request{})
+	if e != nil || len(rows) != 1 || rows[0]["total"] != int64(5) {
+		t.Fatalf("rows=%v err=%v", rows, e)
+	}
+	app.Views["books"] = appir.View{Name: "books", Entity: "book", Fields: []string{"id", "title"}, Sort: []appir.Sort{{Field: "title"}}, DefaultLimit: 1, MaxLimit: 2}
+	first, e := service.RunPage(ctx, app, "books", view.Params{}, beanctx.Request{})
+	if e != nil || len(first.Rows) != 1 || first.NextCursor == "" {
+		t.Fatalf("first=%v err=%v", first, e)
+	}
+	second, e := service.RunPage(ctx, app, "books", view.Params{Cursor: first.NextCursor}, beanctx.Request{})
+	if e != nil || len(second.Rows) != 1 || second.Rows[0]["id"] == first.Rows[0]["id"] {
+		t.Fatalf("second=%v err=%v", second, e)
+	}
+	if _, e = service.RunPage(ctx, app, "books", view.Params{Cursor: "not-a-cursor"}, beanctx.Request{}); !dbal.IsCode(e, dbal.InvalidQuery) {
+		t.Fatalf("malformed cursor accepted: %v", e)
+	}
+}
 
 func TestTenantIsolationInjectedIntoView(t *testing.T) {
 	ctx := context.Background()

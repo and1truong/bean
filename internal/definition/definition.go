@@ -1,17 +1,19 @@
 package definition
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
-	"strings"
+	"regexp"
 
 	"gopkg.in/yaml.v3"
 )
 
 var Kinds = map[string]bool{"Entity": true, "View": true, "Action": true, "Webform": true, "Policy": true, "Block": true, "Panel": true, "Page": true, "Role": true, "Menu": true, "Job": true}
+var machineName = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 type Metadata struct {
 	Namespace string `json:"namespace,omitempty" yaml:"namespace,omitempty"`
@@ -62,8 +64,8 @@ func ValidateEnvelope(d Definition) []Diagnostic {
 	if !Kinds[d.Kind] {
 		out = append(out, Diagnostic{d.Kind, d.Metadata.Name, "kind", "unsupported definition kind"})
 	}
-	if d.Metadata.Name == "" || strings.ToLower(d.Metadata.Name) != d.Metadata.Name {
-		out = append(out, Diagnostic{d.Kind, d.Metadata.Name, "metadata.name", "must be a lowercase machine name"})
+	if !machineName.MatchString(d.Metadata.Name) {
+		out = append(out, Diagnostic{d.Kind, d.Metadata.Name, "metadata.name", "must match ^[a-z][a-z0-9_]*$"})
 	}
 	if d.Metadata.Namespace == "" {
 		d.Metadata.Namespace = "default"
@@ -78,5 +80,13 @@ func DecodeSpec(spec map[string]any, target any) error {
 	if e != nil {
 		return e
 	}
-	return json.Unmarshal(b, target)
+	decoder := json.NewDecoder(bytes.NewReader(b))
+	decoder.DisallowUnknownFields()
+	if e = decoder.Decode(target); e != nil {
+		return e
+	}
+	if decoder.More() {
+		return fmt.Errorf("spec contains trailing data")
+	}
+	return nil
 }

@@ -8,6 +8,9 @@ import (
 )
 
 func Can(p appir.Policy, write bool, c beanctx.Request, record map[string]any) bool {
+	if p.Authenticated && c.User == nil {
+		return false
+	}
 	roles := p.ReadRoles
 	if write {
 		roles = p.WriteRoles
@@ -38,6 +41,9 @@ func Can(p appir.Policy, write bool, c beanctx.Request, record map[string]any) b
 }
 func Predicate(p appir.Policy, c beanctx.Request) (*dbal.Predicate, bool) {
 	ps := []dbal.Predicate{}
+	if p.Authenticated && c.User == nil {
+		return nil, false
+	}
 	if len(p.ReadRoles) > 0 && !hasRole(c, p.ReadRoles) {
 		return nil, false
 	}
@@ -61,6 +67,13 @@ func Predicate(p appir.Policy, c beanctx.Request) (*dbal.Predicate, bool) {
 			return nil, false
 		}
 		ps = append(ps, dbal.Predicate{Op: dbal.OpEQ, Column: "tenant_id", Value: c.TenantID})
+	}
+	if p.Condition != nil {
+		condition, e := expr.PredicateContext(*p.Condition, nil, c)
+		if e != nil {
+			return nil, false
+		}
+		ps = append(ps, condition)
 	}
 	if len(ps) == 0 {
 		return nil, true

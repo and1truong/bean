@@ -157,10 +157,14 @@ func contains(haystack, needle any) bool {
 	return false
 }
 func Predicate(e Expr, input map[string]any) (dbal.Predicate, error) {
+	return PredicateContext(e, input, beanctx.Request{})
+}
+
+func PredicateContext(e Expr, input map[string]any, c beanctx.Request) (dbal.Predicate, error) {
 	if e.Op == "and" || e.Op == "or" || e.Op == "not" {
 		children := []dbal.Predicate{}
 		for _, a := range e.Args {
-			p, er := Predicate(a, input)
+			p, er := PredicateContext(a, input, c)
 			if er != nil {
 				return p, er
 			}
@@ -178,7 +182,11 @@ func Predicate(e Expr, input map[string]any) (dbal.Predicate, error) {
 		} else if e.Right.Source == "input" {
 			val = input[e.Right.Name]
 		} else {
-			return dbal.Predicate{}, fmt.Errorf("unsupported database value source %q", e.Right.Source)
+			var er error
+			val, er = resolve(e.Right, c, input)
+			if er != nil {
+				return dbal.Predicate{}, er
+			}
 		}
 	}
 	if e.Op == "in" || e.Op == "not_in" {

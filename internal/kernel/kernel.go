@@ -14,6 +14,9 @@ func (k *Kernel) Activate(a *appir.App) error {
 	if a == nil {
 		return fmt.Errorf("cannot activate nil AppIR")
 	}
+	if e := a.ValidateFormat(); e != nil {
+		return e
+	}
 	clone, e := a.Clone()
 	if e != nil {
 		return e

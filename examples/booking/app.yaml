@@ -8,6 +8,7 @@ definitions:
     spec:
       entity: booking
       operation: transaction
+      input: {resource_id: {type: relation, required: true}, start_at: {type: datetime, required: true}, end_at: {type: datetime, required: true}}
       steps:
         - {op: assert_no_overlap, values: {match: resource_id, start: start_at, end: end_at, message: The requested booking overlaps an existing booking.}}
         - {op: create, values: {resource_id: $input.resource_id, start_at: $input.start_at, end_at: $input.end_at, status: confirmed}}

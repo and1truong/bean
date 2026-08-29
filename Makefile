@@ -2,7 +2,7 @@ SHELL := /bin/bash
 GOCACHE := $(CURDIR)/.cache/go-build
 export GOCACHE
 
-.PHONY: bootstrap fmt fmt-check lint test test-integration test-e2e check build run clean
+.PHONY: bootstrap fmt fmt-check lint test test-integration test-contract test-fuzz-smoke test-compatibility test-blackbox test-e2e check build run clean
 bootstrap:
 	go mod download
 	cd web && bun install --frozen-lockfile
@@ -26,10 +26,22 @@ test:
 test-integration:
 	go test ./internal/action ./internal/release ./internal/view
 
+test-contract:
+	go test ./internal/compiler ./internal/action ./internal/view ./internal/dbal/sqlite ./internal/migration ./internal/policy ./internal/webform ./internal/render
+
+test-fuzz-smoke:
+	go test ./internal/definition ./internal/expr ./internal/view ./internal/httpapi -run '^Fuzz'
+
+test-compatibility:
+	go test ./internal/appir ./internal/release -run 'Compatibility|Format'
+
+test-blackbox: build
+	@test "$$($(CURDIR)/bin/bean version)" = "bean 0.2.0-alpha"
+
 test-e2e: build
 	cd e2e && bunx playwright test
 
-check: fmt-check lint test test-integration
+check: fmt-check lint test test-integration test-contract test-fuzz-smoke test-compatibility test-blackbox
 	go test -race ./...
 	$(MAKE) test-e2e
 

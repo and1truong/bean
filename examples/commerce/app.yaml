@@ -9,6 +9,8 @@ definitions:
     spec:
       entity: order
       operation: transaction
+      input: {product_id: {type: relation, required: true}, quantity: {type: integer, required: true}}
+      output: {payment: {type: string}}
       steps:
         - {op: decrement, values: {entity: product, field: inventory, id_input: product_id, amount_input: quantity, message: Product is out of stock.}}
         - {op: create, values: {status: pending_payment, payment_result: deterministic-success}}

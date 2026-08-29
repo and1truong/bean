@@ -202,6 +202,9 @@ func (s *Store) activeApp(ctx context.Context, appID string) (*appir.App, error)
 	}
 	var a appir.App
 	e = json.Unmarshal([]byte(fmt.Sprint(rr[0]["app_ir"])), &a)
+	if e == nil {
+		e = a.ValidateFormat()
+	}
 	return &a, e
 }
 func (s *Store) Releases(ctx context.Context, appID string) ([]Published, error) {
@@ -229,7 +232,7 @@ func schemaOf(a *appir.App) migration.Schema {
 		for _, f := range e.Fields {
 			mf := migration.Field{Name: f.Name, Type: f.Type, Required: f.Required, Unique: f.Unique}
 			if f.Relation != nil {
-				mf.RelationEntity, mf.RelationKind = f.Relation.Entity, f.Relation.Kind
+				mf.RelationEntity, mf.RelationKind, mf.TargetField = f.Relation.Entity, f.Relation.Kind, f.Relation.TargetField
 			}
 			m.Fields = append(m.Fields, mf)
 		}

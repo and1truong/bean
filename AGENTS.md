@@ -1,6 +1,6 @@
 # Bean engineering contract
 
-- `docs/goals/001.md` is the product and acceptance-test authority.
+- `docs/goals/002.md` is the completed v0.2 product and acceptance-test record; new work must define a root `GOAL.md`.
 - Keep `PLANS.md` and `docs/progress.md` current as milestones move.
 - Preserve the definition -> validation -> migration -> immutable AppIR -> atomic activation lifecycle.
 - Keep application behavior in metadata under `examples/`; core packages must remain generic.

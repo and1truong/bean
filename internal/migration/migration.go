@@ -8,9 +8,9 @@ import (
 )
 
 type Field struct {
-	Name, Type                   string
-	RelationEntity, RelationKind string
-	Required, Unique             bool
+	Name, Type                                string
+	RelationEntity, RelationKind, TargetField string
+	Required, Unique                          bool
 }
 type Entity struct {
 	Name    string
@@ -70,12 +70,15 @@ func Build(current Schema, next Schema) (Plan, error) {
 			seen[f.Name] = true
 			o, ok := pf[f.Name]
 			if !ok {
-				if f.RelationKind == "many-to-many" {
+				if toMany(f.RelationKind) {
 					addJoinTable(&p, e.Name, f)
 					continue
 				}
 				if f.Required {
 					return p, fmt.Errorf("Entity %s spec.fields.%s: required fields need a default on existing tables", e.Name, f.Name)
+				}
+				if f.Unique || f.RelationEntity != "" {
+					return p, fmt.Errorf("Entity %s spec.fields.%s: constrained fields cannot be added to an existing table safely", e.Name, f.Name)
 				}
 				typ, er := sqlType(f.Type)
 				if er != nil {
@@ -83,8 +86,8 @@ func Build(current Schema, next Schema) (Plan, error) {
 				}
 				p.Statements = append(p.Statements, `ALTER TABLE "`+e.Name+`" ADD COLUMN "`+f.Name+`" `+typ)
 				p.Descriptions = append(p.Descriptions, "add field "+e.Name+"."+f.Name)
-			} else if o.Type != f.Type {
-				return p, fmt.Errorf("Entity %s spec.fields.%s: incompatible type change %s to %s", e.Name, f.Name, o.Type, f.Type)
+			} else if o.Type != f.Type || o.Required != f.Required || o.Unique != f.Unique || o.RelationEntity != f.RelationEntity || o.RelationKind != f.RelationKind || o.TargetField != f.TargetField {
+				return p, fmt.Errorf("Entity %s spec.fields.%s: incompatible field contract change", e.Name, f.Name)
 			}
 		}
 		for name := range pf {
@@ -103,8 +106,9 @@ func Build(current Schema, next Schema) (Plan, error) {
 }
 func createTable(e Entity) (string, error) {
 	cols := []string{`"id" TEXT PRIMARY KEY`, `"created_at" TEXT NOT NULL`, `"updated_at" TEXT NOT NULL`, `"version" INTEGER NOT NULL`}
+	constraints := []string{}
 	for _, f := range e.Fields {
-		if f.RelationKind == "many-to-many" {
+		if toMany(f.RelationKind) {
 			continue
 		}
 		if !ident.MatchString(f.Name) {
@@ -118,10 +122,17 @@ func createTable(e Entity) (string, error) {
 		if f.Required {
 			c += " NOT NULL"
 		}
-		if f.Unique {
+		if f.Unique || f.RelationKind == "one-to-one" {
 			c += " UNIQUE"
 		}
 		cols = append(cols, c)
+		if f.RelationEntity != "" {
+			target := f.TargetField
+			if target == "" {
+				target = "id"
+			}
+			constraints = append(constraints, `FOREIGN KEY("`+f.Name+`") REFERENCES "`+f.RelationEntity+`"("`+target+`")`)
+		}
 	}
 	for _, fields := range e.Unique {
 		quoted := []string{}
@@ -135,6 +146,7 @@ func createTable(e Entity) (string, error) {
 			cols = append(cols, "UNIQUE ("+strings.Join(quoted, ",")+")")
 		}
 	}
+	cols = append(cols, constraints...)
 	return `CREATE TABLE "` + e.Name + `" (` + strings.Join(cols, ",") + `)`, nil
 }
 func addIndexes(p *Plan, e Entity) {
@@ -183,7 +195,7 @@ func addIndex(p *Plan, entity string, fields []string, unique bool, n int) {
 }
 func addJoinTables(p *Plan, e Entity) {
 	for _, field := range e.Fields {
-		if field.RelationKind == "many-to-many" {
+		if toMany(field.RelationKind) {
 			addJoinTable(p, e.Name, field)
 		}
 	}
@@ -193,10 +205,19 @@ func addJoinTable(p *Plan, entity string, field Field) {
 		return
 	}
 	name := entity + "_" + field.Name
-	statement := `CREATE TABLE "` + name + `" ("` + entity + `_id" TEXT NOT NULL,"` + field.RelationEntity + `_id" TEXT NOT NULL,PRIMARY KEY("` + entity + `_id","` + field.RelationEntity + `_id"),FOREIGN KEY("` + entity + `_id") REFERENCES "` + entity + `"("id"),FOREIGN KEY("` + field.RelationEntity + `_id") REFERENCES "` + field.RelationEntity + `"("id"))`
+	target := field.TargetField
+	if target == "" {
+		target = "id"
+	}
+	uniqueTarget := ""
+	if field.RelationKind == "one-to-many" {
+		uniqueTarget = `,UNIQUE("` + field.RelationEntity + `_id")`
+	}
+	statement := `CREATE TABLE "` + name + `" ("` + entity + `_id" TEXT NOT NULL,"` + field.RelationEntity + `_id" TEXT NOT NULL,PRIMARY KEY("` + entity + `_id","` + field.RelationEntity + `_id")` + uniqueTarget + `,FOREIGN KEY("` + entity + `_id") REFERENCES "` + entity + `"("id"),FOREIGN KEY("` + field.RelationEntity + `_id") REFERENCES "` + field.RelationEntity + `"("` + target + `"))`
 	p.Statements = append(p.Statements, statement)
 	p.Descriptions = append(p.Descriptions, "create many-to-many relation "+name)
 }
+func toMany(kind string) bool { return kind == "one-to-many" || kind == "many-to-many" }
 func sqlType(t string) (string, error) {
 	switch t {
 	case "string", "text", "richtext", "enum", "date", "datetime", "uuid", "email", "url", "json", "relation":
@@ -226,5 +247,6 @@ func MetadataSchema() []string {
 		`CREATE TABLE IF NOT EXISTS bean_audit (id TEXT PRIMARY KEY,at TEXT NOT NULL,request_id TEXT,user_id TEXT,tenant_id TEXT,action TEXT NOT NULL,entity_type TEXT,entity_id TEXT,changed_fields TEXT,success INTEGER NOT NULL,error TEXT)`,
 		`CREATE TABLE IF NOT EXISTS bean_outbox (id TEXT PRIMARY KEY,topic TEXT NOT NULL,payload TEXT NOT NULL,created_at TEXT NOT NULL,delivered_at TEXT)`,
 		`CREATE TABLE IF NOT EXISTS bean_job (id TEXT PRIMARY KEY,name TEXT NOT NULL,run_at TEXT NOT NULL,status TEXT NOT NULL,payload TEXT NOT NULL,attempts INTEGER NOT NULL,retry_delay INTEGER NOT NULL,last_error TEXT,completed_at TEXT)`,
+		`CREATE TABLE IF NOT EXISTS bean_idempotency (action TEXT NOT NULL,key TEXT NOT NULL,result TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(action,key))`,
 	}
 }

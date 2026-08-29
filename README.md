@@ -1,6 +1,6 @@
 # Bean
 
-Bean v0.1 is a metadata-driven web application runtime. YAML or Studio definitions compile into an immutable in-memory application, native SQLite tables, REST/OpenAPI operations, generated administration, and public React pages. The frontend and pure-Go SQLite driver ship in one executable.
+Bean v0.2 alpha is a metadata-driven web application runtime. YAML or Studio definitions compile into a versioned immutable in-memory application, native SQLite tables, REST/OpenAPI operations, generated administration, and public React pages. The frontend and pure-Go SQLite driver ship in one executable.
 
 ```text
 Definitions -> validation -> additive migration -> immutable AppIR -> atomic activation
@@ -32,4 +32,4 @@ Or run `./bin/bean demo --app cms --db ./tmp/cms.db --addr 127.0.0.1:8080`. Open
 
 Core modules live under `internal/`: compilation/release, DBAL/SQLite/migrations, entity/field/View/Action, auth/policy, webform, render/page composition, OpenAPI/HTTP, audit/events/jobs, and embedded UI assets. Seven metadata-only examples live under `examples/`.
 
-Known v0.1 limits match the product non-goals: SQLite and one active application per database, one process, local authentication, additive migrations only, deterministic fake integrations, REST only, and no visual drag-and-drop builder.
+Bean is not production-ready. Current limits are SQLite and one active application per database, one process, local authentication, safe additive migrations only, deterministic fake integrations, REST only, and no visual drag-and-drop builder. Production use additionally needs crash-recovery qualification, external security review, operational SLO/load work, and signed release engineering. The exact accepted metadata surface and its test evidence are listed in `docs/capabilities.md`.
