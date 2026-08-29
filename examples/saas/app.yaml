@@ -1,0 +1,8 @@
+name: Multi-Tenant SaaS
+definitions:
+  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: organisation}, spec: {label: Organisation, fields: [{name: name, label: Name, type: string, required: true}]}}
+  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: membership}, spec: {label: Membership, tenant: true, fields: [{name: organisation_id, label: Organisation, type: relation, required: true}, {name: user_id, label: User, type: uuid, required: true}, {name: role, label: Role, type: enum, required: true, options: [member, owner]}]}}
+  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: project}, spec: {label: Project, tenant: true, policy: tenant_member, fields: [{name: name, label: Name, type: string, required: true}]}}
+  - {apiVersion: bean/v1alpha1, kind: Policy, metadata: {name: tenant_member}, spec: {readRoles: [member, owner], writeRoles: [member, owner], tenant: true}}
+  - {apiVersion: bean/v1alpha1, kind: View, metadata: {name: tenant_projects}, spec: {entity: project, fields: [id, name, tenant_id], policy: tenant_member, displays: {api: {type: json, route: /api/projects}}}}
+seed: {}

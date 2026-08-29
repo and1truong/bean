@@ -1,0 +1,8 @@
+name: Issue Tracker
+definitions:
+  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: project}, spec: {label: Project, fields: [{name: name, label: Name, type: string, required: true}]}}
+  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: issue}, spec: {label: Issue, fields: [{name: title, label: Title, type: string, required: true}, {name: status, label: Status, type: enum, required: true, options: [todo, in_progress, done]}, {name: assignee_id, label: Assignee, type: uuid}, {name: project_id, label: Project, type: relation}]}}
+  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: comment}, spec: {label: Comment, fields: [{name: issue_id, label: Issue, type: relation, required: true}, {name: body, label: Body, type: text, required: true}]}}
+  - {apiVersion: bean/v1alpha1, kind: View, metadata: {name: issue_kanban}, spec: {entity: issue, fields: [id, title, status, assignee_id], displays: {kanban: {type: json, route: /api/issues/kanban}}}}
+  - {apiVersion: bean/v1alpha1, kind: Action, metadata: {name: move_issue}, spec: {entity: issue, operation: transition, transitions: {todo: [in_progress], in_progress: [done]}}}
+seed: {}

@@ -1,0 +1,12 @@
+name: Community
+definitions:
+  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: profile}, spec: {label: Profile, owner: true, fields: [{name: display_name, label: Display name, type: string, required: true}]}}
+  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: post}, spec: {label: Post, owner: true, policy: community_posts, fields: [{name: body, label: Body, type: text, required: true}, {name: visibility, label: Visibility, type: enum, required: true, options: [private, public]}]}}
+  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: comment}, spec: {label: Comment, owner: true, fields: [{name: post_id, label: Post, type: relation, required: true}, {name: body, label: Body, type: text, required: true}]}}
+  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: reaction}, spec: {label: Reaction, owner: true, policy: member_owned, fields: [{name: post_id, label: Post, type: relation, required: true}, {name: kind, label: Kind, type: enum, required: true, options: [like, celebrate]}]}}
+  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: follow}, spec: {label: Follow, owner: true, fields: [{name: profile_id, label: Profile, type: relation, required: true}]}}
+  - {apiVersion: bean/v1alpha1, kind: Policy, metadata: {name: community_posts}, spec: {writeRoles: [member], owner: true, ownerOrPublic: true, publicField: visibility, publicValue: public}}
+  - {apiVersion: bean/v1alpha1, kind: Policy, metadata: {name: member_owned}, spec: {readRoles: [member], writeRoles: [member], owner: true}}
+  - {apiVersion: bean/v1alpha1, kind: View, metadata: {name: public_feed}, spec: {entity: post, fields: [id, body, visibility, owner_id], policy: community_posts, filter: {op: eq, left: {source: record, name: visibility}, right: {source: literal, literal: public}}, displays: {api: {type: json, route: /api/feed}}}}
+  - {apiVersion: bean/v1alpha1, kind: Action, metadata: {name: publish_post}, spec: {entity: post, operation: transition, stateField: visibility, policy: community_posts, transitions: {private: [public]}}}
+seed: {}

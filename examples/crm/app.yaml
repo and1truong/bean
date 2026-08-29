@@ -1,0 +1,14 @@
+name: CRM
+definitions:
+  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: company}, spec: {label: Company, owner: true, fields: [{name: name, label: Name, type: string, required: true}]}}
+  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: contact}, spec: {label: Contact, owner: true, policy: owned_records, fields: [{name: name, label: Name, type: string, required: true}, {name: email, label: Email, type: email}, {name: company_id, label: Company, type: relation}]}}
+  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: deal}, spec: {label: Deal, owner: true, policy: owned_records, fields: [{name: title, label: Title, type: string, required: true}, {name: status, label: Stage, type: enum, required: true, options: [lead, qualified, won, lost]}, {name: amount, label: Amount, type: money}]}}
+  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: activity}, spec: {label: Activity, owner: true, fields: [{name: subject, label: Subject, type: string, required: true}, {name: deal_id, label: Deal, type: relation}, {name: occurred_at, label: Occurred, type: datetime}]}}
+  - {apiVersion: bean/v1alpha1, kind: Policy, metadata: {name: owned_records}, spec: {readRoles: [salesperson, manager], writeRoles: [salesperson, manager], bypassOwnerRoles: [manager], owner: true}}
+  - {apiVersion: bean/v1alpha1, kind: Policy, metadata: {name: manager_records}, spec: {readRoles: [manager], writeRoles: [manager]}}
+  - {apiVersion: bean/v1alpha1, kind: View, metadata: {name: contacts}, spec: {entity: contact, fields: [id, name, email, owner_id], policy: owned_records, displays: {table: {type: json, route: /api/contacts}}}}
+  - {apiVersion: bean/v1alpha1, kind: View, metadata: {name: deal_pipeline}, spec: {entity: deal, fields: [id, title, status, amount], policy: owned_records, displays: {kanban: {type: json, route: /api/deals}}}}
+  - {apiVersion: bean/v1alpha1, kind: Action, metadata: {name: move_deal}, spec: {entity: deal, operation: transition, policy: owned_records, transitions: {lead: [qualified], qualified: [won, lost]}}}
+  - {apiVersion: bean/v1alpha1, kind: Role, metadata: {name: salesperson}, spec: {permissions: [contacts, deal_pipeline, move_deal]}}
+  - {apiVersion: bean/v1alpha1, kind: Role, metadata: {name: manager}, spec: {permissions: [contacts, deal_pipeline, move_deal]}}
+seed: {}
