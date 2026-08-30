@@ -1,6 +1,7 @@
 package openapi_test
 
 import (
+	"encoding/json"
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/openapi"
 	"testing"
@@ -19,5 +20,24 @@ func TestGeneratedDocumentValidates(t *testing.T) {
 	}
 	if e = openapi.Validate(doc); e != nil {
 		t.Fatal(e)
+	}
+}
+
+func TestSensitiveInputsAreWriteOnlyAndRegistrationIsAnonymous(t *testing.T) {
+	a := appir.Empty()
+	a.AppID = "test"
+	a.Actions["signup"] = appir.Action{Name: "signup", Operation: "register_local_user", Input: map[string]appir.Field{"password": {Name: "password", Type: "password", Sensitive: true}}}
+	doc, err := openapi.Generate(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	if err = json.Unmarshal(doc, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	post := decoded["paths"].(map[string]any)["/api/actions/signup"].(map[string]any)["post"].(map[string]any)
+	password := post["requestBody"].(map[string]any)["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)["properties"].(map[string]any)["password"].(map[string]any)
+	if password["writeOnly"] != true || password["format"] != "password" || len(post["security"].([]any)) != 0 {
+		t.Fatalf("registration OpenAPI=%v", post)
 	}
 }

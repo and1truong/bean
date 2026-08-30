@@ -7,4 +7,5 @@
 - Confine SQL and SQLite dependencies to `internal/dbal/sqlite` and `internal/migration`.
 - Route reads through Views and writes through Actions.
 - Prefer focused, additive changes; run the nearest test after each milestone.
+- Follow `docs/howto-pr.md` when creating or updating pull requests.
 - Completion requires `make check` and `make build`.

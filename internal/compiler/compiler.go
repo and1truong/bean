@@ -19,6 +19,7 @@ type Result struct {
 }
 type actionSource struct {
 	Entity, Operation, Policy, StateField string
+	DefaultRole, Confirm                  string
 	Input                                 map[string]appir.Field
 	Output                                map[string]appir.Field
 	Steps                                 []stepSource
@@ -96,7 +97,7 @@ func Compile(appID string, version int, defs []definition.Definition) Result {
 				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
 				continue
 			}
-			x := appir.Action{Name: d.Metadata.Name, Entity: source.Entity, Operation: source.Operation, Policy: source.Policy, StateField: source.StateField, Input: source.Input, Output: source.Output, Transitions: source.Transitions}
+			x := appir.Action{Name: d.Metadata.Name, Entity: source.Entity, Operation: source.Operation, Policy: source.Policy, StateField: source.StateField, DefaultRole: source.DefaultRole, Confirm: source.Confirm, Input: source.Input, Output: source.Output, Transitions: source.Transitions}
 			for inputName, input := range x.Input {
 				if input.Name == "" {
 					input.Name = inputName
@@ -194,6 +195,17 @@ func Compile(appID string, version int, defs []definition.Definition) Result {
 			}
 			x.Name = d.Metadata.Name
 			a.AdminResources[x.Name] = x
+		case "LocalRegistration":
+			var x appir.LocalRegistration
+			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
+				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
+				continue
+			}
+			if a.LocalRegistration != nil {
+				r.Diagnostics = append(r.Diagnostics, diag(d, "metadata.name", "only one local registration definition is allowed"))
+				continue
+			}
+			a.LocalRegistration = &x
 		}
 	}
 	if len(r.Diagnostics) > 0 {
@@ -236,6 +248,9 @@ func diag(d definition.Definition, path, msg string) definition.Diagnostic {
 }
 func compileBinding(value any) appir.ValueBinding {
 	if text, ok := value.(string); ok && strings.HasPrefix(text, "$") {
+		if text == "$now" {
+			return appir.ValueBinding{Source: "now"}
+		}
 		if text == "$context.tenant" {
 			return appir.ValueBinding{Source: "tenant"}
 		}
@@ -257,6 +272,22 @@ func normalizeActions(a *appir.App) {
 		}
 		if action.Output == nil {
 			action.Output = map[string]appir.Field{}
+		}
+		if action.Operation == "register_local_user" {
+			action.Entity = ""
+			action.Input = map[string]appir.Field{
+				"display_name":          {Name: "display_name", Type: "string", Required: true},
+				"email":                 {Name: "email", Type: "email", Required: true},
+				"password":              {Name: "password", Type: "password", Required: true, Sensitive: true},
+				"password_confirmation": {Name: "password_confirmation", Type: "password", Required: true, Sensitive: true},
+			}
+			action.Output = map[string]appir.Field{
+				"id":           {Name: "id", Type: "uuid"},
+				"display_name": {Name: "display_name", Type: "string"},
+				"email":        {Name: "email", Type: "email"},
+			}
+			a.Actions[name] = action
+			continue
 		}
 		entity, exists := a.Entities[action.Entity]
 		if !exists || action.Operation == "transaction" {
@@ -487,7 +518,7 @@ func validate(a *appir.App) []definition.Diagnostic {
 			routes[display.Route] = "View/" + name
 		}
 	}
-	allowedActions := map[string]bool{"create": true, "update": true, "delete": true, "transition": true, "transaction": true}
+	allowedActions := map[string]bool{"create": true, "update": true, "delete": true, "transition": true, "transaction": true, "register_local_user": true}
 	allowedSteps := map[string]bool{"load": true, "query": true, "assert": true, "assert_no_overlap": true, "create": true, "update": true, "conditional_update": true, "decrement": true, "delete": true, "transition": true, "emit": true, "schedule": true, "return": true}
 	allowedRelations := map[string]bool{"one-to-one": true, "one-to-many": true, "many-to-one": true, "many-to-many": true}
 	for name, entity := range a.Entities {
@@ -519,7 +550,13 @@ func validate(a *appir.App) []definition.Diagnostic {
 		}
 	}
 	for name, action := range a.Actions {
-		if _, ok := a.Entities[action.Entity]; !ok {
+		if action.Operation == "register_local_user" {
+			if action.DefaultRole == "" {
+				out = append(out, diagnostic("Action", name, "spec.defaultRole", "is required"))
+			} else if _, ok := a.Roles[action.DefaultRole]; !ok {
+				out = append(out, diagnostic("Action", name, "spec.defaultRole", "references missing Role "+action.DefaultRole))
+			}
+		} else if _, ok := a.Entities[action.Entity]; !ok {
 			out = append(out, diagnostic("Action", name, "spec.entity", "references missing Entity "+action.Entity))
 		}
 		if !allowedActions[action.Operation] {
@@ -539,6 +576,9 @@ func validate(a *appir.App) []definition.Diagnostic {
 			}
 		}
 		for outputName, output := range action.Output {
+			if output.Sensitive {
+				out = append(out, diagnostic("Action", name, "spec.output."+outputName, "sensitive fields cannot be Action outputs"))
+			}
 			if output.Name != outputName || output.Type == "" {
 				out = append(out, diagnostic("Action", name, "spec.output."+outputName, "requires a matching name and type"))
 			}
@@ -566,7 +606,7 @@ func validate(a *appir.App) []definition.Diagnostic {
 			}
 			for _, assignment := range step.Values {
 				switch assignment.Value.Source {
-				case "literal", "context", "tenant", "user", "record":
+				case "literal", "context", "tenant", "user", "record", "now":
 				case "input":
 					if _, ok := action.Input[assignment.Value.Path]; !ok {
 						out = append(out, diagnostic("Action", name, path+".values."+assignment.Field, "references undeclared input "+assignment.Value.Path))
@@ -721,6 +761,29 @@ func validate(a *appir.App) []definition.Diagnostic {
 				out = append(out, diagnostic("Block", name, "spec.bindings."+inputName, "references an undeclared input"))
 			}
 		}
+		var target map[string]appir.Field
+		if block.Type == "view" && block.View != "" {
+			target = a.Views[block.View].ExposedFilters
+		}
+		if block.Type == "webform" && block.Webform != "" {
+			target = a.Actions[a.Webforms[block.Webform].Action].Input
+		}
+		if target != nil {
+			for inputName, input := range block.Inputs {
+				expected, exists := target[inputName]
+				if !exists {
+					out = append(out, diagnostic("Block", name, "spec.inputs."+inputName, "has no matching target input"))
+				} else if input.Type != expected.Type {
+					out = append(out, diagnostic("Block", name, "spec.inputs."+inputName+".type", "does not match target input type "+expected.Type))
+				}
+			}
+		}
+	}
+	if a.LocalRegistration != nil {
+		action, ok := a.Actions[a.LocalRegistration.Action]
+		if !ok || action.Operation != "register_local_user" {
+			out = append(out, diagnostic("LocalRegistration", "local", "spec.action", "must reference a register_local_user Action"))
+		}
 	}
 	layouts := map[string]map[string]bool{"single-column": {"main": true}, "two-column": {"left": true, "right": true}, "sidebar-main": {"sidebar": true, "main": true}, "main-sidebar": {"main": true, "sidebar": true}, "grid": {"main": true}}
 	for name, panel := range a.Panels {
@@ -856,7 +919,8 @@ func recordFields(expression *expr.Expr) []string {
 
 func compatibleFormType(formType, fieldType string) bool {
 	allowed := map[string][]string{
-		"text":             {"string", "text", "richtext", "uuid", "url"},
+		"text":             {"string", "text", "richtext", "uuid", "url", "slug"},
+		"password":         {"password"},
 		"textarea":         {"string", "text", "richtext"},
 		"email":            {"email"},
 		"number":           {"integer", "money", "decimal"},
@@ -970,7 +1034,7 @@ func validateExpr(expression expr.Expr, database bool) error {
 	if expression.Op != "is_null" && expression.Op != "is_not_null" && expression.Right == nil {
 		return fmt.Errorf("right value is required")
 	}
-	allowedSources := map[string]bool{"literal": true, "input": true, "record": true, "user": true, "tenant": true, "route": true, "context": true}
+	allowedSources := map[string]bool{"literal": true, "input": true, "record": true, "user": true, "tenant": true, "route": true, "context": true, "now": true}
 	if !allowedSources[expression.Left.Source] || expression.Right != nil && !allowedSources[expression.Right.Source] {
 		return fmt.Errorf("expression has an unsupported value source")
 	}
@@ -984,7 +1048,7 @@ func validateExpr(expression expr.Expr, database bool) error {
 }
 
 func validateForm(name string, form appir.Webform) []definition.Diagnostic {
-	allowed := map[string]bool{"text": true, "textarea": true, "email": true, "number": true, "integer": true, "checkbox": true, "select": true, "date": true, "datetime": true, "entity reference": true, "group": true}
+	allowed := map[string]bool{"text": true, "textarea": true, "email": true, "password": true, "number": true, "integer": true, "checkbox": true, "select": true, "date": true, "datetime": true, "entity reference": true, "group": true}
 	out := []definition.Diagnostic{}
 	seen := map[string]bool{}
 	var walk func([]appir.FormElement, string)

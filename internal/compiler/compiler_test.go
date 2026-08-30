@@ -70,3 +70,38 @@ func TestCompilationIsDeterministic(t *testing.T) {
 		t.Fatalf("non-deterministic AppIR\n%s\n%s", aj, bj)
 	}
 }
+
+func TestLocalRegistrationCompilesFixedSensitiveBoundary(t *testing.T) {
+	defs := []definition.Definition{
+		{APIVersion: "bean/v1alpha1", Kind: "Role", Metadata: definition.Metadata{Name: "member"}, Spec: map[string]any{}},
+		{APIVersion: "bean/v1alpha1", Kind: "Action", Metadata: definition.Metadata{Name: "signup"}, Spec: map[string]any{"operation": "register_local_user", "defaultRole": "member"}},
+		{APIVersion: "bean/v1alpha1", Kind: "LocalRegistration", Metadata: definition.Metadata{Name: "local"}, Spec: map[string]any{"action": "signup"}},
+	}
+	result := compiler.Compile("test", 1, defs)
+	if len(result.Diagnostics) != 0 {
+		t.Fatal(result.Diagnostics)
+	}
+	action := result.App.Actions["signup"]
+	if action.DefaultRole != "member" || !action.Input["password"].Sensitive || !action.Input["password_confirmation"].Sensitive {
+		t.Fatalf("registration boundary=%+v", action)
+	}
+	if _, exposed := action.Output["password"]; exposed {
+		t.Fatal("password exposed in registration output")
+	}
+	defs[1].Spec["defaultRole"] = "administrator"
+	if invalid := compiler.Compile("test", 1, defs); len(invalid.Diagnostics) == 0 {
+		t.Fatal("undefined registration role accepted")
+	}
+}
+
+func TestBlockBindingsMustMatchTargetTypes(t *testing.T) {
+	defs := []definition.Definition{
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "post"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "slug", "type": "slug"}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "View", Metadata: definition.Metadata{Name: "post_by_slug"}, Spec: map[string]any{"entity": "post", "fields": []any{"id", "slug"}, "exposedFilters": map[string]any{"slug": map[string]any{"name": "slug", "type": "slug"}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Block", Metadata: definition.Metadata{Name: "detail"}, Spec: map[string]any{"type": "view", "view": "post_by_slug", "inputs": map[string]any{"slug": map[string]any{"type": "uuid"}}, "bindings": map[string]any{"slug": map[string]any{"source": "context", "name": "slug"}}}},
+	}
+	result := compiler.Compile("test", 1, defs)
+	if len(result.Diagnostics) == 0 {
+		t.Fatal("mismatched bound input type accepted")
+	}
+}

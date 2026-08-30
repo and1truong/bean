@@ -16,6 +16,7 @@ import (
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/audit"
 	"github.com/beanruntime/bean/internal/auth"
+	"github.com/beanruntime/bean/internal/block"
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/definition"
@@ -39,10 +40,12 @@ type Server struct {
 	SecureCookies bool
 	Logger        *slog.Logger
 	limiter       *loginLimiter
+	signupLimiter *loginLimiter
 }
 
 func (s *Server) Handler() http.Handler {
 	s.limiter = &loginLimiter{attempts: map[string][]time.Time{}}
+	s.signupLimiter = &loginLimiter{attempts: map[string][]time.Time{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { write(w, 200, map[string]string{"status": "ok"}) })
 	mux.HandleFunc("GET /readyz", s.ready)
@@ -104,10 +107,10 @@ func (s *Server) manifest(w http.ResponseWriter, _ *http.Request) {
 		problem(w, 503, "not_ready", "No active release.", "")
 		return
 	}
-	write(w, 200, map[string]any{"appId": a.AppID, "releaseId": a.ReleaseID, "version": a.Version, "entities": a.Entities, "views": a.Views, "actions": a.Actions, "webforms": a.Webforms, "pages": a.Pages})
+	write(w, 200, map[string]any{"appId": a.AppID, "releaseId": a.ReleaseID, "version": a.Version, "entities": a.Entities, "views": a.Views, "actions": a.Actions, "webforms": a.Webforms, "pages": a.Pages, "localRegistration": a.LocalRegistration})
 }
 func (s *Server) adminManifest(w http.ResponseWriter, r *http.Request) {
-	if !s.admin(w, r) {
+	if !s.editor(w, r) {
 		return
 	}
 	a, ok := s.Kernel.Active()
@@ -115,10 +118,10 @@ func (s *Server) adminManifest(w http.ResponseWriter, r *http.Request) {
 		problem(w, 503, "not_ready", "No active release.", requestID(r))
 		return
 	}
-	write(w, 200, map[string]any{"appId": a.AppID, "releaseId": a.ReleaseID, "version": a.Version, "entities": a.Entities, "views": a.Views, "actions": a.Actions, "adminResources": a.AdminResources})
+	write(w, 200, map[string]any{"appId": a.AppID, "releaseId": a.ReleaseID, "version": a.Version, "entities": a.Entities, "views": a.Views, "actions": a.Actions, "adminResources": a.AdminResources, "systemAdmin": role(s.ctx(r).User.Roles, "administrator")})
 }
 func (s *Server) adminResourceList(w http.ResponseWriter, r *http.Request) {
-	if !s.admin(w, r) {
+	if !s.editor(w, r) {
 		return
 	}
 	a, ok := s.Kernel.Active()
@@ -163,10 +166,13 @@ func (s *Server) adminResourceList(w http.ResponseWriter, r *http.Request) {
 		respondError(w, r, e)
 		return
 	}
+	if result.NextCursor != "" {
+		w.Header().Set("Bean-Next-Cursor", result.NextCursor)
+	}
 	write(w, 200, map[string]any{"data": result.Rows, "nextCursor": result.NextCursor})
 }
 func (s *Server) adminResourceRecord(w http.ResponseWriter, r *http.Request) {
-	if !s.admin(w, r) {
+	if !s.editor(w, r) {
 		return
 	}
 	a, ok := s.Kernel.Active()
@@ -236,21 +242,25 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request) {
 	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-	result, e := s.Views.RunPage(r.Context(), a, r.PathValue("name"), view.Params{Filter: queryMap(r), Limit: limit, Offset: offset, Cursor: r.URL.Query().Get("cursor")}, s.ctx(r))
+	filters := queryMap(r)
+	bound, e := s.boundBlockInputs(r, a, "view", r.PathValue("name"))
+	if e != nil {
+		problem(w, 400, "bound_input", e.Error(), requestID(r))
+		return
+	}
+	for name, value := range bound {
+		if _, collision := filters[name]; collision {
+			problem(w, 400, "bound_input", "Bound input cannot be supplied by the client.", requestID(r))
+			return
+		}
+		filters[name] = value
+	}
+	result, e := s.Views.RunPage(r.Context(), a, r.PathValue("name"), view.Params{Filter: filters, Limit: limit, Offset: offset, Cursor: r.URL.Query().Get("cursor")}, s.ctx(r))
 	if e != nil {
 		respondError(w, r, e)
 		return
 	}
-	b, e := render.JSON(result.Rows)
-	if e != nil {
-		respondError(w, r, e)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	if result.NextCursor != "" {
-		w.Header().Set("Bean-Next-Cursor", result.NextCursor)
-	}
-	_, _ = w.Write(b)
+	write(w, 200, map[string]any{"data": result.Rows, "nextCursor": result.NextCursor})
 }
 func (s *Server) action(w http.ResponseWriter, r *http.Request) {
 	a, ok := s.Kernel.Active()
@@ -270,6 +280,13 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request) {
 	if key := r.Header.Get("Idempotency-Key"); key != "" {
 		in["_idempotencyKey"] = key
 	}
+	if definition := a.Actions[r.PathValue("name")]; definition.Operation == "register_local_user" && (a.LocalRegistration == nil || a.LocalRegistration.Action != definition.Name) {
+		problem(w, 404, "not_found", "Action not found.", requestID(r))
+		return
+	} else if definition.Operation == "register_local_user" && !s.signupLimiter.allow(clientIP(r)) {
+		problem(w, 429, "rate_limited", "Too many signup attempts.", requestID(r))
+		return
+	}
 	out, e := s.Actions.Execute(r.Context(), a, r.PathValue("name"), in, c)
 	if e != nil {
 		respondError(w, r, e)
@@ -288,11 +305,41 @@ func (s *Server) form(w http.ResponseWriter, r *http.Request) {
 		problem(w, 404, "not_found", "Webform not found.", requestID(r))
 		return
 	}
+	actionDefinition := a.Actions[f.Action]
+	if actionDefinition.Operation == "register_local_user" {
+		if a.LocalRegistration == nil || a.LocalRegistration.Action != actionDefinition.Name {
+			problem(w, 404, "not_found", "Webform not found.", requestID(r))
+			return
+		}
+		if !s.signupLimiter.allow(clientIP(r)) {
+			problem(w, 429, "rate_limited", "Too many signup attempts.", requestID(r))
+			return
+		}
+	}
+	c, session, authed := s.requestContext(r)
+	if authed && !csrf(r, session.CSRF) {
+		problem(w, 403, "csrf", "CSRF validation failed.", requestID(r))
+		return
+	}
 	var in map[string]any
 	if !decode(w, r, &in) {
 		return
 	}
-	c := s.ctx(r)
+	bound, e := s.boundBlockInputs(r, a, "webform", f.Name)
+	if e != nil {
+		problem(w, 400, "bound_input", e.Error(), requestID(r))
+		return
+	}
+	for name, value := range bound {
+		if _, collision := in[name]; collision {
+			problem(w, 400, "bound_input", "Bound input cannot be supplied by the client.", requestID(r))
+			return
+		}
+		in[name] = value
+	}
+	if key := r.Header.Get("Idempotency-Key"); key != "" {
+		in["_idempotencyKey"] = key
+	}
 	if e := webform.Validate(f, in, c); e != nil {
 		if fields, ok := e.(webform.Errors); ok {
 			write(w, 400, map[string]any{"error": map[string]any{"code": "validation", "message": e.Error(), "requestId": requestID(r), "fields": fields}})
@@ -371,7 +418,7 @@ func (s *Server) releases(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, rows)
 }
 func (s *Server) audit(w http.ResponseWriter, r *http.Request) {
-	if !s.admin(w, r) {
+	if !s.editor(w, r) {
 		return
 	}
 	predicates := []dbal.Predicate{}
@@ -598,6 +645,47 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 	}
 	write(w, 200, map[string]any{"tree": tree})
 }
+
+func (s *Server) boundBlockInputs(r *http.Request, a *appir.App, kind, target string) (map[string]any, error) {
+	pagePath, blockName := r.URL.Query().Get("_page"), r.URL.Query().Get("_block")
+	if pagePath == "" && blockName == "" {
+		return nil, nil
+	}
+	if pagePath == "" || blockName == "" {
+		return nil, fmt.Errorf("page and block context must be supplied together")
+	}
+	p, routeParams, matched := page.Match(a, pagePath)
+	if !matched {
+		return nil, fmt.Errorf("bound page was not found")
+	}
+	found := false
+	for _, region := range a.Panels[p.Panel].Regions {
+		for _, candidate := range region.Blocks {
+			found = found || candidate == blockName
+		}
+	}
+	definition, exists := a.Blocks[blockName]
+	if !found || !exists || kind == "view" && definition.View != target || kind == "webform" && definition.Webform != target {
+		return nil, fmt.Errorf("bound block does not match this request")
+	}
+	query := map[string]string{}
+	for key := range r.URL.Query() {
+		if !strings.HasPrefix(key, "_") {
+			query[key] = r.URL.Query().Get(key)
+		}
+	}
+	contextValues, err := page.ResolveContext(p, routeParams, query, s.ctx(r))
+	if err != nil {
+		return nil, fmt.Errorf("required bound context is missing")
+	}
+	node, allowed, err := block.Node(a, definition, contextValues, s.ctx(r))
+	if err != nil || !allowed {
+		return nil, fmt.Errorf("bound block is unavailable")
+	}
+	inputs, _ := node.Props["inputs"].(map[string]any)
+	return inputs, nil
+}
+
 func (s *Server) fallback(w http.ResponseWriter, r *http.Request) {
 	if a, ok := s.Kernel.Active(); ok {
 		if name, display, found := view.Display(a, r.URL.Path); found {
@@ -643,6 +731,14 @@ func (s *Server) admin(w http.ResponseWriter, r *http.Request) bool {
 	c, _, ok := s.requestContext(r)
 	if !ok || c.User == nil || !role(c.User.Roles, "administrator") {
 		problem(w, 403, "forbidden", "Administrator access is required.", requestID(r))
+		return false
+	}
+	return true
+}
+func (s *Server) editor(w http.ResponseWriter, r *http.Request) bool {
+	c, _, ok := s.requestContext(r)
+	if !ok || c.User == nil || !role(c.User.Roles, "administrator") && !role(c.User.Roles, "editor") {
+		problem(w, 403, "forbidden", "Editor access is required.", requestID(r))
 		return false
 	}
 	return true
@@ -773,7 +869,7 @@ func stringSet(values []string) map[string]bool {
 func queryMap(r *http.Request) map[string]any {
 	m := map[string]any{}
 	for k, v := range r.URL.Query() {
-		if len(v) > 0 {
+		if len(v) > 0 && k != "cursor" && k != "limit" && k != "offset" && !strings.HasPrefix(k, "_") {
 			m[k] = v[0]
 		}
 	}

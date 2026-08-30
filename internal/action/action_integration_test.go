@@ -19,6 +19,7 @@ import (
 	"github.com/beanruntime/bean/internal/view"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -98,6 +99,10 @@ func TestManyToManyActionWriteAndViewTraversal(t *testing.T) {
 	article, e := engine.Execute(ctx, app, "article_create", map[string]any{"title": "Bean", "tags": []any{tag["id"]}}, admin())
 	if e != nil {
 		t.Fatal(e)
+	}
+	listed, e := (view.Service{DB: db}).Run(ctx, app, "article_list", view.Params{}, admin())
+	if e != nil || len(listed) != 1 || !reflect.DeepEqual(listed[0]["tags"], []any{tag["id"]}) {
+		t.Fatalf("many-to-many list round trip=%v err=%v", listed, e)
 	}
 	rows, e := (view.Service{DB: db}).Run(ctx, app, "article_tags", view.Params{}, admin())
 	if e != nil || len(rows) != 1 || rows[0]["id"] != article["id"] || rows[0]["name"] != "Go" {

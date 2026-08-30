@@ -28,6 +28,22 @@ func TestPlanIsDeterministic(t *testing.T) {
 	}
 }
 
+func TestNewRelationsCreateTargetsBeforeDependentsAndJoinTables(t *testing.T) {
+	schema := migration.Schema{Entities: []migration.Entity{
+		{Name: "comment", Fields: []migration.Field{{Name: "post_id", Type: "relation", RelationEntity: "post", RelationKind: "many-to-one", TargetField: "id"}}},
+		{Name: "post", Fields: []migration.Field{{Name: "tags", Type: "relation", RelationEntity: "tag", RelationKind: "many-to-many", TargetField: "id"}}},
+		{Name: "tag"},
+	}}
+	plan, err := migration.Build(migration.Schema{}, schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(plan.Descriptions, ",")
+	if strings.Index(joined, "create entity post") > strings.Index(joined, "create entity comment") || strings.Index(joined, "create entity tag") > strings.Index(joined, "create many-to-many relation post_tags") || strings.Index(joined, "create entity post") > strings.Index(joined, "create many-to-many relation post_tags") {
+		t.Fatalf("unsafe relation order=%v", plan.Descriptions)
+	}
+}
+
 func TestUnsafeConstraintAdditionIsRejected(t *testing.T) {
 	old := migration.Schema{Entities: []migration.Entity{{Name: "book"}}}
 	next := migration.Schema{Entities: []migration.Entity{{Name: "book", Fields: []migration.Field{{Name: "author_id", Type: "relation", RelationEntity: "author", RelationKind: "many-to-one", TargetField: "id"}}}, {Name: "author"}}}

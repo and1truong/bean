@@ -23,7 +23,12 @@ func Generate(a *appir.App) (json.RawMessage, error) {
 		props := map[string]any{}
 		required := []string{}
 		for n, f := range a.Input {
-			props[n] = schema(f.Type)
+			definition := schema(f.Type)
+			if f.Sensitive {
+				definition["writeOnly"] = true
+				definition["format"] = "password"
+			}
+			props[n] = definition
 			if f.Required {
 				required = append(required, n)
 			}
@@ -32,7 +37,11 @@ func Generate(a *appir.App) (json.RawMessage, error) {
 		for n, f := range a.Output {
 			output[n] = schema(f.Type)
 		}
-		paths["/api/actions/"+name] = map[string]any{"post": map[string]any{"operationId": "action_" + name, "security": []any{map[string]any{"cookieAuth": []any{}}}, "requestBody": map[string]any{"required": true, "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "additionalProperties": false, "properties": props, "required": required}}}}, "responses": map[string]any{"200": map[string]any{"description": "Action result", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": map[string]any{"data": map[string]any{"type": "object", "properties": output}}}}}}, "400": errorResponse(), "401": errorResponse(), "403": errorResponse(), "409": errorResponse()}}}
+		security := []any{map[string]any{"cookieAuth": []any{}}}
+		if a.Operation == "register_local_user" {
+			security = []any{}
+		}
+		paths["/api/actions/"+name] = map[string]any{"post": map[string]any{"operationId": "action_" + name, "security": security, "requestBody": map[string]any{"required": true, "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "additionalProperties": false, "properties": props, "required": required}}}}, "responses": map[string]any{"200": map[string]any{"description": "Action result", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": map[string]any{"data": map[string]any{"type": "object", "properties": output}}}}}}, "400": errorResponse(), "401": errorResponse(), "403": errorResponse(), "409": errorResponse()}}}
 	}
 	doc := map[string]any{"openapi": "3.1.0", "info": map[string]any{"title": "Bean " + a.AppID, "version": fmt.Sprint(a.Version)}, "paths": paths, "components": map[string]any{"securitySchemes": map[string]any{"cookieAuth": map[string]any{"type": "apiKey", "in": "cookie", "name": "bean_session"}}, "schemas": map[string]any{"Error": map[string]any{"type": "object", "properties": map[string]any{"error": map[string]any{"type": "object"}}}}}}
 	b, e := json.MarshalIndent(doc, "", "  ")

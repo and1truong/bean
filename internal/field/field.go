@@ -3,6 +3,7 @@ package field
 import (
 	"encoding/json"
 	"fmt"
+	stdhtml "html"
 	"net/mail"
 	"net/url"
 	"regexp"
@@ -13,6 +14,7 @@ import (
 )
 
 var uuid = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
+var slug = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
 func Validate(f appir.Field, v any) error {
 	if v == nil {
@@ -22,9 +24,14 @@ func Validate(f appir.Field, v any) error {
 		return nil
 	}
 	switch f.Type {
-	case "string", "text", "richtext":
+	case "string", "text", "richtext", "password":
 		if _, ok := v.(string); !ok {
 			return typeError(f)
+		}
+	case "slug":
+		s, ok := v.(string)
+		if !ok || !slug.MatchString(s) {
+			return fmt.Errorf("%s must be a lowercase slug", f.Name)
 		}
 	case "integer", "money":
 		switch v.(type) {
@@ -155,18 +162,20 @@ func Decode(f appir.Field, value any) any {
 }
 
 func SanitizeRichText(s string) string {
-	for {
-		start := strings.Index(strings.ToLower(s), "<script")
-		if start < 0 {
-			break
+	for _, name := range []string{"script", "style", "iframe", "object", "svg", "math", "template"} {
+		closed := regexp.MustCompile(`(?is)<` + name + `\b[^>]*>.*?</` + name + `\s*>`)
+		for closed.MatchString(s) {
+			s = closed.ReplaceAllString(s, "")
 		}
-		end := strings.Index(strings.ToLower(s[start:]), "</script>")
-		if end < 0 {
-			return s[:start]
-		}
-		s = s[:start] + s[start+end+9:]
+		unclosed := regexp.MustCompile(`(?is)<` + name + `\b[^>]*>.*$`)
+		s = unclosed.ReplaceAllString(s, "")
 	}
-	s = strings.ReplaceAll(s, "javascript:", "")
-	return s
+	escaped := stdhtml.EscapeString(s)
+	escaped = regexp.MustCompile(`(?i)(javascript|vbscript|data):`).ReplaceAllString(escaped, "")
+	formatting := regexp.MustCompile(`(?i)&lt;(/?)(p|strong|em|ul|ol|li|blockquote|code|pre|h2|h3|h4)&gt;|&lt;br\s*/?&gt;`)
+	return formatting.ReplaceAllStringFunc(escaped, func(tag string) string {
+		decoded := stdhtml.UnescapeString(tag)
+		return strings.ToLower(decoded)
+	})
 }
 func typeError(f appir.Field) error { return fmt.Errorf("%s has invalid %s value", f.Name, f.Type) }

@@ -35,6 +35,13 @@ func (c Compiler) CompileSelect(q dbal.Select) (string, []dbal.Value, error) {
 		if e != nil {
 			return "", nil, e
 		}
+		if strings.Contains(col, ".") {
+			alias, aliasErr := c.QuoteIdentifier(strings.ReplaceAll(col, ".", "__"))
+			if aliasErr != nil {
+				return "", nil, aliasErr
+			}
+			x += " AS " + alias
+		}
 		cols = append(cols, x)
 	}
 	for _, a := range q.Aggregates {

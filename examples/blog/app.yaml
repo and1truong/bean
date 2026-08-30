@@ -1,0 +1,258 @@
+name: Bean Blog
+definitions:
+  - {apiVersion: bean/v1alpha1, kind: Role, metadata: {name: member}, spec: {permissions: [comment_submit]}}
+  - {apiVersion: bean/v1alpha1, kind: Role, metadata: {name: editor}, spec: {permissions: [content_manage, comment_moderate]}}
+  - {apiVersion: bean/v1alpha1, kind: Policy, metadata: {name: editor_only}, spec: {readRoles: [editor, administrator], writeRoles: [editor, administrator]}}
+  - {apiVersion: bean/v1alpha1, kind: Policy, metadata: {name: member_write}, spec: {authenticated: true, readRoles: [member, editor, administrator], writeRoles: [member, editor, administrator]}}
+  - {apiVersion: bean/v1alpha1, kind: Policy, metadata: {name: comment_access}, spec: {authenticated: true, readRoles: [editor, administrator], writeRoles: [member, editor, administrator], owner: true, bypassOwnerRoles: [editor, administrator]}}
+  - apiVersion: bean/v1alpha1
+    kind: Policy
+    metadata: {name: published_only}
+    spec: {condition: {op: eq, left: {source: record, name: status}, right: {source: literal, literal: published}}}
+  - apiVersion: bean/v1alpha1
+    kind: Policy
+    metadata: {name: approved_only}
+    spec: {condition: {op: eq, left: {source: record, name: status}, right: {source: literal, literal: approved}}}
+
+  - apiVersion: bean/v1alpha1
+    kind: Entity
+    metadata: {name: category}
+    spec:
+      label: Category
+      policy: editor_only
+      fields:
+        - {name: name, label: Name, type: string, required: true, unique: true}
+        - {name: slug, label: Slug, type: slug, required: true, unique: true}
+  - apiVersion: bean/v1alpha1
+    kind: Entity
+    metadata: {name: tag}
+    spec:
+      label: Tag
+      policy: editor_only
+      fields:
+        - {name: name, label: Name, type: string, required: true, unique: true}
+        - {name: slug, label: Slug, type: slug, required: true, unique: true}
+  - apiVersion: bean/v1alpha1
+    kind: Entity
+    metadata: {name: post}
+    spec:
+      label: Post
+      policy: editor_only
+      indexes: [[status, published_at], [category_id]]
+      fields:
+        - {name: title, label: Title, type: string, required: true}
+        - {name: slug, label: Slug, type: slug, required: true, unique: true}
+        - {name: excerpt, label: Excerpt, type: text, required: true}
+        - {name: body, label: Body, type: richtext, required: true}
+        - {name: author_display_name, label: Author, type: string, required: true}
+        - {name: category_id, label: Category, type: relation, required: true, relation: {entity: category, kind: many-to-one, targetField: id}}
+        - {name: tags, label: Tags, type: relation, relation: {entity: tag, kind: many-to-many, targetField: id}}
+        - {name: status, label: Status, type: enum, required: true, options: [draft, published]}
+        - {name: published_at, label: Published, type: datetime}
+  - apiVersion: bean/v1alpha1
+    kind: Entity
+    metadata: {name: comment}
+    spec:
+      label: Comment
+      owner: true
+      policy: comment_access
+      indexes: [[post_id, status, created_at]]
+      fields:
+        - {name: post_id, label: Post, type: relation, required: true, relation: {entity: post, kind: many-to-one, targetField: id}}
+        - {name: body, label: Comment, type: text, required: true}
+        - {name: author_display_name, label: Author, type: string, required: true}
+        - {name: status, label: Status, type: enum, required: true, options: [pending, approved, rejected]}
+
+  - apiVersion: bean/v1alpha1
+    kind: View
+    metadata: {name: published_posts}
+    spec:
+      entity: post
+      fields: [id, title, slug, excerpt, author_display_name, category_id, published_at]
+      filter: {op: eq, left: {source: record, name: status}, right: {source: literal, literal: published}}
+      policy: published_only
+      sort: [{field: published_at, desc: true}]
+      defaultLimit: 10
+      maxLimit: 50
+      displays: {rss: {type: rss, route: /rss.xml}, api: {type: json, route: /api/blog/posts}}
+  - apiVersion: bean/v1alpha1
+    kind: View
+    metadata: {name: published_post}
+    spec:
+      entity: post
+      fields: [id, title, slug, excerpt, body, author_display_name, published_at, category.name, category.slug, tags.name, tags.slug]
+      relationships:
+        - {name: category, entity: category, type: inner, localField: category_id, targetField: id}
+        - {name: tags, relationField: tags, type: left}
+      filter: {op: eq, left: {source: record, name: status}, right: {source: literal, literal: published}}
+      exposedFilters: {slug: {name: slug, type: slug, required: true}}
+      policy: published_only
+      sort: [{field: id}]
+      defaultLimit: 50
+      maxLimit: 50
+  - apiVersion: bean/v1alpha1
+    kind: View
+    metadata: {name: published_posts_by_category}
+    spec:
+      entity: post
+      fields: [id, title, slug, excerpt, author_display_name, published_at]
+      relationships: [{name: category, entity: category, type: inner, localField: category_id, targetField: id}]
+      filter: {op: eq, left: {source: record, name: status}, right: {source: literal, literal: published}}
+      exposedFilters: {category_slug: {name: category.slug, type: slug, required: true}}
+      policy: published_only
+      sort: [{field: published_at, desc: true}]
+      defaultLimit: 10
+      maxLimit: 50
+  - apiVersion: bean/v1alpha1
+    kind: View
+    metadata: {name: published_posts_by_tag}
+    spec:
+      entity: post
+      fields: [id, title, slug, excerpt, author_display_name, published_at]
+      relationships: [{name: tags, relationField: tags, type: inner}]
+      filter: {op: eq, left: {source: record, name: status}, right: {source: literal, literal: published}}
+      exposedFilters: {tag_slug: {name: tags.slug, type: slug, required: true}}
+      policy: published_only
+      sort: [{field: published_at, desc: true}]
+      defaultLimit: 10
+      maxLimit: 50
+  - {apiVersion: bean/v1alpha1, kind: View, metadata: {name: public_categories}, spec: {entity: category, fields: [id, name, slug], sort: [{field: name}], defaultLimit: 50, maxLimit: 100}}
+  - {apiVersion: bean/v1alpha1, kind: View, metadata: {name: public_tags}, spec: {entity: tag, fields: [id, name, slug], sort: [{field: name}], defaultLimit: 50, maxLimit: 100}}
+  - apiVersion: bean/v1alpha1
+    kind: View
+    metadata: {name: approved_comments}
+    spec:
+      entity: comment
+      fields: [id, body, author_display_name, created_at]
+      relationships: [{name: post, entity: post, type: inner, localField: post_id, targetField: id}]
+      filter: {op: eq, left: {source: record, name: status}, right: {source: literal, literal: approved}}
+      exposedFilters: {post_slug: {name: post.slug, type: slug, required: true}}
+      policy: approved_only
+      sort: [{field: created_at}]
+      defaultLimit: 100
+      maxLimit: 100
+  - {apiVersion: bean/v1alpha1, kind: View, metadata: {name: post_admin}, spec: {entity: post, fields: [id, title, slug, excerpt, body, author_display_name, category_id, tags, status, published_at, created_at, updated_at, version], policy: editor_only, sort: [{field: updated_at, desc: true}]}}
+  - {apiVersion: bean/v1alpha1, kind: View, metadata: {name: comment_admin}, spec: {entity: comment, fields: [id, post_id, body, author_display_name, status, owner_id, created_at, updated_at, version], policy: editor_only, sort: [{field: created_at, desc: true}]}}
+
+  - apiVersion: bean/v1alpha1
+    kind: Action
+    metadata: {name: save_post_draft}
+    spec:
+      entity: post
+      operation: transaction
+      policy: editor_only
+      input:
+        title: {type: string, required: true}
+        slug: {type: slug, required: true}
+        excerpt: {type: text, required: true}
+        body: {type: richtext, required: true}
+        author_display_name: {type: string, required: true}
+        category_id: {type: relation, required: true, relation: {entity: category, kind: many-to-one, targetField: id}}
+        tags: {type: relation, relation: {entity: tag, kind: many-to-many, targetField: id}}
+      steps:
+        - op: create
+          values: {title: $input.title, slug: $input.slug, excerpt: $input.excerpt, body: $input.body, author_display_name: $input.author_display_name, category_id: $input.category_id, tags: $input.tags, status: draft}
+  - {apiVersion: bean/v1alpha1, kind: Action, metadata: {name: post_status_transition_guard}, spec: {entity: post, operation: transition, policy: editor_only, transitions: {}}}
+  - apiVersion: bean/v1alpha1
+    kind: Action
+    metadata: {name: publish_post}
+    spec:
+      entity: post
+      operation: transaction
+      policy: editor_only
+      confirm: Publish this draft?
+      input: {id: {type: uuid, required: true}}
+      transitions: {draft: [published]}
+      steps:
+        - {op: transition, values: {id: $input.id, status: published, published_at: $now}}
+  - apiVersion: bean/v1alpha1
+    kind: Action
+    metadata: {name: submit_comment}
+    spec:
+      entity: comment
+      operation: transaction
+      policy: member_write
+      input: {post_slug: {type: slug, required: true}, body: {type: text, required: true}}
+      steps:
+        - op: query
+          view: published_post
+          result: post
+          where: {op: eq, left: {source: record, name: slug}, right: {source: input, name: post_slug}}
+        - op: create
+          values: {post_id: $result.post.0.id, body: $input.body, author_display_name: $user.display_name, status: pending}
+  - {apiVersion: bean/v1alpha1, kind: Action, metadata: {name: comment_status_transition_guard}, spec: {entity: comment, operation: transition, policy: editor_only, transitions: {}}}
+  - {apiVersion: bean/v1alpha1, kind: Action, metadata: {name: approve_comment}, spec: {entity: comment, operation: transaction, policy: editor_only, confirm: "Approve this comment?", input: {id: {type: uuid, required: true}}, transitions: {pending: [approved]}, steps: [{op: transition, values: {id: $input.id, status: approved}}]}}
+  - {apiVersion: bean/v1alpha1, kind: Action, metadata: {name: reject_comment}, spec: {entity: comment, operation: transaction, policy: editor_only, confirm: "Reject this comment?", input: {id: {type: uuid, required: true}}, transitions: {pending: [rejected]}, steps: [{op: transition, values: {id: $input.id, status: rejected}}]}}
+  - {apiVersion: bean/v1alpha1, kind: Action, metadata: {name: register_member}, spec: {operation: register_local_user, defaultRole: member}}
+  - {apiVersion: bean/v1alpha1, kind: LocalRegistration, metadata: {name: local}, spec: {action: register_member}}
+
+  - apiVersion: bean/v1alpha1
+    kind: Webform
+    metadata: {name: signup}
+    spec:
+      action: register_member
+      elements:
+        - {name: display_name, type: text, required: true, minLength: 2, maxLength: 80}
+        - {name: email, type: email, required: true}
+        - {name: password, type: password, required: true, minLength: 10}
+        - {name: password_confirmation, type: password, required: true, minLength: 10}
+      confirmation: Account created. You can now sign in.
+  - {apiVersion: bean/v1alpha1, kind: Webform, metadata: {name: comment_form}, spec: {action: submit_comment, elements: [{name: body, type: textarea, required: true, minLength: 1, maxLength: 5000}], confirmation: Your comment is awaiting approval.}}
+
+  - {apiVersion: bean/v1alpha1, kind: AdminResource, metadata: {name: category}, spec: {entity: category, description: Blog categories, labelField: name, list: {columns: [id, name, slug, updated_at], search: [name], sort: [{field: name}], pageSize: 25}, form: {fields: [name, slug]}}}
+  - {apiVersion: bean/v1alpha1, kind: AdminResource, metadata: {name: tag}, spec: {entity: tag, description: Post tags, labelField: name, list: {columns: [id, name, slug, updated_at], search: [name], sort: [{field: name}], pageSize: 25}, form: {fields: [name, slug]}}}
+  - apiVersion: bean/v1alpha1
+    kind: AdminResource
+    metadata: {name: post}
+    spec:
+      entity: post
+      description: Draft and published posts
+      labelField: title
+      view: post_admin
+      createAction: save_post_draft
+      list: {columns: [id, title, slug, status, category_id, published_at, updated_at], search: [title, excerpt, body], filters: [status, category_id], sort: [{field: updated_at, desc: true}], pageSize: 25}
+      form: {fields: [title, slug, excerpt, body, author_display_name, category_id, tags], readonly: [status, published_at, created_at, updated_at, version]}
+      actions: [publish_post]
+  - apiVersion: bean/v1alpha1
+    kind: AdminResource
+    metadata: {name: comment}
+    spec:
+      entity: comment
+      description: Comment moderation queue
+      labelField: author_display_name
+      view: comment_admin
+      list: {columns: [id, post_id, author_display_name, body, status, created_at], search: [body, author_display_name], filters: [status, post_id], sort: [{field: created_at, desc: true}], pageSize: 25}
+      form: {fields: [body], readonly: [post_id, author_display_name, status, owner_id, created_at, updated_at, version]}
+      actions: [approve_comment, reject_comment]
+
+  - {apiVersion: bean/v1alpha1, kind: Menu, metadata: {name: public_nav}, spec: {items: [{label: Home, route: /}, {label: Categories, route: /categories}, {label: Tags, route: /tags}]}}
+  - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: public_menu}, spec: {type: menu, menu: public_nav}}
+  - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: home_posts}, spec: {type: view, view: published_posts, presentation: {mode: list, titleField: title, bodyField: excerpt, linkRoute: /posts/:slug, metaFields: [author_display_name, published_at], emptyState: No published posts yet.}}}
+  - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: post_detail}, spec: {type: view, view: published_post, inputs: {slug: {type: slug, required: true}}, bindings: {slug: {source: context, name: slug, required: true}}, presentation: {mode: detail, titleField: title, bodyField: body, metaFields: [author_display_name, published_at, category.name, tags.name], richTextFields: [body], emptyState: Post not found.}}}
+  - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: post_comments}, spec: {type: view, view: approved_comments, inputs: {post_slug: {type: slug, required: true}}, bindings: {post_slug: {source: context, name: slug, required: true}}, presentation: {mode: list, titleField: author_display_name, bodyField: body, metaFields: [created_at], emptyState: No approved comments yet.}}}
+  - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: submit_comment_form}, spec: {type: webform, webform: comment_form, policy: member_write, inputs: {post_slug: {type: slug, required: true}}, bindings: {post_slug: {source: context, name: slug, required: true}}}}
+  - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: category_index}, spec: {type: view, view: public_categories, presentation: {mode: list, titleField: name, linkRoute: /categories/:slug, emptyState: No categories yet.}}}
+  - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: category_posts}, spec: {type: view, view: published_posts_by_category, inputs: {category_slug: {type: slug, required: true}}, bindings: {category_slug: {source: context, name: slug, required: true}}, presentation: {mode: list, titleField: title, bodyField: excerpt, linkRoute: /posts/:slug, emptyState: No published posts in this category.}}}
+  - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: tag_index}, spec: {type: view, view: public_tags, presentation: {mode: list, titleField: name, linkRoute: /tags/:slug, emptyState: No tags yet.}}}
+  - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: tag_posts}, spec: {type: view, view: published_posts_by_tag, inputs: {tag_slug: {type: slug, required: true}}, bindings: {tag_slug: {source: context, name: slug, required: true}}, presentation: {mode: list, titleField: title, bodyField: excerpt, linkRoute: /posts/:slug, emptyState: No published posts with this tag.}}}
+  - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: signup_form}, spec: {type: webform, webform: signup}}
+  - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: login_help}, spec: {type: text, text: Sign in with your email and password.}}
+
+  - {apiVersion: bean/v1alpha1, kind: Panel, metadata: {name: home_panel}, spec: {layout: single-column, regions: [{name: main, blocks: [public_menu, home_posts]}]}}
+  - {apiVersion: bean/v1alpha1, kind: Panel, metadata: {name: post_panel}, spec: {layout: single-column, regions: [{name: main, blocks: [public_menu, post_detail, post_comments, submit_comment_form]}]}}
+  - {apiVersion: bean/v1alpha1, kind: Panel, metadata: {name: categories_panel}, spec: {layout: single-column, regions: [{name: main, blocks: [public_menu, category_index]}]}}
+  - {apiVersion: bean/v1alpha1, kind: Panel, metadata: {name: category_panel}, spec: {layout: single-column, regions: [{name: main, blocks: [public_menu, category_posts]}]}}
+  - {apiVersion: bean/v1alpha1, kind: Panel, metadata: {name: tags_panel}, spec: {layout: single-column, regions: [{name: main, blocks: [public_menu, tag_index]}]}}
+  - {apiVersion: bean/v1alpha1, kind: Panel, metadata: {name: tag_panel}, spec: {layout: single-column, regions: [{name: main, blocks: [public_menu, tag_posts]}]}}
+  - {apiVersion: bean/v1alpha1, kind: Panel, metadata: {name: signup_panel}, spec: {layout: single-column, regions: [{name: main, blocks: [public_menu, signup_form]}]}}
+  - {apiVersion: bean/v1alpha1, kind: Panel, metadata: {name: login_panel}, spec: {layout: single-column, regions: [{name: main, blocks: [public_menu, login_help]}]}}
+
+  - {apiVersion: bean/v1alpha1, kind: Page, metadata: {name: home}, spec: {route: /, title: Bean Blog, panel: home_panel}}
+  - {apiVersion: bean/v1alpha1, kind: Page, metadata: {name: post}, spec: {route: /posts/:slug, title: Post, panel: post_panel, context: {slug: {source: route, name: slug, required: true}}}}
+  - {apiVersion: bean/v1alpha1, kind: Page, metadata: {name: categories}, spec: {route: /categories, title: Categories, panel: categories_panel}}
+  - {apiVersion: bean/v1alpha1, kind: Page, metadata: {name: category}, spec: {route: /categories/:slug, title: Category, panel: category_panel, context: {slug: {source: route, name: slug, required: true}}}}
+  - {apiVersion: bean/v1alpha1, kind: Page, metadata: {name: tags}, spec: {route: /tags, title: Tags, panel: tags_panel}}
+  - {apiVersion: bean/v1alpha1, kind: Page, metadata: {name: tag}, spec: {route: /tags/:slug, title: Tag, panel: tag_panel, context: {slug: {source: route, name: slug, required: true}}}}
+  - {apiVersion: bean/v1alpha1, kind: Page, metadata: {name: signup}, spec: {route: /signup, title: Sign up, panel: signup_panel}}
+  - {apiVersion: bean/v1alpha1, kind: Page, metadata: {name: login}, spec: {route: /login, title: Sign in, panel: login_panel}}
+seed: {}

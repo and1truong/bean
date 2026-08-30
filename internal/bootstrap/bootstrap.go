@@ -70,7 +70,7 @@ func OpenURL(ctx context.Context, databaseURL string, secure bool) (*Runtime, er
 		return nil, e
 	}
 	authService := auth.Service{DB: db}
-	actions := action.Service{DB: db}
+	actions := action.Service{DB: db, Auth: authService}
 	views := view.Service{DB: db}
 	server := &httpapi.Server{Kernel: k, Store: store, Auth: authService, Actions: actions, Views: views, SecureCookies: secure}
 	runner := job.Runner{DB: db, Handle: func(ctx context.Context, name string, payload map[string]any) error {

@@ -47,6 +47,7 @@ func Node(a *appir.App, b appir.Block, ctx map[string]any, c beanctx.Request) (r
 		props["text"] = b.Text
 	case "view":
 		props["view"] = b.View
+		props["presentation"] = b.Presentation
 	case "entity":
 		props["entity"] = b.Entity
 	case "webform":

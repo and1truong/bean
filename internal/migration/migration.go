@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/beanruntime/bean/internal/dbal"
@@ -48,16 +49,23 @@ func Build(current Schema, next Schema) (Plan, error) {
 			return p, fmt.Errorf("Entity %s spec.name: invalid machine name", e.Name)
 		}
 		newNames[e.Name] = true
+	}
+	created := orderedNewEntities(old, next.Entities)
+	for _, e := range created {
+		sql, err := createTable(e)
+		if err != nil {
+			return p, err
+		}
+		p.Statements = append(p.Statements, sql)
+		p.Descriptions = append(p.Descriptions, "create entity "+e.Name)
+		addIndexes(&p, e)
+	}
+	for _, e := range created {
+		addJoinTables(&p, e)
+	}
+	for _, e := range next.Entities {
 		prev, exists := old[e.Name]
 		if !exists {
-			sql, err := createTable(e)
-			if err != nil {
-				return p, err
-			}
-			p.Statements = append(p.Statements, sql)
-			p.Descriptions = append(p.Descriptions, "create entity "+e.Name)
-			addIndexes(&p, e)
-			addJoinTables(&p, e)
 			continue
 		}
 		pf := map[string]Field{}
@@ -102,6 +110,49 @@ func Build(current Schema, next Schema) (Plan, error) {
 		}
 	}
 	return p, nil
+}
+
+func orderedNewEntities(old map[string]Entity, entities []Entity) []Entity {
+	pending := map[string]Entity{}
+	for _, entity := range entities {
+		if _, exists := old[entity.Name]; !exists {
+			pending[entity.Name] = entity
+		}
+	}
+	ordered := []Entity{}
+	for len(pending) > 0 {
+		names := make([]string, 0, len(pending))
+		for name := range pending {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		progress := false
+		for _, name := range names {
+			entity := pending[name]
+			blocked := false
+			for _, field := range entity.Fields {
+				if !toMany(field.RelationKind) && field.RelationEntity != "" && field.RelationEntity != entity.Name {
+					_, blocked = pending[field.RelationEntity]
+				}
+				if blocked {
+					break
+				}
+			}
+			if blocked {
+				continue
+			}
+			ordered = append(ordered, entity)
+			delete(pending, name)
+			progress = true
+		}
+		if !progress {
+			for _, name := range names {
+				ordered = append(ordered, pending[name])
+				delete(pending, name)
+			}
+		}
+	}
+	return ordered
 }
 func createTable(e Entity) (string, error) {
 	cols := []string{`"id" TEXT PRIMARY KEY`, `"created_at" TEXT NOT NULL`, `"updated_at" TEXT NOT NULL`, `"version" INTEGER NOT NULL`}
@@ -219,7 +270,7 @@ func addJoinTable(p *Plan, entity string, field Field) {
 func toMany(kind string) bool { return kind == "one-to-many" || kind == "many-to-many" }
 func sqlType(t string) (string, error) {
 	switch t {
-	case "string", "text", "richtext", "enum", "date", "datetime", "uuid", "email", "url", "json", "relation":
+	case "string", "text", "richtext", "slug", "enum", "date", "datetime", "uuid", "email", "url", "json", "relation":
 		return "TEXT", nil
 	case "integer", "money":
 		return "INTEGER", nil
@@ -275,7 +326,7 @@ func MetadataSchema() []string {
 		`CREATE TABLE IF NOT EXISTS bean_release_definition (release_id TEXT NOT NULL, definition_id TEXT NOT NULL, revision INTEGER NOT NULL, PRIMARY KEY(release_id,definition_id))`,
 		`CREATE TABLE IF NOT EXISTS bean_schema_migration (release_id TEXT NOT NULL, sequence INTEGER NOT NULL, description TEXT NOT NULL, applied_at TEXT NOT NULL, PRIMARY KEY(release_id,sequence))`,
 		`CREATE TABLE IF NOT EXISTS bean_active_release (app_id TEXT PRIMARY KEY, release_id TEXT NOT NULL)`,
-		`CREATE TABLE IF NOT EXISTS bean_user (id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,password_hash TEXT NOT NULL,roles TEXT NOT NULL,tenant_id TEXT,created_at TEXT NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS bean_user (id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,display_name TEXT,password_hash TEXT NOT NULL,roles TEXT NOT NULL,tenant_id TEXT,created_at TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS bean_session (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,csrf_token TEXT NOT NULL,expires_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES bean_user(id) ON DELETE CASCADE)`,
 		`CREATE TABLE IF NOT EXISTS bean_audit (id TEXT PRIMARY KEY,at TEXT NOT NULL,request_id TEXT,user_id TEXT,tenant_id TEXT,action TEXT NOT NULL,entity_type TEXT,entity_id TEXT,changed_fields TEXT,success INTEGER NOT NULL,error TEXT)`,
 		`CREATE TABLE IF NOT EXISTS bean_outbox (id TEXT PRIMARY KEY,topic TEXT NOT NULL,payload TEXT NOT NULL,created_at TEXT NOT NULL,delivered_at TEXT,status TEXT NOT NULL,attempts INTEGER NOT NULL,retry_delay INTEGER NOT NULL,max_attempts INTEGER NOT NULL,last_error TEXT,claim_token TEXT,claimed_at TEXT,next_attempt_at TEXT)`,
@@ -291,6 +342,7 @@ func UpgradeMetadata(ctx context.Context, inspector Inspector, executor Executor
 		name string
 		sql  string
 	}{
+		"bean_user":        {{"display_name", `ALTER TABLE "bean_user" ADD COLUMN "display_name" TEXT`}},
 		"bean_idempotency": {{"input_hash", `ALTER TABLE "bean_idempotency" ADD COLUMN "input_hash" TEXT`}},
 		"bean_job": {
 			{"claim_token", `ALTER TABLE "bean_job" ADD COLUMN "claim_token" TEXT`},

@@ -2,18 +2,21 @@
 
 ## Current
 
-Bean v0.4 production-platform vertical slice is implemented. It advances the four requested planes together: crash-safe single-process runtime semantics, SQLite/PostgreSQL parity, protected System Admin operations, and typed visual Studio authoring. Bean remains alpha because the explicitly excluded operational and assurance work is still material.
+Bean v0.5 complete-blog vertical slice is implemented and qualified as `0.5.0-alpha`. The metadata-only `examples/blog` application covers draft/publish posts, categories, many-to-many tags, opt-in local-password signup/login, authenticated comments, editor approval/rejection, public list/detail/category/tag pages, and RSS.
 
-## v0.4 milestone evidence
+The generic platform additions are a compiler-known sensitive registration Action boundary, server-recomputed route-bound View/Webform inputs, slug and transaction-time bindings, metadata-driven content presentation, conservative rich-text rendering, dependency-ordered relation migrations, and portable to-many View hydration. Core Go and React code contains no blog-name branches.
 
-- Milestone 0 — contracts and baseline: failure model, portability boundary, System Admin boundary, visual/canonical definition invariant.
-- Milestone 1 — crash-safe SQLite: input-bound idempotency, restart-safe additive publication, startup schema validation, job/outbox leases and deterministic process fault points.
-- Milestone 2 — PostgreSQL: pgx adapter, URL selection, shared DBAL contract, SQLSTATE mapping, and Admin/Action/View HTTP parity against PostgreSQL 17.
-- Milestone 3 — System Admin: safe user/role data, queue health, releases, migrations, retry/cancel controls, CSRF, affected-row checks, confirmation, and audit.
-- Milestone 4 — visual Studio: typed core editors, draft references, lossless advanced JSON, inline diagnostics, migration/release preview, and no-JSON browser authoring.
-- Milestone 5 — qualification: reference apps, browser workflows, real crash/restart, real PostgreSQL, compatibility, fuzz-smoke, race, and production build gates.
+## v0.5 verification record
 
-## Verification log
+- Compiler/HTTP contracts prove fixed-role sensitive signup, safe output/idempotency, independent throttling, CSRF, draft and pending/rejected non-leakage, member denials, binding tamper rejection, publication/moderation audit, and rich-text sanitization.
+- React unit tests cover public rendering, inert rich text, session-aware navigation, and Webform visibility; the frontend has 8 passing unit tests.
+- `make test-blog` passes the complete SQLite browser journey.
+- `make test-postgres` passes reusable DBAL/HTTP contracts plus the same complete browser journey on PostgreSQL 17.
+- `make check` passes vet, frontend lint/typecheck/tests, all Go tests, focused contracts, fuzz-smoke, compatibility, black-box version, race, and Playwright 10/10.
+- `make test-crash` passes both supported crash/restart points.
+- `make build` passes and `bin/bean version` reports `bean 0.5.0-alpha`.
+
+## v0.4 verification record
 
 - `go test ./...` — pass on 2026-08-30.
 - Frontend lint, typecheck, and 6 unit tests — pass.

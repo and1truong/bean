@@ -34,4 +34,13 @@ func TestMoneyRejectsFloatLikeStringAndRichTextSanitizes(t *testing.T) {
 	if strings.Contains(out, "script") {
 		t.Fatalf("unsafe output %q", out)
 	}
+	for _, payload := range []string{`<img src=x onerror=alert(1)>`, `<a href="javascript:alert(1)">click</a>`, `<svg><script>alert(1)</script></svg>`} {
+		out = field.SanitizeRichText(payload)
+		if strings.Contains(out, "<img") || strings.Contains(out, "<a ") || strings.Contains(out, "<svg") || strings.Contains(out, "<script") || strings.Contains(strings.ToLower(out), "javascript:") && !strings.Contains(out, "&") {
+			t.Fatalf("unsafe rich text output %q", out)
+		}
+	}
+	if out = field.SanitizeRichText(`<p><strong>safe</strong></p>`); out != `<p><strong>safe</strong></p>` {
+		t.Fatalf("safe formatting lost: %q", out)
+	}
 }

@@ -1,8 +1,8 @@
 package context
 
 type User struct {
-	ID, Email string
-	Roles     []string
+	ID, Email, DisplayName string
+	Roles                  []string
 }
 type Request struct {
 	User                               *User

@@ -21,7 +21,7 @@ import (
 	"github.com/beanruntime/bean/internal/definition"
 )
 
-const version = "0.4.0-alpha"
+const version = "0.5.0-alpha"
 
 func main() {
 	if e := run(os.Args[1:]); e != nil {

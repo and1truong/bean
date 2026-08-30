@@ -2,7 +2,7 @@ SHELL := /bin/bash
 GOCACHE := $(CURDIR)/.cache/go-build
 export GOCACHE
 
-.PHONY: bootstrap fmt fmt-check lint test test-integration test-contract test-fuzz-smoke test-compatibility test-blackbox test-crash qualify-durability test-postgres test-e2e check build run clean
+.PHONY: bootstrap fmt fmt-check lint test test-integration test-contract test-fuzz-smoke test-compatibility test-blackbox test-crash qualify-durability test-blog test-postgres test-e2e check build run clean
 bootstrap:
 	go mod download
 	cd web && bun install --frozen-lockfile
@@ -36,7 +36,7 @@ test-compatibility:
 	go test ./internal/appir ./internal/release -run 'Compatibility|Format'
 
 test-blackbox: build
-	@test "$$($(CURDIR)/bin/bean version)" = "bean 0.4.0-alpha"
+	@test "$$($(CURDIR)/bin/bean version)" = "bean 0.5.0-alpha"
 
 test-crash: build
 	BEAN_BINARY=$(CURDIR)/bin/bean go test ./internal/crashtest -count=1
@@ -44,15 +44,21 @@ test-crash: build
 qualify-durability: build
 	BEAN_BINARY=$(CURDIR)/bin/bean go test ./internal/crashtest -count=20
 
-test-postgres:
-	@docker rm -f bean-postgres-test >/dev/null 2>&1 || true; \
+test-postgres: build
+	@set -e; docker rm -f bean-postgres-test >/dev/null 2>&1 || true; \
 	docker run --rm -d --name bean-postgres-test -e POSTGRES_PASSWORD=bean -e POSTGRES_DB=bean -p 127.0.0.1:55432:5432 postgres:17-alpine >/dev/null; \
 	trap 'docker stop bean-postgres-test >/dev/null 2>&1 || true' EXIT; \
 	for attempt in $$(seq 1 30); do docker exec bean-postgres-test pg_isready -U postgres -d bean >/dev/null 2>&1 && break; sleep 1; done; \
-	BEAN_TEST_POSTGRES_URL=postgres://postgres:bean@127.0.0.1:55432/bean?sslmode=disable go test ./internal/dbal/postgres ./internal/httpapi -count=1
+	docker exec bean-postgres-test createdb -U postgres bean_blog; \
+	docker exec bean-postgres-test createdb -U postgres bean_blog_e2e; \
+	BEAN_TEST_POSTGRES_URL=postgres://postgres:bean@127.0.0.1:55432/bean?sslmode=disable BEAN_TEST_BLOG_POSTGRES_URL=postgres://postgres:bean@127.0.0.1:55432/bean_blog?sslmode=disable go test ./internal/dbal/postgres ./internal/httpapi -count=1; \
+	cd e2e && BEAN_E2E_DATABASE_URL=postgres://postgres:bean@127.0.0.1:55432/bean_blog_e2e?sslmode=disable bunx playwright test blog.spec.ts
 
 test-e2e: build
 	cd e2e && bunx playwright test
+
+test-blog: build
+	cd e2e && bunx playwright test blog.spec.ts
 
 check: fmt-check lint test test-integration test-contract test-fuzz-smoke test-compatibility test-blackbox
 	go test -race ./...

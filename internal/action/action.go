@@ -12,6 +12,7 @@ import (
 
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/audit"
+	"github.com/beanruntime/bean/internal/auth"
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/event"
@@ -22,18 +23,25 @@ import (
 	"github.com/beanruntime/bean/internal/uid"
 )
 
-type Service struct{ DB dbal.Database }
+type Service struct {
+	DB   dbal.Database
+	Auth auth.Service
+}
 
 func (s Service) Execute(ctx context.Context, app *appir.App, name string, input map[string]any, request beanctx.Request) (dbal.Row, error) {
 	a, ok := app.Actions[name]
 	if !ok {
 		return nil, &dbal.Error{Code: dbal.NotFound, Message: "Action not found"}
 	}
-	e, ok := app.Entities[a.Entity]
-	if !ok {
+	e, entityExists := app.Entities[a.Entity]
+	if !entityExists && a.Operation != "register_local_user" {
 		return nil, &dbal.Error{Code: dbal.InvalidQuery, Message: "Action entity is invalid"}
 	}
-	if !authorize(app, a.Policy, true, request, nil) {
+	entityType := e.Name
+	if a.Operation == "register_local_user" {
+		entityType = "bean_user"
+	}
+	if a.Operation != "register_local_user" && !authorize(app, a.Policy, true, request, nil) {
 		return nil, &dbal.Error{Code: dbal.Conflict, Message: "Action is not permitted"}
 	}
 	for inputName, definition := range a.Input {
@@ -68,6 +76,10 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 	var entityID string
 	changed := []string{}
 	err := s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
+		if request.Values == nil {
+			request.Values = map[string]any{}
+		}
+		request.Values["now"] = time.Now().UTC().Format(time.RFC3339)
 		result = nil
 		entityID = ""
 		changed = nil
@@ -119,6 +131,8 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 			result, er = remove(ctx, tx, e, input)
 		case "transaction":
 			result, er = steps(ctx, tx, app, a, input, request)
+		case "register_local_user":
+			result, er = s.Auth.RegisterInTransaction(ctx, tx, fmt.Sprint(input["display_name"]), fmt.Sprint(input["email"]), fmt.Sprint(input["password"]), fmt.Sprint(input["password_confirmation"]), a.DefaultRole)
 		default:
 			er = &dbal.Error{Code: dbal.InvalidQuery, Message: "unsupported Action operation"}
 		}
@@ -152,7 +166,7 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 				return x
 			}
 		}
-		return audit.Write(ctx, tx, audit.Entry{RequestID: request.RequestID, UserID: userID(request), TenantID: request.TenantID, Action: name, EntityType: e.Name, EntityID: entityID, Changed: changed, Success: true})
+		return audit.Write(ctx, tx, audit.Entry{RequestID: request.RequestID, UserID: userID(request), TenantID: request.TenantID, Action: name, EntityType: entityType, EntityID: entityID, Changed: changed, Success: true})
 	})
 	if err != nil {
 		if idempotencyKey != "" && dbal.IsCode(err, dbal.UniqueViolation) {
@@ -163,7 +177,7 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 			}
 		}
 		_ = s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
-			return audit.Write(ctx, tx, audit.Entry{RequestID: request.RequestID, UserID: userID(request), TenantID: request.TenantID, Action: name, EntityType: e.Name, Success: false, Error: safeError(err)})
+			return audit.Write(ctx, tx, audit.Entry{RequestID: request.RequestID, UserID: userID(request), TenantID: request.TenantID, Action: name, EntityType: entityType, Success: false, Error: safeError(err)})
 		})
 		return nil, err
 	}
@@ -308,6 +322,9 @@ func update(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.En
 		if toMany(f) {
 			continue
 		}
+		if f.Type == "richtext" {
+			v = field.SanitizeRichText(v.(string))
+		}
 		stored, encodeErr := field.Encode(f, v)
 		if encodeErr != nil {
 			return nil, &dbal.Error{Code: dbal.InvalidQuery, Message: encodeErr.Error()}
@@ -378,6 +395,7 @@ func steps(ctx context.Context, tx dbal.Transaction, app *appir.App, a appir.Act
 				return nil, &dbal.Error{Code: dbal.InvalidQuery, Message: "query step references an invalid View"}
 			}
 			entity := app.Entities[viewDefinition.Entity]
+			joined := len(viewDefinition.Relationships) > 0
 			var predicates []dbal.Predicate
 			for _, expression := range []*expr.Expr{viewDefinition.Filter, viewDefinition.ContextFilter, step.Where} {
 				if expression == nil {
@@ -387,7 +405,7 @@ func steps(ctx context.Context, tx dbal.Transaction, app *appir.App, a appir.Act
 				if x != nil {
 					return nil, &dbal.Error{Code: dbal.InvalidQuery, Message: x.Error()}
 				}
-				predicates = append(predicates, p)
+				predicates = append(predicates, qualifyActionPredicate(p, entity.Name, joined))
 			}
 			policyName := viewDefinition.Policy
 			if policyName == "" {
@@ -404,7 +422,7 @@ func steps(ctx context.Context, tx dbal.Transaction, app *appir.App, a appir.Act
 					return nil, &dbal.Error{Code: dbal.NotFound, Message: "records not found"}
 				}
 				if p != nil {
-					predicates = append(predicates, *p)
+					predicates = append(predicates, qualifyActionPredicate(*p, entity.Name, joined))
 				}
 				redact = definition.Redact
 			}
@@ -449,7 +467,6 @@ func steps(ctx context.Context, tx dbal.Transaction, app *appir.App, a appir.Act
 					joins = append(joins, dbal.Join{Table: relationship.Entity, Alias: relationship.Name, Type: relationship.Type, Left: entity.Name + "." + relationship.LocalField, Right: relationship.Name + "." + relationship.TargetField})
 				}
 			}
-			joined := len(viewDefinition.Relationships) > 0
 			aggregateAliases := map[string]bool{}
 			aggregates := []dbal.Aggregate{}
 			for _, aggregate := range viewDefinition.Aggregates {
@@ -494,10 +511,32 @@ func steps(ctx context.Context, tx dbal.Transaction, app *appir.App, a appir.Act
 				return nil, x
 			}
 			for _, row := range rows {
+				for _, selected := range viewDefinition.Fields {
+					compiled := qualifyViewField(selected, entity.Name, joined)
+					encoded := strings.ReplaceAll(compiled, ".", "__")
+					if encoded == selected {
+						continue
+					}
+					value, exists := row[encoded]
+					if !exists {
+						continue
+					}
+					row[selected] = value
+					delete(row, encoded)
+					parts := strings.Split(selected, ".")
+					if len(parts) == 2 {
+						if _, exists = row[parts[1]]; !exists {
+							row[parts[1]] = value
+						}
+					}
+				}
 				hydrate(row, entity)
 			}
 			for _, row := range rows {
 				policy.Redact(row, redact)
+				if c.Values != nil && row["id"] != nil {
+					c.Values[trustedRelationKey(entity.Name, row["id"])] = true
+				}
 			}
 			stepResult = rows
 		case "assert":
@@ -714,6 +753,8 @@ func resolveValue(binding appir.ValueBinding, input map[string]any, results map[
 		}
 	case "context":
 		return c.Values[binding.Path]
+	case "now":
+		return c.Values["now"]
 	case "tenant":
 		return c.TenantID
 	case "user":
@@ -723,6 +764,9 @@ func resolveValue(binding appir.ValueBinding, input map[string]any, results map[
 			}
 			if binding.Path == "email" {
 				return c.User.Email
+			}
+			if binding.Path == "display_name" {
+				return c.User.DisplayName
 			}
 		}
 	}
@@ -801,7 +845,8 @@ func syncRelations(ctx context.Context, tx dbal.Transaction, app *appir.App, ent
 			if len(rows) > 0 {
 				hydrate(rows[0], target)
 			}
-			if len(rows) == 0 || !canReadRecord(app, target, c, rows[0]) {
+			trusted, _ := c.Values[trustedRelationKey(target.Name, value)].(bool)
+			if len(rows) == 0 || !trusted && !canReadRecord(app, target, c, rows[0]) {
 				return &dbal.Error{Code: dbal.NotFound, Message: "related record not found"}
 			}
 		}
@@ -823,6 +868,10 @@ func syncRelations(ctx context.Context, tx dbal.Transaction, app *appir.App, ent
 		}
 	}
 	return nil
+}
+
+func trustedRelationKey(entity string, id any) string {
+	return "trusted_relation:" + entity + ":" + fmt.Sprint(id)
 }
 
 func canReadRecord(app *appir.App, target appir.Entity, c beanctx.Request, row dbal.Row) bool {
@@ -848,6 +897,14 @@ func qualifyViewFields(names []string, entity string, joined bool) []string {
 		qualified[i] = qualifyViewField(name, entity, joined)
 	}
 	return qualified
+}
+
+func qualifyActionPredicate(predicate dbal.Predicate, entity string, joined bool) dbal.Predicate {
+	predicate.Column = qualifyViewField(predicate.Column, entity, joined)
+	for index := range predicate.Children {
+		predicate.Children[index] = qualifyActionPredicate(predicate.Children[index], entity, joined)
+	}
+	return predicate
 }
 
 func authorize(app *appir.App, name string, write bool, c beanctx.Request, row map[string]any) bool {

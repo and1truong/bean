@@ -35,14 +35,43 @@ func (s Service) Create(ctx context.Context, email, password string, roleValues 
 }
 
 func (s Service) CreateInTransaction(ctx context.Context, tx dbal.Transaction, email, password string, roleValues []string, tenantID string) (string, bool, error) {
-	if len(password) < 10 {
-		return "", false, fmt.Errorf("password must be at least 10 characters")
+	return s.createInTransaction(ctx, tx, "", email, password, roleValues, tenantID, false)
+}
+
+func (s Service) RegisterInTransaction(ctx context.Context, tx dbal.Transaction, displayName, email, password, confirmation, roleValue string) (dbal.Row, error) {
+	if password != confirmation {
+		return nil, &dbal.Error{Code: dbal.InvalidQuery, Message: "password confirmation does not match"}
 	}
-	rows, e := tx.Select(ctx, dbal.Select{Table: "bean_user", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "email", Value: strings.ToLower(email)}, Limit: 1})
+	displayName = strings.TrimSpace(displayName)
+	if displayName == "" {
+		return nil, &dbal.Error{Code: dbal.InvalidQuery, Message: "display name is required"}
+	}
+	id, created, err := s.createInTransaction(ctx, tx, displayName, email, password, []string{roleValue}, "", true)
+	if dbal.IsCode(err, dbal.UniqueViolation) {
+		err = &dbal.Error{Code: dbal.Conflict, Message: "an account already exists for this email"}
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !created {
+		return nil, &dbal.Error{Code: dbal.Conflict, Message: "an account already exists for this email"}
+	}
+	return dbal.Row{"id": id, "display_name": displayName, "email": normalizeEmail(email)}, nil
+}
+
+func (s Service) createInTransaction(ctx context.Context, tx dbal.Transaction, displayName, email, password string, roleValues []string, tenantID string, duplicateIsConflict bool) (string, bool, error) {
+	if len(password) < 10 {
+		return "", false, &dbal.Error{Code: dbal.InvalidQuery, Message: "password must be at least 10 characters"}
+	}
+	email = normalizeEmail(email)
+	rows, e := tx.Select(ctx, dbal.Select{Table: "bean_user", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "email", Value: email}, Limit: 1})
 	if e != nil {
 		return "", false, e
 	}
 	if len(rows) > 0 {
+		if duplicateIsConflict {
+			return "", false, &dbal.Error{Code: dbal.Conflict, Message: "an account already exists for this email"}
+		}
 		return fmt.Sprint(rows[0]["id"]), false, nil
 	}
 	hash, e := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -51,11 +80,11 @@ func (s Service) CreateInTransaction(ctx context.Context, tx dbal.Transaction, e
 	}
 	roles, _ := json.Marshal(roleValues)
 	id := uid.New()
-	_, e = tx.Insert(ctx, dbal.Insert{Table: "bean_user", Values: map[string]dbal.Value{"id": id, "email": strings.ToLower(email), "password_hash": string(hash), "roles": string(roles), "tenant_id": tenantID, "created_at": time.Now().UTC().Format(time.RFC3339Nano)}})
+	_, e = tx.Insert(ctx, dbal.Insert{Table: "bean_user", Values: map[string]dbal.Value{"id": id, "email": email, "display_name": nullable(displayName), "password_hash": string(hash), "roles": string(roles), "tenant_id": nullable(tenantID), "created_at": time.Now().UTC().Format(time.RFC3339Nano)}})
 	return id, e == nil, e
 }
 func (s Service) Login(ctx context.Context, email, password string) (Session, error) {
-	rows, e := s.DB.Select(ctx, dbal.Select{Table: "bean_user", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "email", Value: strings.ToLower(email)}, Limit: 1})
+	rows, e := s.DB.Select(ctx, dbal.Select{Table: "bean_user", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "email", Value: normalizeEmail(email)}, Limit: 1})
 	if e != nil || len(rows) != 1 {
 		return Session{}, &dbal.Error{Code: dbal.NotFound, Message: "invalid email or password"}
 	}
@@ -96,5 +125,19 @@ func (s Service) Logout(ctx context.Context, id string) error {
 func sessionFromUser(row dbal.Row) Session {
 	roles := []string{}
 	_ = json.Unmarshal([]byte(fmt.Sprint(row["roles"])), &roles)
-	return Session{ID: uid.New(), CSRF: uid.New(), User: beanctx.User{ID: fmt.Sprint(row["id"]), Email: fmt.Sprint(row["email"]), Roles: roles}, TenantID: fmt.Sprint(row["tenant_id"])}
+	return Session{ID: uid.New(), CSRF: uid.New(), User: beanctx.User{ID: fmt.Sprint(row["id"]), Email: fmt.Sprint(row["email"]), DisplayName: dbString(row["display_name"]), Roles: roles}, TenantID: dbString(row["tenant_id"])}
+}
+
+func normalizeEmail(value string) string { return strings.ToLower(strings.TrimSpace(value)) }
+func nullable(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
+}
+func dbString(value any) string {
+	if value == nil {
+		return ""
+	}
+	return fmt.Sprint(value)
 }
