@@ -1,6 +1,6 @@
-import {fireEvent,render,screen} from '@testing-library/react'
+import {act,fireEvent,render,screen,waitFor} from '@testing-library/react'
 import {afterEach,describe,it,expect,vi} from 'vitest'
-import {MemoryRouter} from 'react-router-dom'
+import {MemoryRouter,useNavigate,type NavigateFunction} from 'react-router-dom'
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query'
 import App from './App'
 describe('App',()=>{it('renders login',()=>{render(<QueryClientProvider client={new QueryClient()}><MemoryRouter initialEntries={['/login']}><App/></MemoryRouter></QueryClientProvider>);expect(screen.getByRole('heading',{name:'Sign in'})).toBeInTheDocument()})})
@@ -126,6 +126,31 @@ describe('public rendering',()=>{
     expect(screen.getByText('Public article')).toBeInTheDocument()
   })
 
+  it('rechecks the current route after query reset completes',async()=>{
+    let resolveReset:(value:Response)=>void=()=>{}
+    const pendingReset=new Promise<Response>(resolve=>{resolveReset=resolve})
+    let publicRequests=0
+    let navigate:NavigateFunction=()=>{}
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/auth/logout'))return response({protected:false})
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page')&&path.includes('%2Fpublic')){publicRequests++;return pendingReset}
+      if(path.includes('/api/system/page')&&path.includes('%2Fmembers'))return new Response(JSON.stringify({error:{message:'Page not found'}}),{status:404,headers:{'Content-Type':'application/json'}})
+      if(path.includes('/api/system/page'))return response({tree:{component:'TextBlock',props:{text:'Home after logout'}}})
+      return response({})
+    }))
+    const client=new QueryClient({defaultOptions:{queries:{retry:false,staleTime:Infinity}}})
+    client.setQueryData(['session'],{authenticated:true,user:{Roles:['member']}})
+    client.setQueryData(['page','/public'],{tree:{component:'TextBlock',props:{text:'Public page'}}})
+    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/public']}><NavigationDriver capture={value=>{navigate=value}}/><App/></MemoryRouter></QueryClientProvider>)
+    fireEvent.click(screen.getByRole('button',{name:'Sign out'}))
+    await waitFor(()=>expect(publicRequests).toBe(1))
+    act(()=>navigate('/members'))
+    resolveReset(new Response(JSON.stringify({tree:{component:'TextBlock',props:{text:'Public page'}}}),{status:200,headers:{'Content-Type':'application/json'}}))
+    expect(await screen.findByText('Home after logout')).toBeInTheDocument()
+  })
+
   it('renders Webform elements whose optional visibility is null',async()=>{
     vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
       const path=String(input)
@@ -155,6 +180,7 @@ describe('public rendering',()=>{
   })
 })
 
+function NavigationDriver({capture}:{capture:(navigate:NavigateFunction)=>void}){capture(useNavigate());return null}
 function renderApp(path:string){render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter initialEntries={[path]}><App/></MemoryRouter></QueryClientProvider>)}
 function response(body:any){return Promise.resolve(new Response(JSON.stringify(body),{status:200,headers:{'Content-Type':'application/json'}}))}
 
