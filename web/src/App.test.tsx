@@ -75,23 +75,29 @@ describe('public rendering',()=>{
     expect(client.getQueryData(['admin-record','secret'])).toBeUndefined()
   })
 
-  it('redirects a metadata-protected public route after logout',async()=>{
-    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+  it('uses logout route metadata while the protected page is still pending',async()=>{
+    const pendingMembers=new Promise<Response>(()=>{})
+    let memberRequests=0
+    const fetchMock=vi.fn(async(input:string|URL|Request)=>{
       const path=String(input)
-      if(path.includes('/api/auth/logout'))return response({})
+      if(path.includes('/api/auth/logout'))return response({protected:true})
       if(path.includes('/api/system/session'))return response({authenticated:false})
-      if(path.includes('/api/system/page')&&path.includes('%2Fmembers'))return new Response(JSON.stringify({error:{message:'Page not found'}}),{status:404,headers:{'Content-Type':'application/json'}})
+      if(path.includes('/api/system/page')&&path.includes('%2Fmembers')){
+        memberRequests++
+        if(memberRequests===1)return pendingMembers
+        return new Response(JSON.stringify({error:{message:'Page not found'}}),{status:404,headers:{'Content-Type':'application/json'}})
+      }
       if(path.includes('/api/system/page'))return response({tree:{component:'TextBlock',props:{text:'Public home'}}})
       return response({})
-    }))
+    })
+    vi.stubGlobal('fetch',fetchMock)
     const client=new QueryClient({defaultOptions:{queries:{retry:false,staleTime:Infinity}}})
     client.setQueryData(['session'],{authenticated:true,user:{Roles:['member']}})
-    client.setQueryData(['page','/members'],{tree:{component:'Page',props:{protected:true},children:[{component:'TextBlock',props:{text:'Member content'}}]}})
     render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/members']}><App/></MemoryRouter></QueryClientProvider>)
-    expect(screen.getByText('Member content')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button',{name:'Sign out'}))
+    fireEvent.click(await screen.findByRole('button',{name:'Sign out'}))
     expect(await screen.findByText('Public home')).toBeInTheDocument()
-    expect(screen.queryByText('Member content')).not.toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(([input])=>String(input).includes('/api/auth/logout?path=%2Fmembers'))).toBe(true)
+    expect(memberRequests).toBeGreaterThanOrEqual(2)
   })
 
   it('renders Webform elements whose optional visibility is null',async()=>{

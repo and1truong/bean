@@ -223,6 +223,12 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, map[string]any{"user": session.User, "csrfToken": session.CSRF})
 }
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
+	protected := false
+	if a, active := s.Kernel.Active(); active {
+		if definition, _, matched := page.Match(a, r.URL.Query().Get("path")); matched {
+			protected = page.Protected(a, definition)
+		}
+	}
 	_, session, ok := s.requestContext(r)
 	if ok {
 		if !csrf(r, session.CSRF) {
@@ -232,7 +238,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 		_ = s.Auth.Logout(r.Context(), session.ID)
 	}
 	http.SetCookie(w, &http.Cookie{Name: "bean_session", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: s.SecureCookies})
-	write(w, 200, map[string]bool{"ok": true})
+	write(w, 200, map[string]bool{"ok": true, "protected": protected})
 }
 func (s *Server) view(w http.ResponseWriter, r *http.Request) {
 	a, ok := s.Kernel.Active()

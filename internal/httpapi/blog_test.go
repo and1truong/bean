@@ -232,6 +232,10 @@ func testBlogSecurityAndWorkflowContract(t *testing.T, databaseURL string) {
 			t.Fatalf("signup throttle status=%d body=%s", response.Code, response.Body.String())
 		}
 	}
+	logout := serve(t, handler, http.MethodPost, "/api/auth/logout?path="+queuePage, map[string]any{}, adminCookie, adminCSRF)
+	if logout.Code != http.StatusOK || !strings.Contains(logout.Body.String(), `"protected":true`) {
+		t.Fatalf("protected route logout metadata status=%d body=%s", logout.Code, logout.Body.String())
+	}
 }
 
 func serveWithHeaders(t *testing.T, handler http.Handler, method, path string, body any, cookie *http.Cookie, csrf string, headers map[string]string) *httptest.ResponseRecorder {

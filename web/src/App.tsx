@@ -38,7 +38,7 @@ function Shell({children}:{children:React.ReactNode}){
   const roles=session.data?.user?.Roles||[]
   const editor=roles.includes('editor')||roles.includes('administrator')
   const administrator=roles.includes('administrator')
-  const logout=useMutation({mutationFn:()=>api('/api/auth/logout',{method:'POST',body:'{}'}),onSuccess:async()=>{const page=qc.getQueryData<{tree:Node}>(['page',loc.pathname]);const protectedRoute=loc.pathname.startsWith('/admin')||loc.pathname.startsWith('/studio')||page?.tree.props?.protected===true;sessionStorage.removeItem('bean_csrf');await qc.resetQueries();if(protectedRoute)nav('/',{replace:true})}})
+  const logout=useMutation({mutationFn:async()=>{const result=await api<{protected?:boolean}>('/api/auth/logout?path='+encodeURIComponent(loc.pathname),{method:'POST',body:'{}'});return loc.pathname.startsWith('/admin')||loc.pathname.startsWith('/studio')||result.protected===true},onSuccess:async protectedRoute=>{sessionStorage.removeItem('bean_csrf');await qc.resetQueries();if(protectedRoute)nav('/',{replace:true})}})
   return <><header className="border-b bg-primary text-primary-foreground"><div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"><Link className="text-lg font-semibold tracking-tight" to="/">Bean</Link><nav className="flex flex-wrap items-center gap-1" aria-label="Primary navigation">{editor&&<Button variant="ghost" asChild><Link to="/admin">Admin</Link></Button>}{administrator&&<Button variant="ghost" asChild><Link to="/studio">Studio</Link></Button>}{session.data?.authenticated?<Button variant="ghost" onClick={()=>logout.mutate()} disabled={logout.isPending}>Sign out</Button>:<><Button variant="ghost" asChild><Link to="/signup">Sign up</Link></Button><Button variant="secondary" asChild><Link to={'/login?next='+encodeURIComponent(loc.pathname)}>Sign in</Link></Button></>}</nav></div></header>{children}</>
 }
 
@@ -103,8 +103,10 @@ function MenuBlock({items}:{items:Array<{Route:string;Label:string}>}){return <n
 function Pagination({previousDisabled,nextDisabled,previous,next}:{previousDisabled:boolean;nextDisabled:boolean;previous:()=>void;next:()=>void}){return <nav className="flex justify-end gap-2" aria-label="Pagination"><Button variant="outline" disabled={previousDisabled} onClick={previous}>Previous</Button><Button variant="outline" disabled={nextDisabled} onClick={next}>Next</Button></nav>}
 function humanize(value:string){return value.replaceAll('_',' ').replace(/^./,letter=>letter.toUpperCase())}
 
+type PageResult={tree:Node}
+function loadPage(path:string){return api<PageResult>('/api/system/page?path='+encodeURIComponent(path))}
 function Public(){
-  const loc=useLocation();const result=useQuery({queryKey:['page',loc.pathname],queryFn:()=>api<{tree:Node}>('/api/system/page?path='+encodeURIComponent(loc.pathname))})
+  const loc=useLocation();const result=useQuery({queryKey:['page',loc.pathname],queryFn:()=>loadPage(loc.pathname)})
   if(result.isPending)return <Shell><Page><LoadingState/></Page></Shell>
   if(result.error)return <Shell><Page><PageHeader title="Bean" description="Metadata-driven applications, compiled."/></Page></Shell>
   return <Shell><Page className="space-y-6"><Renderer node={result.data.tree}/></Page></Shell>
