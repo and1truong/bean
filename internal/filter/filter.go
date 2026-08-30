@@ -32,8 +32,11 @@ func Apply(definition appir.Filter, source string) (string, error) {
 			return "", fmt.Errorf("unsupported filter step %q", step.Type)
 		}
 	}
-	return sanitizer.Sanitize(value), nil
+	return SanitizeHTML(value), nil
 }
+
+// SanitizeHTML makes persisted legacy rich text safe for formatted rendering.
+func SanitizeHTML(source string) string { return sanitizer.Sanitize(source) }
 
 func newPolicy() *bluemonday.Policy {
 	p := bluemonday.NewPolicy()

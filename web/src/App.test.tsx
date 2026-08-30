@@ -22,6 +22,20 @@ describe('public rendering',()=>{
     expect(screen.queryByRole('link',{name:'Studio'})).not.toBeInTheDocument()
   })
 
+  it('renders an unfiltered fallback as text when a formatted field is absent',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'ViewBlock',props:{name:'detail',view:'published_post',formattedFields:['body'],presentation:{Mode:'detail',TitleField:'title',BodyField:'body'}}}]}})
+      if(path.includes('/api/views/published_post'))return response({data:[{id:'1',title:'Fallback post',body:null,excerpt:'<img src=x onerror=alert(1)>Safe fallback'}],nextCursor:''})
+      return response({})
+    }))
+    renderApp('/posts/fallback')
+    expect(await screen.findByText('<img src=x onerror=alert(1)>Safe fallback')).toBeInTheDocument()
+    expect(document.querySelector('.rich-text')).toBeNull()
+    expect(document.querySelector('img')).toBeNull()
+  })
+
   it('keeps same-View blocks isolated by their bound block identity',async()=>{
     const fetchMock=vi.fn(async(input:string|URL|Request)=>{
       const path=String(input)
@@ -59,6 +73,25 @@ describe('public rendering',()=>{
     expect(await screen.findByText('Signed out home')).toBeInTheDocument()
     expect(client.getQueryData(['admin-manifest'])).not.toMatchObject({releaseId:'release-1'})
     expect(client.getQueryData(['admin-record','secret'])).toBeUndefined()
+  })
+
+  it('redirects a metadata-protected public route after logout',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/auth/logout'))return response({})
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page')&&path.includes('%2Fmembers'))return new Response(JSON.stringify({error:{message:'Page not found'}}),{status:404,headers:{'Content-Type':'application/json'}})
+      if(path.includes('/api/system/page'))return response({tree:{component:'TextBlock',props:{text:'Public home'}}})
+      return response({})
+    }))
+    const client=new QueryClient({defaultOptions:{queries:{retry:false,staleTime:Infinity}}})
+    client.setQueryData(['session'],{authenticated:true,user:{Roles:['member']}})
+    client.setQueryData(['page','/members'],{tree:{component:'Page',props:{protected:true},children:[{component:'TextBlock',props:{text:'Member content'}}]}})
+    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/members']}><App/></MemoryRouter></QueryClientProvider>)
+    expect(screen.getByText('Member content')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button',{name:'Sign out'}))
+    expect(await screen.findByText('Public home')).toBeInTheDocument()
+    expect(screen.queryByText('Member content')).not.toBeInTheDocument()
   })
 
   it('renders Webform elements whose optional visibility is null',async()=>{

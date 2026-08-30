@@ -13,6 +13,34 @@ import (
 	"github.com/beanruntime/bean/internal/view"
 )
 
+func TestLegacyRichTextIsSanitizedOnRead(t *testing.T) {
+	ctx := context.Background()
+	database, err := sqlite.Open(filepath.Join(t.TempDir(), "legacy-richtext.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err = database.ExecuteMigration(ctx, []string{`CREATE TABLE article (id TEXT PRIMARY KEY, body TEXT NOT NULL)`}); err != nil {
+		t.Fatal(err)
+	}
+	source := `<p onclick="alert(1)">Safe</p><img src=x onerror="alert(2)">`
+	if _, err = database.Insert(ctx, dbal.Insert{Table: "article", Values: map[string]dbal.Value{"id": "one", "body": source}}); err != nil {
+		t.Fatal(err)
+	}
+	app := appir.Empty()
+	app.Entities["article"] = appir.Entity{Name: "article", Fields: []appir.Field{{Name: "body", Type: "richtext"}}}
+	app.Views["public"] = appir.View{Name: "public", Entity: "article", Fields: []string{"id", "body"}, DefaultLimit: 10, MaxLimit: 10}
+
+	rows, err := (view.Service{DB: database}).Run(ctx, app, "public", view.Params{}, beanctx.Request{})
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("rows=%v err=%v", rows, err)
+	}
+	body := rows[0]["body"].(string)
+	if body != "<p>Safe</p>" {
+		t.Fatalf("legacy rich text was not sanitized: %q", body)
+	}
+}
+
 func TestViewFieldFilterFormatsOutputWithoutChangingSource(t *testing.T) {
 	ctx := context.Background()
 	database, err := sqlite.Open(filepath.Join(t.TempDir(), "filters.db"))

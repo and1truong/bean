@@ -28,6 +28,23 @@ func TestMarkdownProducesSafeHTML(t *testing.T) {
 	}
 }
 
+func TestSanitizeHTMLCleansLegacyRichTextWithoutDoubleEscaping(t *testing.T) {
+	source := `<p onclick="alert(1)">Safe<img src=x onerror="alert(2)"></p>&lt;img src=x onerror=alert(3)&gt;`
+	output := contentfilter.SanitizeHTML(source)
+	lower := strings.ToLower(output)
+	for _, unsafe := range []string{"onclick=", "<img"} {
+		if strings.Contains(lower, unsafe) {
+			t.Fatalf("unsafe legacy HTML contains %q: %q", unsafe, output)
+		}
+	}
+	if !strings.Contains(output, "<p>Safe</p>") || !strings.Contains(output, "&lt;img src=x onerror=alert(3)&gt;") {
+		t.Fatalf("legacy HTML was not safely preserved: %q", output)
+	}
+	if again := contentfilter.SanitizeHTML(output); again != output {
+		t.Fatalf("sanitization is not idempotent: first=%q second=%q", output, again)
+	}
+}
+
 func TestUnknownStepFailsClosed(t *testing.T) {
 	_, err := contentfilter.Apply(appir.Filter{Steps: []appir.FilterStep{{Type: "unknown"}}}, "source")
 	if err == nil {

@@ -282,7 +282,15 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 		}
 		for _, definition := range e.Fields {
 			if value, ok := row[definition.Name]; ok {
-				row[definition.Name] = field.Decode(definition, value)
+				decoded := field.Decode(definition, value)
+				if definition.Type == "richtext" {
+					if _, filtered := v.FieldFilters[definition.Name]; !filtered {
+						if source, textual := decoded.(string); textual {
+							decoded = contentfilter.SanitizeHTML(source)
+						}
+					}
+				}
+				row[definition.Name] = decoded
 			}
 		}
 		if er = loadToMany(ctx, s.DB, e, v.Fields, row); er != nil {

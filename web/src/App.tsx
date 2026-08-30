@@ -38,7 +38,7 @@ function Shell({children}:{children:React.ReactNode}){
   const roles=session.data?.user?.Roles||[]
   const editor=roles.includes('editor')||roles.includes('administrator')
   const administrator=roles.includes('administrator')
-  const logout=useMutation({mutationFn:()=>api('/api/auth/logout',{method:'POST',body:'{}'}),onSuccess:async()=>{sessionStorage.removeItem('bean_csrf');await qc.resetQueries();if(loc.pathname.startsWith('/admin')||loc.pathname.startsWith('/studio'))nav('/',{replace:true})}})
+  const logout=useMutation({mutationFn:()=>api('/api/auth/logout',{method:'POST',body:'{}'}),onSuccess:async()=>{const page=qc.getQueryData<{tree:Node}>(['page',loc.pathname]);const protectedRoute=loc.pathname.startsWith('/admin')||loc.pathname.startsWith('/studio')||page?.tree.props?.protected===true;sessionStorage.removeItem('bean_csrf');await qc.resetQueries();if(protectedRoute)nav('/',{replace:true})}})
   return <><header className="border-b bg-primary text-primary-foreground"><div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"><Link className="text-lg font-semibold tracking-tight" to="/">Bean</Link><nav className="flex flex-wrap items-center gap-1" aria-label="Primary navigation">{editor&&<Button variant="ghost" asChild><Link to="/admin">Admin</Link></Button>}{administrator&&<Button variant="ghost" asChild><Link to="/studio">Studio</Link></Button>}{session.data?.authenticated?<Button variant="ghost" onClick={()=>logout.mutate()} disabled={logout.isPending}>Sign out</Button>:<><Button variant="ghost" asChild><Link to="/signup">Sign up</Link></Button><Button variant="secondary" asChild><Link to={'/login?next='+encodeURIComponent(loc.pathname)}>Sign in</Link></Button></>}</nav></div></header>{children}</>
 }
 
@@ -65,7 +65,7 @@ function ViewBlock({name,block,presentation,formattedFields}:{name:string;block:
 }
 
 function mergeDetail(rows:Row[],meta:string[]){const result={...rows[0]};for(const field of meta){const values=[...new Set(rows.map(row=>row[field]).filter(value=>value!==null&&value!==undefined&&value!==''))];result[field]=values.join(', ')}return result}
-function ViewBody({row,field,rich}:{row:Row;field:string;rich:boolean}){const value=String(row[field]??row.excerpt??row.description??'');return rich?<div className="rich-text" dangerouslySetInnerHTML={{__html:value}}/>:<p className="leading-7">{value}</p>}
+function ViewBody({row,field,rich}:{row:Row;field:string;rich:boolean}){const selected=row[field];const value=String(selected??row.excerpt??row.description??'');return rich&&selected!==null&&selected!==undefined?<div className="rich-text" dangerouslySetInnerHTML={{__html:String(selected)}}/>:<p className="leading-7">{value}</p>}
 function viewLink(template:string,row:Row){return template.replace(/:([a-zA-Z0-9_.]+)/g,(_,field)=>encodeURIComponent(String(row[field]??'')))}
 
 function WebformBlock({name,block}:{name:string;block:string}){

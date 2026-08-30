@@ -71,5 +71,5 @@ func Node(a *appir.App, p appir.Page, ctx map[string]any, c beanctx.Request) (re
 	if e != nil || !allowed {
 		return render.Node{}, allowed, e
 	}
-	return render.Node{Component: "Page", Props: map[string]any{"title": p.Title, "description": p.Description}, Children: []render.Node{child}}, true, nil
+	return render.Node{Component: "Page", Props: map[string]any{"title": p.Title, "description": p.Description, "protected": p.Policy != ""}, Children: []render.Node{child}}, true, nil
 }
