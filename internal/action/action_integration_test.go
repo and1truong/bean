@@ -180,7 +180,7 @@ func TestEveryTransactionStepHasRuntimeSemantics(t *testing.T) {
 	}
 	request := admin()
 	request.TenantID = "00000000-0000-4000-8000-00000000000a"
-	result, e := engine.Execute(ctx, app, "flow", map[string]any{"id": item["id"], "name": "after"}, request)
+	result, e := engine.Execute(ctx, app, "flow", map[string]any{"id": item["id"], "name": "after", job.TenantIDPayloadKey: "attacker-tenant"}, request)
 	if e != nil || result["message"] != "after" || result["status"] != "done" || result["count"] != int64(2) {
 		t.Fatalf("result=%v err=%v", result, e)
 	}
@@ -195,6 +195,33 @@ func TestEveryTransactionStepHasRuntimeSemantics(t *testing.T) {
 				t.Fatalf("scheduled payload=%v err=%v", payload, er)
 			}
 		}
+	}
+	second, e := engine.Execute(ctx, app, "item_create", map[string]any{"name": "second", "status": "draft", "count": 1}, admin())
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = engine.Execute(ctx, app, "flow", map[string]any{"id": second["id"], "name": "second-after", job.TenantIDPayloadKey: "attacker-tenant"}, admin()); e != nil {
+		t.Fatal(e)
+	}
+	jobs, e := db.Select(ctx, dbal.Select{Table: "bean_job", Columns: []string{"payload"}, Limit: 10})
+	if e != nil || len(jobs) != 2 {
+		t.Fatalf("jobs=%v err=%v", jobs, e)
+	}
+	foundSecond := false
+	for _, row := range jobs {
+		var payload map[string]any
+		if e = json.Unmarshal([]byte(fmt.Sprint(row["payload"])), &payload); e != nil {
+			t.Fatal(e)
+		}
+		if payload["id"] == second["id"] {
+			foundSecond = true
+			if _, exists := payload[job.TenantIDPayloadKey]; exists {
+				t.Fatalf("untrusted tenant context persisted: %v", payload)
+			}
+		}
+	}
+	if !foundSecond {
+		t.Fatalf("second scheduled payload not found: %v", jobs)
 	}
 	if _, e = engine.Execute(ctx, app, "item_delete", map[string]any{"id": item["id"]}, admin()); e != nil {
 		t.Fatal(e)

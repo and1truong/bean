@@ -545,6 +545,7 @@ func steps(ctx context.Context, tx dbal.Transaction, app *appir.App, a appir.Act
 			if len(step.Values) > 0 {
 				payload = resolveValues(step.Values, input, results, c)
 			}
+			delete(payload, job.TenantIDPayloadKey)
 			if c.TenantID != "" {
 				payload[job.TenantIDPayloadKey] = c.TenantID
 			}
