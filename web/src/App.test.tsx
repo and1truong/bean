@@ -116,6 +116,7 @@ describe('public rendering',()=>{
       const path=String(input)
       if(path.includes('/api/auth/logout'))return response({})
       if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/admin/manifest'))return response({entities:{},actions:{},adminResources:{},systemAdmin:false,version:2,releaseId:'release-2'})
       if(path.includes('/api/system/page'))return response({tree:{component:'TextBlock',props:{text:'Signed out home'}}})
       return response({})
     })

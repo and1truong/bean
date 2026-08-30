@@ -592,6 +592,8 @@ func validate(a *appir.App) []definition.Diagnostic {
 				out = append(out, diagnostic("Action", name, "spec.defaultRole", "is required"))
 			} else if _, ok := a.Roles[action.DefaultRole]; !ok {
 				out = append(out, diagnostic("Action", name, "spec.defaultRole", "references missing Role "+action.DefaultRole))
+			} else if action.DefaultRole == "editor" || action.DefaultRole == "administrator" {
+				out = append(out, diagnostic("Action", name, "spec.defaultRole", "cannot grant a privileged administration role"))
 			}
 		} else if _, ok := a.Entities[action.Entity]; !ok {
 			out = append(out, diagnostic("Action", name, "spec.entity", "references missing Entity "+action.Entity))
@@ -1167,9 +1169,14 @@ func validateRegistrationPage(a *appir.App, route, actionName string) string {
 		return "must reference a Page containing a Webform for the registration Action"
 	}
 	panelDefinition := a.Panels[registrationPage.Panel]
-	anonymous := beanctx.Request{}
-	if _, err := page.ResolveContext(*registrationPage, map[string]string{}, map[string]string{}, anonymous); err != nil {
+	anonymous := beanctx.Request{Route: route, RouteParams: map[string]string{}, Values: map[string]any{}}
+	resolvedContext, err := page.ResolveContext(*registrationPage, map[string]string{}, map[string]string{}, anonymous)
+	if err != nil {
 		return "must resolve Page context for an anonymous request to the advertised static route"
+	}
+	anonymous.Values = resolvedContext
+	if _, allowed, renderErr := page.Node(a, *registrationPage, resolvedContext, anonymous); renderErr != nil || !allowed {
+		return "must render completely for an anonymous request to the advertised static route"
 	}
 	if registrationPage.Policy != "" && !policy.Can(a.Policies[registrationPage.Policy], false, anonymous, nil) || panelDefinition.Policy != "" && !policy.Can(a.Policies[panelDefinition.Policy], false, anonymous, nil) {
 		return "must reference a Page and Panel accessible to anonymous users"
@@ -1190,6 +1197,9 @@ func validateRegistrationPage(a *appir.App, route, actionName string) string {
 			}
 			fields := map[string]bool{}
 			for _, element := range formDefinition.Elements {
+				if _, bound := blockDefinition.Bindings[element.Name]; bound {
+					return "Webform fields cannot duplicate immutable Block bindings: " + element.Name
+				}
 				fields[element.Name] = element.Required && element.Visible == nil
 			}
 			missing = missing[:0]

@@ -92,6 +92,10 @@ func TestLocalRegistrationCompilesFixedSensitiveBoundary(t *testing.T) {
 	if invalid := compiler.Compile("test", 1, defs); len(invalid.Diagnostics) == 0 {
 		t.Fatal("undefined registration role accepted")
 	}
+	defs = append(defs, definition.Definition{APIVersion: "bean/v1alpha1", Kind: "Role", Metadata: definition.Metadata{Name: "administrator"}, Spec: map[string]any{}})
+	if invalid := compiler.Compile("test", 1, defs); len(invalid.Diagnostics) == 0 {
+		t.Fatal("privileged self-registration role accepted")
+	}
 }
 
 func TestLocalRegistrationRouteMustRenderItsSelectedAction(t *testing.T) {
@@ -136,6 +140,19 @@ func TestLocalRegistrationRouteMustRenderItsSelectedAction(t *testing.T) {
 	defs[5].Spec["context"] = map[string]any{"invite": map[string]any{"source": "query", "name": "invite", "required": true}}
 	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) == 0 {
 		t.Fatal("registration Page with unresolved required context was accepted")
+	}
+	delete(defs[5].Spec, "context")
+	defs[3].Spec["inputs"] = map[string]any{"email": map[string]any{"type": "email"}}
+	defs[3].Spec["bindings"] = map[string]any{"email": map[string]any{"source": "context", "name": "invite"}}
+	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) == 0 {
+		t.Fatal("registration field duplicated by an immutable Block binding was accepted")
+	}
+	delete(defs[3].Spec, "inputs")
+	delete(defs[3].Spec, "bindings")
+	defs = append(defs, definition.Definition{APIVersion: "bean/v1alpha1", Kind: "Block", Metadata: definition.Metadata{Name: "broken_sibling"}, Spec: map[string]any{"type": "text", "text": "Broken", "inputs": map[string]any{"invite": map[string]any{"type": "string", "required": true}}, "bindings": map[string]any{"invite": map[string]any{"source": "context", "name": "invite"}}}})
+	defs[4].Spec["regions"] = []any{map[string]any{"name": "main", "blocks": []any{"signup_block", "broken_sibling"}}}
+	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) == 0 {
+		t.Fatal("registration Page with an unrenderable sibling Block was accepted")
 	}
 }
 
