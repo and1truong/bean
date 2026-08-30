@@ -58,6 +58,34 @@ func runtime(t *testing.T, name string) (*sqlite.DB, *appir.App) {
 	return db, a
 }
 
+func TestOptionalRichTextCanBeClearedOnUpdate(t *testing.T) {
+	ctx := context.Background()
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "nullable-richtext.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := &release.Store{DB: db, Migrations: db, Kernel: kernel.New(), OpenAPI: openapi.Generate}
+	if err = store.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.ExecuteMigration(ctx, []string{`CREATE TABLE article (id TEXT PRIMARY KEY, body TEXT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, version INTEGER NOT NULL)`}); err != nil {
+		t.Fatal(err)
+	}
+	id := "11111111-1111-4111-8111-111111111111"
+	now := "2026-08-30T00:00:00Z"
+	if _, err = db.Insert(ctx, dbal.Insert{Table: "article", Values: map[string]dbal.Value{"id": id, "body": "<p>Old</p>", "created_at": now, "updated_at": now, "version": 1}}); err != nil {
+		t.Fatal(err)
+	}
+	app := appir.Empty()
+	app.Entities["article"] = appir.Entity{Name: "article", Fields: []appir.Field{{Name: "body", Type: "richtext"}}}
+	app.Actions["article_update"] = appir.Action{Name: "article_update", Entity: "article", Operation: "update", Input: map[string]appir.Field{"id": {Name: "id", Type: "uuid", Required: true}, "body": {Name: "body", Type: "richtext"}}, Output: map[string]appir.Field{"id": {Name: "id", Type: "uuid"}, "body": {Name: "body", Type: "richtext"}, "created_at": {Name: "created_at", Type: "datetime"}, "updated_at": {Name: "updated_at", Type: "datetime"}, "version": {Name: "version", Type: "integer"}}}
+	result, err := (action.Service{DB: db}).Execute(ctx, app, "article_update", map[string]any{"id": id, "body": nil}, beanctx.Request{User: &beanctx.User{ID: "admin", Roles: []string{"administrator"}}})
+	if err != nil || result["body"] != nil {
+		t.Fatalf("result=%v err=%v", result, err)
+	}
+}
+
 func TestManyToManyActionWriteAndViewTraversal(t *testing.T) {
 	ctx := context.Background()
 	db, e := sqlite.Open(filepath.Join(t.TempDir(), "relations.db"))

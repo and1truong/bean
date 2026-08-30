@@ -322,7 +322,7 @@ func update(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.En
 		if toMany(f) {
 			continue
 		}
-		if f.Type == "richtext" {
+		if f.Type == "richtext" && v != nil {
 			v = field.SanitizeRichText(v.(string))
 		}
 		stored, encodeErr := field.Encode(f, v)
