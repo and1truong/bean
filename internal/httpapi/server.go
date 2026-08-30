@@ -442,12 +442,12 @@ func (s *Server) systemCreateUser(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &input) {
 		return
 	}
-	if err := s.Auth.Create(r.Context(), input.Email, input.Password, input.Roles, input.TenantID); err != nil {
-		respondError(w, r, err)
-		return
-	}
 	if err := s.Actions.DB.Transaction(r.Context(), func(tx dbal.Transaction) error {
-		return audit.Write(r.Context(), tx, audit.Entry{RequestID: requestID(r), UserID: s.ctx(r).User.ID, Action: "system_user_create", EntityType: "bean_user", Changed: []string{"email", "roles", "tenant_id"}, Success: true})
+		userID, created, createErr := s.Auth.CreateInTransaction(r.Context(), tx, input.Email, input.Password, input.Roles, input.TenantID)
+		if createErr != nil || !created {
+			return createErr
+		}
+		return audit.Write(r.Context(), tx, audit.Entry{RequestID: requestID(r), UserID: s.ctx(r).User.ID, Action: "system_user_create", EntityType: "bean_user", EntityID: userID, Changed: []string{"email", "roles", "tenant_id"}, Success: true})
 	}); err != nil {
 		respondError(w, r, err)
 		return

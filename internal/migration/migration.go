@@ -220,8 +220,10 @@ func sqlType(t string) (string, error) {
 	switch t {
 	case "string", "text", "richtext", "enum", "date", "datetime", "uuid", "email", "url", "json", "relation":
 		return "TEXT", nil
-	case "integer", "money", "boolean":
+	case "integer", "money":
 		return "INTEGER", nil
+	case "boolean":
+		return "BOOLEAN", nil
 	case "decimal":
 		return "TEXT", nil
 	default:

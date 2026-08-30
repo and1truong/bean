@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/beanruntime/bean/internal/action"
@@ -11,6 +12,7 @@ import (
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/dbal/postgres"
 	"github.com/beanruntime/bean/internal/dbal/sqlite"
+	"github.com/beanruntime/bean/internal/event"
 	"github.com/beanruntime/bean/internal/httpapi"
 	"github.com/beanruntime/bean/internal/job"
 	"github.com/beanruntime/bean/internal/kernel"
@@ -26,6 +28,7 @@ type Runtime struct {
 	Store  *release.Store
 	HTTP   *httpapi.Server
 	Jobs   job.Runner
+	Outbox event.Runner
 }
 
 type Database interface {
@@ -82,5 +85,9 @@ func OpenURL(ctx context.Context, databaseURL string, secure bool) (*Runtime, er
 		_, e := actions.Execute(ctx, app, definition.Action, payload, beanctx.Request{User: &beanctx.User{ID: "system", Roles: []string{"administrator"}}, RequestID: "job:" + name})
 		return e
 	}}
-	return &Runtime{DB: db, Kernel: k, Store: store, HTTP: server, Jobs: runner}, nil
+	outbox := event.Runner{DB: db, Deliver: func(ctx context.Context, topic string, _ map[string]any) error {
+		slog.InfoContext(ctx, "Bean event delivered", "topic", topic)
+		return nil
+	}}
+	return &Runtime{DB: db, Kernel: k, Store: store, HTTP: server, Jobs: runner, Outbox: outbox}, nil
 }

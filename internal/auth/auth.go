@@ -28,23 +28,31 @@ func (s Service) Bootstrap(ctx context.Context, email, password string) error {
 	return s.Create(ctx, email, password, []string{"administrator"}, "")
 }
 func (s Service) Create(ctx context.Context, email, password string, roleValues []string, tenantID string) error {
+	return s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
+		_, _, err := s.CreateInTransaction(ctx, tx, email, password, roleValues, tenantID)
+		return err
+	})
+}
+
+func (s Service) CreateInTransaction(ctx context.Context, tx dbal.Transaction, email, password string, roleValues []string, tenantID string) (string, bool, error) {
 	if len(password) < 10 {
-		return fmt.Errorf("password must be at least 10 characters")
+		return "", false, fmt.Errorf("password must be at least 10 characters")
 	}
-	rows, e := s.DB.Select(ctx, dbal.Select{Table: "bean_user", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "email", Value: strings.ToLower(email)}, Limit: 1})
+	rows, e := tx.Select(ctx, dbal.Select{Table: "bean_user", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "email", Value: strings.ToLower(email)}, Limit: 1})
 	if e != nil {
-		return e
+		return "", false, e
 	}
 	if len(rows) > 0 {
-		return nil
+		return fmt.Sprint(rows[0]["id"]), false, nil
 	}
 	hash, e := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if e != nil {
-		return e
+		return "", false, e
 	}
 	roles, _ := json.Marshal(roleValues)
-	_, e = s.DB.Insert(ctx, dbal.Insert{Table: "bean_user", Values: map[string]dbal.Value{"id": uid.New(), "email": strings.ToLower(email), "password_hash": string(hash), "roles": string(roles), "tenant_id": tenantID, "created_at": time.Now().UTC().Format(time.RFC3339Nano)}})
-	return e
+	id := uid.New()
+	_, e = tx.Insert(ctx, dbal.Insert{Table: "bean_user", Values: map[string]dbal.Value{"id": id, "email": strings.ToLower(email), "password_hash": string(hash), "roles": string(roles), "tenant_id": tenantID, "created_at": time.Now().UTC().Format(time.RFC3339Nano)}})
+	return id, e == nil, e
 }
 func (s Service) Login(ctx context.Context, email, password string) (Session, error) {
 	rows, e := s.DB.Select(ctx, dbal.Select{Table: "bean_user", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "email", Value: strings.ToLower(email)}, Limit: 1})

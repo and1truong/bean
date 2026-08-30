@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -39,7 +40,7 @@ func testAdminResourceAPI(t *testing.T, databaseURL string) {
 	if err = runtime.HTTP.Auth.Bootstrap(ctx, "admin@example.test", "test-password"); err != nil {
 		t.Fatal(err)
 	}
-	bundle := definition.Bundle{Name: "admin", Definitions: []definition.Definition{{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"label": "Article", "fields": []any{map[string]any{"name": "title", "label": "Title", "type": "string", "required": true}, map[string]any{"name": "status", "label": "Status", "type": "enum", "options": []any{"draft", "published"}, "required": true}}}}}}
+	bundle := definition.Bundle{Name: "admin", Definitions: []definition.Definition{{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"label": "Article", "fields": []any{map[string]any{"name": "title", "label": "Title", "type": "string", "required": true}, map[string]any{"name": "status", "label": "Status", "type": "enum", "options": []any{"draft", "published"}, "required": true}, map[string]any{"name": "featured", "label": "Featured", "type": "boolean", "required": true}, map[string]any{"name": "attributes", "label": "Attributes", "type": "json", "required": true}}}}}}
 	if err = runtime.Store.SaveBundle(ctx, "default", bundle); err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +81,7 @@ func testAdminResourceAPI(t *testing.T, databaseURL string) {
 		t.Fatalf("manifest status=%v", manifest.Code)
 	}
 	for _, title := range []string{"Alpha", "Beta"} {
-		created := serve(t, handler, http.MethodPost, "/api/actions/article_create", map[string]any{"title": title, "status": "draft"}, cookie, csrf)
+		created := serve(t, handler, http.MethodPost, "/api/actions/article_create", map[string]any{"title": title, "status": "draft", "featured": true, "attributes": map[string]any{"source": "review"}}, cookie, csrf)
 		if created.Code != http.StatusOK {
 			t.Fatalf("create status=%d body=%s", created.Code, created.Body.String())
 		}
@@ -95,8 +96,13 @@ func testAdminResourceAPI(t *testing.T, databaseURL string) {
 	}
 	id := result.Data[0]["id"].(string)
 	record := serve(t, handler, http.MethodGet, "/api/admin/resources/article/"+id, nil, cookie, "")
-	if record.Code != http.StatusOK || !strings.Contains(record.Body.String(), "Beta") {
-		t.Fatalf("record status=%v", record.Code)
+	var recordResult struct {
+		Data map[string]any `json:"data"`
+	}
+	decodeResponse(t, record, &recordResult)
+	attributes, attributesOK := recordResult.Data["attributes"].(map[string]any)
+	if record.Code != http.StatusOK || recordResult.Data["title"] != "Beta" || recordResult.Data["featured"] != true || !attributesOK || attributes["source"] != "review" {
+		t.Fatalf("record status=%v data=%v", record.Code, recordResult.Data)
 	}
 	history := serve(t, handler, http.MethodGet, "/api/admin/audit?entity=article&id="+id, nil, cookie, "")
 	if history.Code != http.StatusOK || !strings.Contains(history.Body.String(), "article_create") {
@@ -105,6 +111,50 @@ func testAdminResourceAPI(t *testing.T, databaseURL string) {
 	invalid := serve(t, handler, http.MethodGet, "/api/admin/resources/article?filter.title=Beta", nil, cookie, "")
 	if invalid.Code != http.StatusBadRequest {
 		t.Fatalf("undeclared filter status=%v", invalid.Code)
+	}
+}
+
+type rejectAuditDatabase struct{ dbal.Database }
+
+func (d rejectAuditDatabase) Transaction(ctx context.Context, operation func(dbal.Transaction) error) error {
+	return d.Database.Transaction(ctx, func(tx dbal.Transaction) error {
+		return operation(rejectAuditTransaction{Transaction: tx})
+	})
+}
+
+type rejectAuditTransaction struct{ dbal.Transaction }
+
+func (t rejectAuditTransaction) Insert(ctx context.Context, query dbal.Insert) (dbal.Result, error) {
+	if query.Table == "bean_audit" {
+		return dbal.Result{}, errors.New("injected audit failure")
+	}
+	return t.Transaction.Insert(ctx, query)
+}
+
+func TestSystemUserCreationRollsBackWhenAuditFails(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := bootstrap.Open(ctx, filepath.Join(t.TempDir(), "admin-users.db"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.DB.Close()
+	if err = runtime.HTTP.Auth.Bootstrap(ctx, "admin@example.test", "test-password"); err != nil {
+		t.Fatal(err)
+	}
+	failing := rejectAuditDatabase{Database: runtime.DB}
+	runtime.HTTP.Auth.DB = failing
+	runtime.HTTP.Actions.DB = failing
+	handler := runtime.HTTP.Handler()
+	login := serve(t, handler, http.MethodPost, "/api/auth/login", map[string]any{"email": "admin@example.test", "password": "test-password"}, nil, "")
+	var session map[string]any
+	decodeResponse(t, login, &session)
+	response := serve(t, handler, http.MethodPost, "/api/admin/system/users", map[string]any{"email": "new@example.test", "password": "test-password", "roles": []string{"authenticated"}}, login.Result().Cookies()[0], session["csrfToken"].(string))
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	rows, err := runtime.DB.Select(ctx, dbal.Select{Table: "bean_user", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "email", Value: "new@example.test"}, Limit: 1})
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("user escaped failed audit transaction: rows=%v err=%v", rows, err)
 	}
 }
 

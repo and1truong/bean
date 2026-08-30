@@ -35,6 +35,17 @@ func TestUnsafeConstraintAdditionIsRejected(t *testing.T) {
 		t.Fatal("unsafe relation addition accepted")
 	}
 }
+
+func TestBooleanUsesPortableSQLType(t *testing.T) {
+	plan, err := migration.Build(migration.Schema{}, migration.Schema{Entities: []migration.Entity{{Name: "feature", Fields: []migration.Field{{Name: "enabled", Type: "boolean"}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Statements) != 1 || !strings.Contains(plan.Statements[0], `"enabled" BOOLEAN`) {
+		t.Fatalf("statements=%v", plan.Statements)
+	}
+}
+
 func TestDestructiveChangesBlocked(t *testing.T) {
 	old := migration.Schema{Entities: []migration.Entity{{Name: "book", Fields: []migration.Field{{Name: "title", Type: "string"}}}}}
 	if _, e := migration.Build(old, migration.Schema{}); e == nil {

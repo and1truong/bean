@@ -235,6 +235,11 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 		next = encodeCursor(cursor{Version: app.FormatVersion, View: name, Signature: signature(v, params), Values: values})
 	}
 	for _, row := range rows {
+		for _, definition := range e.Fields {
+			if value, ok := row[definition.Name]; ok {
+				row[definition.Name] = field.Decode(definition, value)
+			}
+		}
 		policy.Redact(row, redact)
 	}
 	return Result{Rows: rows, NextCursor: next}, nil

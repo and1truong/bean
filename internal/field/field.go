@@ -112,6 +112,48 @@ func Validate(f appir.Field, v any) error {
 	}
 	return nil
 }
+
+func Encode(f appir.Field, value any) (any, error) {
+	if value == nil || f.Type != "json" {
+		return value, nil
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	return string(encoded), nil
+}
+
+func Decode(f appir.Field, value any) any {
+	if value == nil {
+		return nil
+	}
+	switch f.Type {
+	case "boolean":
+		switch stored := value.(type) {
+		case int64:
+			return stored != 0
+		case int:
+			return stored != 0
+		}
+	case "json":
+		var encoded []byte
+		switch stored := value.(type) {
+		case string:
+			encoded = []byte(stored)
+		case []byte:
+			encoded = stored
+		default:
+			return value
+		}
+		var decoded any
+		if err := json.Unmarshal(encoded, &decoded); err == nil {
+			return decoded
+		}
+	}
+	return value
+}
+
 func SanitizeRichText(s string) string {
 	for {
 		start := strings.Index(strings.ToLower(s), "<script")

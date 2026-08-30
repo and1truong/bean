@@ -11,8 +11,8 @@ definitions:
       input: {resource_id: {type: relation, required: true}, start_at: {type: datetime, required: true}, end_at: {type: datetime, required: true}}
       steps:
         - {op: assert_no_overlap, values: {match: resource_id, start: start_at, end: end_at, message: The requested booking overlaps an existing booking.}}
-        - {op: create, values: {resource_id: $input.resource_id, start_at: $input.start_at, end_at: $input.end_at, status: confirmed}}
-        - {op: schedule, job: booking_reminder}
+        - {op: create, result: booking, values: {resource_id: $input.resource_id, start_at: $input.start_at, end_at: $input.end_at, status: confirmed}}
+        - {op: schedule, job: booking_reminder, values: {id: $result.booking.id, status: cancelled}}
   - {apiVersion: bean/v1alpha1, kind: Action, metadata: {name: cancel_booking}, spec: {entity: booking, operation: transition, transitions: {confirmed: [cancelled]}}}
   - {apiVersion: bean/v1alpha1, kind: Job, metadata: {name: booking_reminder}, spec: {action: cancel_booking}}
   - {apiVersion: bean/v1alpha1, kind: View, metadata: {name: resource_calendar}, spec: {entity: booking, fields: [id, resource_id, start_at, end_at, status], displays: {calendar: {type: json, route: /api/calendar}}}}

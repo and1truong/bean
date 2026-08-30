@@ -12,6 +12,7 @@ import (
 	"github.com/beanruntime/bean/internal/dbal/sqlite"
 	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/expr"
+	"github.com/beanruntime/bean/internal/job"
 	"github.com/beanruntime/bean/internal/kernel"
 	"github.com/beanruntime/bean/internal/openapi"
 	"github.com/beanruntime/bean/internal/release"
@@ -287,8 +288,20 @@ func TestConcurrentBookingsDoNotOverlap(t *testing.T) {
 	if success != 1 {
 		t.Fatalf("successful bookings=%d", success)
 	}
-	rows, e := db.Select(context.Background(), dbal.Select{Table: "booking", Columns: []string{"id"}, Limit: 50})
+	rows, e := db.Select(context.Background(), dbal.Select{Table: "booking", Columns: []string{"id", "status"}, Limit: 50})
 	if e != nil || len(rows) != 1 {
 		t.Fatalf("bookings=%v err=%v", rows, e)
+	}
+	runner := job.Runner{DB: db, Handle: func(ctx context.Context, name string, payload map[string]any) error {
+		definition := app.Jobs[name]
+		_, runErr := engine.Execute(ctx, app, definition.Action, payload, admin())
+		return runErr
+	}}
+	if e = runner.RunOnce(context.Background()); e != nil {
+		t.Fatal(e)
+	}
+	rows, e = db.Select(context.Background(), dbal.Select{Table: "booking", Columns: []string{"id", "status"}, Limit: 50})
+	if e != nil || rows[0]["status"] != "cancelled" {
+		t.Fatalf("booking reminder did not receive transition payload: rows=%v err=%v", rows, e)
 	}
 }

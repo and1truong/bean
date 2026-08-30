@@ -195,7 +195,11 @@ func create(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.En
 			if f.Type == "richtext" {
 				v = field.SanitizeRichText(v.(string))
 			}
-			values[f.Name] = v
+			stored, er := field.Encode(f, v)
+			if er != nil {
+				return nil, &dbal.Error{Code: dbal.InvalidQuery, Message: er.Error()}
+			}
+			values[f.Name] = stored
 		}
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -223,7 +227,9 @@ func create(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.En
 			values[f.Name] = input[f.Name]
 		}
 	}
-	return dbal.Row(values), nil
+	row := dbal.Row(values)
+	hydrate(row, e)
+	return row, nil
 }
 func update(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.Entity, input map[string]any, a appir.Action, c beanctx.Request, transition bool) (dbal.Row, error) {
 	id := fmt.Sprint(input["id"])
@@ -238,6 +244,7 @@ func update(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.En
 		return nil, &dbal.Error{Code: dbal.NotFound, Message: "record not found"}
 	}
 	row := rows[0]
+	hydrate(row, e)
 	values := map[string]dbal.Value{}
 	fields := map[string]appir.Field{}
 	stateField := a.StateField
@@ -267,7 +274,11 @@ func update(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.En
 		if toMany(f) {
 			continue
 		}
-		values[k] = v
+		stored, encodeErr := field.Encode(f, v)
+		if encodeErr != nil {
+			return nil, &dbal.Error{Code: dbal.InvalidQuery, Message: encodeErr.Error()}
+		}
+		values[k] = stored
 	}
 	version := toInt(row["version"])
 	values["version"] = version + 1
@@ -282,6 +293,7 @@ func update(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.En
 	for k, v := range values {
 		row[k] = v
 	}
+	hydrate(row, e)
 	for _, f := range e.Fields {
 		if toMany(f) && input[f.Name] != nil {
 			row[f.Name] = input[f.Name]
@@ -320,6 +332,7 @@ func steps(ctx context.Context, tx dbal.Transaction, app *appir.App, a appir.Act
 			if len(rows) == 0 {
 				return nil, &dbal.Error{Code: dbal.NotFound, Message: "record not found"}
 			}
+			hydrate(rows[0], entity)
 			if entity.Policy != "" && !authorize(app, entity.Policy, false, c, recordMap(rows[0])) {
 				return nil, &dbal.Error{Code: dbal.NotFound, Message: "record not found"}
 			}
@@ -415,6 +428,9 @@ func steps(ctx context.Context, tx dbal.Transaction, app *appir.App, a appir.Act
 			rows, x := tx.Select(ctx, dbal.Select{Table: entity.Name, Columns: viewDefinition.Fields, Joins: joins, Where: where, GroupBy: viewDefinition.GroupBy, Aggregates: aggregates, OrderBy: orders, Limit: limit})
 			if x != nil {
 				return nil, x
+			}
+			for _, row := range rows {
+				hydrate(row, entity)
 			}
 			for _, row := range rows {
 				policy.Redact(row, redact)
@@ -585,6 +601,14 @@ func resolveValues(values []appir.Assignment, input map[string]any, results map[
 		out[assignment.Field] = resolveValue(assignment.Value, input, results, c)
 	}
 	return out
+}
+
+func hydrate(row dbal.Row, entity appir.Entity) {
+	for _, definition := range entity.Fields {
+		if value, ok := row[definition.Name]; ok {
+			row[definition.Name] = field.Decode(definition, value)
+		}
+	}
 }
 func resolveValue(binding appir.ValueBinding, input map[string]any, results map[string]any, c beanctx.Request) any {
 	switch binding.Source {

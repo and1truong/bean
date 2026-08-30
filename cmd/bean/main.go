@@ -135,6 +135,7 @@ func serve(db, addr string, secure bool) error {
 				return
 			case <-ticker.C:
 				_ = r.Jobs.RunOnce(ctx)
+				_ = r.Outbox.RunOnce(ctx)
 			}
 		}
 	}()

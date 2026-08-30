@@ -16,17 +16,20 @@ type DB struct {
 }
 
 func Open(path string) (*DB, error) {
-	d, err := sql.Open("sqlite", path)
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+	dsn := path + separator + "_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=synchronous(FULL)&_pragma=busy_timeout(5000)"
+	d, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
 	d.SetMaxOpenConns(8)
 	d.SetMaxIdleConns(2)
-	for _, pragma := range []string{"PRAGMA foreign_keys=ON", "PRAGMA journal_mode=WAL", "PRAGMA synchronous=FULL", "PRAGMA busy_timeout=5000"} {
-		if _, err = d.Exec(pragma); err != nil {
-			d.Close()
-			return nil, err
-		}
+	if err = d.Ping(); err != nil {
+		d.Close()
+		return nil, err
 	}
 	return &DB{db: d}, nil
 }

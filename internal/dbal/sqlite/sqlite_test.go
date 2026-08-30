@@ -57,3 +57,38 @@ func TestQueryPlanJoinsGroupsAndAggregates(t *testing.T) {
 		t.Fatalf("rows=%v err=%v", rows, e)
 	}
 }
+
+func TestForeignKeysApplyToEveryPooledConnection(t *testing.T) {
+	ctx := context.Background()
+	d, err := sqlite.Open(filepath.Join(t.TempDir(), "foreign-keys.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if err = d.ExecuteMigration(ctx, []string{
+		`CREATE TABLE parent (id TEXT PRIMARY KEY)`,
+		`CREATE TABLE child (id TEXT PRIMARY KEY, parent_id TEXT REFERENCES parent(id))`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	held := make(chan struct{})
+	release := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- d.Transaction(ctx, func(dbal.Transaction) error {
+			close(held)
+			<-release
+			return nil
+		})
+	}()
+	<-held
+	_, insertErr := d.Insert(ctx, dbal.Insert{Table: "child", Values: map[string]dbal.Value{"id": "child-1", "parent_id": "missing"}})
+	close(release)
+	if transactionErr := <-done; transactionErr != nil {
+		t.Fatal(transactionErr)
+	}
+	if !dbal.IsCode(insertErr, dbal.ForeignKeyViolation) {
+		t.Fatalf("want foreign-key violation on second pooled connection, got %v", insertErr)
+	}
+}
