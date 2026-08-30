@@ -164,18 +164,6 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 		limit = max
 	}
 	offset := params.Offset
-	var decoded cursor
-	if params.Cursor != "" {
-		var er error
-		decoded, er = decodeCursor(params.Cursor)
-		if er != nil || decoded.Version != app.FormatVersion || decoded.View != name || decoded.Signature != signature(v, params) {
-			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "cursor is invalid or incompatible with this View"}
-		}
-		if params.Offset != 0 {
-			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "cursor and offset cannot be combined"}
-		}
-		offset = 0
-	}
 	joined := len(v.Relationships) > 0
 	aggregateAliases := map[string]bool{}
 	for _, aggregate := range v.Aggregates {
@@ -186,20 +174,41 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 	if len(params.Sort) > 0 {
 		sortDefinitions = params.Sort
 	}
+	aggregateSort := false
 	for _, o := range sortDefinitions {
 		if !available[o.Field] {
 			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "admin sort field is not selected by the View"}
 		}
 		column := o.Field
-		if !aggregateAliases[column] {
+		if aggregateAliases[column] {
+			aggregateSort = true
+		} else {
 			column = qualify(column, v.Entity, joined)
 		}
 		orders = append(orders, dbal.Order{Column: column, Desc: o.Desc})
+	}
+	if aggregateSort {
+		for _, group := range v.GroupBy {
+			if !orderedBy(orders, group) {
+				orders = append(orders, dbal.Order{Column: qualify(group, v.Entity, joined)})
+			}
+		}
 	}
 	if len(v.GroupBy) == 0 && !orderedBy(orders, "id") {
 		orders = append(orders, dbal.Order{Column: qualify("id", v.Entity, joined)})
 	}
 	if params.Cursor != "" {
+		if aggregateSort {
+			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "cursor pagination is not supported for aggregate-sorted Views; use offset pagination"}
+		}
+		decoded, er := decodeCursor(params.Cursor)
+		if er != nil || decoded.Version != app.FormatVersion || decoded.View != name || decoded.Signature != signature(v, params) {
+			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "cursor is invalid or incompatible with this View"}
+		}
+		if params.Offset != 0 {
+			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "cursor and offset cannot be combined"}
+		}
+		offset = 0
 		cursorPredicate, er := keysetPredicate(orders, decoded.Values)
 		if er != nil {
 			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "cursor is invalid or incompatible with this View"}
@@ -241,13 +250,15 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 	next := ""
 	if len(rows) > limit {
 		rows = rows[:limit]
-		last := rows[len(rows)-1]
-		values := make([]any, len(orders))
-		for i, order := range orders {
-			parts := strings.Split(order.Column, ".")
-			values[i] = last[parts[len(parts)-1]]
+		if !aggregateSort {
+			last := rows[len(rows)-1]
+			values := make([]any, len(orders))
+			for i, order := range orders {
+				parts := strings.Split(order.Column, ".")
+				values[i] = last[parts[len(parts)-1]]
+			}
+			next = encodeCursor(cursor{Version: app.FormatVersion, View: name, Signature: signature(v, params), Values: values})
 		}
-		next = encodeCursor(cursor{Version: app.FormatVersion, View: name, Signature: signature(v, params), Values: values})
 	}
 	for _, row := range rows {
 		for _, definition := range e.Fields {

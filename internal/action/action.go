@@ -461,12 +461,29 @@ func steps(ctx context.Context, tx dbal.Transaction, app *appir.App, a appir.Act
 				aggregates = append(aggregates, dbal.Aggregate{Function: fn, Column: qualifyViewField(aggregate.Field, entity.Name, joined), Alias: aggregate.Alias})
 			}
 			orders := []dbal.Order{}
+			aggregateSort := false
 			for _, order := range viewDefinition.Sort {
 				column := order.Field
-				if !aggregateAliases[column] {
+				if aggregateAliases[column] {
+					aggregateSort = true
+				} else {
 					column = qualifyViewField(column, entity.Name, joined)
 				}
 				orders = append(orders, dbal.Order{Column: column, Desc: order.Desc})
+			}
+			if aggregateSort {
+				for _, group := range viewDefinition.GroupBy {
+					groupOrdered := false
+					for _, order := range orders {
+						if order.Column == group || strings.HasSuffix(order.Column, "."+group) {
+							groupOrdered = true
+							break
+						}
+					}
+					if !groupOrdered {
+						orders = append(orders, dbal.Order{Column: qualifyViewField(group, entity.Name, joined)})
+					}
+				}
 			}
 			limit := viewDefinition.MaxLimit
 			if limit <= 0 || limit > 200 {

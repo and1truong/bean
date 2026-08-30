@@ -19,6 +19,7 @@ import (
 	"github.com/beanruntime/bean/internal/view"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -106,12 +107,28 @@ func TestManyToManyActionWriteAndViewTraversal(t *testing.T) {
 	if e != nil || queried["article_id"] != article["id"] || queried["tag_name"] != "Go" {
 		t.Fatalf("transaction query=%v err=%v cause=%v", queried, e, errors.Unwrap(e))
 	}
-	counts, e := (view.Service{DB: db}).Run(ctx, app, "article_tag_counts", view.Params{}, admin())
-	if e != nil || len(counts) != 1 || counts[0]["id"] != article["id"] || counts[0]["tag_count"] != int64(1) {
-		t.Fatalf("aggregate rows=%v err=%v cause=%v", counts, e, errors.Unwrap(e))
+	secondArticle, e := engine.Execute(ctx, app, "article_create", map[string]any{"title": "Runtime", "tags": []any{tag["id"]}}, admin())
+	if e != nil {
+		t.Fatal(e)
+	}
+	wantFirst, wantSecond := article["id"].(string), secondArticle["id"].(string)
+	if wantFirst > wantSecond {
+		wantFirst, wantSecond = wantSecond, wantFirst
+	}
+	views := view.Service{DB: db}
+	firstPage, e := views.RunPage(ctx, app, "article_tag_counts", view.Params{Limit: 1}, admin())
+	if e != nil || len(firstPage.Rows) != 1 || firstPage.Rows[0]["id"] != wantFirst || firstPage.Rows[0]["tag_count"] != int64(1) || firstPage.NextCursor != "" {
+		t.Fatalf("first aggregate page=%v err=%v cause=%v", firstPage, e, errors.Unwrap(e))
+	}
+	secondPage, e := views.RunPage(ctx, app, "article_tag_counts", view.Params{Limit: 1, Offset: 1}, admin())
+	if e != nil || len(secondPage.Rows) != 1 || secondPage.Rows[0]["id"] != wantSecond || secondPage.Rows[0]["tag_count"] != int64(1) || secondPage.NextCursor != "" {
+		t.Fatalf("second aggregate page=%v err=%v cause=%v", secondPage, e, errors.Unwrap(e))
+	}
+	if _, e = views.RunPage(ctx, app, "article_tag_counts", view.Params{Cursor: "disabled"}, admin()); !dbal.IsCode(e, dbal.InvalidQuery) || !strings.Contains(e.Error(), "use offset pagination") {
+		t.Fatalf("aggregate cursor error=%v", e)
 	}
 	counted, e := engine.Execute(ctx, app, "query_article_tag_counts", map[string]any{"request": "articles"}, admin())
-	if e != nil || counted["article_id"] != article["id"] || counted["tag_count"] != int64(1) {
+	if e != nil || counted["article_id"] != wantFirst || counted["tag_count"] != int64(1) {
 		t.Fatalf("aggregate transaction query=%v err=%v cause=%v", counted, e, errors.Unwrap(e))
 	}
 }
