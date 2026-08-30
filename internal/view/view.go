@@ -87,6 +87,9 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 	for _, name := range v.Fields {
 		available[name] = true
 	}
+	for _, aggregate := range v.Aggregates {
+		available[aggregate.Alias] = true
+	}
 	for name, value := range params.ExactFilters {
 		if !available[name] {
 			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "admin filter field is not selected by the View"}
@@ -173,6 +176,11 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 		}
 		offset = 0
 	}
+	joined := len(v.Relationships) > 0
+	aggregateAliases := map[string]bool{}
+	for _, aggregate := range v.Aggregates {
+		aggregateAliases[aggregate.Alias] = true
+	}
 	orders := []dbal.Order{}
 	sortDefinitions := v.Sort
 	if len(params.Sort) > 0 {
@@ -182,10 +190,14 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 		if !available[o.Field] {
 			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "admin sort field is not selected by the View"}
 		}
-		orders = append(orders, dbal.Order{Column: qualify(o.Field, v.Entity, len(v.Relationships) > 0), Desc: o.Desc})
+		column := o.Field
+		if !aggregateAliases[column] {
+			column = qualify(column, v.Entity, joined)
+		}
+		orders = append(orders, dbal.Order{Column: column, Desc: o.Desc})
 	}
 	if len(v.GroupBy) == 0 && !orderedBy(orders, "id") {
-		orders = append(orders, dbal.Order{Column: qualify("id", v.Entity, len(v.Relationships) > 0)})
+		orders = append(orders, dbal.Order{Column: qualify("id", v.Entity, joined)})
 	}
 	if params.Cursor != "" {
 		cursorPredicate, er := keysetPredicate(orders, decoded.Values)
@@ -213,7 +225,7 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 		if function == "average" {
 			function = "avg"
 		}
-		aggregates = append(aggregates, dbal.Aggregate{Function: function, Column: aggregate.Field, Alias: aggregate.Alias})
+		aggregates = append(aggregates, dbal.Aggregate{Function: function, Column: qualify(aggregate.Field, v.Entity, joined), Alias: aggregate.Alias})
 	}
 	var where *dbal.Predicate
 	if len(predicates) == 1 {
@@ -222,7 +234,7 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 		x := dbal.And(predicates...)
 		where = &x
 	}
-	rows, er := s.DB.Select(ctx, dbal.Select{Table: v.Entity, Columns: qualifyAll(v.Fields, v.Entity, len(v.Relationships) > 0), Joins: joins, Where: where, GroupBy: qualifyAll(v.GroupBy, v.Entity, len(v.Relationships) > 0), Aggregates: aggregates, OrderBy: orders, Limit: limit + 1, Offset: offset})
+	rows, er := s.DB.Select(ctx, dbal.Select{Table: v.Entity, Columns: qualifyAll(v.Fields, v.Entity, joined), Joins: joins, Where: where, GroupBy: qualifyAll(v.GroupBy, v.Entity, joined), Aggregates: aggregates, OrderBy: orders, Limit: limit + 1, Offset: offset})
 	if er != nil {
 		return Result{}, er
 	}

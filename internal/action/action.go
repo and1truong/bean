@@ -449,18 +449,24 @@ func steps(ctx context.Context, tx dbal.Transaction, app *appir.App, a appir.Act
 					joins = append(joins, dbal.Join{Table: relationship.Entity, Alias: relationship.Name, Type: relationship.Type, Left: entity.Name + "." + relationship.LocalField, Right: relationship.Name + "." + relationship.TargetField})
 				}
 			}
+			joined := len(viewDefinition.Relationships) > 0
+			aggregateAliases := map[string]bool{}
 			aggregates := []dbal.Aggregate{}
 			for _, aggregate := range viewDefinition.Aggregates {
 				fn := aggregate.Function
 				if fn == "average" {
 					fn = "avg"
 				}
-				aggregates = append(aggregates, dbal.Aggregate{Function: fn, Column: aggregate.Field, Alias: aggregate.Alias})
+				aggregateAliases[aggregate.Alias] = true
+				aggregates = append(aggregates, dbal.Aggregate{Function: fn, Column: qualifyViewField(aggregate.Field, entity.Name, joined), Alias: aggregate.Alias})
 			}
 			orders := []dbal.Order{}
-			joined := len(viewDefinition.Relationships) > 0
 			for _, order := range viewDefinition.Sort {
-				orders = append(orders, dbal.Order{Column: qualifyViewField(order.Field, entity.Name, joined), Desc: order.Desc})
+				column := order.Field
+				if !aggregateAliases[column] {
+					column = qualifyViewField(column, entity.Name, joined)
+				}
+				orders = append(orders, dbal.Order{Column: column, Desc: order.Desc})
 			}
 			limit := viewDefinition.MaxLimit
 			if limit <= 0 || limit > 200 {
