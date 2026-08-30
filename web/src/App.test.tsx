@@ -20,6 +20,19 @@ describe('public rendering',()=>{
     expect(document.querySelector('.rich-text script')).toBeNull()
     expect(screen.queryByRole('link',{name:'Admin'})).not.toBeInTheDocument()
     expect(screen.queryByRole('link',{name:'Studio'})).not.toBeInTheDocument()
+    expect(screen.queryByRole('link',{name:'Sign up'})).not.toBeInTheDocument()
+  })
+
+  it('advertises signup only when local registration is enabled',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/manifest'))return response({localRegistration:{Action:'register_member'}})
+      if(path.includes('/api/system/page'))return response({tree:{component:'TextBlock',props:{text:'Registration enabled'}}})
+      return response({})
+    }))
+    renderApp('/')
+    expect(await screen.findByRole('link',{name:'Sign up'})).toBeInTheDocument()
   })
 
   it('renders an unfiltered fallback as text when a formatted field is absent',async()=>{
