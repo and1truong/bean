@@ -137,6 +137,13 @@ func TestLocalRegistrationRouteMustRenderItsSelectedAction(t *testing.T) {
 		t.Fatal("registration Page inaccessible to anonymous users was accepted")
 	}
 	delete(defs[5].Spec, "policy")
+	defs = append(defs, definition.Definition{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "context_sensitive"}, Spec: map[string]any{"condition": map[string]any{"op": "ne", "left": map[string]any{"source": "record", "name": "x"}, "right": map[string]any{"source": "context", "name": "invite"}}}})
+	defs[5].Spec["policy"] = "context_sensitive"
+	defs[5].Spec["context"] = map[string]any{"invite": map[string]any{"source": "query", "name": "invite"}}
+	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) == 0 {
+		t.Fatal("registration Page policy evaluated only after resolving optional context")
+	}
+	delete(defs[5].Spec, "policy")
 	defs[5].Spec["context"] = map[string]any{"invite": map[string]any{"source": "query", "name": "invite", "required": true}}
 	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) == 0 {
 		t.Fatal("registration Page with unresolved required context was accepted")
