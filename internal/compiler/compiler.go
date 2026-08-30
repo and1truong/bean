@@ -12,6 +12,7 @@ import (
 	"github.com/beanruntime/bean/internal/expr"
 	"github.com/beanruntime/bean/internal/field"
 	"github.com/beanruntime/bean/internal/migration"
+	"github.com/beanruntime/bean/internal/page"
 	"github.com/beanruntime/bean/internal/policy"
 )
 
@@ -1167,6 +1168,9 @@ func validateRegistrationPage(a *appir.App, route, actionName string) string {
 	}
 	panelDefinition := a.Panels[registrationPage.Panel]
 	anonymous := beanctx.Request{}
+	if _, err := page.ResolveContext(*registrationPage, map[string]string{}, map[string]string{}, anonymous); err != nil {
+		return "must resolve Page context for an anonymous request to the advertised static route"
+	}
 	if registrationPage.Policy != "" && !policy.Can(a.Policies[registrationPage.Policy], false, anonymous, nil) || panelDefinition.Policy != "" && !policy.Can(a.Policies[panelDefinition.Policy], false, anonymous, nil) {
 		return "must reference a Page and Panel accessible to anonymous users"
 	}

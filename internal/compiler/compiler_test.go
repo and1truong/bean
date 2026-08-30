@@ -132,6 +132,11 @@ func TestLocalRegistrationRouteMustRenderItsSelectedAction(t *testing.T) {
 	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) == 0 {
 		t.Fatal("registration Page inaccessible to anonymous users was accepted")
 	}
+	delete(defs[5].Spec, "policy")
+	defs[5].Spec["context"] = map[string]any{"invite": map[string]any{"source": "query", "name": "invite", "required": true}}
+	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) == 0 {
+		t.Fatal("registration Page with unresolved required context was accepted")
+	}
 }
 
 func TestExpressionsRejectUnimplementedNowSource(t *testing.T) {
