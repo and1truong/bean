@@ -10,14 +10,18 @@ import (
 
 func TestPageNodeExposesWhetherRouteMetadataIsProtected(t *testing.T) {
 	app := appir.Empty()
-	app.Panels["main"] = appir.Panel{Name: "main"}
-	for _, definition := range []appir.Page{{Panel: "main"}, {Panel: "main", Policy: "members"}} {
-		node, allowed, err := page.Node(app, definition, nil, beanctx.Request{})
+	app.Policies["members"] = appir.Policy{Name: "members", Authenticated: true}
+	app.Panels["public"] = appir.Panel{Name: "public"}
+	app.Panels["members"] = appir.Panel{Name: "members", Policy: "members"}
+	request := beanctx.Request{User: &beanctx.User{ID: "member"}}
+	for _, definition := range []appir.Page{{Panel: "public"}, {Panel: "public", Policy: "members"}, {Panel: "members"}} {
+		node, allowed, err := page.Node(app, definition, nil, request)
 		if err != nil || !allowed {
 			t.Fatalf("node=%+v allowed=%v err=%v", node, allowed, err)
 		}
-		if protected := node.Props["protected"]; protected != (definition.Policy != "") {
-			t.Fatalf("protected=%v policy=%q", protected, definition.Policy)
+		expected := definition.Policy != "" || app.Panels[definition.Panel].Policy != ""
+		if protected := node.Props["protected"]; protected != expected {
+			t.Fatalf("protected=%v pagePolicy=%q panelPolicy=%q", protected, definition.Policy, app.Panels[definition.Panel].Policy)
 		}
 	}
 }

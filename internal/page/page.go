@@ -67,9 +67,10 @@ func Match(a *appir.App, path string) (appir.Page, map[string]string, bool) {
 	return appir.Page{}, nil, false
 }
 func Node(a *appir.App, p appir.Page, ctx map[string]any, c beanctx.Request) (render.Node, bool, error) {
-	child, allowed, e := panel.Node(a, a.Panels[p.Panel], ctx, c)
+	panelDefinition := a.Panels[p.Panel]
+	child, allowed, e := panel.Node(a, panelDefinition, ctx, c)
 	if e != nil || !allowed {
 		return render.Node{}, allowed, e
 	}
-	return render.Node{Component: "Page", Props: map[string]any{"title": p.Title, "description": p.Description, "protected": p.Policy != ""}, Children: []render.Node{child}}, true, nil
+	return render.Node{Component: "Page", Props: map[string]any{"title": p.Title, "description": p.Description, "protected": p.Policy != "" || panelDefinition.Policy != ""}, Children: []render.Node{child}}, true, nil
 }
