@@ -7,10 +7,12 @@ import (
 	"strings"
 
 	"github.com/beanruntime/bean/internal/appir"
+	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/expr"
 	"github.com/beanruntime/bean/internal/field"
 	"github.com/beanruntime/bean/internal/migration"
+	"github.com/beanruntime/bean/internal/policy"
 )
 
 type Result struct {
@@ -854,8 +856,8 @@ func validate(a *appir.App) []definition.Diagnostic {
 		if route := a.LocalRegistration.Route; route != "" {
 			if !strings.HasPrefix(route, "/") || strings.Contains(route, ":") {
 				out = append(out, diagnostic("LocalRegistration", "local", "spec.route", "must be a static absolute Page route"))
-			} else if !registrationPageExists(a, route, a.LocalRegistration.Action) {
-				out = append(out, diagnostic("LocalRegistration", "local", "spec.route", "must reference a Page containing a Webform for the registration Action"))
+			} else if routeErr := validateRegistrationPage(a, route, a.LocalRegistration.Action); routeErr != "" {
+				out = append(out, diagnostic("LocalRegistration", "local", "spec.route", routeErr))
 			}
 		}
 	}
@@ -1151,21 +1153,60 @@ func validateExpr(expression expr.Expr, database bool) error {
 	return nil
 }
 
-func registrationPageExists(a *appir.App, route, actionName string) bool {
+func validateRegistrationPage(a *appir.App, route, actionName string) string {
+	var registrationPage *appir.Page
 	for _, pageDefinition := range a.Pages {
-		if pageDefinition.Route != route {
-			continue
-		}
-		for _, region := range a.Panels[pageDefinition.Panel].Regions {
-			for _, blockName := range region.Blocks {
-				blockDefinition := a.Blocks[blockName]
-				if blockDefinition.Type == "webform" && a.Webforms[blockDefinition.Webform].Action == actionName {
-					return true
-				}
-			}
+		if pageDefinition.Route == route {
+			copy := pageDefinition
+			registrationPage = &copy
+			break
 		}
 	}
-	return false
+	if registrationPage == nil {
+		return "must reference a Page containing a Webform for the registration Action"
+	}
+	panelDefinition := a.Panels[registrationPage.Panel]
+	anonymous := beanctx.Request{}
+	if registrationPage.Policy != "" && !policy.Can(a.Policies[registrationPage.Policy], false, anonymous, nil) || panelDefinition.Policy != "" && !policy.Can(a.Policies[panelDefinition.Policy], false, anonymous, nil) {
+		return "must reference a Page and Panel accessible to anonymous users"
+	}
+	actionDefinition := a.Actions[actionName]
+	var missing []string
+	found := false
+	for _, region := range panelDefinition.Regions {
+		for _, blockName := range region.Blocks {
+			blockDefinition := a.Blocks[blockName]
+			formDefinition := a.Webforms[blockDefinition.Webform]
+			if blockDefinition.Type != "webform" || formDefinition.Action != actionName {
+				continue
+			}
+			found = true
+			if blockDefinition.Policy != "" && !policy.Can(a.Policies[blockDefinition.Policy], false, anonymous, nil) {
+				continue
+			}
+			fields := map[string]bool{}
+			for _, element := range formDefinition.Elements {
+				fields[element.Name] = element.Required
+			}
+			missing = missing[:0]
+			for inputName, inputDefinition := range actionDefinition.Input {
+				if inputDefinition.Required && !fields[inputName] {
+					missing = append(missing, inputName)
+				}
+			}
+			if len(missing) == 0 {
+				return ""
+			}
+			sort.Strings(missing)
+		}
+	}
+	if !found {
+		return "must reference a Page containing a Webform for the registration Action"
+	}
+	if len(missing) > 0 {
+		return "Webform must collect required registration inputs: " + strings.Join(missing, ", ")
+	}
+	return "must reference a registration Webform Block accessible to anonymous users"
 }
 
 func validateForm(name string, form appir.Webform) []definition.Diagnostic {

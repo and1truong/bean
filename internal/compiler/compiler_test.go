@@ -98,11 +98,20 @@ func TestLocalRegistrationRouteMustRenderItsSelectedAction(t *testing.T) {
 	defs := []definition.Definition{
 		{APIVersion: "bean/v1alpha1", Kind: "Role", Metadata: definition.Metadata{Name: "member"}, Spec: map[string]any{}},
 		{APIVersion: "bean/v1alpha1", Kind: "Action", Metadata: definition.Metadata{Name: "signup"}, Spec: map[string]any{"operation": "register_local_user", "defaultRole": "member"}},
-		{APIVersion: "bean/v1alpha1", Kind: "Webform", Metadata: definition.Metadata{Name: "signup_form"}, Spec: map[string]any{"action": "signup", "elements": []any{map[string]any{"name": "email", "type": "email"}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Webform", Metadata: definition.Metadata{Name: "signup_form"}, Spec: map[string]any{"action": "signup", "elements": []any{map[string]any{"name": "email", "type": "email", "required": true}}}},
 		{APIVersion: "bean/v1alpha1", Kind: "Block", Metadata: definition.Metadata{Name: "signup_block"}, Spec: map[string]any{"type": "webform", "webform": "signup_form"}},
 		{APIVersion: "bean/v1alpha1", Kind: "Panel", Metadata: definition.Metadata{Name: "signup_panel"}, Spec: map[string]any{"layout": "single-column", "regions": []any{map[string]any{"name": "main", "blocks": []any{"signup_block"}}}}},
 		{APIVersion: "bean/v1alpha1", Kind: "Page", Metadata: definition.Metadata{Name: "signup_page"}, Spec: map[string]any{"route": "/register", "panel": "signup_panel"}},
 		{APIVersion: "bean/v1alpha1", Kind: "LocalRegistration", Metadata: definition.Metadata{Name: "local"}, Spec: map[string]any{"action": "signup", "route": "/register"}},
+	}
+	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) == 0 {
+		t.Fatal("registration Webform missing required Action inputs was accepted")
+	}
+	defs[2].Spec["elements"] = []any{
+		map[string]any{"name": "display_name", "type": "text", "required": true},
+		map[string]any{"name": "email", "type": "email", "required": true},
+		map[string]any{"name": "password", "type": "password", "required": true},
+		map[string]any{"name": "password_confirmation", "type": "password", "required": true},
 	}
 	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) != 0 {
 		t.Fatalf("valid registration route diagnostics=%v", result.Diagnostics)
@@ -110,6 +119,12 @@ func TestLocalRegistrationRouteMustRenderItsSelectedAction(t *testing.T) {
 	defs[len(defs)-1].Spec["route"] = "/missing"
 	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) == 0 {
 		t.Fatal("registration route without its Webform was accepted")
+	}
+	defs[len(defs)-1].Spec["route"] = "/register"
+	defs = append(defs, definition.Definition{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "members_only"}, Spec: map[string]any{"authenticated": true}})
+	defs[5].Spec["policy"] = "members_only"
+	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) == 0 {
+		t.Fatal("registration Page inaccessible to anonymous users was accepted")
 	}
 }
 

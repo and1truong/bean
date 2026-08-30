@@ -42,8 +42,7 @@ func TestSensitiveInputsAreWriteOnlyAndRegistrationIsAnonymous(t *testing.T) {
 	if password["writeOnly"] != true || password["format"] != "password" || len(post["security"].([]any)) != 0 {
 		t.Fatalf("registration OpenAPI=%v", post)
 	}
-	disabled := decoded["paths"].(map[string]any)["/api/actions/disabled_signup"].(map[string]any)["post"].(map[string]any)
-	if len(disabled["security"].([]any)) == 0 {
-		t.Fatalf("disabled registration action was documented as anonymous: %v", disabled)
+	if _, exposed := decoded["paths"].(map[string]any)["/api/actions/disabled_signup"]; exposed {
+		t.Fatal("disabled registration action was exposed in OpenAPI")
 	}
 }
