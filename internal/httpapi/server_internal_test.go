@@ -4,6 +4,8 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"testing"
+
+	"github.com/beanruntime/bean/internal/appir"
 )
 
 func TestClientIPIgnoresForwardingHeadersUnlessConfigured(t *testing.T) {
@@ -25,6 +27,29 @@ func TestClientIPIgnoresForwardingHeadersUnlessConfigured(t *testing.T) {
 	request.Header.Set("X-Forwarded-For", "198.51.100.99, 203.0.113.20")
 	if got := server.clientIP(request); got != "203.0.113.20" {
 		t.Fatalf("spoofed prefix in an appended forwarding chain was trusted: %q", got)
+	}
+}
+
+func TestBoundBlockInputsEnforceEnclosingPageAndPanelPolicies(t *testing.T) {
+	app := appir.Empty()
+	app.Policies["restricted"] = appir.Policy{Name: "restricted", Authenticated: true}
+	app.Views["items"] = appir.View{Name: "items"}
+	app.Blocks["items"] = appir.Block{Name: "items", Type: "view", View: "items"}
+	app.Panels["private"] = appir.Panel{Name: "private", Regions: []appir.Region{{Name: "main", Blocks: []string{"items"}}}}
+	app.Pages["private"] = appir.Page{Name: "private", Route: "/private", Panel: "private", Policy: "restricted"}
+	request := httptest.NewRequest("GET", "/api/views/items?_page=%2Fprivate&_block=items", nil)
+	server := &Server{}
+	if _, _, err := server.boundBlockInputs(request, app, "view", "items"); err == nil {
+		t.Fatal("bound request bypassed Page policy")
+	}
+	pageDefinition := app.Pages["private"]
+	pageDefinition.Policy = ""
+	app.Pages["private"] = pageDefinition
+	panelDefinition := app.Panels["private"]
+	panelDefinition.Policy = "restricted"
+	app.Panels["private"] = panelDefinition
+	if _, _, err := server.boundBlockInputs(request, app, "view", "items"); err == nil {
+		t.Fatal("bound request bypassed Panel policy")
 	}
 }
 

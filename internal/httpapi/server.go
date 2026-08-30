@@ -736,6 +736,10 @@ func (s *Server) boundBlockInputs(r *http.Request, a *appir.App, kind, target st
 	}
 	requestContext.RouteParams = routeParams
 	requestContext.Values = contextValues
+	panelDefinition := a.Panels[p.Panel]
+	if p.Policy != "" && !policy.Can(a.Policies[p.Policy], false, requestContext, nil) || panelDefinition.Policy != "" && !policy.Can(a.Policies[panelDefinition.Policy], false, requestContext, nil) {
+		return nil, requestContext, fmt.Errorf("bound page is unavailable")
+	}
 	node, allowed, err := block.Node(a, definition, contextValues, requestContext)
 	if err != nil || !allowed {
 		return nil, requestContext, fmt.Errorf("bound block is unavailable")
