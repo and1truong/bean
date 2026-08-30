@@ -1131,7 +1131,7 @@ func validateExpr(expression expr.Expr, database bool) error {
 	if expression.Op != "is_null" && expression.Op != "is_not_null" && expression.Right == nil {
 		return fmt.Errorf("right value is required")
 	}
-	allowedSources := map[string]bool{"literal": true, "input": true, "record": true, "user": true, "tenant": true, "route": true, "context": true, "now": true}
+	allowedSources := map[string]bool{"literal": true, "input": true, "record": true, "user": true, "tenant": true, "route": true, "context": true}
 	if !allowedSources[expression.Left.Source] || expression.Right != nil && !allowedSources[expression.Right.Source] {
 		return fmt.Errorf("expression has an unsupported value source")
 	}

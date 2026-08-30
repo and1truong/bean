@@ -94,6 +94,19 @@ func TestLocalRegistrationCompilesFixedSensitiveBoundary(t *testing.T) {
 	}
 }
 
+func TestExpressionsRejectUnimplementedNowSource(t *testing.T) {
+	defs := []definition.Definition{{
+		APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "future"},
+		Spec: map[string]any{"condition": map[string]any{
+			"op": "lt", "left": map[string]any{"source": "record", "name": "published_at"}, "right": map[string]any{"source": "now"},
+		}},
+	}}
+	result := compiler.Compile("test", 1, defs)
+	if len(result.Diagnostics) != 1 || result.Diagnostics[0].Path != "spec.condition" {
+		t.Fatalf("unimplemented now source diagnostics=%v", result.Diagnostics)
+	}
+}
+
 func TestBlockBindingsMustMatchTargetTypes(t *testing.T) {
 	defs := []definition.Definition{
 		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "post"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "slug", "type": "slug"}}}},

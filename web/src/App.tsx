@@ -33,12 +33,12 @@ function Login(){
 }
 
 function Shell({children}:{children:React.ReactNode}){
-  const loc=useLocation();const qc=useQueryClient()
+  const loc=useLocation();const nav=useNavigate();const qc=useQueryClient()
   const session=useQuery({queryKey:['session'],queryFn:()=>api<Session>('/api/system/session')})
   const roles=session.data?.user?.Roles||[]
   const editor=roles.includes('editor')||roles.includes('administrator')
   const administrator=roles.includes('administrator')
-  const logout=useMutation({mutationFn:()=>api('/api/auth/logout',{method:'POST',body:'{}'}),onSuccess:()=>{sessionStorage.removeItem('bean_csrf');void qc.invalidateQueries({queryKey:['session']})}})
+  const logout=useMutation({mutationFn:()=>api('/api/auth/logout',{method:'POST',body:'{}'}),onSuccess:async()=>{sessionStorage.removeItem('bean_csrf');await qc.resetQueries();if(loc.pathname.startsWith('/admin')||loc.pathname.startsWith('/studio'))nav('/',{replace:true})}})
   return <><header className="border-b bg-primary text-primary-foreground"><div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"><Link className="text-lg font-semibold tracking-tight" to="/">Bean</Link><nav className="flex flex-wrap items-center gap-1" aria-label="Primary navigation">{editor&&<Button variant="ghost" asChild><Link to="/admin">Admin</Link></Button>}{administrator&&<Button variant="ghost" asChild><Link to="/studio">Studio</Link></Button>}{session.data?.authenticated?<Button variant="ghost" onClick={()=>logout.mutate()} disabled={logout.isPending}>Sign out</Button>:<><Button variant="ghost" asChild><Link to="/signup">Sign up</Link></Button><Button variant="secondary" asChild><Link to={'/login?next='+encodeURIComponent(loc.pathname)}>Sign in</Link></Button></>}</nav></div></header>{children}</>
 }
 
@@ -55,7 +55,8 @@ function Renderer({node}:{node:Node}){
 function ViewBlock({name,block,presentation,formattedFields}:{name:string;block:string;presentation:ViewPresentation;formattedFields:string[]}){
   const loc=useLocation();const[cursors,setCursors]=useState<string[]>(['']);const cursor=cursors[cursors.length-1]
   const query=new URLSearchParams({_page:loc.pathname,_block:block});if(cursor)query.set('cursor',cursor)
-  const result=useQuery({queryKey:['public-view',name,loc.pathname,cursor],queryFn:()=>api<{data:Row[];nextCursor:string}>('/api/views/'+name+'?'+query)})
+  const request='/api/views/'+name+'?'+query.toString()
+  const result=useQuery({queryKey:['public-view',request],queryFn:()=>api<{data:Row[];nextCursor:string}>(request)})
   if(result.isPending)return <LoadingState/>
   if(result.error)return <ErrorAlert error={result.error}/>
   if(!result.data.data.length)return <Card><CardContent className="py-8 text-center text-muted-foreground">{presentation.EmptyState||'Nothing to show.'}</CardContent></Card>

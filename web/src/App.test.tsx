@@ -1,4 +1,4 @@
-import {render,screen} from '@testing-library/react'
+import {fireEvent,render,screen} from '@testing-library/react'
 import {afterEach,describe,it,expect,vi} from 'vitest'
 import {MemoryRouter} from 'react-router-dom'
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query'
@@ -20,6 +20,45 @@ describe('public rendering',()=>{
     expect(document.querySelector('.rich-text script')).toBeNull()
     expect(screen.queryByRole('link',{name:'Admin'})).not.toBeInTheDocument()
     expect(screen.queryByRole('link',{name:'Studio'})).not.toBeInTheDocument()
+  })
+
+  it('keeps same-View blocks isolated by their bound block identity',async()=>{
+    const fetchMock=vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[
+        {component:'ViewBlock',props:{name:'first',view:'shared',formattedFields:[],presentation:{TitleField:'title'}}},
+        {component:'ViewBlock',props:{name:'second',view:'shared',formattedFields:[],presentation:{TitleField:'title'}}},
+      ]}})
+      if(path.includes('_block=first'))return response({data:[{id:'1',title:'First result'}],nextCursor:''})
+      if(path.includes('_block=second'))return response({data:[{id:'2',title:'Second result'}],nextCursor:''})
+      return response({})
+    })
+    vi.stubGlobal('fetch',fetchMock)
+    renderApp('/two-blocks')
+    expect(await screen.findByText('First result')).toBeInTheDocument()
+    expect(await screen.findByText('Second result')).toBeInTheDocument()
+    expect(fetchMock.mock.calls.filter(([input])=>String(input).includes('/api/views/shared'))).toHaveLength(2)
+  })
+
+  it('clears protected cached data and leaves protected routes after logout',async()=>{
+    const fetchMock=vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/auth/logout'))return response({})
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'TextBlock',props:{text:'Signed out home'}}})
+      return response({})
+    })
+    vi.stubGlobal('fetch',fetchMock)
+    const client=new QueryClient({defaultOptions:{queries:{retry:false,staleTime:Infinity}}})
+    client.setQueryData(['session'],{authenticated:true,user:{Roles:['editor']}})
+    client.setQueryData(['admin-manifest'],{entities:{},actions:{},adminResources:{},systemAdmin:false,version:1,releaseId:'release-1'})
+    client.setQueryData(['admin-record','secret'],{data:{private:'cached value'}})
+    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/admin']}><App/></MemoryRouter></QueryClientProvider>)
+    fireEvent.click(await screen.findByRole('button',{name:'Sign out'}))
+    expect(await screen.findByText('Signed out home')).toBeInTheDocument()
+    expect(client.getQueryData(['admin-manifest'])).not.toMatchObject({releaseId:'release-1'})
+    expect(client.getQueryData(['admin-record','secret'])).toBeUndefined()
   })
 
   it('renders Webform elements whose optional visibility is null',async()=>{
