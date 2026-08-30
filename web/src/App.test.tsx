@@ -126,7 +126,7 @@ describe('public rendering',()=>{
     expect(screen.getByText('Public article')).toBeInTheDocument()
   })
 
-  it('rechecks the current route after query reset completes',async()=>{
+  it('tracks route changes across Shell remounts while reset completes',async()=>{
     let resolveReset:(value:Response)=>void=()=>{}
     const pendingReset=new Promise<Response>(resolve=>{resolveReset=resolve})
     let publicRequests=0
@@ -136,7 +136,7 @@ describe('public rendering',()=>{
       if(path.includes('/api/auth/logout'))return response({protected:false})
       if(path.includes('/api/system/session'))return response({authenticated:false})
       if(path.includes('/api/system/page')&&path.includes('%2Fpublic')){publicRequests++;return pendingReset}
-      if(path.includes('/api/system/page')&&path.includes('%2Fmembers'))return new Response(JSON.stringify({error:{message:'Page not found'}}),{status:404,headers:{'Content-Type':'application/json'}})
+      if(path.includes('/api/admin/manifest'))return new Response(JSON.stringify({error:{message:'Forbidden'}}),{status:403,headers:{'Content-Type':'application/json'}})
       if(path.includes('/api/system/page'))return response({tree:{component:'TextBlock',props:{text:'Home after logout'}}})
       return response({})
     }))
@@ -146,7 +146,7 @@ describe('public rendering',()=>{
     render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/public']}><NavigationDriver capture={value=>{navigate=value}}/><App/></MemoryRouter></QueryClientProvider>)
     fireEvent.click(screen.getByRole('button',{name:'Sign out'}))
     await waitFor(()=>expect(publicRequests).toBe(1))
-    act(()=>navigate('/members'))
+    act(()=>navigate('/admin'))
     resolveReset(new Response(JSON.stringify({tree:{component:'TextBlock',props:{text:'Public page'}}}),{status:200,headers:{'Content-Type':'application/json'}}))
     expect(await screen.findByText('Home after logout')).toBeInTheDocument()
   })

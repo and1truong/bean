@@ -1,4 +1,4 @@
-import {FormEvent,useRef,useState} from 'react'
+import {createContext,FormEvent,useContext,useRef,useState} from 'react'
 import {Link,Route,Routes,useLocation,useNavigate} from 'react-router-dom'
 import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query'
 import {api,APIError,FormElement,Manifest,Node,Session,ViewPresentation} from './api'
@@ -14,6 +14,7 @@ import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select'
 import {Textarea} from '@/components/ui/textarea'
 
 type Row=Record<string,any>
+const CurrentPath=createContext<React.MutableRefObject<string>|null>(null)
 
 function Login(){
   const nav=useNavigate();const loc=useLocation();const qc=useQueryClient()
@@ -33,12 +34,12 @@ function Login(){
 }
 
 function Shell({children}:{children:React.ReactNode}){
-  const loc=useLocation();const nav=useNavigate();const qc=useQueryClient();const currentPath=useRef(loc.pathname);const logoutStarted=useRef(false);currentPath.current=loc.pathname
+  const loc=useLocation();const nav=useNavigate();const qc=useQueryClient();const currentPath=useContext(CurrentPath);const logoutStarted=useRef(false)
   const session=useQuery({queryKey:['session'],queryFn:()=>api<Session>('/api/system/session')})
   const roles=session.data?.user?.Roles||[]
   const editor=roles.includes('editor')||roles.includes('administrator')
   const administrator=roles.includes('administrator')
-  const logout=useMutation({mutationFn:async()=>{const path=loc.pathname;const result=await api<{protected?:boolean}>('/api/auth/logout?path='+encodeURIComponent(path),{method:'POST',body:'{}'});return {path,protected:path.startsWith('/admin')||path.startsWith('/studio')||result.protected===true}},onSuccess:async result=>{sessionStorage.removeItem('bean_csrf');await qc.resetQueries();const routeChanged=currentPath.current!==result.path;logoutStarted.current=false;if(result.protected||routeChanged)nav('/',{replace:true})},onError:()=>{logoutStarted.current=false}})
+  const logout=useMutation({mutationFn:async()=>{const path=loc.pathname;const result=await api<{protected?:boolean}>('/api/auth/logout?path='+encodeURIComponent(path),{method:'POST',body:'{}'});return {path,protected:path.startsWith('/admin')||path.startsWith('/studio')||result.protected===true}},onSuccess:async result=>{sessionStorage.removeItem('bean_csrf');await qc.resetQueries();const routeChanged=currentPath?.current!==result.path;logoutStarted.current=false;if(result.protected||routeChanged)nav('/',{replace:true})},onError:()=>{logoutStarted.current=false}})
   const stopNavigation=(event:React.MouseEvent)=>{if(logoutStarted.current||logout.isPending)event.preventDefault()}
   return <><header className="border-b bg-primary text-primary-foreground"><div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"><Link className="text-lg font-semibold tracking-tight" to="/" aria-disabled={logout.isPending} onClick={stopNavigation}>Bean</Link><nav className="flex flex-wrap items-center gap-1" aria-label="Primary navigation">{editor&&<Button variant="ghost" disabled={logout.isPending} asChild><Link to="/admin" aria-disabled={logout.isPending} onClick={stopNavigation}>Admin</Link></Button>}{administrator&&<Button variant="ghost" disabled={logout.isPending} asChild><Link to="/studio" aria-disabled={logout.isPending} onClick={stopNavigation}>Studio</Link></Button>}{session.data?.authenticated?<Button variant="ghost" onClick={()=>{logoutStarted.current=true;logout.mutate()}} disabled={logout.isPending}>Sign out</Button>:<><Button variant="ghost" asChild><Link to="/signup">Sign up</Link></Button><Button variant="secondary" asChild><Link to={'/login?next='+encodeURIComponent(loc.pathname)}>Sign in</Link></Button></>}</nav></div></header>{children}</>
 }
@@ -113,4 +114,4 @@ function Public(){
   return <Shell><Page className="space-y-6"><Renderer node={result.data.tree}/></Page></Shell>
 }
 
-export default function App(){return <Routes><Route path="/login" element={<Login/>}/><Route path="/studio" element={<Shell><Studio/></Shell>}/><Route path="/admin/*" element={<Shell><Admin/></Shell>}/><Route path="*" element={<Public/>}/></Routes>}
+export default function App(){const loc=useLocation();const currentPath=useRef(loc.pathname);currentPath.current=loc.pathname;return <CurrentPath.Provider value={currentPath}><Routes><Route path="/login" element={<Login/>}/><Route path="/studio" element={<Shell><Studio/></Shell>}/><Route path="/admin/*" element={<Shell><Admin/></Shell>}/><Route path="*" element={<Public/>}/></Routes></CurrentPath.Provider>}
