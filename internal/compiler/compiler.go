@@ -1186,7 +1186,7 @@ func validateRegistrationPage(a *appir.App, route, actionName string) string {
 			}
 			fields := map[string]bool{}
 			for _, element := range formDefinition.Elements {
-				fields[element.Name] = element.Required
+				fields[element.Name] = element.Required && element.Visible == nil
 			}
 			missing = missing[:0]
 			for inputName, inputDefinition := range actionDefinition.Input {
@@ -1204,7 +1204,7 @@ func validateRegistrationPage(a *appir.App, route, actionName string) string {
 		return "must reference a Page containing a Webform for the registration Action"
 	}
 	if len(missing) > 0 {
-		return "Webform must collect required registration inputs: " + strings.Join(missing, ", ")
+		return "Webform must unconditionally collect required registration inputs: " + strings.Join(missing, ", ")
 	}
 	return "must reference a registration Webform Block accessible to anonymous users"
 }

@@ -116,6 +116,12 @@ func TestLocalRegistrationRouteMustRenderItsSelectedAction(t *testing.T) {
 	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) != 0 {
 		t.Fatalf("valid registration route diagnostics=%v", result.Diagnostics)
 	}
+	displayName := defs[2].Spec["elements"].([]any)[0].(map[string]any)
+	displayName["visible"] = map[string]any{"op": "eq", "left": map[string]any{"source": "literal", "literal": true}, "right": map[string]any{"source": "literal", "literal": false}}
+	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) == 0 {
+		t.Fatal("conditionally hidden required registration input was accepted")
+	}
+	delete(displayName, "visible")
 	defs[len(defs)-1].Spec["route"] = "/missing"
 	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) == 0 {
 		t.Fatal("registration route without its Webform was accepted")

@@ -32,7 +32,7 @@ Every Entity receives a generated AdminResource backed by its generated list Vie
 
 ## Local registration and sensitive inputs
 
-Local signup is disabled unless a `LocalRegistration` definition references a `register_local_user` Action. An optional static `route` advertises browser signup and must reference an anonymously accessible Page and Panel containing an anonymously accessible Webform Block for that Action. The Webform must expose every required registration input; omit `route` for action-only registration. That Action declares a literal `defaultRole`; compilation requires the Role to exist and supplies fixed display-name, email, password, and password-confirmation inputs. Password inputs are sensitive/write-only and Action output is limited to safe identity fields. The client cannot provide roles, tenants, or system fields.
+Local signup is disabled unless a `LocalRegistration` definition references a `register_local_user` Action. An optional static `route` advertises browser signup and must reference an anonymously accessible Page and Panel containing an anonymously accessible Webform Block for that Action. The Webform must expose every required registration input unconditionally; omit `route` for action-only registration. That Action declares a literal `defaultRole`; compilation requires the Role to exist and supplies fixed display-name, email, password, and password-confirmation inputs. Password inputs are sensitive/write-only and Action output is limited to safe identity fields. The client cannot provide roles, tenants, or system fields.
 
 ## Bound blocks and content presentation
 
