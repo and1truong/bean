@@ -367,7 +367,7 @@ func steps(ctx context.Context, tx dbal.Transaction, app *appir.App, a appir.Act
 				return nil, &dbal.Error{Code: dbal.NotFound, Message: "record not found"}
 			}
 			hydrate(rows[0], entity)
-			if entity.Policy != "" && !authorize(app, entity.Policy, false, c, recordMap(rows[0])) {
+			if !canReadRecord(app, entity, c, rows[0]) {
 				return nil, &dbal.Error{Code: dbal.NotFound, Message: "record not found"}
 			}
 			stepResult = rows[0]
@@ -458,14 +458,15 @@ func steps(ctx context.Context, tx dbal.Transaction, app *appir.App, a appir.Act
 				aggregates = append(aggregates, dbal.Aggregate{Function: fn, Column: aggregate.Field, Alias: aggregate.Alias})
 			}
 			orders := []dbal.Order{}
+			joined := len(viewDefinition.Relationships) > 0
 			for _, order := range viewDefinition.Sort {
-				orders = append(orders, dbal.Order{Column: order.Field, Desc: order.Desc})
+				orders = append(orders, dbal.Order{Column: qualifyViewField(order.Field, entity.Name, joined), Desc: order.Desc})
 			}
 			limit := viewDefinition.MaxLimit
 			if limit <= 0 || limit > 200 {
 				limit = 200
 			}
-			rows, x := tx.Select(ctx, dbal.Select{Table: entity.Name, Columns: viewDefinition.Fields, Joins: joins, Where: where, GroupBy: viewDefinition.GroupBy, Aggregates: aggregates, OrderBy: orders, Limit: limit})
+			rows, x := tx.Select(ctx, dbal.Select{Table: entity.Name, Columns: qualifyViewFields(viewDefinition.Fields, entity.Name, joined), Joins: joins, Where: where, GroupBy: qualifyViewFields(viewDefinition.GroupBy, entity.Name, joined), Aggregates: aggregates, OrderBy: orders, Limit: limit})
 			if x != nil {
 				return nil, x
 			}
@@ -777,7 +778,7 @@ func syncRelations(ctx context.Context, tx dbal.Transaction, app *appir.App, ent
 			if len(rows) > 0 {
 				hydrate(rows[0], target)
 			}
-			if len(rows) == 0 || !canReference(app, target, c, rows[0]) {
+			if len(rows) == 0 || !canReadRecord(app, target, c, rows[0]) {
 				return &dbal.Error{Code: dbal.NotFound, Message: "related record not found"}
 			}
 		}
@@ -801,7 +802,7 @@ func syncRelations(ctx context.Context, tx dbal.Transaction, app *appir.App, ent
 	return nil
 }
 
-func canReference(app *appir.App, target appir.Entity, c beanctx.Request, row dbal.Row) bool {
+func canReadRecord(app *appir.App, target appir.Entity, c beanctx.Request, row dbal.Row) bool {
 	if target.Tenant && (c.TenantID == "" || fmt.Sprint(row["tenant_id"]) != c.TenantID) {
 		return false
 	}
@@ -809,6 +810,21 @@ func canReference(app *appir.App, target appir.Entity, c beanctx.Request, row db
 		return false
 	}
 	return target.Policy == "" || authorize(app, target.Policy, false, c, recordMap(row))
+}
+
+func qualifyViewField(name, entity string, joined bool) string {
+	if joined && !strings.Contains(name, ".") {
+		return entity + "." + name
+	}
+	return name
+}
+
+func qualifyViewFields(names []string, entity string, joined bool) []string {
+	qualified := make([]string, len(names))
+	for i, name := range names {
+		qualified[i] = qualifyViewField(name, entity, joined)
+	}
+	return qualified
 }
 
 func authorize(app *appir.App, name string, write bool, c beanctx.Request, row map[string]any) bool {

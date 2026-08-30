@@ -72,6 +72,10 @@ func TestManyToManyActionWriteAndViewTraversal(t *testing.T) {
 		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "tag"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "name", "type": "string", "required": true}}}},
 		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string", "required": true}, map[string]any{"name": "tags", "type": "relation", "relation": map[string]any{"entity": "tag", "kind": "many-to-many"}}}}},
 		{APIVersion: "bean/v1alpha1", Kind: "View", Metadata: definition.Metadata{Name: "article_tags"}, Spec: map[string]any{"entity": "article", "fields": []any{"id", "tags.name"}, "relationships": []any{map[string]any{"name": "tags", "relationField": "tags", "type": "inner"}}, "sort": []any{map[string]any{"field": "id"}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Action", Metadata: definition.Metadata{Name: "query_article_tags"}, Spec: map[string]any{"entity": "article", "operation": "transaction", "input": map[string]any{"request": map[string]any{"type": "string", "required": true}}, "output": map[string]any{"article_id": map[string]any{"type": "uuid", "required": true}, "tag_name": map[string]any{"type": "string", "required": true}}, "steps": []any{
+			map[string]any{"op": "query", "view": "article_tags", "result": "articles"},
+			map[string]any{"op": "return", "values": map[string]any{"article_id": "$result.articles.0.id", "tag_name": "$result.articles.0.name"}},
+		}}},
 	}
 	if e = store.SaveBundle(ctx, "default", definition.Bundle{Name: "relations", Definitions: defs}); e != nil {
 		t.Fatal(e)
@@ -92,6 +96,10 @@ func TestManyToManyActionWriteAndViewTraversal(t *testing.T) {
 	rows, e := (view.Service{DB: db}).Run(ctx, app, "article_tags", view.Params{}, admin())
 	if e != nil || len(rows) != 1 || rows[0]["id"] != article["id"] || rows[0]["name"] != "Go" {
 		t.Fatalf("rows=%v err=%v cause=%v", rows, e, errors.Unwrap(e))
+	}
+	queried, e := engine.Execute(ctx, app, "query_article_tags", map[string]any{"request": "articles"}, admin())
+	if e != nil || queried["article_id"] != article["id"] || queried["tag_name"] != "Go" {
+		t.Fatalf("transaction query=%v err=%v cause=%v", queried, e, errors.Unwrap(e))
 	}
 }
 
@@ -173,6 +181,10 @@ func TestTransactionQueryEnforcesImplicitOwnerScope(t *testing.T) {
 			map[string]any{"op": "query", "view": "profiles", "result": "profiles"},
 			map[string]any{"op": "return", "values": map[string]any{"first_id": "$result.profiles.0.id"}},
 		}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Action", Metadata: definition.Metadata{Name: "load_profile"}, Spec: map[string]any{"entity": "profile", "operation": "transaction", "policy": "public_action", "input": map[string]any{"id": map[string]any{"type": "uuid", "required": true}}, "output": map[string]any{"loaded_id": map[string]any{"type": "uuid", "required": true}}, "steps": []any{
+			map[string]any{"op": "load", "result": "profile", "values": map[string]any{"id": "$input.id"}},
+			map[string]any{"op": "return", "values": map[string]any{"loaded_id": "$result.profile.id"}},
+		}}},
 	}
 	if err = store.SaveBundle(ctx, "default", definition.Bundle{Name: "transaction owner", Definitions: definitions}); err != nil {
 		t.Fatal(err)
@@ -205,6 +217,16 @@ func TestTransactionQueryEnforcesImplicitOwnerScope(t *testing.T) {
 		if executeErr != nil || result["first_id"] != test.want {
 			t.Fatalf("result=%v want=%v err=%v", result, test.want, executeErr)
 		}
+	}
+	if _, err = engine.Execute(ctx, app, "load_profile", map[string]any{"id": secondProfile["id"]}, beanctx.Request{}); !dbal.IsCode(err, dbal.NotFound) {
+		t.Fatalf("anonymous transaction load error=%v", err)
+	}
+	if _, err = engine.Execute(ctx, app, "load_profile", map[string]any{"id": secondProfile["id"]}, first); !dbal.IsCode(err, dbal.NotFound) {
+		t.Fatalf("cross-owner transaction load error=%v", err)
+	}
+	loaded, err := engine.Execute(ctx, app, "load_profile", map[string]any{"id": firstProfile["id"]}, first)
+	if err != nil || loaded["loaded_id"] != firstProfile["id"] {
+		t.Fatalf("loaded=%v err=%v", loaded, err)
 	}
 }
 
