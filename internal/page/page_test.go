@@ -8,6 +8,18 @@ import (
 	"github.com/beanruntime/bean/internal/page"
 )
 
+func TestMatchPrefersStaticSegmentsDeterministically(t *testing.T) {
+	app := appir.Empty()
+	app.Pages["dynamic"] = appir.Page{Name: "dynamic", Route: "/posts/:slug"}
+	app.Pages["static"] = appir.Page{Name: "static", Route: "/posts/new"}
+	for attempt := 0; attempt < 100; attempt++ {
+		matched, params, ok := page.Match(app, "/posts/new")
+		if !ok || matched.Name != "static" || len(params) != 0 {
+			t.Fatalf("attempt=%d matched=%+v params=%v ok=%v", attempt, matched, params, ok)
+		}
+	}
+}
+
 func TestPageNodeExposesWhetherRouteMetadataIsProtected(t *testing.T) {
 	app := appir.Empty()
 	app.Policies["members"] = appir.Policy{Name: "members", Authenticated: true}

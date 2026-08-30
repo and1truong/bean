@@ -100,6 +100,32 @@ describe('public rendering',()=>{
     expect(memberRequests).toBeGreaterThanOrEqual(2)
   })
 
+  it('blocks header navigation while logout is in flight',async()=>{
+    let resolveLogout:(value:Response)=>void=()=>{}
+    const pendingLogout=new Promise<Response>(resolve=>{resolveLogout=resolve})
+    let adminRequests=0
+    const fetchMock=vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/auth/logout'))return pendingLogout
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/admin/manifest')){adminRequests++;return response({})}
+      if(path.includes('/api/system/page'))return response({tree:{component:'TextBlock',props:{text:'Public article'}}})
+      return response({})
+    })
+    vi.stubGlobal('fetch',fetchMock)
+    const client=new QueryClient({defaultOptions:{queries:{retry:false,staleTime:Infinity}}})
+    client.setQueryData(['session'],{authenticated:true,user:{Roles:['editor']}})
+    client.setQueryData(['page','/posts/public'],{tree:{component:'TextBlock',props:{text:'Public article'}}})
+    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/posts/public']}><App/></MemoryRouter></QueryClientProvider>)
+    fireEvent.click(screen.getByRole('button',{name:'Sign out'}))
+    fireEvent.click(screen.getByRole('link',{name:'Admin'}))
+    expect(screen.getByText('Public article')).toBeInTheDocument()
+    expect(adminRequests).toBe(0)
+    resolveLogout(new Response(JSON.stringify({protected:false}),{status:200,headers:{'Content-Type':'application/json'}}))
+    expect(await screen.findByRole('link',{name:'Sign in'})).toBeInTheDocument()
+    expect(screen.getByText('Public article')).toBeInTheDocument()
+  })
+
   it('renders Webform elements whose optional visibility is null',async()=>{
     vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
       const path=String(input)

@@ -2,11 +2,13 @@ package page
 
 import (
 	"fmt"
+	"sort"
+	"strings"
+
 	"github.com/beanruntime/bean/internal/appir"
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/panel"
 	"github.com/beanruntime/bean/internal/render"
-	"strings"
 )
 
 func ResolveContext(p appir.Page, route, query map[string]string, c beanctx.Request) (map[string]any, error) {
@@ -45,8 +47,13 @@ func ResolveContext(p appir.Page, route, query map[string]string, c beanctx.Requ
 }
 
 func Match(a *appir.App, path string) (appir.Page, map[string]string, bool) {
-	for _, p := range a.Pages {
-		pp := strings.Split(strings.Trim(p.Route, "/"), "/")
+	pages := make([]appir.Page, 0, len(a.Pages))
+	for _, definition := range a.Pages {
+		pages = append(pages, definition)
+	}
+	sort.Slice(pages, func(i, j int) bool { return routeBefore(pages[i], pages[j]) })
+	for _, p := range pages {
+		pp := routeParts(p.Route)
 		actual := strings.Split(strings.Trim(path, "/"), "/")
 		if len(pp) != len(actual) {
 			continue
@@ -66,6 +73,23 @@ func Match(a *appir.App, path string) (appir.Page, map[string]string, bool) {
 	}
 	return appir.Page{}, nil, false
 }
+
+func routeBefore(left, right appir.Page) bool {
+	leftParts, rightParts := routeParts(left.Route), routeParts(right.Route)
+	for index := 0; index < len(leftParts) && index < len(rightParts); index++ {
+		leftStatic, rightStatic := !strings.HasPrefix(leftParts[index], ":"), !strings.HasPrefix(rightParts[index], ":")
+		if leftStatic != rightStatic {
+			return leftStatic
+		}
+	}
+	if left.Route != right.Route {
+		return left.Route < right.Route
+	}
+	return left.Name < right.Name
+}
+
+func routeParts(route string) []string { return strings.Split(strings.Trim(route, "/"), "/") }
+
 func Protected(a *appir.App, p appir.Page) bool {
 	return p.Policy != "" || a.Panels[p.Panel].Policy != ""
 }
