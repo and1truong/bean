@@ -2,24 +2,23 @@
 
 ## Current
 
-Bean v0.2 semantic correctness is implemented. Bean remains alpha software; the next production-readiness goals are crash durability/recovery, external security review, operational/load qualification, and signed release engineering.
+Bean v0.4 production-platform vertical slice is implemented. It advances the four requested planes together: crash-safe single-process runtime semantics, SQLite/PostgreSQL parity, protected System Admin operations, and typed visual Studio authoring. Bean remains alpha because the explicitly excluded operational and assurance work is still material.
 
-## Milestone evidence
+## v0.4 milestone evidence
 
-- Milestone 0: honest capability matrix and strict unsupported-metadata diagnostics.
-- Milestone 1: typed deterministic bindings, `bean/appir/v1`, canonical compilation and compatibility fixture.
-- Milestone 2: complete Actions, typed I/O, named results, rollback/concurrency, audit/outbox and idempotency.
-- Milestone 3: one View plan for joins, filters, groups, five aggregates, offset/keyset pagination, policies and redaction.
-- Milestone 4: constrained relations, policy matrix, complete Webforms, registered renderers and typed context.
-- Milestone 5: deterministic migrations and contract, fuzz-smoke, compatibility, black-box, race and browser gates.
+- Milestone 0 — contracts and baseline: failure model, portability boundary, System Admin boundary, visual/canonical definition invariant.
+- Milestone 1 — crash-safe SQLite: input-bound idempotency, restart-safe additive publication, startup schema validation, job/outbox leases and deterministic process fault points.
+- Milestone 2 — PostgreSQL: pgx adapter, URL selection, shared DBAL contract, SQLSTATE mapping, and Admin/Action/View HTTP parity against PostgreSQL 17.
+- Milestone 3 — System Admin: safe user/role data, queue health, releases, migrations, retry/cancel controls, CSRF, affected-row checks, confirmation, and audit.
+- Milestone 4 — visual Studio: typed core editors, draft references, lossless advanced JSON, inline diagnostics, migration/release preview, and no-JSON browser authoring.
+- Milestone 5 — qualification: reference apps, browser workflows, real crash/restart, real PostgreSQL, compatibility, fuzz-smoke, race, and production build gates.
 
 ## Verification log
 
-- `make bootstrap` — pass on 2026-08-30; frozen dependencies unchanged.
-- `go test ./...` — pass.
-- `make test-contract`, `make test-fuzz-smoke`, `make test-compatibility` — pass.
-- `go test -race ./...` — pass.
-- Frontend lint, typecheck, unit test and production build — pass.
-- Playwright — 9/9 pass outside the filesystem/process sandbox.
-- `make check` — pass, including race and Playwright 9/9.
-- `make build` — pass; output is `bin/bean` (`bean 0.2.0-alpha`).
+- `go test ./...` — pass on 2026-08-30.
+- Frontend lint, typecheck, and 6 unit tests — pass.
+- Focused no-JSON Studio Playwright acceptance — pass.
+- `make test-crash` — pass for crash after migration and after activation commit.
+- `make test-postgres` — pass against PostgreSQL 17 for reusable DBAL and Admin/Action/View HTTP parity.
+- `make check` — pass, including vet, frontend gates, all Go tests, fuzz-smoke, compatibility, black-box, race, and Playwright 9/9.
+- `make build` — pass; output is `bin/bean` (`bean 0.4.0-alpha`).

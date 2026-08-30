@@ -2,6 +2,7 @@ package action
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -49,8 +50,12 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 		}
 	}
 	idempotencyKey, _ := input["_idempotencyKey"].(string)
+	inputHash, fingerprintErr := fingerprint(input)
+	if fingerprintErr != nil {
+		return nil, &dbal.Error{Code: dbal.InvalidQuery, Message: "Action input cannot be fingerprinted", Cause: fingerprintErr}
+	}
 	if idempotencyKey != "" {
-		if replay, found, er := s.replay(ctx, name, idempotencyKey); er != nil {
+		if replay, found, er := s.replay(ctx, name, idempotencyKey, inputHash); er != nil {
 			return nil, er
 		} else if found {
 			return replay, nil
@@ -123,7 +128,7 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 			if x != nil {
 				return x
 			}
-			if _, x = tx.Insert(ctx, dbal.Insert{Table: "bean_idempotency", Values: map[string]dbal.Value{"action": name, "key": idempotencyKey, "result": string(encoded), "created_at": time.Now().UTC().Format(time.RFC3339Nano)}}); x != nil {
+			if _, x = tx.Insert(ctx, dbal.Insert{Table: "bean_idempotency", Values: map[string]dbal.Value{"action": name, "key": idempotencyKey, "input_hash": inputHash, "result": string(encoded), "created_at": time.Now().UTC().Format(time.RFC3339Nano)}}); x != nil {
 				return x
 			}
 		}
@@ -131,7 +136,9 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 	})
 	if err != nil {
 		if idempotencyKey != "" && dbal.IsCode(err, dbal.UniqueViolation) {
-			if replay, found, _ := s.replay(ctx, name, idempotencyKey); found {
+			if replay, found, replayErr := s.replay(ctx, name, idempotencyKey, inputHash); replayErr != nil {
+				return nil, replayErr
+			} else if found {
 				return replay, nil
 			}
 		}
@@ -142,20 +149,37 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 	}
 	return result, nil
 }
-func (s Service) replay(ctx context.Context, actionName, key string) (dbal.Row, bool, error) {
+func (s Service) replay(ctx context.Context, actionName, key, inputHash string) (dbal.Row, bool, error) {
 	p := dbal.And(dbal.Predicate{Op: dbal.OpEQ, Column: "action", Value: actionName}, dbal.Predicate{Op: dbal.OpEQ, Column: "key", Value: key})
-	rows, e := s.DB.Select(ctx, dbal.Select{Table: "bean_idempotency", Columns: []string{"result"}, Where: &p, Limit: 1})
+	rows, e := s.DB.Select(ctx, dbal.Select{Table: "bean_idempotency", Columns: []string{"input_hash", "result"}, Where: &p, Limit: 1})
 	if e != nil {
 		return nil, false, e
 	}
 	if len(rows) == 0 {
 		return nil, false, nil
 	}
+	if fmt.Sprint(rows[0]["input_hash"]) != inputHash {
+		return nil, false, &dbal.Error{Code: dbal.Conflict, Message: "idempotency key was already used with different input"}
+	}
 	var out dbal.Row
 	if e = json.Unmarshal([]byte(fmt.Sprint(rows[0]["result"])), &out); e != nil {
 		return nil, false, e
 	}
 	return out, true, nil
+}
+
+func fingerprint(input map[string]any) (string, error) {
+	canonical := make(map[string]any, len(input))
+	for name, value := range input {
+		if name != "_idempotencyKey" {
+			canonical[name] = value
+		}
+	}
+	encoded, err := json.Marshal(canonical)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(encoded)), nil
 }
 func create(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.Entity, input map[string]any, c beanctx.Request) (dbal.Row, error) {
 	values := map[string]dbal.Value{}

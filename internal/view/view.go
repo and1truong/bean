@@ -21,6 +21,11 @@ import (
 type Service struct{ DB dbal.Database }
 type Params struct {
 	Filter        map[string]any
+	ExactFilters  map[string]any
+	Search        string
+	RecordID      string
+	SearchFields  []string
+	Sort          []appir.Sort
 	Limit, Offset int
 	Cursor        string
 }
@@ -78,6 +83,39 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 		}
 		predicates = append(predicates, dbal.Predicate{Op: dbal.OpEQ, Column: column, Value: value})
 	}
+	available := map[string]bool{}
+	for _, name := range v.Fields {
+		available[name] = true
+	}
+	for name, value := range params.ExactFilters {
+		if !available[name] {
+			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "admin filter field is not selected by the View"}
+		}
+		definition, ok := entityField(e, name)
+		if !ok {
+			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "admin filter field is invalid"}
+		}
+		value = coerce(value, definition.Type)
+		if er := field.Validate(definition, value); er != nil {
+			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: er.Error()}
+		}
+		predicates = append(predicates, dbal.Predicate{Op: dbal.OpEQ, Column: name, Value: value})
+	}
+	if params.RecordID != "" {
+		predicates = append(predicates, dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: params.RecordID})
+	}
+	if params.Search != "" {
+		search := make([]dbal.Predicate, 0, len(params.SearchFields))
+		for _, name := range params.SearchFields {
+			if !available[name] {
+				return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "admin search field is not selected by the View"}
+			}
+			search = append(search, dbal.Predicate{Op: dbal.OpContains, Column: name, Value: params.Search})
+		}
+		if len(search) > 0 {
+			predicates = append(predicates, dbal.Or(search...))
+		}
+	}
 	var redact []string
 	if v.Policy != "" {
 		p, ok := app.Policies[v.Policy]
@@ -124,7 +162,7 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 	if params.Cursor != "" {
 		var er error
 		decoded, er = decodeCursor(params.Cursor)
-		if er != nil || decoded.Version != app.FormatVersion || decoded.View != name || decoded.Signature != signature(v) {
+		if er != nil || decoded.Version != app.FormatVersion || decoded.View != name || decoded.Signature != signature(v, params) {
 			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "cursor is invalid or incompatible with this View"}
 		}
 		if params.Offset != 0 {
@@ -133,7 +171,14 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 		offset = 0
 	}
 	orders := []dbal.Order{}
-	for _, o := range v.Sort {
+	sortDefinitions := v.Sort
+	if len(params.Sort) > 0 {
+		sortDefinitions = params.Sort
+	}
+	for _, o := range sortDefinitions {
+		if !available[o.Field] {
+			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "admin sort field is not selected by the View"}
+		}
 		orders = append(orders, dbal.Order{Column: qualify(o.Field, v.Entity, len(v.Relationships) > 0), Desc: o.Desc})
 	}
 	if len(v.GroupBy) == 0 && !orderedBy(orders, "id") {
@@ -187,7 +232,7 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 			parts := strings.Split(order.Column, ".")
 			values[i] = last[parts[len(parts)-1]]
 		}
-		next = encodeCursor(cursor{Version: app.FormatVersion, View: name, Signature: signature(v), Values: values})
+		next = encodeCursor(cursor{Version: app.FormatVersion, View: name, Signature: signature(v, params), Values: values})
 	}
 	for _, row := range rows {
 		policy.Redact(row, redact)
@@ -221,6 +266,19 @@ func relationField(entity appir.Entity, name string) *appir.Field {
 		}
 	}
 	return nil
+}
+func entityField(entity appir.Entity, name string) (appir.Field, bool) {
+	for _, definition := range entity.Fields {
+		if definition.Name == name {
+			return definition, true
+		}
+	}
+	for _, definition := range []appir.Field{{Name: "id", Type: "uuid"}, {Name: "created_at", Type: "datetime"}, {Name: "updated_at", Type: "datetime"}, {Name: "version", Type: "integer"}} {
+		if definition.Name == name {
+			return definition, true
+		}
+	}
+	return appir.Field{}, false
 }
 func toManyRelation(field appir.Field) bool {
 	return field.Relation != nil && (field.Relation.Kind == "one-to-many" || field.Relation.Kind == "many-to-many")
@@ -269,8 +327,14 @@ func qualifyAll(names []string, entity string, joined bool) []string {
 	return out
 }
 
-func signature(v appir.View) string {
-	b, _ := json.Marshal(v)
+func signature(v appir.View, params Params) string {
+	b, _ := json.Marshal(struct {
+		View         appir.View
+		ExactFilters map[string]any
+		Search       string
+		SearchFields []string
+		Sort         []appir.Sort
+	}{v, params.ExactFilters, params.Search, params.SearchFields, params.Sort})
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/beanruntime/bean/internal/compiler"
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/definition"
+	"github.com/beanruntime/bean/internal/fault"
 	"github.com/beanruntime/bean/internal/kernel"
 	"github.com/beanruntime/bean/internal/migration"
 	"github.com/beanruntime/bean/internal/uid"
@@ -19,6 +20,7 @@ import (
 type Store struct {
 	DB         dbal.Database
 	Migrations migration.Executor
+	Inspector  migration.Inspector
 	Kernel     *kernel.Kernel
 	OpenAPI    func(*appir.App) (json.RawMessage, error)
 }
@@ -31,7 +33,13 @@ type Published struct {
 }
 
 func (s *Store) Initialize(ctx context.Context) error {
-	return s.Migrations.ExecuteMigration(ctx, migration.MetadataSchema())
+	if err := s.Migrations.ExecuteMigration(ctx, migration.MetadataSchema()); err != nil {
+		return err
+	}
+	if s.Inspector != nil {
+		return migration.UpgradeMetadata(ctx, s.Inspector, s.Migrations)
+	}
+	return nil
 }
 func (s *Store) EnsureApp(ctx context.Context, id, name string) error {
 	rows, e := s.DB.Select(ctx, dbal.Select{Table: "bean_app", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id}, Limit: 1})
@@ -120,6 +128,23 @@ func (s *Store) Validate(ctx context.Context, appID string) (compiler.Result, er
 	}
 	return compiler.Compile(appID, s.nextVersion(ctx, appID), defs), nil
 }
+
+func (s *Store) Preview(ctx context.Context, appID string) (compiler.Result, migration.Plan, error) {
+	result, err := s.Validate(ctx, appID)
+	if err != nil || len(result.Diagnostics) > 0 {
+		return result, migration.Plan{}, err
+	}
+	current, err := s.activeApp(ctx, appID)
+	if err != nil {
+		return result, migration.Plan{}, err
+	}
+	var old migration.Schema
+	if current != nil {
+		old = schemaOf(current)
+	}
+	plan, err := migration.Build(old, result.Schema)
+	return result, plan, err
+}
 func (s *Store) Publish(ctx context.Context, appID string) (Published, []definition.Diagnostic, error) {
 	r, e := s.Validate(ctx, appID)
 	if e != nil {
@@ -136,6 +161,13 @@ func (s *Store) Publish(ctx context.Context, appID string) (Published, []definit
 	plan, e := migration.Build(old, r.Schema)
 	if e != nil {
 		return Published{}, []definition.Diagnostic{{Kind: "Release", Name: appID, Path: "migration", Message: e.Error()}}, nil
+	}
+	applyPlan := plan
+	if s.Inspector != nil {
+		applyPlan, e = migration.Reconcile(ctx, s.Inspector, plan)
+		if e != nil {
+			return Published{}, nil, fmt.Errorf("reconcile interrupted migration: %w", e)
+		}
 	}
 	id := uid.New()
 	r.App.ReleaseID = id
@@ -155,12 +187,22 @@ func (s *Store) Publish(ctx context.Context, appID string) (Published, []definit
 	}
 	checkJSON, _ := json.Marshal(checksums)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if e = migration.Apply(ctx, s.Migrations, plan); e != nil {
+	if e = migration.Apply(ctx, s.Migrations, applyPlan); e != nil {
 		return Published{}, nil, fmt.Errorf("migration failed; previous release remains active: %w", e)
 	}
+	fault.Point("release.after_migration")
 	e = s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
+		active := dbal.And(dbal.Predicate{Op: dbal.OpEQ, Column: "app_id", Value: appID}, dbal.Predicate{Op: dbal.OpEQ, Column: "status", Value: "active"})
+		if _, e := tx.Update(ctx, dbal.Update{Table: "bean_release", Values: map[string]dbal.Value{"status": "inactive"}, Where: active}); e != nil {
+			return e
+		}
 		if _, e := tx.Insert(ctx, dbal.Insert{Table: "bean_release", Values: map[string]dbal.Value{"id": id, "app_id": appID, "version": r.App.Version, "checksums": string(checkJSON), "app_ir": string(appJSON), "migration_plan": string(planJSON), "openapi": string(r.App.OpenAPI), "created_at": now, "activated_at": now, "status": "active"}}); e != nil {
 			return e
+		}
+		for sequence, description := range plan.Descriptions {
+			if _, e := tx.Insert(ctx, dbal.Insert{Table: "bean_schema_migration", Values: map[string]dbal.Value{"release_id": id, "sequence": sequence, "description": description, "applied_at": now}}); e != nil {
+				return e
+			}
 		}
 		rows, e := tx.Select(ctx, dbal.Select{Table: "bean_active_release", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "app_id", Value: appID}, Limit: 1})
 		if e != nil {
@@ -176,6 +218,7 @@ func (s *Store) Publish(ctx context.Context, appID string) (Published, []definit
 	if e != nil {
 		return Published{}, nil, e
 	}
+	fault.Point("release.after_activation_commit")
 	if e = s.Kernel.Activate(r.App); e != nil {
 		return Published{}, nil, e
 	}
@@ -189,7 +232,63 @@ func (s *Store) LoadActive(ctx context.Context, appID string) error {
 	if a == nil {
 		return nil
 	}
+	if e = s.ValidateStorage(ctx, a); e != nil {
+		return e
+	}
 	return s.Kernel.Activate(a)
+}
+
+func (s *Store) ValidateStorage(ctx context.Context, app *appir.App) error {
+	if s.Inspector == nil {
+		return nil
+	}
+	tables, err := s.Inspector.Tables(ctx)
+	if err != nil {
+		return fmt.Errorf("inspect active release storage: %w", err)
+	}
+	physicalTables := map[string]bool{}
+	for _, table := range tables {
+		physicalTables[table] = true
+	}
+	for _, entity := range app.Entities {
+		if !physicalTables[entity.Name] {
+			return fmt.Errorf("active release %s requires missing table %s", app.ReleaseID, entity.Name)
+		}
+		columns, inspectErr := s.Inspector.Columns(ctx, entity.Name)
+		if inspectErr != nil {
+			return fmt.Errorf("inspect active release table %s: %w", entity.Name, inspectErr)
+		}
+		physicalColumns := map[string]bool{}
+		for _, column := range columns {
+			physicalColumns[column.Name] = true
+		}
+		required := []string{"id", "created_at", "updated_at", "version"}
+		for _, field := range entity.Fields {
+			if field.Relation != nil && (field.Relation.Kind == "one-to-many" || field.Relation.Kind == "many-to-many") {
+				join := entity.Name + "_" + field.Name
+				if !physicalTables[join] {
+					return fmt.Errorf("active release %s requires missing relation table %s", app.ReleaseID, join)
+				}
+				continue
+			}
+			required = append(required, field.Name)
+		}
+		if entity.Owner {
+			required = append(required, "owner_id")
+		}
+		if entity.Tenant {
+			required = append(required, "tenant_id")
+		}
+		if entity.SoftDelete {
+			required = append(required, "deleted_at")
+		}
+		for _, name := range required {
+			if !physicalColumns[name] {
+				return fmt.Errorf("active release %s requires missing column %s.%s", app.ReleaseID, entity.Name, name)
+			}
+		}
+	}
+	return nil
 }
 func (s *Store) activeApp(ctx context.Context, appID string) (*appir.App, error) {
 	rows, e := s.DB.Select(ctx, dbal.Select{Table: "bean_active_release", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "app_id", Value: appID}, Limit: 1})
@@ -197,8 +296,11 @@ func (s *Store) activeApp(ctx context.Context, appID string) (*appir.App, error)
 		return nil, e
 	}
 	rr, e := s.DB.Select(ctx, dbal.Select{Table: "bean_release", Columns: []string{"app_ir"}, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: rows[0]["release_id"]}, Limit: 1})
-	if e != nil || len(rr) == 0 {
+	if e != nil {
 		return nil, e
+	}
+	if len(rr) == 0 {
+		return nil, fmt.Errorf("active release pointer references missing release %v", rows[0]["release_id"])
 	}
 	var a appir.App
 	e = json.Unmarshal([]byte(fmt.Sprint(rr[0]["app_ir"])), &a)

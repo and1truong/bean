@@ -130,6 +130,21 @@ type Menu struct {
 }
 type MenuItem struct{ Label, Route, Policy string }
 type Job struct{ Name, Action string }
+type AdminList struct {
+	Columns, Search, Filters []string
+	Sort                     []Sort
+	PageSize                 int
+}
+type AdminForm struct {
+	Fields, Readonly []string
+}
+type AdminResource struct {
+	Name, Entity, Label, Description, LabelField   string
+	View, CreateAction, UpdateAction, DeleteAction string
+	List                                           AdminList
+	Form                                           AdminForm
+	Actions                                        []string
+}
 type App struct {
 	ReleaseID, AppID string
 	FormatVersion    string
@@ -145,11 +160,12 @@ type App struct {
 	Roles            map[string]Role
 	Menus            map[string]Menu
 	Jobs             map[string]Job
+	AdminResources   map[string]AdminResource
 	OpenAPI          json.RawMessage
 }
 
 func Empty() *App {
-	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}}
+	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, AdminResources: map[string]AdminResource{}}
 }
 func (a *App) ValidateFormat() error {
 	if a.FormatVersion != CurrentFormat {

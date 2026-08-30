@@ -13,6 +13,7 @@ definitions:
       sort: [{field: published_at, desc: true}]
       displays: {api: {type: json, route: /api/news}, feed: {type: rss, route: /news.rss}, export: {type: csv, route: /news.csv}}
   - {apiVersion: bean/v1alpha1, kind: Action, metadata: {name: publish_article}, spec: {entity: article, operation: transition, transitions: {draft: [published]}}}
+  - {apiVersion: bean/v1alpha1, kind: AdminResource, metadata: {name: article}, spec: {entity: article, description: Editorial content, labelField: title, list: {columns: [id, title, status, category_id, updated_at], search: [title, body], filters: [status, category_id], sort: [{field: updated_at, desc: true}], pageSize: 25}, actions: [publish_article]}}
   - {apiVersion: bean/v1alpha1, kind: Job, metadata: {name: scheduled_publish}, spec: {action: publish_article}}
   - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: news_list}, spec: {type: view, view: news}}
   - {apiVersion: bean/v1alpha1, kind: Panel, metadata: {name: news_panel}, spec: {layout: single-column, regions: [{name: main, blocks: [news_list]}]}}

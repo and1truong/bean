@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/beanruntime/bean/internal/dbal"
 )
 
 type Field struct {
@@ -25,11 +27,7 @@ type Plan struct {
 }
 type Inspector interface {
 	Tables(context.Context) ([]string, error)
-	Columns(context.Context, string) ([]Column, error)
-}
-type Column struct {
-	Name, LogicalType string
-	Nullable          bool
+	Columns(context.Context, string) ([]dbal.Column, error)
 }
 type Executor interface {
 	ExecuteMigration(context.Context, []string) error
@@ -147,7 +145,7 @@ func createTable(e Entity) (string, error) {
 		}
 	}
 	cols = append(cols, constraints...)
-	return `CREATE TABLE "` + e.Name + `" (` + strings.Join(cols, ",") + `)`, nil
+	return `CREATE TABLE IF NOT EXISTS "` + e.Name + `" (` + strings.Join(cols, ",") + `)`, nil
 }
 func addIndexes(p *Plan, e Entity) {
 	for i, fields := range e.Indexes {
@@ -190,7 +188,7 @@ func addIndex(p *Plan, entity string, fields []string, unique bool, n int) {
 		prefix, kind = "UNIQUE ", "unique constraint"
 	}
 	name := fmt.Sprintf("bean_%s_%d_%s", entity, n, strings.Join(fields, "_"))
-	p.Statements = append(p.Statements, "CREATE "+prefix+`INDEX "`+name+`" ON "`+entity+`" (`+strings.Join(quoted, ",")+")")
+	p.Statements = append(p.Statements, "CREATE "+prefix+`INDEX IF NOT EXISTS "`+name+`" ON "`+entity+`" (`+strings.Join(quoted, ",")+")")
 	p.Descriptions = append(p.Descriptions, "add "+kind+" "+name)
 }
 func addJoinTables(p *Plan, e Entity) {
@@ -213,7 +211,7 @@ func addJoinTable(p *Plan, entity string, field Field) {
 	if field.RelationKind == "one-to-many" {
 		uniqueTarget = `,UNIQUE("` + field.RelationEntity + `_id")`
 	}
-	statement := `CREATE TABLE "` + name + `" ("` + entity + `_id" TEXT NOT NULL,"` + field.RelationEntity + `_id" TEXT NOT NULL,PRIMARY KEY("` + entity + `_id","` + field.RelationEntity + `_id")` + uniqueTarget + `,FOREIGN KEY("` + entity + `_id") REFERENCES "` + entity + `"("id"),FOREIGN KEY("` + field.RelationEntity + `_id") REFERENCES "` + field.RelationEntity + `"("` + target + `"))`
+	statement := `CREATE TABLE IF NOT EXISTS "` + name + `" ("` + entity + `_id" TEXT NOT NULL,"` + field.RelationEntity + `_id" TEXT NOT NULL,PRIMARY KEY("` + entity + `_id","` + field.RelationEntity + `_id")` + uniqueTarget + `,FOREIGN KEY("` + entity + `_id") REFERENCES "` + entity + `"("id"),FOREIGN KEY("` + field.RelationEntity + `_id") REFERENCES "` + field.RelationEntity + `"("` + target + `"))`
 	p.Statements = append(p.Statements, statement)
 	p.Descriptions = append(p.Descriptions, "create many-to-many relation "+name)
 }
@@ -233,6 +231,38 @@ func sqlType(t string) (string, error) {
 func Apply(ctx context.Context, e Executor, p Plan) error {
 	return e.ExecuteMigration(ctx, p.Statements)
 }
+
+// Reconcile removes additive steps already visible in physical storage after an
+// interrupted publish. Other statements are intrinsically idempotent.
+func Reconcile(ctx context.Context, inspector Inspector, plan Plan) (Plan, error) {
+	out := Plan{}
+	for index, statement := range plan.Statements {
+		description := plan.Descriptions[index]
+		if strings.HasPrefix(description, "add field ") {
+			parts := strings.Split(strings.TrimPrefix(description, "add field "), ".")
+			if len(parts) != 2 {
+				return Plan{}, fmt.Errorf("invalid migration description %q", description)
+			}
+			columns, err := inspector.Columns(ctx, parts[0])
+			if err != nil {
+				return Plan{}, err
+			}
+			alreadyApplied := false
+			for _, column := range columns {
+				if column.Name == parts[1] {
+					alreadyApplied = true
+					break
+				}
+			}
+			if alreadyApplied {
+				continue
+			}
+		}
+		out.Statements = append(out.Statements, statement)
+		out.Descriptions = append(out.Descriptions, description)
+	}
+	return out, nil
+}
 func MetadataSchema() []string {
 	return []string{
 		`CREATE TABLE IF NOT EXISTS bean_app (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TEXT NOT NULL)`,
@@ -245,8 +275,54 @@ func MetadataSchema() []string {
 		`CREATE TABLE IF NOT EXISTS bean_user (id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,password_hash TEXT NOT NULL,roles TEXT NOT NULL,tenant_id TEXT,created_at TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS bean_session (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,csrf_token TEXT NOT NULL,expires_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES bean_user(id) ON DELETE CASCADE)`,
 		`CREATE TABLE IF NOT EXISTS bean_audit (id TEXT PRIMARY KEY,at TEXT NOT NULL,request_id TEXT,user_id TEXT,tenant_id TEXT,action TEXT NOT NULL,entity_type TEXT,entity_id TEXT,changed_fields TEXT,success INTEGER NOT NULL,error TEXT)`,
-		`CREATE TABLE IF NOT EXISTS bean_outbox (id TEXT PRIMARY KEY,topic TEXT NOT NULL,payload TEXT NOT NULL,created_at TEXT NOT NULL,delivered_at TEXT)`,
-		`CREATE TABLE IF NOT EXISTS bean_job (id TEXT PRIMARY KEY,name TEXT NOT NULL,run_at TEXT NOT NULL,status TEXT NOT NULL,payload TEXT NOT NULL,attempts INTEGER NOT NULL,retry_delay INTEGER NOT NULL,last_error TEXT,completed_at TEXT)`,
-		`CREATE TABLE IF NOT EXISTS bean_idempotency (action TEXT NOT NULL,key TEXT NOT NULL,result TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(action,key))`,
+		`CREATE TABLE IF NOT EXISTS bean_outbox (id TEXT PRIMARY KEY,topic TEXT NOT NULL,payload TEXT NOT NULL,created_at TEXT NOT NULL,delivered_at TEXT,status TEXT NOT NULL,attempts INTEGER NOT NULL,retry_delay INTEGER NOT NULL,max_attempts INTEGER NOT NULL,last_error TEXT,claim_token TEXT,claimed_at TEXT,next_attempt_at TEXT)`,
+		`CREATE TABLE IF NOT EXISTS bean_job (id TEXT PRIMARY KEY,name TEXT NOT NULL,run_at TEXT NOT NULL,status TEXT NOT NULL,payload TEXT NOT NULL,attempts INTEGER NOT NULL,retry_delay INTEGER NOT NULL,last_error TEXT,completed_at TEXT,claim_token TEXT,claimed_at TEXT,next_attempt_at TEXT,max_attempts INTEGER NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS bean_idempotency (action TEXT NOT NULL,key TEXT NOT NULL,input_hash TEXT NOT NULL,result TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(action,key))`,
 	}
+}
+
+// UpgradeMetadata adds columns introduced after the first metadata schema.
+// Each statement is committed independently so startup can safely resume it.
+func UpgradeMetadata(ctx context.Context, inspector Inspector, executor Executor) error {
+	upgrades := map[string][]struct {
+		name string
+		sql  string
+	}{
+		"bean_idempotency": {{"input_hash", `ALTER TABLE "bean_idempotency" ADD COLUMN "input_hash" TEXT`}},
+		"bean_job": {
+			{"claim_token", `ALTER TABLE "bean_job" ADD COLUMN "claim_token" TEXT`},
+			{"claimed_at", `ALTER TABLE "bean_job" ADD COLUMN "claimed_at" TEXT`},
+			{"next_attempt_at", `ALTER TABLE "bean_job" ADD COLUMN "next_attempt_at" TEXT`},
+			{"max_attempts", `ALTER TABLE "bean_job" ADD COLUMN "max_attempts" INTEGER NOT NULL DEFAULT 5`},
+		},
+		"bean_outbox": {
+			{"status", `ALTER TABLE "bean_outbox" ADD COLUMN "status" TEXT NOT NULL DEFAULT 'pending'`},
+			{"attempts", `ALTER TABLE "bean_outbox" ADD COLUMN "attempts" INTEGER NOT NULL DEFAULT 0`},
+			{"retry_delay", `ALTER TABLE "bean_outbox" ADD COLUMN "retry_delay" INTEGER NOT NULL DEFAULT 60`},
+			{"max_attempts", `ALTER TABLE "bean_outbox" ADD COLUMN "max_attempts" INTEGER NOT NULL DEFAULT 10`},
+			{"last_error", `ALTER TABLE "bean_outbox" ADD COLUMN "last_error" TEXT`},
+			{"claim_token", `ALTER TABLE "bean_outbox" ADD COLUMN "claim_token" TEXT`},
+			{"claimed_at", `ALTER TABLE "bean_outbox" ADD COLUMN "claimed_at" TEXT`},
+			{"next_attempt_at", `ALTER TABLE "bean_outbox" ADD COLUMN "next_attempt_at" TEXT`},
+		},
+	}
+	for table, candidates := range upgrades {
+		columns, err := inspector.Columns(ctx, table)
+		if err != nil {
+			return err
+		}
+		exists := map[string]bool{}
+		for _, column := range columns {
+			exists[column.Name] = true
+		}
+		for _, candidate := range candidates {
+			if exists[candidate.name] {
+				continue
+			}
+			if err = executor.ExecuteMigration(ctx, []string{candidate.sql}); err != nil {
+				return fmt.Errorf("upgrade metadata %s.%s: %w", table, candidate.name, err)
+			}
+		}
+	}
+	return nil
 }

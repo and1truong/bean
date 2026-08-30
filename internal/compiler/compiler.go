@@ -186,6 +186,14 @@ func Compile(appID string, version int, defs []definition.Definition) Result {
 			}
 			x.Name = d.Metadata.Name
 			a.Jobs[x.Name] = x
+		case "AdminResource":
+			var x appir.AdminResource
+			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
+				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
+				continue
+			}
+			x.Name = d.Metadata.Name
+			a.AdminResources[x.Name] = x
 		}
 	}
 	if len(r.Diagnostics) > 0 {
@@ -195,6 +203,7 @@ func Compile(appID string, version int, defs []definition.Definition) Result {
 		generate(a, name, entity)
 	}
 	normalizeActions(a)
+	normalizeAdminResources(a)
 	r.Diagnostics = append(r.Diagnostics, validate(a)...)
 	if len(r.Diagnostics) > 0 {
 		return r
@@ -775,6 +784,56 @@ func validate(a *appir.App) []definition.Diagnostic {
 			}
 		}
 	}
+	for name, resource := range a.AdminResources {
+		entity, ok := a.Entities[resource.Entity]
+		if !ok {
+			out = append(out, diagnostic("AdminResource", name, "spec.entity", "references missing Entity "+resource.Entity))
+			continue
+		}
+		viewDefinition, ok := a.Views[resource.View]
+		if !ok || viewDefinition.Entity != resource.Entity {
+			out = append(out, diagnostic("AdminResource", name, "spec.view", "must reference a View for Entity "+resource.Entity))
+			continue
+		}
+		fields := fieldSet(entity)
+		selected := map[string]bool{}
+		for _, field := range viewDefinition.Fields {
+			selected[field] = true
+		}
+		checkFields := func(path string, names []string, requireSelected bool) {
+			for _, field := range names {
+				if !fields[field] {
+					out = append(out, diagnostic("AdminResource", name, path, "references missing field "+field))
+				} else if requireSelected && !selected[field] {
+					out = append(out, diagnostic("AdminResource", name, path, "field "+field+" is not selected by View "+resource.View))
+				}
+			}
+		}
+		checkFields("spec.list.columns", resource.List.Columns, true)
+		checkFields("spec.list.search", resource.List.Search, true)
+		checkFields("spec.list.filters", resource.List.Filters, true)
+		checkFields("spec.form.fields", resource.Form.Fields, false)
+		checkFields("spec.form.readonly", resource.Form.Readonly, true)
+		checkFields("spec.labelField", []string{resource.LabelField}, true)
+		for _, order := range resource.List.Sort {
+			checkFields("spec.list.sort", []string{order.Field}, true)
+		}
+		if resource.List.PageSize < 1 || resource.List.PageSize > 200 {
+			out = append(out, diagnostic("AdminResource", name, "spec.list.pageSize", "must be between 1 and 200"))
+		}
+		for path, actionName := range map[string]string{"spec.createAction": resource.CreateAction, "spec.updateAction": resource.UpdateAction, "spec.deleteAction": resource.DeleteAction} {
+			action, exists := a.Actions[actionName]
+			if !exists || action.Entity != resource.Entity {
+				out = append(out, diagnostic("AdminResource", name, path, "must reference an Action for Entity "+resource.Entity))
+			}
+		}
+		for _, actionName := range resource.Actions {
+			action, exists := a.Actions[actionName]
+			if !exists || action.Entity != resource.Entity {
+				out = append(out, diagnostic("AdminResource", name, "spec.actions", "must reference Actions for Entity "+resource.Entity))
+			}
+		}
+	}
 	return out
 }
 
@@ -998,6 +1057,7 @@ func generate(a *appir.App, name string, e appir.Entity) {
 	for _, f := range e.Fields {
 		fields = append(fields, f.Name)
 	}
+	fields = append(fields, "created_at", "updated_at", "version")
 	if _, ok := a.Views[name+"_list"]; !ok {
 		a.Views[name+"_list"] = appir.View{Name: name + "_list", Entity: name, Fields: fields, Policy: e.Policy, DefaultLimit: 50, MaxLimit: 200}
 	}
@@ -1006,5 +1066,106 @@ func generate(a *appir.App, name string, e appir.Entity) {
 		if _, ok := a.Actions[n]; !ok {
 			a.Actions[n] = appir.Action{Name: n, Entity: name, Operation: op, Policy: e.Policy}
 		}
+	}
+	for _, resource := range a.AdminResources {
+		if resource.Entity == name {
+			return
+		}
+	}
+	a.AdminResources[name] = appir.AdminResource{Name: name, Entity: name}
+}
+
+func normalizeAdminResources(a *appir.App) {
+	for name, resource := range a.AdminResources {
+		entity, ok := a.Entities[resource.Entity]
+		if !ok {
+			continue
+		}
+		if resource.Label == "" {
+			resource.Label = entity.Label
+		}
+		if resource.View == "" {
+			resource.View = resource.Entity + "_list"
+		}
+		if resource.CreateAction == "" {
+			resource.CreateAction = resource.Entity + "_create"
+		}
+		if resource.UpdateAction == "" {
+			resource.UpdateAction = resource.Entity + "_update"
+		}
+		if resource.DeleteAction == "" {
+			resource.DeleteAction = resource.Entity + "_delete"
+		}
+		if resource.LabelField == "" {
+			resource.LabelField = "id"
+			for _, candidate := range []string{"title", "name", "email"} {
+				for _, field := range entity.Fields {
+					if field.Name == candidate {
+						resource.LabelField = candidate
+						break
+					}
+				}
+				if resource.LabelField != "id" {
+					break
+				}
+			}
+		}
+		if len(resource.List.Columns) == 0 {
+			resource.List.Columns = []string{"id"}
+			for i, field := range entity.Fields {
+				if i == 4 {
+					break
+				}
+				resource.List.Columns = append(resource.List.Columns, field.Name)
+			}
+			resource.List.Columns = append(resource.List.Columns, "updated_at")
+		}
+		if len(resource.List.Search) == 0 {
+			for _, field := range entity.Fields {
+				if field.Type == "string" || field.Type == "text" || field.Type == "richtext" || field.Type == "email" || field.Type == "url" {
+					resource.List.Search = append(resource.List.Search, field.Name)
+				}
+			}
+		}
+		if len(resource.List.Filters) == 0 {
+			for _, field := range entity.Fields {
+				if field.Type == "enum" || field.Type == "boolean" || field.Type == "relation" {
+					resource.List.Filters = append(resource.List.Filters, field.Name)
+				}
+			}
+		}
+		if resource.List.PageSize == 0 {
+			resource.List.PageSize = 25
+		}
+		if len(resource.Form.Fields) == 0 {
+			for _, field := range entity.Fields {
+				resource.Form.Fields = append(resource.Form.Fields, field.Name)
+			}
+		}
+		if len(resource.Form.Readonly) == 0 {
+			resource.Form.Readonly = []string{"created_at", "updated_at", "version"}
+		}
+		if resource.List.Columns == nil {
+			resource.List.Columns = []string{}
+		}
+		if resource.List.Search == nil {
+			resource.List.Search = []string{}
+		}
+		if resource.List.Filters == nil {
+			resource.List.Filters = []string{}
+		}
+		if resource.List.Sort == nil {
+			resource.List.Sort = []appir.Sort{}
+		}
+		if resource.Form.Fields == nil {
+			resource.Form.Fields = []string{}
+		}
+		if resource.Form.Readonly == nil {
+			resource.Form.Readonly = []string{}
+		}
+		if resource.Actions == nil {
+			resource.Actions = []string{}
+		}
+		a.AdminResources[name] = resource
 	}
 }

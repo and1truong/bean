@@ -31,6 +31,21 @@ func TestGeneratedCRUDUsesActionsAndViews(t *testing.T) {
 	if _, ok := r.App.Actions["book_create"]; !ok {
 		t.Fatal("generated Action missing")
 	}
+	admin, ok := r.App.AdminResources["book"]
+	if !ok || admin.View != "book_list" || admin.LabelField != "title" || admin.List.PageSize != 25 {
+		t.Fatalf("generated AdminResource=%+v", admin)
+	}
+}
+
+func TestAdminResourceReferencesAreValidated(t *testing.T) {
+	defs := []definition.Definition{
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "book"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "AdminResource", Metadata: definition.Metadata{Name: "library"}, Spec: map[string]any{"entity": "book", "labelField": "missing", "list": map[string]any{"columns": []any{"id", "missing"}, "pageSize": 500}}},
+	}
+	r := compiler.Compile("test", 1, defs)
+	if len(r.Diagnostics) < 2 {
+		t.Fatalf("expected AdminResource diagnostics, got %v", r.Diagnostics)
+	}
 }
 func TestRejectsUnknownFieldsAndUnimplementedSteps(t *testing.T) {
 	entity := definition.Definition{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "book"}, Spec: map[string]any{"fields": []any{}, "mystery": true}}

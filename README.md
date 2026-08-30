@@ -1,10 +1,10 @@
 # Bean
 
-Bean v0.2 alpha is a metadata-driven web application runtime. YAML or Studio definitions compile into a versioned immutable in-memory application, native SQLite tables, REST/OpenAPI operations, generated administration, and public React pages. The frontend and pure-Go SQLite driver ship in one executable.
+Bean v0.4 alpha is a compiled application runtime for developer-built operational web applications. YAML or typed visual Studio definitions compile into a versioned immutable application, native SQLite or PostgreSQL tables, REST/OpenAPI operations, a metadata-driven administration console, and public React pages. The frontend and SQLite driver ship in one executable.
 
 ```text
 Definitions -> validation -> additive migration -> immutable AppIR -> atomic activation
-HTTP -> policy -> View reads / Action writes -> typed DBAL -> SQLite
+HTTP -> policy -> View reads / Action writes -> typed DBAL -> SQLite/PostgreSQL
 Page -> Panel -> Block -> typed render tree -> embedded React registry
 ```
 
@@ -28,8 +28,15 @@ Runtime needs only `bin/bean` and one database:
 ./bin/bean serve --db ./bean.db --addr 127.0.0.1:8080
 ```
 
-Or run `./bin/bean demo --app cms --db ./tmp/cms.db --addr 127.0.0.1:8080`. Open `/`, `/admin`, `/studio`, `/docs`, or `/openapi.json`. Studio uses structured envelope fields and an advanced JSON specification editor; validate before publishing.
+PostgreSQL uses the same commands with `--database-url` or `BEAN_DATABASE_URL`:
 
-Core modules live under `internal/`: compilation/release, DBAL/SQLite/migrations, entity/field/View/Action, auth/policy, webform, render/page composition, OpenAPI/HTTP, audit/events/jobs, and embedded UI assets. Seven metadata-only examples live under `examples/`.
+```bash
+./bin/bean init --database-url 'postgres://bean:secret@db/bean?sslmode=require' --admin-email admin@example.test --admin-password change-this-password
+./bin/bean serve --database-url 'postgres://bean:secret@db/bean?sslmode=require' --addr 127.0.0.1:8080
+```
 
-Bean is not production-ready. Current limits are SQLite and one active application per database, one process, local authentication, safe additive migrations only, deterministic fake integrations, REST only, and no visual drag-and-drop builder. Production use additionally needs crash-recovery qualification, external security review, operational SLO/load work, and signed release engineering. The exact accepted metadata surface and its test evidence are listed in `docs/capabilities.md`.
+Or run `./bin/bean demo --app cms --db ./tmp/cms.db --addr 127.0.0.1:8080`. Open `/`, `/admin`, `/admin/system`, `/studio`, `/docs`, or `/openapi.json`. Admin provides application resources plus protected user, release, migration, job, outbox, and audit operations. Studio provides typed visual editors for the core definitions and a lossless advanced JSON escape hatch; validate and review the migration preview before publishing.
+
+Core modules live under `internal/`: compilation/release, DBAL/SQLite/PostgreSQL/migrations, entity/field/View/Action, auth/policy, webform, render/page composition, OpenAPI/HTTP, audit/events/jobs, and embedded UI assets. Seven metadata-only examples live under `examples/`.
+
+Bean is still alpha, not a blanket production-readiness claim. v0.4 qualifies single-process crash/restart on a functioning SQLite filesystem or PostgreSQL service, but excludes host loss, corruption, HA, multi-process writers, destructive migrations, backup/restore, external security certification, and SLO/load claims. Outbox delivery is at-least-once and consumers must be idempotent. The exact accepted surface and evidence are listed in `docs/capabilities.md`.

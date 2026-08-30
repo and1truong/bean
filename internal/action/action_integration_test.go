@@ -188,6 +188,27 @@ func TestTransactionRollbackAndIdempotentReplay(t *testing.T) {
 		t.Fatalf("failed transaction leaked a row: %v", orders)
 	}
 }
+
+func TestIdempotencyKeyRejectsDifferentInput(t *testing.T) {
+	db, app := runtime(t, "commerce")
+	defer db.Close()
+	engine := action.Service{DB: db}
+	product, err := engine.Execute(context.Background(), app, "product_create", map[string]any{"name": "Fingerprint", "price": 100, "inventory": 3}, admin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := "checkout-fingerprint"
+	if _, err = engine.Execute(context.Background(), app, "place_order", map[string]any{"product_id": product["id"], "quantity": 1, "_idempotencyKey": key}, admin()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = engine.Execute(context.Background(), app, "place_order", map[string]any{"product_id": product["id"], "quantity": 2, "_idempotencyKey": key}, admin()); !dbal.IsCode(err, dbal.Conflict) {
+		t.Fatalf("want conflict for reused key with different input, got %v", err)
+	}
+	orders, err := db.Select(context.Background(), dbal.Select{Table: "order", Columns: []string{"id"}, Limit: 10})
+	if err != nil || len(orders) != 1 {
+		t.Fatalf("orders=%v err=%v", orders, err)
+	}
+}
 func admin() beanctx.Request {
 	return beanctx.Request{User: &beanctx.User{ID: "00000000-0000-4000-8000-000000000001", Email: "admin@example.test", Roles: []string{"administrator"}}, RequestID: "test"}
 }

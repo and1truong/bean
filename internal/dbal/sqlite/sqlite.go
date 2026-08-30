@@ -22,7 +22,7 @@ func Open(path string) (*DB, error) {
 	}
 	d.SetMaxOpenConns(8)
 	d.SetMaxIdleConns(2)
-	for _, pragma := range []string{"PRAGMA foreign_keys=ON", "PRAGMA journal_mode=WAL", "PRAGMA busy_timeout=5000"} {
+	for _, pragma := range []string{"PRAGMA foreign_keys=ON", "PRAGMA journal_mode=WAL", "PRAGMA synchronous=FULL", "PRAGMA busy_timeout=5000"} {
 		if _, err = d.Exec(pragma); err != nil {
 			d.Close()
 			return nil, err

@@ -21,7 +21,7 @@ import (
 	"github.com/beanruntime/bean/internal/definition"
 )
 
-const version = "0.2.0-alpha"
+const version = "0.4.0-alpha"
 
 func main() {
 	if e := run(os.Args[1:]); e != nil {
@@ -66,6 +66,7 @@ func userCommand(args []string) error {
 	}
 	f := flag.NewFlagSet("user create", flag.ContinueOnError)
 	db := f.String("db", "bean.db", "SQLite database")
+	databaseURL := f.String("database-url", os.Getenv("BEAN_DATABASE_URL"), "database URL (PostgreSQL or SQLite)")
 	email := f.String("email", "", "user email")
 	password := f.String("password", "test-password", "user password")
 	roles := f.String("roles", "authenticated", "comma-separated roles")
@@ -76,7 +77,7 @@ func userCommand(args []string) error {
 	if *email == "" {
 		return fmt.Errorf("--email is required")
 	}
-	r, e := bootstrap.Open(context.Background(), *db, false)
+	r, e := bootstrap.OpenURL(context.Background(), databaseTarget(*db, *databaseURL), false)
 	if e != nil {
 		return e
 	}
@@ -86,12 +87,13 @@ func userCommand(args []string) error {
 func initCommand(args []string) error {
 	f := flag.NewFlagSet("init", flag.ContinueOnError)
 	db := f.String("db", "bean.db", "SQLite database")
+	databaseURL := f.String("database-url", os.Getenv("BEAN_DATABASE_URL"), "database URL (PostgreSQL or SQLite)")
 	email := f.String("admin-email", "admin@example.test", "administrator email")
 	password := f.String("admin-password", "test-password", "administrator password")
 	if e := f.Parse(args); e != nil {
 		return e
 	}
-	r, e := bootstrap.Open(context.Background(), *db, false)
+	r, e := bootstrap.OpenURL(context.Background(), databaseTarget(*db, *databaseURL), false)
 	if e != nil {
 		return e
 	}
@@ -104,12 +106,13 @@ func initCommand(args []string) error {
 func serveCommand(args []string) error {
 	f := flag.NewFlagSet("serve", flag.ContinueOnError)
 	db := f.String("db", "bean.db", "SQLite database")
+	databaseURL := f.String("database-url", os.Getenv("BEAN_DATABASE_URL"), "database URL (PostgreSQL or SQLite)")
 	addr := f.String("addr", "127.0.0.1:8080", "listen address")
 	secure := f.Bool("secure-cookie", false, "set Secure session cookies")
 	if e := f.Parse(args); e != nil {
 		return e
 	}
-	return serve(*db, *addr, *secure)
+	return serve(databaseTarget(*db, *databaseURL), *addr, *secure)
 }
 func serve(db, addr string, secure bool) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -215,6 +218,7 @@ func appCommand(args []string) error {
 	case "import":
 		f := flag.NewFlagSet("app import", flag.ContinueOnError)
 		db := f.String("db", "bean.db", "SQLite database")
+		databaseURL := f.String("database-url", os.Getenv("BEAN_DATABASE_URL"), "database URL (PostgreSQL or SQLite)")
 		file := f.String("file", "", "YAML bundle")
 		if e := f.Parse(args[1:]); e != nil {
 			return e
@@ -227,10 +231,11 @@ func appCommand(args []string) error {
 			return e
 		}
 		defer in.Close()
-		return importBundle(*db, in)
+		return importBundle(databaseTarget(*db, *databaseURL), in)
 	case "export":
 		f := flag.NewFlagSet("app export", flag.ContinueOnError)
 		db := f.String("db", "bean.db", "SQLite database")
+		databaseURL := f.String("database-url", os.Getenv("BEAN_DATABASE_URL"), "database URL (PostgreSQL or SQLite)")
 		file := f.String("file", "", "output YAML bundle")
 		if e := f.Parse(args[1:]); e != nil {
 			return e
@@ -238,7 +243,7 @@ func appCommand(args []string) error {
 		if *file == "" {
 			return fmt.Errorf("--file is required")
 		}
-		r, e := bootstrap.Open(context.Background(), *db, false)
+		r, e := bootstrap.OpenURL(context.Background(), databaseTarget(*db, *databaseURL), false)
 		if e != nil {
 			return e
 		}
@@ -273,12 +278,16 @@ func demoCommand(args []string) error {
 	f := flag.NewFlagSet("demo", flag.ContinueOnError)
 	name := f.String("app", "cms", "reference application")
 	db := f.String("db", filepath.Join("tmp", "demo.db"), "SQLite database")
+	databaseURL := f.String("database-url", os.Getenv("BEAN_DATABASE_URL"), "database URL (PostgreSQL or SQLite)")
 	addr := f.String("addr", "127.0.0.1:8080", "listen address")
 	if e := f.Parse(args); e != nil {
 		return e
 	}
-	if e := os.MkdirAll(filepath.Dir(*db), 0o755); e != nil {
-		return e
+	target := databaseTarget(*db, *databaseURL)
+	if *databaseURL == "" {
+		if e := os.MkdirAll(filepath.Dir(*db), 0o755); e != nil {
+			return e
+		}
 	}
 	file, e := examples.Open(*name)
 	if e != nil {
@@ -289,7 +298,7 @@ func demoCommand(args []string) error {
 	if e != nil {
 		return e
 	}
-	r, e := bootstrap.Open(context.Background(), *db, false)
+	r, e := bootstrap.OpenURL(context.Background(), target, false)
 	if e != nil {
 		return e
 	}
@@ -323,13 +332,21 @@ func demoCommand(args []string) error {
 	if e != nil {
 		return e
 	}
-	return serve(*db, *addr, false)
+	return serve(target, *addr, false)
 }
 func dbFlag(name string, args []string) (string, error) {
 	f := flag.NewFlagSet(name, flag.ContinueOnError)
 	db := f.String("db", "bean.db", "SQLite database")
+	databaseURL := f.String("database-url", os.Getenv("BEAN_DATABASE_URL"), "database URL (PostgreSQL or SQLite)")
 	if e := f.Parse(args); e != nil {
 		return "", e
 	}
-	return *db, nil
+	return databaseTarget(*db, *databaseURL), nil
+}
+
+func databaseTarget(path, databaseURL string) string {
+	if databaseURL != "" {
+		return databaseURL
+	}
+	return path
 }

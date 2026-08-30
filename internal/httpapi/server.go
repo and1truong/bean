@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/beanruntime/bean/internal/action"
+	"github.com/beanruntime/bean/internal/appir"
+	"github.com/beanruntime/bean/internal/audit"
 	"github.com/beanruntime/bean/internal/auth"
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/dbal"
@@ -55,12 +57,24 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/actions/{name}", s.action)
 	mux.HandleFunc("POST /api/webforms/{name}/submit", s.form)
 	mux.HandleFunc("GET /api/admin/definitions", s.definitions)
+	mux.HandleFunc("GET /api/admin/manifest", s.adminManifest)
+	mux.HandleFunc("GET /api/admin/resources/{name}", s.adminResourceList)
+	mux.HandleFunc("GET /api/admin/resources/{name}/{id}", s.adminResourceRecord)
 	mux.HandleFunc("POST /api/admin/definitions", s.saveDefinition)
 	mux.HandleFunc("PUT /api/admin/definitions/{id}", s.saveDefinition)
 	mux.HandleFunc("POST /api/admin/releases/validate", s.validate)
 	mux.HandleFunc("POST /api/admin/releases/publish", s.publish)
 	mux.HandleFunc("GET /api/admin/releases", s.releases)
 	mux.HandleFunc("GET /api/admin/audit", s.audit)
+	mux.HandleFunc("GET /api/admin/system/summary", s.systemSummary)
+	mux.HandleFunc("GET /api/admin/system/users", s.systemUsers)
+	mux.HandleFunc("POST /api/admin/system/users", s.systemCreateUser)
+	mux.HandleFunc("PUT /api/admin/system/users/{id}/roles", s.systemUpdateUser)
+	mux.HandleFunc("GET /api/admin/system/jobs", s.systemJobs)
+	mux.HandleFunc("POST /api/admin/system/jobs/{id}/{operation}", s.systemJobMutation)
+	mux.HandleFunc("GET /api/admin/system/outbox", s.systemOutbox)
+	mux.HandleFunc("POST /api/admin/system/outbox/{id}/{operation}", s.systemOutboxMutation)
+	mux.HandleFunc("GET /api/admin/system/migrations", s.systemMigrations)
 	mux.HandleFunc("/", s.fallback)
 	return s.logging(s.requestID(mux))
 }
@@ -91,6 +105,90 @@ func (s *Server) manifest(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	write(w, 200, map[string]any{"appId": a.AppID, "releaseId": a.ReleaseID, "version": a.Version, "entities": a.Entities, "views": a.Views, "actions": a.Actions, "webforms": a.Webforms, "pages": a.Pages})
+}
+func (s *Server) adminManifest(w http.ResponseWriter, r *http.Request) {
+	if !s.admin(w, r) {
+		return
+	}
+	a, ok := s.Kernel.Active()
+	if !ok {
+		problem(w, 503, "not_ready", "No active release.", requestID(r))
+		return
+	}
+	write(w, 200, map[string]any{"appId": a.AppID, "releaseId": a.ReleaseID, "version": a.Version, "entities": a.Entities, "views": a.Views, "actions": a.Actions, "adminResources": a.AdminResources})
+}
+func (s *Server) adminResourceList(w http.ResponseWriter, r *http.Request) {
+	if !s.admin(w, r) {
+		return
+	}
+	a, ok := s.Kernel.Active()
+	if !ok {
+		problem(w, 503, "not_ready", "No active release.", requestID(r))
+		return
+	}
+	resource, ok := a.AdminResources[r.PathValue("name")]
+	if !ok {
+		problem(w, 404, "not_found", "Admin resource not found.", requestID(r))
+		return
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit <= 0 || limit > resource.List.PageSize {
+		limit = resource.List.PageSize
+	}
+	exact := map[string]any{}
+	allowedFilters := stringSet(resource.List.Filters)
+	for key := range r.URL.Query() {
+		if !strings.HasPrefix(key, "filter.") {
+			continue
+		}
+		field := strings.TrimPrefix(key, "filter.")
+		if !allowedFilters[field] {
+			problem(w, 400, "invalid_query", "Filter is not configured for this admin resource.", requestID(r))
+			return
+		}
+		if value := r.URL.Query().Get(key); value != "" {
+			exact[field] = value
+		}
+	}
+	sortDefinitions := resource.List.Sort
+	if field := r.URL.Query().Get("sort"); field != "" {
+		if !stringSet(resource.List.Columns)[field] {
+			problem(w, 400, "invalid_query", "Sort field is not configured for this admin resource.", requestID(r))
+			return
+		}
+		sortDefinitions = []appir.Sort{{Field: field, Desc: r.URL.Query().Get("direction") == "desc"}}
+	}
+	result, e := s.Views.RunPage(r.Context(), a, resource.View, view.Params{ExactFilters: exact, Search: r.URL.Query().Get("q"), SearchFields: resource.List.Search, Sort: sortDefinitions, Limit: limit, Cursor: r.URL.Query().Get("cursor")}, s.ctx(r))
+	if e != nil {
+		respondError(w, r, e)
+		return
+	}
+	write(w, 200, map[string]any{"data": result.Rows, "nextCursor": result.NextCursor})
+}
+func (s *Server) adminResourceRecord(w http.ResponseWriter, r *http.Request) {
+	if !s.admin(w, r) {
+		return
+	}
+	a, ok := s.Kernel.Active()
+	if !ok {
+		problem(w, 503, "not_ready", "No active release.", requestID(r))
+		return
+	}
+	resource, ok := a.AdminResources[r.PathValue("name")]
+	if !ok {
+		problem(w, 404, "not_found", "Admin resource not found.", requestID(r))
+		return
+	}
+	result, e := s.Views.RunPage(r.Context(), a, resource.View, view.Params{RecordID: r.PathValue("id"), Limit: 1}, s.ctx(r))
+	if e != nil {
+		respondError(w, r, e)
+		return
+	}
+	if len(result.Rows) == 0 {
+		problem(w, 404, "not_found", "Record not found.", requestID(r))
+		return
+	}
+	write(w, 200, map[string]any{"data": result.Rows[0]})
 }
 func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 	c, session, ok := s.requestContext(r)
@@ -239,12 +337,12 @@ func (s *Server) validate(w http.ResponseWriter, r *http.Request) {
 	if !s.adminMutation(w, r) {
 		return
 	}
-	result, e := s.Store.Validate(r.Context(), "default")
+	result, migrationPlan, e := s.Store.Preview(r.Context(), "default")
 	if e != nil {
 		respondError(w, r, e)
 		return
 	}
-	write(w, 200, map[string]any{"valid": len(result.Diagnostics) == 0, "diagnostics": result.Diagnostics, "schema": result.Schema})
+	write(w, 200, map[string]any{"valid": len(result.Diagnostics) == 0, "diagnostics": result.Diagnostics, "schema": result.Schema, "migration": migrationPlan})
 }
 func (s *Server) publish(w http.ResponseWriter, r *http.Request) {
 	if !s.adminMutation(w, r) {
@@ -276,12 +374,191 @@ func (s *Server) audit(w http.ResponseWriter, r *http.Request) {
 	if !s.admin(w, r) {
 		return
 	}
-	rows, e := s.Actions.DB.Select(r.Context(), dbal.Select{Table: "bean_audit", OrderBy: []dbal.Order{{Column: "at", Desc: true}}, Limit: 200})
+	predicates := []dbal.Predicate{}
+	for query, column := range map[string]string{"entity": "entity_type", "id": "entity_id"} {
+		if value := r.URL.Query().Get(query); value != "" {
+			predicates = append(predicates, dbal.Predicate{Op: dbal.OpEQ, Column: column, Value: value})
+		}
+	}
+	var where *dbal.Predicate
+	if len(predicates) == 1 {
+		where = &predicates[0]
+	} else if len(predicates) > 1 {
+		combined := dbal.And(predicates...)
+		where = &combined
+	}
+	rows, e := s.Actions.DB.Select(r.Context(), dbal.Select{Table: "bean_audit", Where: where, OrderBy: []dbal.Order{{Column: "at", Desc: true}}, Limit: 200})
 	if e != nil {
 		respondError(w, r, e)
 		return
 	}
 	write(w, 200, rows)
+}
+
+func (s *Server) systemSummary(w http.ResponseWriter, r *http.Request) {
+	if !s.admin(w, r) {
+		return
+	}
+	app, active := s.Kernel.Active()
+	jobs, err := s.Actions.DB.Select(r.Context(), dbal.Select{Table: "bean_job", Columns: []string{"status", "claimed_at"}, Limit: 10000})
+	if err != nil {
+		respondError(w, r, err)
+		return
+	}
+	outbox, err := s.Actions.DB.Select(r.Context(), dbal.Select{Table: "bean_outbox", Columns: []string{"status", "claimed_at"}, Limit: 10000})
+	if err != nil {
+		respondError(w, r, err)
+		return
+	}
+	releaseID, version := "", 0
+	if active {
+		releaseID, version = app.ReleaseID, app.Version
+	}
+	write(w, 200, map[string]any{"releaseId": releaseID, "version": version, "jobs": statusCounts(jobs), "outbox": statusCounts(outbox)})
+}
+
+func (s *Server) systemUsers(w http.ResponseWriter, r *http.Request) {
+	if !s.admin(w, r) {
+		return
+	}
+	rows, err := s.Actions.DB.Select(r.Context(), dbal.Select{Table: "bean_user", Columns: []string{"id", "email", "roles", "tenant_id", "created_at"}, OrderBy: []dbal.Order{{Column: "email"}}, Limit: 500})
+	if err != nil {
+		respondError(w, r, err)
+		return
+	}
+	write(w, 200, rows)
+}
+
+func (s *Server) systemCreateUser(w http.ResponseWriter, r *http.Request) {
+	if !s.adminMutation(w, r) {
+		return
+	}
+	var input struct {
+		Email    string   `json:"email"`
+		Password string   `json:"password"`
+		Roles    []string `json:"roles"`
+		TenantID string   `json:"tenantId"`
+	}
+	if !decode(w, r, &input) {
+		return
+	}
+	if err := s.Auth.Create(r.Context(), input.Email, input.Password, input.Roles, input.TenantID); err != nil {
+		respondError(w, r, err)
+		return
+	}
+	if err := s.Actions.DB.Transaction(r.Context(), func(tx dbal.Transaction) error {
+		return audit.Write(r.Context(), tx, audit.Entry{RequestID: requestID(r), UserID: s.ctx(r).User.ID, Action: "system_user_create", EntityType: "bean_user", Changed: []string{"email", "roles", "tenant_id"}, Success: true})
+	}); err != nil {
+		respondError(w, r, err)
+		return
+	}
+	write(w, 201, map[string]bool{"ok": true})
+}
+
+func (s *Server) systemUpdateUser(w http.ResponseWriter, r *http.Request) {
+	if !s.adminMutation(w, r) {
+		return
+	}
+	var input struct {
+		Roles    []string `json:"roles"`
+		TenantID string   `json:"tenantId"`
+	}
+	if !decode(w, r, &input) {
+		return
+	}
+	roles, _ := json.Marshal(input.Roles)
+	err := s.Actions.DB.Transaction(r.Context(), func(tx dbal.Transaction) error {
+		if _, updateErr := tx.Update(r.Context(), dbal.Update{Table: "bean_user", Values: map[string]dbal.Value{"roles": string(roles), "tenant_id": nullable(input.TenantID)}, Where: dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: r.PathValue("id")}, ExpectedRows: 1}); updateErr != nil {
+			return updateErr
+		}
+		return audit.Write(r.Context(), tx, audit.Entry{RequestID: requestID(r), UserID: s.ctx(r).User.ID, Action: "system_user_roles_update", EntityType: "bean_user", EntityID: r.PathValue("id"), Changed: []string{"roles", "tenant_id"}, Success: true})
+	})
+	if err != nil {
+		respondError(w, r, err)
+		return
+	}
+	write(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) systemJobs(w http.ResponseWriter, r *http.Request) {
+	s.systemRows(w, r, "bean_job", []string{"id", "name", "run_at", "status", "attempts", "max_attempts", "next_attempt_at", "claimed_at", "last_error", "completed_at"}, "run_at")
+}
+
+func (s *Server) systemOutbox(w http.ResponseWriter, r *http.Request) {
+	s.systemRows(w, r, "bean_outbox", []string{"id", "topic", "created_at", "status", "attempts", "max_attempts", "next_attempt_at", "claimed_at", "last_error", "delivered_at"}, "created_at")
+}
+
+func (s *Server) systemMigrations(w http.ResponseWriter, r *http.Request) {
+	s.systemRows(w, r, "bean_schema_migration", []string{"release_id", "sequence", "description", "applied_at"}, "applied_at")
+}
+
+func (s *Server) systemRows(w http.ResponseWriter, r *http.Request, table string, columns []string, order string) {
+	if !s.admin(w, r) {
+		return
+	}
+	rows, err := s.Actions.DB.Select(r.Context(), dbal.Select{Table: table, Columns: columns, OrderBy: []dbal.Order{{Column: order, Desc: true}}, Limit: 500})
+	if err != nil {
+		respondError(w, r, err)
+		return
+	}
+	write(w, 200, rows)
+}
+
+func (s *Server) systemJobMutation(w http.ResponseWriter, r *http.Request) {
+	s.systemQueueMutation(w, r, "bean_job")
+}
+
+func (s *Server) systemOutboxMutation(w http.ResponseWriter, r *http.Request) {
+	s.systemQueueMutation(w, r, "bean_outbox")
+}
+
+func (s *Server) systemQueueMutation(w http.ResponseWriter, r *http.Request, table string) {
+	if !s.adminMutation(w, r) {
+		return
+	}
+	operation := r.PathValue("operation")
+	if operation != "retry" && operation != "cancel" {
+		problem(w, 404, "not_found", "System operation not found.", requestID(r))
+		return
+	}
+	eligible := dbal.Predicate{Op: dbal.OpEQ, Column: "status", Value: "failed"}
+	values := map[string]dbal.Value{"claim_token": nil, "claimed_at": nil}
+	if operation == "retry" {
+		values["status"] = "pending"
+		values["attempts"] = 0
+		values["last_error"] = nil
+		values["next_attempt_at"] = time.Now().UTC().Format(time.RFC3339Nano)
+	} else {
+		eligible = dbal.Or(eligible, dbal.Predicate{Op: dbal.OpEQ, Column: "status", Value: "pending"})
+		values["status"] = "canceled"
+	}
+	where := dbal.And(dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: r.PathValue("id")}, eligible)
+	err := s.Actions.DB.Transaction(r.Context(), func(tx dbal.Transaction) error {
+		if _, updateErr := tx.Update(r.Context(), dbal.Update{Table: table, Values: values, Where: where, ExpectedRows: 1}); updateErr != nil {
+			return updateErr
+		}
+		return audit.Write(r.Context(), tx, audit.Entry{RequestID: requestID(r), UserID: s.ctx(r).User.ID, Action: "system_" + strings.TrimPrefix(table, "bean_") + "_" + operation, EntityType: table, EntityID: r.PathValue("id"), Changed: []string{"status"}, Success: true})
+	})
+	if err != nil {
+		respondError(w, r, err)
+		return
+	}
+	write(w, 200, map[string]bool{"ok": true})
+}
+
+func statusCounts(rows []dbal.Row) map[string]int {
+	counts := map[string]int{}
+	for _, row := range rows {
+		counts[fmt.Sprint(row["status"])]++
+	}
+	return counts
+}
+
+func nullable(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }
 func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 	a, ok := s.Kernel.Active()
@@ -485,6 +762,13 @@ func role(roles []string, want string) bool {
 		}
 	}
 	return false
+}
+func stringSet(values []string) map[string]bool {
+	out := map[string]bool{}
+	for _, value := range values {
+		out[value] = true
+	}
+	return out
 }
 func queryMap(r *http.Request) map[string]any {
 	m := map[string]any{}

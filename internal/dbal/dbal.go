@@ -9,13 +9,15 @@ import (
 type ErrorCode string
 
 const (
-	Conflict            ErrorCode = "conflict"
-	UniqueViolation     ErrorCode = "unique_violation"
-	ForeignKeyViolation ErrorCode = "foreign_key_violation"
-	NotFound            ErrorCode = "not_found"
-	Busy                ErrorCode = "busy"
-	InvalidQuery        ErrorCode = "invalid_query"
-	Internal            ErrorCode = "internal"
+	Conflict             ErrorCode = "conflict"
+	UniqueViolation      ErrorCode = "unique_violation"
+	ForeignKeyViolation  ErrorCode = "foreign_key_violation"
+	NotFound             ErrorCode = "not_found"
+	Busy                 ErrorCode = "busy"
+	SerializationFailure ErrorCode = "serialization_failure"
+	Unavailable          ErrorCode = "unavailable"
+	InvalidQuery         ErrorCode = "invalid_query"
+	Internal             ErrorCode = "internal"
 )
 
 type Error struct {

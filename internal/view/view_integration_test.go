@@ -56,6 +56,10 @@ func TestCompiledQueryPlanAndOpaqueCursor(t *testing.T) {
 	if _, e = service.RunPage(ctx, app, "books", view.Params{Cursor: "not-a-cursor"}, beanctx.Request{}); !dbal.IsCode(e, dbal.InvalidQuery) {
 		t.Fatalf("malformed cursor accepted: %v", e)
 	}
+	filtered, e := service.RunPage(ctx, app, "books", view.Params{Search: "bet", SearchFields: []string{"title"}, ExactFilters: map[string]any{"title": "Beta"}, Sort: []appir.Sort{{Field: "title", Desc: true}}}, beanctx.Request{})
+	if e != nil || len(filtered.Rows) != 1 || filtered.Rows[0]["id"] != "b2" {
+		t.Fatalf("admin query rows=%v err=%v", filtered.Rows, e)
+	}
 }
 
 func TestTenantIsolationInjectedIntoView(t *testing.T) {
