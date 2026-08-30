@@ -49,8 +49,8 @@ test('complete blog editorial, identity, and moderation journey',async({page,bea
 
   await page.goto(bean.baseURL+'/admin/post')
   await page.getByRole('link',{name:/Bean ships/}).click()
-  page.once('dialog',dialog=>dialog.accept())
   await page.getByRole('button',{name:'Run for 1'}).click()
+  await page.getByRole('button',{name:'Confirm action'}).click()
   await expect(page.getByRole('status')).toContainText('Action completed')
   await expect(page.locator('.history').getByText('Publish post')).toBeVisible()
   await page.goto(bean.baseURL+'/posts/bean-ships')
@@ -63,8 +63,8 @@ test('complete blog editorial, identity, and moderation journey',async({page,bea
   expect(await (await page.request.get(bean.baseURL+'/rss.xml')).text()).toContain('Bean ships')
 
   const otherPostID=await createPost('Other post','other-post','Other post body.')
-  page.once('dialog',dialog=>dialog.accept())
   await page.getByRole('button',{name:'Run for 1'}).click()
+  await page.getByRole('button',{name:'Confirm action'}).click()
   await expect(page.getByRole('status')).toContainText('Action completed')
 
   await page.getByRole('button',{name:'Sign out'}).click()
@@ -100,8 +100,8 @@ test('complete blog editorial, identity, and moderation journey',async({page,bea
   await expect(page.getByText('Thoughtful member comment')).toBeVisible()
   await expect(page.getByText('Other post comment')).toHaveCount(0)
   await page.getByRole('checkbox',{name:'Select Ada Member'}).check()
-  page.once('dialog',dialog=>dialog.accept())
   await page.getByRole('button',{name:'Run for 1'}).click()
+  await page.getByRole('button',{name:'Confirm action'}).click()
   await expect(page.getByText('Thoughtful member comment')).toHaveCount(0)
   await page.getByLabel('Status').selectOption('approved')
   await expect(page.getByText('Thoughtful member comment')).toBeVisible()

@@ -1,6 +1,6 @@
 # Bean
 
-Bean v0.5 alpha is a compiled application runtime for developer-built operational web applications. YAML or typed visual Studio definitions compile into a versioned immutable application, native SQLite or PostgreSQL tables, REST/OpenAPI operations, a metadata-driven administration console, and public React pages. The frontend and SQLite driver ship in one executable.
+Bean v0.5 alpha is a compiled application runtime for developer-built operational web applications. YAML or typed visual Studio definitions compile into a versioned immutable application, native SQLite or PostgreSQL tables, REST/OpenAPI operations, a metadata-driven administration console, and public React pages. Bean-owned UI surfaces use checked-in shadcn/ui components with shared design tokens. The frontend and SQLite driver ship in one executable.
 
 ```text
 Definitions -> validation -> additive migration -> immutable AppIR -> atomic activation

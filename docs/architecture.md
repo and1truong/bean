@@ -1,6 +1,6 @@
 # Architecture
 
-Bean is a modular Go monolith with an embedded React application and a selected SQLite or PostgreSQL database.
+Bean is a modular Go monolith with an embedded React application and a selected SQLite or PostgreSQL database. Every Bean-owned React surface composes checked-in shadcn/ui primitives with Tailwind and shared Bean tokens; the optimized result remains an embedded asset bundle rather than a runtime frontend service.
 
 ```text
 YAML / typed visual Studio -> canonical definitions -> validation
@@ -20,7 +20,7 @@ SQLite uses foreign keys, WAL, `synchronous=FULL`, and a bounded busy timeout. P
 
 Actions own validation, authorization, domain writes, optimistic checks, audit, outbox intents, jobs, and idempotency in one database transaction. An idempotency record stores the canonical input hash and result. Jobs and outbox records are claimed with persisted tokens and timestamps, executed outside the claim transaction, and finalized only by the current token owner. Expired claims return to pending. A crash after an external delivery but before finalization can duplicate it, so delivery is explicitly at-least-once.
 
-The application Admin is metadata-driven rather than a raw-table editor: AdminResources select a compiled View, CRUD Actions, list/form fields, and domain Actions. The separate System section exposes only curated operational columns. User-role changes and eligible queue retry/cancel mutations require administrator authentication, CSRF, confirmation in the UI, affected-row checks, and audit records; password hashes and session secrets are never selected.
+The application Admin is metadata-driven rather than a raw-table editor: AdminResources select a compiled View, CRUD Actions, list/form fields, and domain Actions. Its shadcn Table and form components preserve server-driven query and mutation semantics rather than introducing a client-side data model. The separate System section exposes only curated operational columns. User-role changes and eligible queue retry/cancel mutations require administrator authentication, CSRF, confirmation in the UI, affected-row checks, and audit records; password hashes and session secrets are never selected.
 
 Studio visual editors mutate the normal definition `spec` for Entity, View, Action, Policy, and AdminResource. Reference choices come from current draft definitions. The advanced JSON view reads and writes the same object, so there is no second visual metadata format and supported fields survive round trips. Validate returns compiler diagnostics, target schema, and migration preview before publish.
 

@@ -1,4 +1,4 @@
-import {render,screen} from '@testing-library/react'
+import {fireEvent,render,screen} from '@testing-library/react'
 import {afterEach,describe,expect,it,vi} from 'vitest'
 import {MemoryRouter} from 'react-router-dom'
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query'
@@ -32,7 +32,11 @@ describe('Admin',()=>{
 	show('/system')
 	expect(await screen.findByRole('heading',{name:'System'})).toBeInTheDocument()
 	expect(await screen.findByText('operator@example.test')).toBeInTheDocument()
-	expect(screen.getByRole('button',{name:'Retry'})).toBeInTheDocument()
+	const retry=screen.getByRole('button',{name:'Retry'})
+	expect(retry).toBeInTheDocument()
+	fireEvent.click(retry)
+	expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+	expect(screen.getByRole('button',{name:'Confirm retry'})).toBeInTheDocument()
 	expect(screen.queryByText(/password_hash|csrf_token/)).not.toBeInTheDocument()
   })
 })
