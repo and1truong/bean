@@ -125,8 +125,12 @@ func testBlogSecurityAndWorkflowContract(t *testing.T, databaseURL string) {
 		t.Fatalf("unsafe signup response status=%d body=%s", signup.Code, signup.Body.String())
 	}
 	replay := serveWithHeaders(t, handler, http.MethodPost, signupPath, map[string]any{"display_name": "Ada Member", "email": " ADA@EXAMPLE.TEST ", "password": password, "password_confirmation": password}, nil, "", map[string]string{"Idempotency-Key": "signup-ada"})
-	if replay.Code != http.StatusOK || replay.Body.String() != signup.Body.String() {
-		t.Fatalf("signup replay status=%d body=%s", replay.Code, replay.Body.String())
+	if replay.Code != http.StatusConflict {
+		t.Fatalf("registration unexpectedly used generic idempotency: status=%d body=%s", replay.Code, replay.Body.String())
+	}
+	registrationKeys, keyErr := runtime.DB.Select(ctx, dbal.Select{Table: "bean_idempotency", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "action", Value: "register_member"}, Limit: 1})
+	if keyErr != nil || len(registrationKeys) != 0 {
+		t.Fatalf("registration fingerprint persisted: rows=%v err=%v", registrationKeys, keyErr)
 	}
 	escalation := serve(t, handler, http.MethodPost, "/api/actions/register_member", map[string]any{"display_name": "Mallory", "email": "mallory@example.test", "password": password, "password_confirmation": password, "roles": []any{"administrator"}}, nil, "")
 	if escalation.Code != http.StatusBadRequest {

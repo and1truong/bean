@@ -58,12 +58,17 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 		}
 	}
 	idempotencyKey, _ := input["_idempotencyKey"].(string)
+	if a.Operation == "register_local_user" {
+		idempotencyKey = ""
+	}
+	inputHash := ""
 	if idempotencyKey != "" {
 		idempotencyKey = scopedIdempotencyKey(idempotencyKey, request)
-	}
-	inputHash, fingerprintErr := fingerprint(input)
-	if fingerprintErr != nil {
-		return nil, &dbal.Error{Code: dbal.InvalidQuery, Message: "Action input cannot be fingerprinted", Cause: fingerprintErr}
+		var fingerprintErr error
+		inputHash, fingerprintErr = fingerprint(input)
+		if fingerprintErr != nil {
+			return nil, &dbal.Error{Code: dbal.InvalidQuery, Message: "Action input cannot be fingerprinted", Cause: fingerprintErr}
+		}
 	}
 	if idempotencyKey != "" {
 		if replay, found, er := s.replay(ctx, name, idempotencyKey, inputHash); er != nil {

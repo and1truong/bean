@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/beanruntime/bean/internal/appir"
+	"github.com/beanruntime/bean/internal/expr"
 )
 
 func TestClientIPIgnoresForwardingHeadersUnlessConfigured(t *testing.T) {
@@ -50,6 +51,16 @@ func TestBoundBlockInputsEnforceEnclosingPageAndPanelPolicies(t *testing.T) {
 	app.Panels["private"] = panelDefinition
 	if _, _, err := server.boundBlockInputs(request, app, "view", "items"); err == nil {
 		t.Fatal("bound request bypassed Panel policy")
+	}
+	panelDefinition.Policy = ""
+	app.Panels["private"] = panelDefinition
+	app.Policies["route_sensitive"] = appir.Policy{Name: "route_sensitive", Condition: &expr.Expr{Op: "ne", Left: &expr.Value{Source: "route", Name: "id"}, Right: &expr.Value{Source: "literal", Literal: ""}}}
+	pageDefinition.Route = "/private/:id"
+	pageDefinition.Policy = "route_sensitive"
+	app.Pages["private"] = pageDefinition
+	dynamicRequest := httptest.NewRequest("GET", "/api/views/items?_page=%2Fprivate%2Fone&_block=items", nil)
+	if _, _, err := server.boundBlockInputs(dynamicRequest, app, "view", "items"); err == nil {
+		t.Fatal("bound request evaluated Page policy after resolving route context")
 	}
 }
 

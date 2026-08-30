@@ -714,6 +714,9 @@ func (s *Server) boundBlockInputs(r *http.Request, a *appir.App, kind, target st
 	if !matched {
 		return nil, requestContext, fmt.Errorf("bound page was not found")
 	}
+	if p.Policy != "" && !policy.Can(a.Policies[p.Policy], false, requestContext, nil) {
+		return nil, requestContext, fmt.Errorf("bound page is unavailable")
+	}
 	found := false
 	for _, region := range a.Panels[p.Panel].Regions {
 		for _, candidate := range region.Blocks {
@@ -737,7 +740,7 @@ func (s *Server) boundBlockInputs(r *http.Request, a *appir.App, kind, target st
 	requestContext.RouteParams = routeParams
 	requestContext.Values = contextValues
 	panelDefinition := a.Panels[p.Panel]
-	if p.Policy != "" && !policy.Can(a.Policies[p.Policy], false, requestContext, nil) || panelDefinition.Policy != "" && !policy.Can(a.Policies[panelDefinition.Policy], false, requestContext, nil) {
+	if panelDefinition.Policy != "" && !policy.Can(a.Policies[panelDefinition.Policy], false, requestContext, nil) {
 		return nil, requestContext, fmt.Errorf("bound page is unavailable")
 	}
 	node, allowed, err := block.Node(a, definition, contextValues, requestContext)
