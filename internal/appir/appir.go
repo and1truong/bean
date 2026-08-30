@@ -12,6 +12,7 @@ const CurrentFormat = "bean/appir/v1"
 type Field struct {
 	Name, Label, Type string
 	Required, Unique  bool
+	Sensitive         bool
 	Options           []string
 	Relation          *Relation
 }
@@ -23,6 +24,11 @@ type Entity struct {
 	Indexes, Unique           [][]string
 }
 type Display struct{ Type, Route string }
+type FilterStep struct{ Type string }
+type Filter struct {
+	Name  string
+	Steps []FilterStep
+}
 type View struct {
 	Name, Entity           string
 	Fields                 []string
@@ -30,6 +36,7 @@ type View struct {
 	Filter                 *expr.Expr
 	ContextFilter          *expr.Expr
 	ExposedFilters         map[string]Field
+	FieldFilters           map[string]string
 	Sort                   []Sort
 	GroupBy                []string
 	Aggregates             []Aggregate
@@ -47,12 +54,15 @@ type Sort struct {
 }
 type Action struct {
 	Name, Entity, Operation, Policy string
+	DefaultRole                     string
+	Confirm                         string
 	StateField                      string
 	Input                           map[string]Field
 	Output                          map[string]Field
 	Steps                           []Step
 	Transitions                     map[string][]string
 }
+type LocalRegistration struct{ Action, Route string }
 type Step struct {
 	Op, Result string
 	Entity     string
@@ -100,9 +110,16 @@ type Webform struct {
 	Confirmation string
 }
 type Block struct {
-	Name, Type, View, Entity, Webform, Action, Menu, Text, Policy string
-	Inputs                                                        map[string]Field
-	Bindings                                                      map[string]ContextBinding
+	Name, Type, View, Entity, Webform, Action, Menu, Text, Policy, Resource string
+	Inputs                                                                  map[string]Field
+	Bindings                                                                map[string]ContextBinding
+	Filters                                                                 []string
+	DefaultFilters                                                          map[string]any
+	Presentation                                                            ViewPresentation
+}
+type ViewPresentation struct {
+	Mode, TitleField, BodyField, LinkRoute, LinkField, EmptyState string
+	MetaFields, RichTextFields                                    []string
 }
 type Region struct {
 	Name   string
@@ -146,26 +163,28 @@ type AdminResource struct {
 	Actions                                        []string
 }
 type App struct {
-	ReleaseID, AppID string
-	FormatVersion    string
-	Version          int
-	Entities         map[string]Entity
-	Views            map[string]View
-	Actions          map[string]Action
-	Policies         map[string]Policy
-	Webforms         map[string]Webform
-	Blocks           map[string]Block
-	Panels           map[string]Panel
-	Pages            map[string]Page
-	Roles            map[string]Role
-	Menus            map[string]Menu
-	Jobs             map[string]Job
-	AdminResources   map[string]AdminResource
-	OpenAPI          json.RawMessage
+	ReleaseID, AppID  string
+	FormatVersion     string
+	Version           int
+	Entities          map[string]Entity
+	Views             map[string]View
+	Actions           map[string]Action
+	Policies          map[string]Policy
+	Webforms          map[string]Webform
+	Blocks            map[string]Block
+	Panels            map[string]Panel
+	Pages             map[string]Page
+	Roles             map[string]Role
+	Menus             map[string]Menu
+	Jobs              map[string]Job
+	Filters           map[string]Filter
+	AdminResources    map[string]AdminResource
+	LocalRegistration *LocalRegistration
+	OpenAPI           json.RawMessage
 }
 
 func Empty() *App {
-	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, AdminResources: map[string]AdminResource{}}
+	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
 }
 func (a *App) ValidateFormat() error {
 	if a.FormatVersion != CurrentFormat {

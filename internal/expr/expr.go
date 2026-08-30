@@ -21,6 +21,41 @@ type Expr struct {
 	Args  []Expr `json:"args,omitempty" yaml:"args,omitempty"`
 }
 
+// BindContext resolves server-owned expression values while preserving input values
+// for evaluation as a form changes in the browser.
+func BindContext(e Expr, c beanctx.Request) (Expr, error) {
+	bound := e
+	bound.Args = make([]Expr, len(e.Args))
+	for i, argument := range e.Args {
+		var err error
+		bound.Args[i], err = BindContext(argument, c)
+		if err != nil {
+			return Expr{}, err
+		}
+	}
+	var err error
+	bound.Left, err = bindContextValue(e.Left, c)
+	if err != nil {
+		return Expr{}, err
+	}
+	bound.Right, err = bindContextValue(e.Right, c)
+	if err != nil {
+		return Expr{}, err
+	}
+	return bound, nil
+}
+
+func bindContextValue(value *Value, c beanctx.Request) (*Value, error) {
+	if value == nil || value.Source == "input" || value.Source == "literal" {
+		return value, nil
+	}
+	resolved, err := resolve(value, c, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &Value{Source: "literal", Literal: resolved}, nil
+}
+
 func Eval(e Expr, c beanctx.Request, input map[string]any) (bool, error) {
 	if e.Op == "and" || e.Op == "or" {
 		if len(e.Args) == 0 {

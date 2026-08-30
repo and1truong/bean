@@ -15,6 +15,7 @@ import (
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/expr"
 	"github.com/beanruntime/bean/internal/field"
+	contentfilter "github.com/beanruntime/bean/internal/filter"
 	"github.com/beanruntime/bean/internal/policy"
 )
 
@@ -54,19 +55,20 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 		return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "View entity is invalid"}
 	}
 	predicates := []dbal.Predicate{}
+	joined := len(v.Relationships) > 0
 	if v.Filter != nil {
 		p, er := expr.PredicateContext(*v.Filter, params.Filter, c)
 		if er != nil {
 			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: er.Error()}
 		}
-		predicates = append(predicates, p)
+		predicates = append(predicates, qualifyPredicateColumns(p, v.Entity, joined))
 	}
 	if v.ContextFilter != nil {
 		p, er := expr.PredicateContext(*v.ContextFilter, params.Filter, c)
 		if er != nil {
 			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: er.Error()}
 		}
-		predicates = append(predicates, p)
+		predicates = append(predicates, qualifyPredicateColumns(p, v.Entity, joined))
 	}
 	for name, definition := range v.ExposedFilters {
 		value, supplied := params.Filter[name]
@@ -81,7 +83,7 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 		if column == "" {
 			column = name
 		}
-		predicates = append(predicates, dbal.Predicate{Op: dbal.OpEQ, Column: column, Value: value})
+		predicates = append(predicates, dbal.Predicate{Op: dbal.OpEQ, Column: qualify(column, v.Entity, joined), Value: value})
 	}
 	available := map[string]bool{}
 	for _, name := range v.Fields {
@@ -105,7 +107,7 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 		predicates = append(predicates, dbal.Predicate{Op: dbal.OpEQ, Column: name, Value: value})
 	}
 	if params.RecordID != "" {
-		predicates = append(predicates, dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: params.RecordID})
+		predicates = append(predicates, dbal.Predicate{Op: dbal.OpEQ, Column: qualify("id", v.Entity, joined), Value: params.RecordID})
 	}
 	if params.Search != "" {
 		search := make([]dbal.Predicate, 0, len(params.SearchFields))
@@ -130,7 +132,7 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 			return Result{}, &dbal.Error{Code: dbal.NotFound, Message: "View not found"}
 		}
 		if injected != nil {
-			predicates = append(predicates, *injected)
+			predicates = append(predicates, qualifyPredicateColumns(*injected, v.Entity, joined))
 		}
 		redact = p.Redact
 	}
@@ -164,7 +166,6 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 		limit = max
 	}
 	offset := params.Offset
-	joined := len(v.Relationships) > 0
 	aggregateAliases := map[string]bool{}
 	for _, aggregate := range v.Aggregates {
 		aggregateAliases[aggregate.Alias] = true
@@ -243,7 +244,17 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 		x := dbal.And(predicates...)
 		where = &x
 	}
-	rows, er := s.DB.Select(ctx, dbal.Select{Table: v.Entity, Columns: qualifyAll(v.Fields, v.Entity, joined), Joins: joins, Where: where, GroupBy: qualifyAll(v.GroupBy, v.Entity, joined), Aggregates: aggregates, OrderBy: orders, Limit: limit + 1, Offset: offset})
+	columns := qualifyAll(storedFields(v.Fields, e), v.Entity, joined)
+	hiddenCursorFields := map[string]bool{}
+	if !aggregateSort {
+		for _, order := range orders {
+			if !containsColumn(columns, order.Column) {
+				columns = append(columns, order.Column)
+				hiddenCursorFields[strings.ReplaceAll(order.Column, ".", "__")] = true
+			}
+		}
+	}
+	rows, er := s.DB.Select(ctx, dbal.Select{Table: v.Entity, Columns: columns, Joins: joins, Where: where, GroupBy: qualifyAll(v.GroupBy, v.Entity, joined), Aggregates: aggregates, OrderBy: orders, Limit: limit + 1, Offset: offset})
 	if er != nil {
 		return Result{}, er
 	}
@@ -254,19 +265,74 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 			last := rows[len(rows)-1]
 			values := make([]any, len(orders))
 			for i, order := range orders {
-				parts := strings.Split(order.Column, ".")
-				values[i] = last[parts[len(parts)-1]]
+				key := strings.ReplaceAll(order.Column, ".", "__")
+				values[i] = last[key]
 			}
 			next = encodeCursor(cursor{Version: app.FormatVersion, View: name, Signature: signature(v, params), Values: values})
 		}
 	}
 	for _, row := range rows {
-		for _, definition := range e.Fields {
-			if value, ok := row[definition.Name]; ok {
-				row[definition.Name] = field.Decode(definition, value)
+		for fieldName := range hiddenCursorFields {
+			delete(row, fieldName)
+		}
+		for _, selected := range v.Fields {
+			compiled := qualify(selected, v.Entity, len(v.Relationships) > 0)
+			encoded := strings.ReplaceAll(compiled, ".", "__")
+			if encoded != selected {
+				value, exists := row[encoded]
+				if !exists {
+					continue
+				}
+				row[selected] = value
+				delete(row, encoded)
+				parts := strings.Split(selected, ".")
+				if len(parts) == 2 {
+					if _, exists = row[parts[1]]; !exists {
+						row[parts[1]] = value
+					}
+				}
 			}
 		}
+		for _, definition := range e.Fields {
+			if value, ok := row[definition.Name]; ok {
+				decoded := field.Decode(definition, value)
+				if definition.Type == "richtext" {
+					if _, filtered := v.FieldFilters[definition.Name]; !filtered {
+						if source, textual := decoded.(string); textual {
+							decoded = contentfilter.SanitizeHTML(source)
+						}
+					}
+				}
+				row[definition.Name] = decoded
+			}
+		}
+		if er = loadToMany(ctx, s.DB, e, v.Fields, row); er != nil {
+			return Result{}, er
+		}
 		policy.Redact(row, redact)
+		for fieldName, filterName := range v.FieldFilters {
+			value, exists := row[fieldName]
+			if !exists || value == nil {
+				continue
+			}
+			source, ok := value.(string)
+			if !ok {
+				return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "View filter field is not textual"}
+			}
+			definition, exists := app.Filters[filterName]
+			if !exists {
+				return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "View Filter is invalid"}
+			}
+			formatted, filterErr := contentfilter.Apply(definition, source)
+			if filterErr != nil {
+				return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "View Filter is invalid"}
+			}
+			row[fieldName] = formatted
+			parts := strings.Split(fieldName, ".")
+			if len(parts) == 2 && row[parts[1]] == source {
+				row[parts[1]] = formatted
+			}
+		}
 	}
 	return Result{Rows: rows, NextCursor: next}, nil
 }
@@ -315,6 +381,52 @@ func toManyRelation(field appir.Field) bool {
 	return field.Relation != nil && (field.Relation.Kind == "one-to-many" || field.Relation.Kind == "many-to-many")
 }
 
+func storedFields(names []string, entity appir.Entity) []string {
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		definition, exists := entityField(entity, name)
+		if exists && toManyRelation(definition) {
+			continue
+		}
+		out = append(out, name)
+	}
+	return out
+}
+
+type rowSelector interface {
+	Select(context.Context, dbal.Select) ([]dbal.Row, error)
+}
+
+func loadToMany(ctx context.Context, selector rowSelector, entity appir.Entity, selected []string, row dbal.Row) error {
+	for _, name := range selected {
+		definition, exists := entityField(entity, name)
+		if !exists || !toManyRelation(definition) {
+			continue
+		}
+		entityColumn := entity.Name + "_id"
+		targetColumn := definition.Relation.Entity + "_id"
+		links, err := selector.Select(ctx, dbal.Select{Table: entity.Name + "_" + definition.Name, Columns: []string{targetColumn}, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: entityColumn, Value: row["id"]}, OrderBy: []dbal.Order{{Column: targetColumn}}, Limit: 10000})
+		if err != nil {
+			return err
+		}
+		values := make([]any, len(links))
+		for index := range links {
+			values[index] = links[index][targetColumn]
+		}
+		row[name] = values
+	}
+	return nil
+}
+
+func containsColumn(columns []string, wanted string) bool {
+	for _, column := range columns {
+		if column == wanted {
+			return true
+		}
+	}
+	return false
+}
+
 func orderedBy(orders []dbal.Order, field string) bool {
 	for _, order := range orders {
 		if order.Column == field || strings.HasSuffix(order.Column, "."+field) {
@@ -356,6 +468,14 @@ func qualifyAll(names []string, entity string, joined bool) []string {
 		out[i] = qualify(name, entity, joined)
 	}
 	return out
+}
+
+func qualifyPredicateColumns(predicate dbal.Predicate, entity string, joined bool) dbal.Predicate {
+	predicate.Column = qualify(predicate.Column, entity, joined)
+	for index := range predicate.Children {
+		predicate.Children[index] = qualifyPredicateColumns(predicate.Children[index], entity, joined)
+	}
+	return predicate
 }
 
 func signature(v appir.View, params Params) string {

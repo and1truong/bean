@@ -70,3 +70,195 @@ func TestCompilationIsDeterministic(t *testing.T) {
 		t.Fatalf("non-deterministic AppIR\n%s\n%s", aj, bj)
 	}
 }
+
+func TestLocalRegistrationCompilesFixedSensitiveBoundary(t *testing.T) {
+	defs := []definition.Definition{
+		{APIVersion: "bean/v1alpha1", Kind: "Role", Metadata: definition.Metadata{Name: "member"}, Spec: map[string]any{}},
+		{APIVersion: "bean/v1alpha1", Kind: "Action", Metadata: definition.Metadata{Name: "signup"}, Spec: map[string]any{"operation": "register_local_user", "defaultRole": "member"}},
+		{APIVersion: "bean/v1alpha1", Kind: "LocalRegistration", Metadata: definition.Metadata{Name: "local"}, Spec: map[string]any{"action": "signup"}},
+	}
+	result := compiler.Compile("test", 1, defs)
+	if len(result.Diagnostics) != 0 {
+		t.Fatal(result.Diagnostics)
+	}
+	action := result.App.Actions["signup"]
+	if action.DefaultRole != "member" || !action.Input["password"].Sensitive || !action.Input["password_confirmation"].Sensitive {
+		t.Fatalf("registration boundary=%+v", action)
+	}
+	if _, exposed := action.Output["password"]; exposed {
+		t.Fatal("password exposed in registration output")
+	}
+	defs[1].Spec["defaultRole"] = "administrator"
+	if invalid := compiler.Compile("test", 1, defs); len(invalid.Diagnostics) == 0 {
+		t.Fatal("undefined registration role accepted")
+	}
+	defs = append(defs, definition.Definition{APIVersion: "bean/v1alpha1", Kind: "Role", Metadata: definition.Metadata{Name: "administrator"}, Spec: map[string]any{}})
+	if invalid := compiler.Compile("test", 1, defs); len(invalid.Diagnostics) == 0 {
+		t.Fatal("privileged self-registration role accepted")
+	}
+}
+
+func TestLocalRegistrationRouteMustRenderItsSelectedAction(t *testing.T) {
+	defs := []definition.Definition{
+		{APIVersion: "bean/v1alpha1", Kind: "Role", Metadata: definition.Metadata{Name: "member"}, Spec: map[string]any{}},
+		{APIVersion: "bean/v1alpha1", Kind: "Action", Metadata: definition.Metadata{Name: "signup"}, Spec: map[string]any{"operation": "register_local_user", "defaultRole": "member"}},
+		{APIVersion: "bean/v1alpha1", Kind: "Webform", Metadata: definition.Metadata{Name: "signup_form"}, Spec: map[string]any{"action": "signup", "elements": []any{map[string]any{"name": "email", "type": "email", "required": true}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Block", Metadata: definition.Metadata{Name: "signup_block"}, Spec: map[string]any{"type": "webform", "webform": "signup_form"}},
+		{APIVersion: "bean/v1alpha1", Kind: "Panel", Metadata: definition.Metadata{Name: "signup_panel"}, Spec: map[string]any{"layout": "single-column", "regions": []any{map[string]any{"name": "main", "blocks": []any{"signup_block"}}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Page", Metadata: definition.Metadata{Name: "signup_page"}, Spec: map[string]any{"route": "/register", "panel": "signup_panel"}},
+		{APIVersion: "bean/v1alpha1", Kind: "LocalRegistration", Metadata: definition.Metadata{Name: "local"}, Spec: map[string]any{"action": "signup", "route": "/register"}},
+	}
+	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) == 0 {
+		t.Fatal("registration Webform missing required Action inputs was accepted")
+	}
+	defs[2].Spec["elements"] = []any{
+		map[string]any{"name": "display_name", "type": "text", "required": true},
+		map[string]any{"name": "email", "type": "email", "required": true},
+		map[string]any{"name": "password", "type": "password", "required": true},
+		map[string]any{"name": "password_confirmation", "type": "password", "required": true},
+	}
+	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) != 0 {
+		t.Fatalf("valid registration route diagnostics=%v", result.Diagnostics)
+	}
+	displayName := defs[2].Spec["elements"].([]any)[0].(map[string]any)
+	displayName["visible"] = map[string]any{"op": "eq", "left": map[string]any{"source": "literal", "literal": true}, "right": map[string]any{"source": "literal", "literal": false}}
+	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) == 0 {
+		t.Fatal("conditionally hidden required registration input was accepted")
+	}
+	delete(displayName, "visible")
+	defs[len(defs)-1].Spec["route"] = "/missing"
+	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) == 0 {
+		t.Fatal("registration route without its Webform was accepted")
+	}
+	defs[len(defs)-1].Spec["route"] = "/register"
+	defs = append(defs, definition.Definition{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "members_only"}, Spec: map[string]any{"authenticated": true}})
+	defs[5].Spec["policy"] = "members_only"
+	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) == 0 {
+		t.Fatal("registration Page inaccessible to anonymous users was accepted")
+	}
+	delete(defs[5].Spec, "policy")
+	defs = append(defs, definition.Definition{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "context_sensitive"}, Spec: map[string]any{"condition": map[string]any{"op": "ne", "left": map[string]any{"source": "record", "name": "x"}, "right": map[string]any{"source": "context", "name": "invite"}}}})
+	defs[5].Spec["policy"] = "context_sensitive"
+	defs[5].Spec["context"] = map[string]any{"invite": map[string]any{"source": "query", "name": "invite"}}
+	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) == 0 {
+		t.Fatal("registration Page policy evaluated only after resolving optional context")
+	}
+	delete(defs[5].Spec, "policy")
+	defs[5].Spec["context"] = map[string]any{"invite": map[string]any{"source": "query", "name": "invite", "required": true}}
+	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) == 0 {
+		t.Fatal("registration Page with unresolved required context was accepted")
+	}
+	delete(defs[5].Spec, "context")
+	defs[3].Spec["inputs"] = map[string]any{"email": map[string]any{"type": "email"}}
+	defs[3].Spec["bindings"] = map[string]any{"email": map[string]any{"source": "context", "name": "invite"}}
+	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) == 0 {
+		t.Fatal("registration field duplicated by an immutable Block binding was accepted")
+	}
+	delete(defs[3].Spec, "inputs")
+	delete(defs[3].Spec, "bindings")
+	defs = append(defs, definition.Definition{APIVersion: "bean/v1alpha1", Kind: "Block", Metadata: definition.Metadata{Name: "broken_sibling"}, Spec: map[string]any{"type": "text", "text": "Broken", "inputs": map[string]any{"invite": map[string]any{"type": "string", "required": true}}, "bindings": map[string]any{"invite": map[string]any{"source": "context", "name": "invite"}}}})
+	defs[4].Spec["regions"] = []any{map[string]any{"name": "main", "blocks": []any{"signup_block", "broken_sibling"}}}
+	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) == 0 {
+		t.Fatal("registration Page with an unrenderable sibling Block was accepted")
+	}
+}
+
+func TestResourceListBlockRequiresEditorOnlyPolicy(t *testing.T) {
+	defs := []definition.Definition{
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "note"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "body", "type": "text", "required": true}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "members"}, Spec: map[string]any{"readRoles": []any{"member"}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Block", Metadata: definition.Metadata{Name: "notes"}, Spec: map[string]any{"type": "resource-list", "resource": "note", "policy": "members"}},
+	}
+	result := compiler.Compile("test", 1, defs)
+	found := false
+	for _, diagnostic := range result.Diagnostics {
+		found = found || diagnostic.Kind == "Block" && diagnostic.Name == "notes" && diagnostic.Path == "spec.policy"
+	}
+	if !found {
+		t.Fatalf("non-editor resource-list diagnostics=%v", result.Diagnostics)
+	}
+}
+
+func TestWebformBlockRejectsRenderedAndBoundFieldOverlap(t *testing.T) {
+	defs := []definition.Definition{
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "note"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "body", "type": "text", "required": true}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Webform", Metadata: definition.Metadata{Name: "note_form"}, Spec: map[string]any{"action": "note_create", "elements": []any{map[string]any{"name": "body", "type": "text", "required": true}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Block", Metadata: definition.Metadata{Name: "note_block"}, Spec: map[string]any{"type": "webform", "webform": "note_form", "inputs": map[string]any{"body": map[string]any{"type": "text"}}, "bindings": map[string]any{"body": map[string]any{"source": "context", "name": "body"}}}},
+	}
+	result := compiler.Compile("test", 1, defs)
+	found := false
+	for _, diagnostic := range result.Diagnostics {
+		found = found || diagnostic.Kind == "Block" && diagnostic.Name == "note_block" && diagnostic.Path == "spec.bindings.body"
+	}
+	if !found {
+		t.Fatalf("Webform Block field/binding collision diagnostics=%v", result.Diagnostics)
+	}
+}
+
+func TestExpressionsRejectUnimplementedNowSource(t *testing.T) {
+	defs := []definition.Definition{{
+		APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "future"},
+		Spec: map[string]any{"condition": map[string]any{
+			"op": "lt", "left": map[string]any{"source": "record", "name": "published_at"}, "right": map[string]any{"source": "now"},
+		}},
+	}}
+	result := compiler.Compile("test", 1, defs)
+	if len(result.Diagnostics) != 1 || result.Diagnostics[0].Path != "spec.condition" {
+		t.Fatalf("unimplemented now source diagnostics=%v", result.Diagnostics)
+	}
+}
+
+func TestBlockBindingsMustMatchTargetTypes(t *testing.T) {
+	defs := []definition.Definition{
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "post"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "slug", "type": "slug"}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "View", Metadata: definition.Metadata{Name: "post_by_slug"}, Spec: map[string]any{"entity": "post", "fields": []any{"id", "slug"}, "exposedFilters": map[string]any{"slug": map[string]any{"name": "slug", "type": "slug"}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Block", Metadata: definition.Metadata{Name: "detail"}, Spec: map[string]any{"type": "view", "view": "post_by_slug", "inputs": map[string]any{"slug": map[string]any{"type": "uuid"}}, "bindings": map[string]any{"slug": map[string]any{"source": "context", "name": "slug"}}}},
+	}
+	result := compiler.Compile("test", 1, defs)
+	if len(result.Diagnostics) == 0 {
+		t.Fatal("mismatched bound input type accepted")
+	}
+}
+
+func TestResourceListBlockValidatesScopeAndFilters(t *testing.T) {
+	defs := []definition.Definition{
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "item"}, Spec: map[string]any{"fields": []any{
+			map[string]any{"name": "parent_id", "type": "uuid", "required": true},
+			map[string]any{"name": "status", "type": "enum", "required": true, "options": []any{"pending", "approved"}},
+		}}},
+		{APIVersion: "bean/v1alpha1", Kind: "View", Metadata: definition.Metadata{Name: "item_admin"}, Spec: map[string]any{
+			"entity": "item", "fields": []any{"id", "parent_id", "status", "created_at", "updated_at", "version"}, "exposedFilters": map[string]any{
+				"parent_id": map[string]any{"name": "parent_id", "type": "uuid", "required": true},
+				"status":    map[string]any{"name": "status", "type": "enum", "options": []any{"pending", "approved"}},
+			},
+		}},
+		{APIVersion: "bean/v1alpha1", Kind: "AdminResource", Metadata: definition.Metadata{Name: "item"}, Spec: map[string]any{
+			"entity": "item", "view": "item_admin", "list": map[string]any{"columns": []any{"id", "status"}, "filters": []any{"parent_id", "status"}},
+		}},
+		{APIVersion: "bean/v1alpha1", Kind: "Block", Metadata: definition.Metadata{Name: "scoped_items"}, Spec: map[string]any{
+			"type": "resource-list", "resource": "item", "policy": "editor_only",
+			"inputs":   map[string]any{"parent_id": map[string]any{"type": "uuid", "required": true}},
+			"bindings": map[string]any{"parent_id": map[string]any{"source": "context", "name": "id", "required": true}},
+			"filters":  []any{"status"}, "defaultFilters": map[string]any{"status": "pending"},
+		}},
+		{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "editor_only"}, Spec: map[string]any{"readRoles": []any{"editor", "administrator"}}},
+	}
+	result := compiler.Compile("test", 1, defs)
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("valid resource-list diagnostics=%v", result.Diagnostics)
+	}
+	block := result.App.Blocks["scoped_items"]
+	if block.View != "item_admin" || block.Resource != "item" || block.DefaultFilters["status"] != "pending" {
+		t.Fatalf("resource-list normalization=%+v", block)
+	}
+
+	defs[3].Spec["filters"] = []any{"parent_id"}
+	if invalid := compiler.Compile("test", 1, defs); len(invalid.Diagnostics) == 0 {
+		t.Fatal("bound input was accepted as an interactive filter")
+	}
+	defs[3].Spec["filters"] = []any{"status"}
+	defs[3].Spec["resource"] = ""
+	if invalid := compiler.Compile("test", 1, defs); len(invalid.Diagnostics) == 0 {
+		t.Fatal("resource-list without a resource was accepted")
+	}
+}

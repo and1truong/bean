@@ -12,7 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-var Kinds = map[string]bool{"Entity": true, "View": true, "Action": true, "Webform": true, "Policy": true, "Block": true, "Panel": true, "Page": true, "Role": true, "Menu": true, "Job": true, "AdminResource": true}
+var Kinds = map[string]bool{"Entity": true, "View": true, "Action": true, "Webform": true, "Policy": true, "Filter": true, "Block": true, "Panel": true, "Page": true, "Role": true, "Menu": true, "Job": true, "AdminResource": true, "LocalRegistration": true}
 var machineName = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 type Metadata struct {

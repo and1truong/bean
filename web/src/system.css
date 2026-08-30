@@ -1,8 +1,0 @@
-.system-card{border-color:#8aa997}
-.status-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem}
-.status-grid dl{display:flex;gap:1rem}
-.status-grid dl div{display:grid}
-.status-grid dd{margin:0;font-size:1.4rem}
-.inline-form{display:flex;align-items:center;gap:.5rem}
-.inline-form input{min-width:12rem}
-.inline-form button{margin:0}

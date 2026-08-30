@@ -7,9 +7,13 @@ import (
 	"strings"
 
 	"github.com/beanruntime/bean/internal/appir"
+	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/expr"
+	"github.com/beanruntime/bean/internal/field"
 	"github.com/beanruntime/bean/internal/migration"
+	"github.com/beanruntime/bean/internal/page"
+	"github.com/beanruntime/bean/internal/policy"
 )
 
 type Result struct {
@@ -19,6 +23,7 @@ type Result struct {
 }
 type actionSource struct {
 	Entity, Operation, Policy, StateField string
+	DefaultRole, Confirm                  string
 	Input                                 map[string]appir.Field
 	Output                                map[string]appir.Field
 	Steps                                 []stepSource
@@ -96,7 +101,7 @@ func Compile(appID string, version int, defs []definition.Definition) Result {
 				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
 				continue
 			}
-			x := appir.Action{Name: d.Metadata.Name, Entity: source.Entity, Operation: source.Operation, Policy: source.Policy, StateField: source.StateField, Input: source.Input, Output: source.Output, Transitions: source.Transitions}
+			x := appir.Action{Name: d.Metadata.Name, Entity: source.Entity, Operation: source.Operation, Policy: source.Policy, StateField: source.StateField, DefaultRole: source.DefaultRole, Confirm: source.Confirm, Input: source.Input, Output: source.Output, Transitions: source.Transitions}
 			for inputName, input := range x.Input {
 				if input.Name == "" {
 					input.Name = inputName
@@ -130,6 +135,14 @@ func Compile(appID string, version int, defs []definition.Definition) Result {
 			}
 			x.Name = d.Metadata.Name
 			a.Policies[x.Name] = x
+		case "Filter":
+			var x appir.Filter
+			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
+				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
+				continue
+			}
+			x.Name = d.Metadata.Name
+			a.Filters[x.Name] = x
 		case "Webform":
 			var x appir.Webform
 			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
@@ -194,6 +207,17 @@ func Compile(appID string, version int, defs []definition.Definition) Result {
 			}
 			x.Name = d.Metadata.Name
 			a.AdminResources[x.Name] = x
+		case "LocalRegistration":
+			var x appir.LocalRegistration
+			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
+				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
+				continue
+			}
+			if a.LocalRegistration != nil {
+				r.Diagnostics = append(r.Diagnostics, diag(d, "metadata.name", "only one local registration definition is allowed"))
+				continue
+			}
+			a.LocalRegistration = &x
 		}
 	}
 	if len(r.Diagnostics) > 0 {
@@ -204,6 +228,7 @@ func Compile(appID string, version int, defs []definition.Definition) Result {
 	}
 	normalizeActions(a)
 	normalizeAdminResources(a)
+	normalizeResourceListBlocks(a)
 	r.Diagnostics = append(r.Diagnostics, validate(a)...)
 	if len(r.Diagnostics) > 0 {
 		return r
@@ -236,6 +261,9 @@ func diag(d definition.Definition, path, msg string) definition.Diagnostic {
 }
 func compileBinding(value any) appir.ValueBinding {
 	if text, ok := value.(string); ok && strings.HasPrefix(text, "$") {
+		if text == "$now" {
+			return appir.ValueBinding{Source: "now"}
+		}
 		if text == "$context.tenant" {
 			return appir.ValueBinding{Source: "tenant"}
 		}
@@ -257,6 +285,22 @@ func normalizeActions(a *appir.App) {
 		}
 		if action.Output == nil {
 			action.Output = map[string]appir.Field{}
+		}
+		if action.Operation == "register_local_user" {
+			action.Entity = ""
+			action.Input = map[string]appir.Field{
+				"display_name":          {Name: "display_name", Type: "string", Required: true},
+				"email":                 {Name: "email", Type: "email", Required: true},
+				"password":              {Name: "password", Type: "password", Required: true, Sensitive: true},
+				"password_confirmation": {Name: "password_confirmation", Type: "password", Required: true, Sensitive: true},
+			}
+			action.Output = map[string]appir.Field{
+				"id":           {Name: "id", Type: "uuid"},
+				"display_name": {Name: "display_name", Type: "string"},
+				"email":        {Name: "email", Type: "email"},
+			}
+			a.Actions[name] = action
+			continue
 		}
 		entity, exists := a.Entities[action.Entity]
 		if !exists || action.Operation == "transaction" {
@@ -331,6 +375,16 @@ func diagnostic(kind, name, path, message string) definition.Diagnostic {
 func validate(a *appir.App) []definition.Diagnostic {
 	out := []definition.Diagnostic{}
 	routes := map[string]string{}
+	for name, filterDefinition := range a.Filters {
+		if len(filterDefinition.Steps) == 0 {
+			out = append(out, diagnostic("Filter", name, "spec.steps", "requires at least one filter step"))
+		}
+		for i, step := range filterDefinition.Steps {
+			if step.Type != "markdown" {
+				out = append(out, diagnostic("Filter", name, fmt.Sprintf("spec.steps.%d.type", i), "has no registered filter implementation"))
+			}
+		}
+	}
 	for name, v := range a.Views {
 		e, ok := a.Entities[v.Entity]
 		if !ok {
@@ -391,6 +445,20 @@ func validate(a *appir.App) []definition.Diagnostic {
 		selected := map[string]bool{}
 		for _, field := range v.Fields {
 			selected[field] = true
+		}
+		for fieldName, filterName := range v.FieldFilters {
+			path := "spec.fieldFilters." + fieldName
+			if !selected[fieldName] {
+				out = append(out, diagnostic("View", name, path, "must reference a selected View field"))
+				continue
+			}
+			fieldType, exists := viewFieldType(fieldName, e, relationships, a)
+			if !exists || !map[string]bool{"string": true, "text": true, "richtext": true}[fieldType] {
+				out = append(out, diagnostic("View", name, path, "can only filter textual fields"))
+			}
+			if _, exists = a.Filters[filterName]; !exists {
+				out = append(out, diagnostic("View", name, path, "references missing Filter "+filterName))
+			}
 		}
 		if len(v.GroupBy) == 0 && len(v.Aggregates) == 0 && !selected["id"] {
 			out = append(out, diagnostic("View", name, "spec.fields", "must include id for deterministic cursor pagination"))
@@ -487,7 +555,7 @@ func validate(a *appir.App) []definition.Diagnostic {
 			routes[display.Route] = "View/" + name
 		}
 	}
-	allowedActions := map[string]bool{"create": true, "update": true, "delete": true, "transition": true, "transaction": true}
+	allowedActions := map[string]bool{"create": true, "update": true, "delete": true, "transition": true, "transaction": true, "register_local_user": true}
 	allowedSteps := map[string]bool{"load": true, "query": true, "assert": true, "assert_no_overlap": true, "create": true, "update": true, "conditional_update": true, "decrement": true, "delete": true, "transition": true, "emit": true, "schedule": true, "return": true}
 	allowedRelations := map[string]bool{"one-to-one": true, "one-to-many": true, "many-to-one": true, "many-to-many": true}
 	for name, entity := range a.Entities {
@@ -519,7 +587,15 @@ func validate(a *appir.App) []definition.Diagnostic {
 		}
 	}
 	for name, action := range a.Actions {
-		if _, ok := a.Entities[action.Entity]; !ok {
+		if action.Operation == "register_local_user" {
+			if action.DefaultRole == "" {
+				out = append(out, diagnostic("Action", name, "spec.defaultRole", "is required"))
+			} else if _, ok := a.Roles[action.DefaultRole]; !ok {
+				out = append(out, diagnostic("Action", name, "spec.defaultRole", "references missing Role "+action.DefaultRole))
+			} else if action.DefaultRole == "editor" || action.DefaultRole == "administrator" {
+				out = append(out, diagnostic("Action", name, "spec.defaultRole", "cannot grant a privileged administration role"))
+			}
+		} else if _, ok := a.Entities[action.Entity]; !ok {
 			out = append(out, diagnostic("Action", name, "spec.entity", "references missing Entity "+action.Entity))
 		}
 		if !allowedActions[action.Operation] {
@@ -539,6 +615,9 @@ func validate(a *appir.App) []definition.Diagnostic {
 			}
 		}
 		for outputName, output := range action.Output {
+			if output.Sensitive {
+				out = append(out, diagnostic("Action", name, "spec.output."+outputName, "sensitive fields cannot be Action outputs"))
+			}
 			if output.Name != outputName || output.Type == "" {
 				out = append(out, diagnostic("Action", name, "spec.output."+outputName, "requires a matching name and type"))
 			}
@@ -566,7 +645,7 @@ func validate(a *appir.App) []definition.Diagnostic {
 			}
 			for _, assignment := range step.Values {
 				switch assignment.Value.Source {
-				case "literal", "context", "tenant", "user", "record":
+				case "literal", "context", "tenant", "user", "record", "now":
 				case "input":
 					if _, ok := action.Input[assignment.Value.Path]; !ok {
 						out = append(out, diagnostic("Action", name, path+".values."+assignment.Field, "references undeclared input "+assignment.Value.Path))
@@ -669,10 +748,16 @@ func validate(a *appir.App) []definition.Diagnostic {
 		}
 	}
 	for name, block := range a.Blocks {
-		if !map[string]bool{"text": true, "view": true, "entity": true, "webform": true, "action": true, "menu": true}[block.Type] {
+		if !map[string]bool{"text": true, "view": true, "entity": true, "webform": true, "action": true, "menu": true, "resource-list": true}[block.Type] {
 			out = append(out, diagnostic("Block", name, "spec.type", "has no registered renderer"))
 		}
-		refs := []struct{ kind, value string }{{"view", block.View}, {"entity", block.Entity}, {"webform", block.Webform}, {"action", block.Action}}
+		if block.Type == "resource-list" && block.Resource == "" {
+			out = append(out, diagnostic("Block", name, "spec.resource", "is required"))
+		}
+		if block.Type == "resource-list" && (block.Policy == "" || !editorOnlyReadPolicy(a.Policies[block.Policy])) {
+			out = append(out, diagnostic("Block", name, "spec.policy", "resource-list Block must be restricted to editor and administrator roles"))
+		}
+		refs := []struct{ kind, value string }{{"view", block.View}, {"entity", block.Entity}, {"webform", block.Webform}, {"action", block.Action}, {"resource", block.Resource}}
 		for _, ref := range refs {
 			if ref.value == "" {
 				continue
@@ -687,6 +772,8 @@ func validate(a *appir.App) []definition.Diagnostic {
 				_, ok = a.Webforms[ref.value]
 			case "action":
 				_, ok = a.Actions[ref.value]
+			case "resource":
+				_, ok = a.AdminResources[ref.value]
 			}
 			if !ok {
 				out = append(out, diagnostic("Block", name, "spec."+ref.kind, "invalid Block input reference "+ref.value))
@@ -719,6 +806,70 @@ func validate(a *appir.App) []definition.Diagnostic {
 		for inputName := range block.Bindings {
 			if _, exists := block.Inputs[inputName]; !exists {
 				out = append(out, diagnostic("Block", name, "spec.bindings."+inputName, "references an undeclared input"))
+			}
+		}
+		var target map[string]appir.Field
+		if block.Type == "view" && block.View != "" {
+			target = a.Views[block.View].ExposedFilters
+		}
+		if block.Type == "webform" && block.Webform != "" {
+			formDefinition := a.Webforms[block.Webform]
+			target = a.Actions[formDefinition.Action].Input
+			for _, element := range formDefinition.Elements {
+				if _, bound := block.Bindings[element.Name]; bound {
+					out = append(out, diagnostic("Block", name, "spec.bindings."+element.Name, "cannot bind a field also rendered by the Webform"))
+				}
+			}
+		}
+		if block.Type == "resource-list" && block.Resource != "" {
+			resource := a.AdminResources[block.Resource]
+			target = a.Views[resource.View].ExposedFilters
+			resourceFilters := nameSet(resource.List.Filters)
+			interactive := nameSet(block.Filters)
+			for i, filterName := range block.Filters {
+				if _, bound := block.Bindings[filterName]; bound {
+					out = append(out, diagnostic("Block", name, fmt.Sprintf("spec.filters.%d", i), "cannot expose an immutable bound input"))
+				}
+				if !resourceFilters[filterName] {
+					out = append(out, diagnostic("Block", name, fmt.Sprintf("spec.filters.%d", i), "is not configured by AdminResource "+block.Resource))
+				}
+				if _, exposed := target[filterName]; !exposed {
+					out = append(out, diagnostic("Block", name, fmt.Sprintf("spec.filters.%d", i), "has no matching View exposed filter"))
+				}
+			}
+			for filterName, value := range block.DefaultFilters {
+				definition, exposed := target[filterName]
+				if !interactive[filterName] {
+					out = append(out, diagnostic("Block", name, "spec.defaultFilters."+filterName, "must reference an interactive filter"))
+				} else if exposed {
+					definition.Name = filterName
+					if err := field.Validate(definition, value); err != nil {
+						out = append(out, diagnostic("Block", name, "spec.defaultFilters."+filterName, err.Error()))
+					}
+				}
+			}
+		}
+		if target != nil {
+			for inputName, input := range block.Inputs {
+				expected, exists := target[inputName]
+				if !exists {
+					out = append(out, diagnostic("Block", name, "spec.inputs."+inputName, "has no matching target input"))
+				} else if input.Type != expected.Type {
+					out = append(out, diagnostic("Block", name, "spec.inputs."+inputName+".type", "does not match target input type "+expected.Type))
+				}
+			}
+		}
+	}
+	if a.LocalRegistration != nil {
+		action, ok := a.Actions[a.LocalRegistration.Action]
+		if !ok || action.Operation != "register_local_user" {
+			out = append(out, diagnostic("LocalRegistration", "local", "spec.action", "must reference a register_local_user Action"))
+		}
+		if route := a.LocalRegistration.Route; route != "" {
+			if !strings.HasPrefix(route, "/") || strings.Contains(route, ":") {
+				out = append(out, diagnostic("LocalRegistration", "local", "spec.route", "must be a static absolute Page route"))
+			} else if routeErr := validateRegistrationPage(a, route, a.LocalRegistration.Action); routeErr != "" {
+				out = append(out, diagnostic("LocalRegistration", "local", "spec.route", routeErr))
 			}
 		}
 	}
@@ -856,7 +1007,8 @@ func recordFields(expression *expr.Expr) []string {
 
 func compatibleFormType(formType, fieldType string) bool {
 	allowed := map[string][]string{
-		"text":             {"string", "text", "richtext", "uuid", "url"},
+		"text":             {"string", "text", "richtext", "uuid", "url", "slug"},
+		"password":         {"password"},
 		"textarea":         {"string", "text", "richtext"},
 		"email":            {"email"},
 		"number":           {"integer", "money", "decimal"},
@@ -894,6 +1046,36 @@ func validViewField(name string, base map[string]bool, relationships map[string]
 		return false
 	}
 	return fieldSet(a.Entities[relationship.Entity])[parts[1]]
+}
+
+func viewFieldType(name string, base appir.Entity, relationships map[string]appir.ViewRelationship, a *appir.App) (string, bool) {
+	parts := strings.Split(name, ".")
+	entity := base
+	fieldName := name
+	if len(parts) == 2 {
+		relationship, ok := relationships[parts[0]]
+		if !ok {
+			return "", false
+		}
+		entity, ok = a.Entities[relationship.Entity]
+		if !ok {
+			return "", false
+		}
+		fieldName = parts[1]
+	} else if len(parts) != 1 {
+		return "", false
+	}
+	for _, fieldDefinition := range entity.Fields {
+		if fieldDefinition.Name == fieldName {
+			return fieldDefinition.Type, true
+		}
+	}
+	for _, fieldDefinition := range []appir.Field{{Name: "id", Type: "uuid"}, {Name: "created_at", Type: "datetime"}, {Name: "updated_at", Type: "datetime"}, {Name: "version", Type: "integer"}} {
+		if fieldDefinition.Name == fieldName {
+			return fieldDefinition.Type, true
+		}
+	}
+	return "", false
 }
 
 func usesEntity(op string) bool {
@@ -983,8 +1165,87 @@ func validateExpr(expression expr.Expr, database bool) error {
 	return nil
 }
 
+func editorOnlyReadPolicy(definition appir.Policy) bool {
+	if len(definition.ReadRoles) == 0 {
+		return false
+	}
+	for _, roleName := range definition.ReadRoles {
+		if roleName != "editor" && roleName != "administrator" {
+			return false
+		}
+	}
+	return true
+}
+
+func validateRegistrationPage(a *appir.App, route, actionName string) string {
+	var registrationPage *appir.Page
+	for _, pageDefinition := range a.Pages {
+		if pageDefinition.Route == route {
+			copy := pageDefinition
+			registrationPage = &copy
+			break
+		}
+	}
+	if registrationPage == nil {
+		return "must reference a Page containing a Webform for the registration Action"
+	}
+	panelDefinition := a.Panels[registrationPage.Panel]
+	anonymous := beanctx.Request{Route: route, RouteParams: map[string]string{}, Values: map[string]any{}}
+	if registrationPage.Policy != "" && !policy.Can(a.Policies[registrationPage.Policy], false, anonymous, nil) {
+		return "must reference a Page and Panel accessible to anonymous users"
+	}
+	resolvedContext, err := page.ResolveContext(*registrationPage, map[string]string{}, map[string]string{}, anonymous)
+	if err != nil {
+		return "must resolve Page context for an anonymous request to the advertised static route"
+	}
+	anonymous.Values = resolvedContext
+	if _, allowed, renderErr := page.Node(a, *registrationPage, resolvedContext, anonymous); renderErr != nil || !allowed {
+		return "must render completely for an anonymous request to the advertised static route"
+	}
+	if panelDefinition.Policy != "" && !policy.Can(a.Policies[panelDefinition.Policy], false, anonymous, nil) {
+		return "must reference a Page and Panel accessible to anonymous users"
+	}
+	actionDefinition := a.Actions[actionName]
+	var missing []string
+	found := false
+	for _, region := range panelDefinition.Regions {
+		for _, blockName := range region.Blocks {
+			blockDefinition := a.Blocks[blockName]
+			formDefinition := a.Webforms[blockDefinition.Webform]
+			if blockDefinition.Type != "webform" || formDefinition.Action != actionName {
+				continue
+			}
+			found = true
+			if blockDefinition.Policy != "" && !policy.Can(a.Policies[blockDefinition.Policy], false, anonymous, nil) {
+				continue
+			}
+			fields := map[string]bool{}
+			for _, element := range formDefinition.Elements {
+				fields[element.Name] = element.Required && element.Visible == nil
+			}
+			missing = missing[:0]
+			for inputName, inputDefinition := range actionDefinition.Input {
+				if inputDefinition.Required && !fields[inputName] {
+					missing = append(missing, inputName)
+				}
+			}
+			if len(missing) == 0 {
+				return ""
+			}
+			sort.Strings(missing)
+		}
+	}
+	if !found {
+		return "must reference a Page containing a Webform for the registration Action"
+	}
+	if len(missing) > 0 {
+		return "Webform must unconditionally collect required registration inputs: " + strings.Join(missing, ", ")
+	}
+	return "must reference a registration Webform Block accessible to anonymous users"
+}
+
 func validateForm(name string, form appir.Webform) []definition.Diagnostic {
-	allowed := map[string]bool{"text": true, "textarea": true, "email": true, "number": true, "integer": true, "checkbox": true, "select": true, "date": true, "datetime": true, "entity reference": true, "group": true}
+	allowed := map[string]bool{"text": true, "textarea": true, "email": true, "password": true, "number": true, "integer": true, "checkbox": true, "select": true, "date": true, "datetime": true, "entity reference": true, "group": true}
 	out := []definition.Diagnostic{}
 	seen := map[string]bool{}
 	var walk func([]appir.FormElement, string)
@@ -1051,6 +1312,14 @@ func fieldSet(e appir.Entity) map[string]bool {
 		m[f.Name] = true
 	}
 	return m
+}
+
+func nameSet(values []string) map[string]bool {
+	out := map[string]bool{}
+	for _, value := range values {
+		out[value] = true
+	}
+	return out
 }
 func generate(a *appir.App, name string, e appir.Entity) {
 	fields := []string{"id"}
@@ -1167,5 +1436,23 @@ func normalizeAdminResources(a *appir.App) {
 			resource.Actions = []string{}
 		}
 		a.AdminResources[name] = resource
+	}
+}
+
+func normalizeResourceListBlocks(a *appir.App) {
+	for name, block := range a.Blocks {
+		if block.Type != "resource-list" {
+			continue
+		}
+		if resource, ok := a.AdminResources[block.Resource]; ok {
+			block.View = resource.View
+		}
+		if block.Filters == nil {
+			block.Filters = []string{}
+		}
+		if block.DefaultFilters == nil {
+			block.DefaultFilters = map[string]any{}
+		}
+		a.Blocks[name] = block
 	}
 }
