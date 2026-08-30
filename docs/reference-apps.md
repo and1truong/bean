@@ -7,6 +7,6 @@
 - `booking`: overlap-safe booking, cancellation, calendar, and reminders.
 - `saas`: organisations, memberships, tenant-scoped projects, and automatic tenant predicates.
 - `community`: profiles/posts/comments/reactions/follows with private-to-public transitions.
-- `blog`: draft/publish posts, categories, many-to-many tags, opt-in member signup, bound comments, post-scoped moderation queues, public content rendering, and RSS.
+- `blog`: draft/publish posts, categories, many-to-many tags, opt-in member signup, bound comments, post-scoped moderation queues, safe Markdown content filtering, public rendering, and RSS.
 
 Every application is a YAML bundle; core Go and React code contains no application-name branches.

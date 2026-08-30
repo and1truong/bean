@@ -2,6 +2,8 @@ package block
 
 import (
 	"fmt"
+	"sort"
+
 	"github.com/beanruntime/bean/internal/appir"
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/field"
@@ -48,6 +50,7 @@ func Node(a *appir.App, b appir.Block, ctx map[string]any, c beanctx.Request) (r
 	case "view":
 		props["view"] = b.View
 		props["presentation"] = b.Presentation
+		props["formattedFields"] = formattedFields(a, b)
 	case "entity":
 		props["entity"] = b.Entity
 	case "webform":
@@ -70,6 +73,31 @@ func Node(a *appir.App, b appir.Block, ctx map[string]any, c beanctx.Request) (r
 	}
 	return render.Node{Component: component(b.Type), Props: props}, true, nil
 }
+func formattedFields(a *appir.App, b appir.Block) []string {
+	viewDefinition, exists := a.Views[b.View]
+	if !exists {
+		return []string{}
+	}
+	trusted := map[string]bool{}
+	for fieldName := range viewDefinition.FieldFilters {
+		trusted[fieldName] = true
+	}
+	entity := a.Entities[viewDefinition.Entity]
+	for _, legacy := range b.Presentation.RichTextFields {
+		for _, fieldDefinition := range entity.Fields {
+			if fieldDefinition.Name == legacy && fieldDefinition.Type == "richtext" {
+				trusted[legacy] = true
+			}
+		}
+	}
+	out := make([]string, 0, len(trusted))
+	for fieldName := range trusted {
+		out = append(out, fieldName)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func component(t string) string {
 	switch t {
 	case "text":

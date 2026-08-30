@@ -78,7 +78,7 @@ func testBlogSecurityAndWorkflowContract(t *testing.T, databaseURL string) {
 	category := create("category_create", map[string]any{"name": "Engineering", "slug": "engineering"})
 	tagOne := create("tag_create", map[string]any{"name": "Go", "slug": "go"})
 	tagTwo := create("tag_create", map[string]any{"name": "Runtime", "slug": "runtime"})
-	maliciousBody := `<p>Bean is <strong>ready</strong>.</p><script>alert(1)</script><a href="javascript:alert(2)">bad</a>`
+	maliciousBody := "## Bean is **ready**.\n\n<script>alert(1)</script>\n\n[bad](javascript:alert(2))"
 	post := create("save_post_draft", map[string]any{"title": "Bean ships", "slug": "bean-ships", "excerpt": "A complete slice", "body": maliciousBody, "author_display_name": "Editor", "category_id": category["id"], "tags": []any{tagOne["id"], tagTwo["id"]}})
 	for _, path := range []string{"/api/views/published_posts", "/api/views/published_post?slug=bean-ships", "/api/blog/posts", "/rss.xml"} {
 		response := serve(t, handler, http.MethodGet, path, nil, nil, "")
@@ -101,9 +101,21 @@ func testBlogSecurityAndWorkflowContract(t *testing.T, databaseURL string) {
 			t.Fatalf("published post missing from %s: status=%d body=%s", path, response.Code, response.Body.String())
 		}
 	}
+	formattedPost := serve(t, handler, http.MethodGet, "/api/views/published_post?slug=bean-ships", nil, nil, "")
+	var formattedResult struct {
+		Data []map[string]any `json:"data"`
+	}
+	decodeResponse(t, formattedPost, &formattedResult)
+	formattedBody := ""
+	if len(formattedResult.Data) > 0 {
+		formattedBody = fmt.Sprint(formattedResult.Data[0]["body"])
+	}
+	if formattedPost.Code != http.StatusOK || !strings.Contains(formattedBody, "<strong>ready</strong>") || strings.Contains(strings.ToLower(formattedBody), "<script") || strings.Contains(strings.ToLower(formattedBody), "javascript:") {
+		t.Fatalf("unsafe formatted post status=%d body=%s", formattedPost.Code, formattedPost.Body.String())
+	}
 	storedPosts, err := runtime.DB.Select(ctx, dbal.Select{Table: "post", Columns: []string{"body"}, Limit: 1})
-	if err != nil || len(storedPosts) != 1 || strings.Contains(strings.ToLower(fmt.Sprint(storedPosts[0]["body"])), "<script") || strings.Contains(strings.ToLower(fmt.Sprint(storedPosts[0]["body"])), "javascript:") {
-		t.Fatalf("unsafe stored body=%v err=%v", storedPosts, err)
+	if err != nil || len(storedPosts) != 1 || !strings.Contains(fmt.Sprint(storedPosts[0]["body"]), "**ready**") {
+		t.Fatalf("Markdown source was not preserved: body=%v err=%v", storedPosts, err)
 	}
 
 	password := "member-password"

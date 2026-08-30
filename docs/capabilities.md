@@ -10,7 +10,7 @@
 | Entity/relations | Typed native tables, four relation cardinalities, owner/tenant/soft-delete/version | complete | migration, Action, View, policy contracts |
 | Local identity | Opt-in signup Action, bcrypt passwords, fixed role, safe output, independent throttle | complete | compiler, auth, HTTP, SQLite/PostgreSQL blog tests |
 | Bound blocks | Compiler-checked immutable Page/Block values for Views, Webforms, and scoped AdminResource lists | complete | binding/filter diagnostics, tamper tests, React tests, blog browser journey |
-| Content rendering | Generic list/detail links, metadata fields, rich text, empty states, cursor controls | complete | React unit/XSS tests and blog browser journey |
+| Content rendering | Generic list/detail links, named content Filters, safe Markdown, metadata fields, legacy rich text, empty states, cursor controls | complete | Filter/View/React XSS tests and blog browser journey |
 | Actions | Typed I/O, full declared step set, rollback, concurrency, audit, job/outbox intent | complete | Action integration and race tests |
 | Idempotency | Atomic result persistence and canonical input fingerprint conflict | complete | replay and changed-input contracts |
 | Views/policies | Projection, filters, joins, aggregates, keyset paging, tenant/owner/role/redaction | complete | View/policy contracts and browser apps |

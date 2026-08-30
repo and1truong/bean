@@ -15,6 +15,7 @@ import (
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/expr"
 	"github.com/beanruntime/bean/internal/field"
+	contentfilter "github.com/beanruntime/bean/internal/filter"
 	"github.com/beanruntime/bean/internal/policy"
 )
 
@@ -288,6 +289,29 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 			return Result{}, er
 		}
 		policy.Redact(row, redact)
+		for fieldName, filterName := range v.FieldFilters {
+			value, exists := row[fieldName]
+			if !exists || value == nil {
+				continue
+			}
+			source, ok := value.(string)
+			if !ok {
+				return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "View filter field is not textual"}
+			}
+			definition, exists := app.Filters[filterName]
+			if !exists {
+				return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "View Filter is invalid"}
+			}
+			formatted, filterErr := contentfilter.Apply(definition, source)
+			if filterErr != nil {
+				return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "View Filter is invalid"}
+			}
+			row[fieldName] = formatted
+			parts := strings.Split(fieldName, ".")
+			if len(parts) == 2 && row[parts[1]] == source {
+				row[parts[1]] = formatted
+			}
+		}
 	}
 	return Result{Rows: rows, NextCursor: next}, nil
 }

@@ -37,7 +37,7 @@ test('complete blog editorial, identity, and moderation journey',async({page,bea
     await expect(page.getByRole('heading',{name:title})).toBeVisible()
     return page.url().split('/').at(-1)!
   }
-  const postID=await createPost('Bean ships','bean-ships','<p>Safe <strong>rich text</strong>.</p><script>window.pwned=true</script><a href="javascript:alert(1)">bad</a>')
+  const postID=await createPost('Bean ships','bean-ships','## Safe **Markdown body**.\n\n<script>window.pwned=true</script>\n\n[bad](javascript:alert(1))')
 
   await page.goto(bean.baseURL+'/')
   await expect(page.getByText('Bean ships')).toHaveCount(0)
@@ -57,7 +57,7 @@ test('complete blog editorial, identity, and moderation journey',async({page,bea
   await expect(page.getByText('Bean ships')).toBeVisible()
   await expect(page.getByText('Engineering')).toBeVisible()
   await expect(page.getByText(/Go, Runtime|Runtime, Go/)).toBeVisible()
-  await expect(page.locator('.rich-text strong')).toHaveText('rich text')
+  await expect(page.locator('.rich-text strong')).toHaveText('Markdown body')
   await expect(page.locator('.rich-text script')).toHaveCount(0)
   await expect(page.locator('.rich-text a[href^="javascript:"]')).toHaveCount(0)
   expect(await (await page.request.get(bean.baseURL+'/rss.xml')).text()).toContain('Bean ships')

@@ -132,6 +132,14 @@ func Compile(appID string, version int, defs []definition.Definition) Result {
 			}
 			x.Name = d.Metadata.Name
 			a.Policies[x.Name] = x
+		case "Filter":
+			var x appir.Filter
+			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
+				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
+				continue
+			}
+			x.Name = d.Metadata.Name
+			a.Filters[x.Name] = x
 		case "Webform":
 			var x appir.Webform
 			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
@@ -364,6 +372,16 @@ func diagnostic(kind, name, path, message string) definition.Diagnostic {
 func validate(a *appir.App) []definition.Diagnostic {
 	out := []definition.Diagnostic{}
 	routes := map[string]string{}
+	for name, filterDefinition := range a.Filters {
+		if len(filterDefinition.Steps) == 0 {
+			out = append(out, diagnostic("Filter", name, "spec.steps", "requires at least one filter step"))
+		}
+		for i, step := range filterDefinition.Steps {
+			if step.Type != "markdown" {
+				out = append(out, diagnostic("Filter", name, fmt.Sprintf("spec.steps.%d.type", i), "has no registered filter implementation"))
+			}
+		}
+	}
 	for name, v := range a.Views {
 		e, ok := a.Entities[v.Entity]
 		if !ok {
@@ -424,6 +442,20 @@ func validate(a *appir.App) []definition.Diagnostic {
 		selected := map[string]bool{}
 		for _, field := range v.Fields {
 			selected[field] = true
+		}
+		for fieldName, filterName := range v.FieldFilters {
+			path := "spec.fieldFilters." + fieldName
+			if !selected[fieldName] {
+				out = append(out, diagnostic("View", name, path, "must reference a selected View field"))
+				continue
+			}
+			fieldType, exists := viewFieldType(fieldName, e, relationships, a)
+			if !exists || !map[string]bool{"string": true, "text": true, "richtext": true}[fieldType] {
+				out = append(out, diagnostic("View", name, path, "can only filter textual fields"))
+			}
+			if _, exists = a.Filters[filterName]; !exists {
+				out = append(out, diagnostic("View", name, path, "references missing Filter "+filterName))
+			}
 		}
 		if len(v.GroupBy) == 0 && len(v.Aggregates) == 0 && !selected["id"] {
 			out = append(out, diagnostic("View", name, "spec.fields", "must include id for deterministic cursor pagination"))
@@ -993,6 +1025,36 @@ func validViewField(name string, base map[string]bool, relationships map[string]
 		return false
 	}
 	return fieldSet(a.Entities[relationship.Entity])[parts[1]]
+}
+
+func viewFieldType(name string, base appir.Entity, relationships map[string]appir.ViewRelationship, a *appir.App) (string, bool) {
+	parts := strings.Split(name, ".")
+	entity := base
+	fieldName := name
+	if len(parts) == 2 {
+		relationship, ok := relationships[parts[0]]
+		if !ok {
+			return "", false
+		}
+		entity, ok = a.Entities[relationship.Entity]
+		if !ok {
+			return "", false
+		}
+		fieldName = parts[1]
+	} else if len(parts) != 1 {
+		return "", false
+	}
+	for _, fieldDefinition := range entity.Fields {
+		if fieldDefinition.Name == fieldName {
+			return fieldDefinition.Type, true
+		}
+	}
+	for _, fieldDefinition := range []appir.Field{{Name: "id", Type: "uuid"}, {Name: "created_at", Type: "datetime"}, {Name: "updated_at", Type: "datetime"}, {Name: "version", Type: "integer"}} {
+		if fieldDefinition.Name == fieldName {
+			return fieldDefinition.Type, true
+		}
+	}
+	return "", false
 }
 
 func usesEntity(op string) bool {

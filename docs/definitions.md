@@ -1,6 +1,6 @@
 # Definitions
 
-Definitions use `apiVersion: bean/v1alpha1`, a supported `kind`, lowercase namespaced metadata, and a typed specification. Supported kinds are Entity, View, Action, Webform, Policy, Block, Panel, Page, Role, Menu, Job, AdminResource, and LocalRegistration. Bundle files contain `name`, `definitions`, and optional seed rows.
+Definitions use `apiVersion: bean/v1alpha1`, a supported `kind`, lowercase namespaced metadata, and a typed specification. Supported kinds are Entity, View, Action, Webform, Policy, Filter, Block, Panel, Page, Role, Menu, Job, AdminResource, and LocalRegistration. Bundle files contain `name`, `definitions`, and optional seed rows.
 
 Compilation validates envelopes, names, fields, references, relation kinds, limits, Action steps, Panel regions, and route uniqueness. Diagnostics identify kind, name, specification path, and a corrective message. Generated CRUD is emitted as Views and Actions inside AppIR.
 
@@ -54,6 +54,28 @@ A `resource-list` Block embeds an AdminResource table and its Actions in a Page.
 ```
 
 Compilation requires bound and interactive fields to be exposed by the AdminResource View, requires interactive fields to be configured by the AdminResource, and rejects overlap between the two sets. Page, Block, View, and Action policies continue to authorize reads and writes independently.
+
+## Content filters
+
+A `Filter` is a named, immutable output-formatting pipeline. Views opt individual selected textual fields into a Filter; source data remains unchanged and another View, such as an Admin View, can return the source for editing.
+
+```yaml
+- apiVersion: bean/v1alpha1
+  kind: Filter
+  metadata: {name: markdown}
+  spec:
+    steps: [{type: markdown}]
+
+- apiVersion: bean/v1alpha1
+  kind: View
+  metadata: {name: published_article}
+  spec:
+    entity: article
+    fields: [id, title, body]
+    fieldFilters: {body: markdown}
+```
+
+`markdown` is the first supported step. It produces sanitized HTML: raw HTML, executable content, images, event attributes, and unsafe URL schemes are removed. Filtering occurs after policy redaction and is part of the View output contract for JSON, CSV, RSS, and Page rendering. Action input and output remain unformatted. Content Filters are distinct from View predicates and `exposedFilters`, which constrain database queries.
 
 ## Runtime durability
 

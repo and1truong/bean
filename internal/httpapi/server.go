@@ -107,7 +107,7 @@ func (s *Server) manifest(w http.ResponseWriter, _ *http.Request) {
 		problem(w, 503, "not_ready", "No active release.", "")
 		return
 	}
-	write(w, 200, map[string]any{"appId": a.AppID, "releaseId": a.ReleaseID, "version": a.Version, "entities": a.Entities, "views": a.Views, "actions": a.Actions, "webforms": a.Webforms, "pages": a.Pages, "localRegistration": a.LocalRegistration})
+	write(w, 200, map[string]any{"appId": a.AppID, "releaseId": a.ReleaseID, "version": a.Version, "entities": a.Entities, "views": a.Views, "actions": a.Actions, "filters": a.Filters, "webforms": a.Webforms, "pages": a.Pages, "localRegistration": a.LocalRegistration})
 }
 func (s *Server) adminManifest(w http.ResponseWriter, r *http.Request) {
 	if !s.editor(w, r) {

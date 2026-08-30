@@ -7,7 +7,7 @@ import './studio.css'
 type Definition={apiVersion:string;kind:string;metadata:{name:string;namespace?:string};spec:Record<string,any>}
 type FieldSpec={name:string;label?:string;type:string;required?:boolean;unique?:boolean;options?:string[];relation?:{entity:string;kind:string;targetField?:string}}
 const coreKinds=['Entity','View','Action','Policy','AdminResource']
-const allKinds=[...coreKinds,'Webform','Block','Panel','Page','Role','Menu','Job']
+const allKinds=[...coreKinds,'Filter','Webform','Block','Panel','Page','Role','Menu','Job']
 
 export function Studio(){
   const editor=useEditor();const qc=useQueryClient();const[advanced,setAdvanced]=useState(false)

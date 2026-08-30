@@ -2,6 +2,7 @@ name: Bean Blog
 definitions:
   - {apiVersion: bean/v1alpha1, kind: Role, metadata: {name: member}, spec: {permissions: [comment_submit]}}
   - {apiVersion: bean/v1alpha1, kind: Role, metadata: {name: editor}, spec: {permissions: [content_manage, comment_moderate]}}
+  - {apiVersion: bean/v1alpha1, kind: Filter, metadata: {name: markdown}, spec: {steps: [{type: markdown}]}}
   - {apiVersion: bean/v1alpha1, kind: Policy, metadata: {name: editor_only}, spec: {readRoles: [editor, administrator], writeRoles: [editor, administrator]}}
   - {apiVersion: bean/v1alpha1, kind: Policy, metadata: {name: member_write}, spec: {authenticated: true, readRoles: [member, editor, administrator], writeRoles: [member, editor, administrator]}}
   - {apiVersion: bean/v1alpha1, kind: Policy, metadata: {name: comment_access}, spec: {authenticated: true, readRoles: [editor, administrator], writeRoles: [member, editor, administrator], owner: true, bypassOwnerRoles: [editor, administrator]}}
@@ -86,6 +87,7 @@ definitions:
         - {name: tags, relationField: tags, type: left}
       filter: {op: eq, left: {source: record, name: status}, right: {source: literal, literal: published}}
       exposedFilters: {slug: {name: slug, type: slug, required: true}}
+      fieldFilters: {body: markdown}
       policy: published_only
       sort: [{field: id}]
       defaultLimit: 50
@@ -127,6 +129,7 @@ definitions:
       relationships: [{name: post, entity: post, type: inner, localField: post_id, targetField: id}]
       filter: {op: eq, left: {source: record, name: status}, right: {source: literal, literal: approved}}
       exposedFilters: {post_slug: {name: post.slug, type: slug, required: true}}
+      fieldFilters: {body: markdown}
       policy: approved_only
       sort: [{field: created_at}]
       defaultLimit: 100
@@ -238,7 +241,7 @@ definitions:
   - {apiVersion: bean/v1alpha1, kind: Menu, metadata: {name: public_nav}, spec: {items: [{label: Home, route: /}, {label: Categories, route: /categories}, {label: Tags, route: /tags}]}}
   - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: public_menu}, spec: {type: menu, menu: public_nav}}
   - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: home_posts}, spec: {type: view, view: published_posts, presentation: {mode: list, titleField: title, bodyField: excerpt, linkRoute: /posts/:slug, metaFields: [author_display_name, published_at], emptyState: No published posts yet.}}}
-  - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: post_detail}, spec: {type: view, view: published_post, inputs: {slug: {type: slug, required: true}}, bindings: {slug: {source: context, name: slug, required: true}}, presentation: {mode: detail, titleField: title, bodyField: body, metaFields: [author_display_name, published_at, category.name, tags.name], richTextFields: [body], emptyState: Post not found.}}}
+  - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: post_detail}, spec: {type: view, view: published_post, inputs: {slug: {type: slug, required: true}}, bindings: {slug: {source: context, name: slug, required: true}}, presentation: {mode: detail, titleField: title, bodyField: body, metaFields: [author_display_name, published_at, category.name, tags.name], emptyState: Post not found.}}}
   - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: post_comments}, spec: {type: view, view: approved_comments, inputs: {post_slug: {type: slug, required: true}}, bindings: {post_slug: {source: context, name: slug, required: true}}, presentation: {mode: list, titleField: author_display_name, bodyField: body, metaFields: [created_at], emptyState: No approved comments yet.}}}
   - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: submit_comment_form}, spec: {type: webform, webform: comment_form, policy: member_write, inputs: {post_slug: {type: slug, required: true}}, bindings: {post_slug: {source: context, name: slug, required: true}}}}
   - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: category_index}, spec: {type: view, view: public_categories, presentation: {mode: list, titleField: name, linkRoute: /categories/:slug, emptyState: No categories yet.}}}

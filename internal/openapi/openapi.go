@@ -11,7 +11,11 @@ func Generate(a *appir.App) (json.RawMessage, error) {
 	for name, v := range a.Views {
 		props := map[string]any{}
 		for _, f := range v.Fields {
-			props[f] = map[string]any{"type": "string"}
+			property := map[string]any{"type": "string"}
+			if _, formatted := v.FieldFilters[f]; formatted {
+				property["contentMediaType"] = "text/html"
+			}
+			props[f] = property
 		}
 		parameters := []any{map[string]any{"name": "limit", "in": "query", "schema": map[string]any{"type": "integer", "maximum": v.MaxLimit}}, map[string]any{"name": "offset", "in": "query", "schema": map[string]any{"type": "integer", "minimum": 0}}, map[string]any{"name": "cursor", "in": "query", "schema": map[string]any{"type": "string"}}}
 		for filterName, filter := range v.ExposedFilters {

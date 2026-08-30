@@ -24,6 +24,11 @@ type Entity struct {
 	Indexes, Unique           [][]string
 }
 type Display struct{ Type, Route string }
+type FilterStep struct{ Type string }
+type Filter struct {
+	Name  string
+	Steps []FilterStep
+}
 type View struct {
 	Name, Entity           string
 	Fields                 []string
@@ -31,6 +36,7 @@ type View struct {
 	Filter                 *expr.Expr
 	ContextFilter          *expr.Expr
 	ExposedFilters         map[string]Field
+	FieldFilters           map[string]string
 	Sort                   []Sort
 	GroupBy                []string
 	Aggregates             []Aggregate
@@ -171,13 +177,14 @@ type App struct {
 	Roles             map[string]Role
 	Menus             map[string]Menu
 	Jobs              map[string]Job
+	Filters           map[string]Filter
 	AdminResources    map[string]AdminResource
 	LocalRegistration *LocalRegistration
 	OpenAPI           json.RawMessage
 }
 
 func Empty() *App {
-	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, AdminResources: map[string]AdminResource{}}
+	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
 }
 func (a *App) ValidateFormat() error {
 	if a.FormatVersion != CurrentFormat {
