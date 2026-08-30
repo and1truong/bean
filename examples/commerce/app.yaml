@@ -1,0 +1,22 @@
+name: Commerce
+definitions:
+  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: product}, spec: {label: Product, fields: [{name: name, label: Name, type: string, required: true}, {name: price, label: Price, type: money, required: true}, {name: inventory, label: Inventory, type: integer, required: true}]}}
+  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: order}, spec: {label: Order, fields: [{name: status, label: Status, type: enum, required: true, options: [pending_payment, paid, fulfilled]}, {name: payment_result, label: Payment, type: string}]}}
+  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: order_item}, spec: {label: Order Item, fields: [{name: order_id, label: Order, type: relation, required: true}, {name: product_id, label: Product, type: relation, required: true}, {name: quantity, label: Quantity, type: integer, required: true}, {name: unit_price, label: Unit price, type: money, required: true}]}}
+  - apiVersion: bean/v1alpha1
+    kind: Action
+    metadata: {name: place_order}
+    spec:
+      entity: order
+      operation: transaction
+      input: {product_id: {type: relation, required: true}, quantity: {type: integer, required: true}}
+      output: {payment: {type: string}}
+      steps:
+        - {op: decrement, values: {entity: product, field: inventory, id_input: product_id, amount_input: quantity, message: Product is out of stock.}}
+        - {op: create, values: {status: pending_payment, payment_result: deterministic-success}}
+        - {op: emit, event: order_placed}
+        - {op: return, values: {payment: deterministic-success}}
+  - {apiVersion: bean/v1alpha1, kind: Action, metadata: {name: advance_order}, spec: {entity: order, operation: transition, transitions: {pending_payment: [paid], paid: [fulfilled]}}}
+  - {apiVersion: bean/v1alpha1, kind: Webform, metadata: {name: checkout}, spec: {action: place_order, elements: [{name: product_id, type: entity reference, required: true}, {name: quantity, type: number, required: true}], confirmation: Order placed.}}
+  - {apiVersion: bean/v1alpha1, kind: View, metadata: {name: products}, spec: {entity: product, fields: [id, name, price, inventory], displays: {api: {type: json, route: /api/products}}}}
+seed: {}

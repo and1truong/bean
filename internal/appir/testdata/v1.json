@@ -1,0 +1,16 @@
+{
+  "AppID": "compatibility",
+  "FormatVersion": "bean/appir/v1",
+  "Version": 1,
+  "Entities": {},
+  "Views": {},
+  "Actions": {},
+  "Policies": {},
+  "Webforms": {},
+  "Blocks": {},
+  "Panels": {},
+  "Pages": {},
+  "Roles": {},
+  "Menus": {},
+  "Jobs": {}
+}

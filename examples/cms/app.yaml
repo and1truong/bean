@@ -1,0 +1,22 @@
+name: CMS / News
+definitions:
+  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: article}, spec: {label: Article, fields: [{name: title, label: Title, type: string, required: true}, {name: body, label: Body, type: richtext}, {name: status, label: Status, type: enum, required: true, options: [draft, published]}, {name: category_id, label: Category, type: relation}, {name: published_at, label: Published, type: datetime}]}}
+  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: category}, spec: {label: Category, fields: [{name: name, label: Name, type: string, required: true, unique: true}]}}
+  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: author}, spec: {label: Author, fields: [{name: name, label: Name, type: string, required: true}, {name: email, label: Email, type: email}]}}
+  - apiVersion: bean/v1alpha1
+    kind: View
+    metadata: {name: news}
+    spec:
+      entity: article
+      fields: [id, title, body, status, published_at]
+      filter: {op: eq, left: {source: record, name: status}, right: {source: literal, literal: published}}
+      sort: [{field: published_at, desc: true}]
+      displays: {api: {type: json, route: /api/news}, feed: {type: rss, route: /news.rss}, export: {type: csv, route: /news.csv}}
+  - {apiVersion: bean/v1alpha1, kind: Action, metadata: {name: publish_article}, spec: {entity: article, operation: transition, transitions: {draft: [published]}}}
+  - {apiVersion: bean/v1alpha1, kind: AdminResource, metadata: {name: article}, spec: {entity: article, description: Editorial content, labelField: title, list: {columns: [id, title, status, category_id, updated_at], search: [title, body], filters: [status, category_id], sort: [{field: updated_at, desc: true}], pageSize: 25}, actions: [publish_article]}}
+  - {apiVersion: bean/v1alpha1, kind: Job, metadata: {name: scheduled_publish}, spec: {action: publish_article}}
+  - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: news_list}, spec: {type: view, view: news}}
+  - {apiVersion: bean/v1alpha1, kind: Panel, metadata: {name: news_panel}, spec: {layout: single-column, regions: [{name: main, blocks: [news_list]}]}}
+  - {apiVersion: bean/v1alpha1, kind: Page, metadata: {name: home}, spec: {route: /, title: News, panel: news_panel}}
+  - {apiVersion: bean/v1alpha1, kind: Role, metadata: {name: editor}, spec: {permissions: [article_create, article_update, publish_article]}}
+seed: {}

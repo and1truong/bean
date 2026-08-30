@@ -1,0 +1,9 @@
+/bin/
+/.cache/
+/web/node_modules/
+/e2e/node_modules/
+/e2e/artifacts/
+/tmp/
+*.db
+*.db-shm
+*.db-wal

@@ -1,0 +1,76 @@
+import {test as base,expect} from './fixtures/bean'
+import {login} from './fixtures/bean'
+
+const test=base.extend<{}, {appName:string}>({appName:['empty',{scope:'worker'}]})
+
+test('authors and publishes every core definition without specification JSON',async({page,bean})=>{
+  await login(page,bean.baseURL)
+  await page.goto(bean.baseURL+'/studio')
+
+  await page.getByTestId('definition-name').fill('book')
+  await page.getByTestId('entity-label').fill('Book')
+  for(const field of [{name:'title',label:'Title',type:'string',required:true},{name:'author',label:'Author',type:'string'},{name:'published_at',label:'Published at',type:'date'}]){
+    await page.getByTestId('add-field').click()
+    const row=page.getByTestId('entity-field').last()
+    await row.getByLabel('Name').fill(field.name)
+    await row.getByLabel('Label').fill(field.label)
+    await row.getByLabel('Type').selectOption(field.type)
+    if(field.required)await row.getByLabel('Required').check()
+  }
+  await page.getByTestId('save-definition').click()
+  await expect(page.getByRole('button',{name:'Entity: book'})).toBeVisible()
+
+  await page.getByTestId('definition-kind').selectOption('Policy')
+  await page.getByTestId('definition-name').fill('book_operators')
+  await page.getByTestId('policy-read-roles').fill('administrator')
+  await page.getByTestId('policy-write-roles').fill('administrator')
+  await page.getByLabel('Authenticated').check()
+  await page.getByTestId('save-definition').click()
+  await expect(page.getByRole('button',{name:'Policy: book_operators'})).toBeVisible()
+
+  await page.getByTestId('definition-kind').selectOption('View')
+  await page.getByTestId('definition-name').fill('books')
+  await page.getByTestId('view-entity').selectOption('book')
+  await page.getByLabel('title').check()
+  await page.getByLabel('author').check()
+  await page.getByLabel('published_at').check()
+	await page.getByLabel('created_at').check()
+	await page.getByLabel('updated_at').check()
+	await page.getByLabel('version').check()
+	await page.getByTestId('reference-policy').selectOption('book_operators')
+  await page.getByTestId('save-definition').click()
+  await expect(page.getByRole('button',{name:'View: books'})).toBeVisible()
+
+  await page.getByTestId('definition-kind').selectOption('Action')
+  await page.getByTestId('definition-name').fill('remove_book')
+  await page.getByTestId('action-entity').selectOption('book')
+  await page.getByTestId('action-operation').selectOption('delete')
+	await page.getByTestId('reference-policy').selectOption('book_operators')
+  await page.getByTestId('save-definition').click()
+  await expect(page.getByRole('button',{name:'Action: remove_book'})).toBeVisible()
+
+  await page.getByTestId('definition-kind').selectOption('AdminResource')
+  await page.getByTestId('definition-name').fill('books')
+  await page.getByTestId('admin-entity').selectOption('book')
+	await page.getByTestId('reference-view').selectOption('books')
+  await page.getByLabel('Label field').selectOption('title')
+  await page.getByLabel('List columns').selectOption(['id','title','author','published_at'])
+  await page.getByLabel('Search fields').selectOption(['title','author'])
+  await page.getByLabel('Form fields').selectOption(['title','author','published_at'])
+  await page.getByTestId('save-definition').click()
+  await expect(page.getByRole('button',{name:'AdminResource: books'})).toBeVisible()
+
+  await expect(page.getByTestId('definition-spec')).toHaveCount(0)
+  await page.getByTestId('validate-release').click()
+  await expect(page.getByTestId('diagnostics')).toContainText('"valid": true')
+	await expect(page.getByText('create entity book',{exact:true})).toBeVisible()
+  await page.getByTestId('publish-release').click()
+  await expect(page.getByTestId('diagnostics')).toContainText('"status": "active"')
+
+  await page.goto(bean.baseURL+'/admin/books/new')
+  await page.getByTestId('field-title').fill('The Left Hand of Darkness')
+  await page.getByTestId('field-author').fill('Ursula K. Le Guin')
+  await page.getByTestId('field-published_at').fill('1969-03-01')
+  await page.getByTestId('create-book').click()
+  await expect(page.getByRole('heading',{name:'The Left Hand of Darkness'})).toBeVisible()
+})
