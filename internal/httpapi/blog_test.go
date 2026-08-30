@@ -152,6 +152,20 @@ func testBlogSecurityAndWorkflowContract(t *testing.T, databaseURL string) {
 	if err != nil || len(comments) != 1 || comments[0]["status"] != "pending" || comments[0]["owner_id"] == nil || comments[0]["author_display_name"] != "Ada Member" {
 		t.Fatalf("pending comments=%v err=%v", comments, err)
 	}
+	queuePage := "/blog/" + fmt.Sprint(post["id"]) + "/comments"
+	if response := serve(t, handler, http.MethodGet, "/api/system/page?path="+queuePage, nil, memberCookie, ""); response.Code != http.StatusNotFound {
+		t.Fatalf("member scoped queue status=%d body=%s", response.Code, response.Body.String())
+	}
+	queueView := "/api/views/comment_admin?_page=" + queuePage + "&_block=post_comment_queue"
+	if response := serve(t, handler, http.MethodGet, queueView+"&status=pending", nil, adminCookie, ""); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Thoughtful comment") {
+		t.Fatalf("scoped pending queue status=%d body=%s", response.Code, response.Body.String())
+	}
+	if response := serve(t, handler, http.MethodGet, queueView+"&owner_id=unconfigured", nil, adminCookie, ""); response.Code != http.StatusBadRequest {
+		t.Fatalf("unconfigured scoped filter status=%d body=%s", response.Code, response.Body.String())
+	}
+	if response := serve(t, handler, http.MethodGet, queueView+"&post_id="+fmt.Sprint(post["id"]), nil, adminCookie, ""); response.Code != http.StatusBadRequest {
+		t.Fatalf("scoped parent tamper status=%d body=%s", response.Code, response.Body.String())
+	}
 	memberDirect := serve(t, handler, http.MethodGet, "/api/views/comment_list", nil, memberCookie, "")
 	if memberDirect.Code != http.StatusNotFound || strings.Contains(memberDirect.Body.String(), "Thoughtful comment") {
 		t.Fatalf("pending comment leaked from direct View: status=%d body=%s", memberDirect.Code, memberDirect.Body.String())
@@ -169,6 +183,12 @@ func testBlogSecurityAndWorkflowContract(t *testing.T, databaseURL string) {
 		t.Fatalf("member moderation status=%d body=%s", memberModeration.Code, memberModeration.Body.String())
 	}
 	create("approve_comment", map[string]any{"id": comments[0]["id"]})
+	if response := serve(t, handler, http.MethodGet, queueView+"&status=pending", nil, adminCookie, ""); response.Code != http.StatusOK || strings.Contains(response.Body.String(), "Thoughtful comment") {
+		t.Fatalf("approved comment remained pending status=%d body=%s", response.Code, response.Body.String())
+	}
+	if response := serve(t, handler, http.MethodGet, queueView+"&status=approved", nil, adminCookie, ""); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Thoughtful comment") {
+		t.Fatalf("approved scoped filter status=%d body=%s", response.Code, response.Body.String())
+	}
 	if response := serve(t, handler, http.MethodGet, publicCommentsPath, nil, nil, ""); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Thoughtful comment") {
 		t.Fatalf("approved comment missing: status=%d body=%s", response.Code, response.Body.String())
 	}

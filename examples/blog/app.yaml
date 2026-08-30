@@ -132,7 +132,17 @@ definitions:
       defaultLimit: 100
       maxLimit: 100
   - {apiVersion: bean/v1alpha1, kind: View, metadata: {name: post_admin}, spec: {entity: post, fields: [id, title, slug, excerpt, body, author_display_name, category_id, tags, status, published_at, created_at, updated_at, version], policy: editor_only, sort: [{field: updated_at, desc: true}]}}
-  - {apiVersion: bean/v1alpha1, kind: View, metadata: {name: comment_admin}, spec: {entity: comment, fields: [id, post_id, body, author_display_name, status, owner_id, created_at, updated_at, version], policy: editor_only, sort: [{field: created_at, desc: true}]}}
+  - apiVersion: bean/v1alpha1
+    kind: View
+    metadata: {name: comment_admin}
+    spec:
+      entity: comment
+      fields: [id, post_id, body, author_display_name, status, owner_id, created_at, updated_at, version]
+      exposedFilters:
+        post_id: {name: post_id, type: uuid, required: true}
+        status: {name: status, type: enum, options: [pending, approved, rejected]}
+      policy: editor_only
+      sort: [{field: created_at, desc: true}]
 
   - apiVersion: bean/v1alpha1
     kind: Action
@@ -237,6 +247,7 @@ definitions:
   - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: tag_posts}, spec: {type: view, view: published_posts_by_tag, inputs: {tag_slug: {type: slug, required: true}}, bindings: {tag_slug: {source: context, name: slug, required: true}}, presentation: {mode: list, titleField: title, bodyField: excerpt, linkRoute: /posts/:slug, emptyState: No published posts with this tag.}}}
   - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: signup_form}, spec: {type: webform, webform: signup}}
   - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: login_help}, spec: {type: text, text: Sign in with your email and password.}}
+  - {apiVersion: bean/v1alpha1, kind: Block, metadata: {name: post_comment_queue}, spec: {type: resource-list, resource: comment, policy: editor_only, inputs: {post_id: {type: uuid, required: true}}, bindings: {post_id: {source: context, name: id, required: true}}, filters: [status], defaultFilters: {status: pending}}}
 
   - {apiVersion: bean/v1alpha1, kind: Panel, metadata: {name: home_panel}, spec: {layout: single-column, regions: [{name: main, blocks: [public_menu, home_posts]}]}}
   - {apiVersion: bean/v1alpha1, kind: Panel, metadata: {name: post_panel}, spec: {layout: single-column, regions: [{name: main, blocks: [public_menu, post_detail, post_comments, submit_comment_form]}]}}
@@ -246,6 +257,7 @@ definitions:
   - {apiVersion: bean/v1alpha1, kind: Panel, metadata: {name: tag_panel}, spec: {layout: single-column, regions: [{name: main, blocks: [public_menu, tag_posts]}]}}
   - {apiVersion: bean/v1alpha1, kind: Panel, metadata: {name: signup_panel}, spec: {layout: single-column, regions: [{name: main, blocks: [public_menu, signup_form]}]}}
   - {apiVersion: bean/v1alpha1, kind: Panel, metadata: {name: login_panel}, spec: {layout: single-column, regions: [{name: main, blocks: [public_menu, login_help]}]}}
+  - {apiVersion: bean/v1alpha1, kind: Panel, metadata: {name: post_comment_queue_panel}, spec: {layout: single-column, policy: editor_only, regions: [{name: main, blocks: [post_comment_queue]}]}}
 
   - {apiVersion: bean/v1alpha1, kind: Page, metadata: {name: home}, spec: {route: /, title: Bean Blog, panel: home_panel}}
   - {apiVersion: bean/v1alpha1, kind: Page, metadata: {name: post}, spec: {route: /posts/:slug, title: Post, panel: post_panel, context: {slug: {source: route, name: slug, required: true}}}}
@@ -255,4 +267,5 @@ definitions:
   - {apiVersion: bean/v1alpha1, kind: Page, metadata: {name: tag}, spec: {route: /tags/:slug, title: Tag, panel: tag_panel, context: {slug: {source: route, name: slug, required: true}}}}
   - {apiVersion: bean/v1alpha1, kind: Page, metadata: {name: signup}, spec: {route: /signup, title: Sign up, panel: signup_panel}}
   - {apiVersion: bean/v1alpha1, kind: Page, metadata: {name: login}, spec: {route: /login, title: Sign in, panel: login_panel}}
+  - {apiVersion: bean/v1alpha1, kind: Page, metadata: {name: post_comment_queue}, spec: {route: /blog/:id/comments, title: Comment moderation, policy: editor_only, panel: post_comment_queue_panel, context: {id: {source: route, name: id, required: true}}}}
 seed: {}

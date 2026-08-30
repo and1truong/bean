@@ -105,3 +105,45 @@ func TestBlockBindingsMustMatchTargetTypes(t *testing.T) {
 		t.Fatal("mismatched bound input type accepted")
 	}
 }
+
+func TestResourceListBlockValidatesScopeAndFilters(t *testing.T) {
+	defs := []definition.Definition{
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "item"}, Spec: map[string]any{"fields": []any{
+			map[string]any{"name": "parent_id", "type": "uuid", "required": true},
+			map[string]any{"name": "status", "type": "enum", "required": true, "options": []any{"pending", "approved"}},
+		}}},
+		{APIVersion: "bean/v1alpha1", Kind: "View", Metadata: definition.Metadata{Name: "item_admin"}, Spec: map[string]any{
+			"entity": "item", "fields": []any{"id", "parent_id", "status", "created_at", "updated_at", "version"}, "exposedFilters": map[string]any{
+				"parent_id": map[string]any{"name": "parent_id", "type": "uuid", "required": true},
+				"status":    map[string]any{"name": "status", "type": "enum", "options": []any{"pending", "approved"}},
+			},
+		}},
+		{APIVersion: "bean/v1alpha1", Kind: "AdminResource", Metadata: definition.Metadata{Name: "item"}, Spec: map[string]any{
+			"entity": "item", "view": "item_admin", "list": map[string]any{"columns": []any{"id", "status"}, "filters": []any{"parent_id", "status"}},
+		}},
+		{APIVersion: "bean/v1alpha1", Kind: "Block", Metadata: definition.Metadata{Name: "scoped_items"}, Spec: map[string]any{
+			"type": "resource-list", "resource": "item",
+			"inputs":   map[string]any{"parent_id": map[string]any{"type": "uuid", "required": true}},
+			"bindings": map[string]any{"parent_id": map[string]any{"source": "context", "name": "id", "required": true}},
+			"filters":  []any{"status"}, "defaultFilters": map[string]any{"status": "pending"},
+		}},
+	}
+	result := compiler.Compile("test", 1, defs)
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("valid resource-list diagnostics=%v", result.Diagnostics)
+	}
+	block := result.App.Blocks["scoped_items"]
+	if block.View != "item_admin" || block.Resource != "item" || block.DefaultFilters["status"] != "pending" {
+		t.Fatalf("resource-list normalization=%+v", block)
+	}
+
+	defs[3].Spec["filters"] = []any{"parent_id"}
+	if invalid := compiler.Compile("test", 1, defs); len(invalid.Diagnostics) == 0 {
+		t.Fatal("bound input was accepted as an interactive filter")
+	}
+	defs[3].Spec["filters"] = []any{"status"}
+	defs[3].Spec["resource"] = ""
+	if invalid := compiler.Compile("test", 1, defs); len(invalid.Diagnostics) == 0 {
+		t.Fatal("resource-list without a resource was accepted")
+	}
+}

@@ -104,10 +104,12 @@ type Webform struct {
 	Confirmation string
 }
 type Block struct {
-	Name, Type, View, Entity, Webform, Action, Menu, Text, Policy string
-	Inputs                                                        map[string]Field
-	Bindings                                                      map[string]ContextBinding
-	Presentation                                                  ViewPresentation
+	Name, Type, View, Entity, Webform, Action, Menu, Text, Policy, Resource string
+	Inputs                                                                  map[string]Field
+	Bindings                                                                map[string]ContextBinding
+	Filters                                                                 []string
+	DefaultFilters                                                          map[string]any
+	Presentation                                                            ViewPresentation
 }
 type ViewPresentation struct {
 	Mode, TitleField, BodyField, LinkRoute, LinkField, EmptyState string

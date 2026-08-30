@@ -38,6 +38,23 @@ Local signup is disabled unless a `LocalRegistration` definition references a `r
 
 A View or Webform Block may declare typed `inputs` and bind them to Page context. Compilation requires each bound name and type to match the target View filter or Action input. HTTP execution recomputes the binding from the matched Page route and rejects client collisions. View Blocks may configure generic `presentation` fields for list/detail mode, title/body/meta fields, route templates, rich-text fields, and empty state. Entity fields may use the `slug` type. Transaction Actions may bind `$now` once for deterministic timestamps.
 
+A `resource-list` Block embeds an AdminResource table and its Actions in a Page. Its bound inputs scope the backing View immutably; `filters` is the allowlist of values a user may change, and `defaultFilters` only controls initial presentation:
+
+```yaml
+- apiVersion: bean/v1alpha1
+  kind: Block
+  metadata: {name: project_tasks}
+  spec:
+    type: resource-list
+    resource: task
+    inputs: {project_id: {type: uuid, required: true}}
+    bindings: {project_id: {source: context, name: id, required: true}}
+    filters: [status]
+    defaultFilters: {status: open}
+```
+
+Compilation requires bound and interactive fields to be exposed by the AdminResource View, requires interactive fields to be configured by the AdminResource, and rejects overlap between the two sets. Page, Block, View, and Action policies continue to authorize reads and writes independently.
+
 ## Runtime durability
 
 An Action mutation, its audit row, idempotency result, jobs, and outbox intents share the Action transaction. Idempotency keys are scoped to an Action and include a canonical input fingerprint; reusing a key with different input is a conflict. Jobs and outbox records use persistent pending/claimed/completed-or-failed states with leases, bounded attempts, scheduled retry, stale-claim recovery, and administrator retry/cancel controls. Delivery is at-least-once, so external consumers must deduplicate.

@@ -255,6 +255,21 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request) {
 		}
 		filters[name] = value
 	}
+	if blockName := r.URL.Query().Get("_block"); blockName != "" {
+		block := a.Blocks[blockName]
+		if block.Type == "resource-list" {
+			allowed := stringSet(block.Filters)
+			for name := range block.Bindings {
+				allowed[name] = true
+			}
+			for name := range filters {
+				if !allowed[name] {
+					problem(w, 400, "invalid_query", "Filter is not configured for this resource list.", requestID(r))
+					return
+				}
+			}
+		}
+	}
 	result, e := s.Views.RunPage(r.Context(), a, r.PathValue("name"), view.Params{Filter: filters, Limit: limit, Offset: offset, Cursor: r.URL.Query().Get("cursor")}, s.ctx(r))
 	if e != nil {
 		respondError(w, r, e)

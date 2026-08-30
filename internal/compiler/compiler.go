@@ -9,6 +9,7 @@ import (
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/expr"
+	"github.com/beanruntime/bean/internal/field"
 	"github.com/beanruntime/bean/internal/migration"
 )
 
@@ -216,6 +217,7 @@ func Compile(appID string, version int, defs []definition.Definition) Result {
 	}
 	normalizeActions(a)
 	normalizeAdminResources(a)
+	normalizeResourceListBlocks(a)
 	r.Diagnostics = append(r.Diagnostics, validate(a)...)
 	if len(r.Diagnostics) > 0 {
 		return r
@@ -709,10 +711,13 @@ func validate(a *appir.App) []definition.Diagnostic {
 		}
 	}
 	for name, block := range a.Blocks {
-		if !map[string]bool{"text": true, "view": true, "entity": true, "webform": true, "action": true, "menu": true}[block.Type] {
+		if !map[string]bool{"text": true, "view": true, "entity": true, "webform": true, "action": true, "menu": true, "resource-list": true}[block.Type] {
 			out = append(out, diagnostic("Block", name, "spec.type", "has no registered renderer"))
 		}
-		refs := []struct{ kind, value string }{{"view", block.View}, {"entity", block.Entity}, {"webform", block.Webform}, {"action", block.Action}}
+		if block.Type == "resource-list" && block.Resource == "" {
+			out = append(out, diagnostic("Block", name, "spec.resource", "is required"))
+		}
+		refs := []struct{ kind, value string }{{"view", block.View}, {"entity", block.Entity}, {"webform", block.Webform}, {"action", block.Action}, {"resource", block.Resource}}
 		for _, ref := range refs {
 			if ref.value == "" {
 				continue
@@ -727,6 +732,8 @@ func validate(a *appir.App) []definition.Diagnostic {
 				_, ok = a.Webforms[ref.value]
 			case "action":
 				_, ok = a.Actions[ref.value]
+			case "resource":
+				_, ok = a.AdminResources[ref.value]
 			}
 			if !ok {
 				out = append(out, diagnostic("Block", name, "spec."+ref.kind, "invalid Block input reference "+ref.value))
@@ -767,6 +774,34 @@ func validate(a *appir.App) []definition.Diagnostic {
 		}
 		if block.Type == "webform" && block.Webform != "" {
 			target = a.Actions[a.Webforms[block.Webform].Action].Input
+		}
+		if block.Type == "resource-list" && block.Resource != "" {
+			resource := a.AdminResources[block.Resource]
+			target = a.Views[resource.View].ExposedFilters
+			resourceFilters := nameSet(resource.List.Filters)
+			interactive := nameSet(block.Filters)
+			for i, filterName := range block.Filters {
+				if _, bound := block.Bindings[filterName]; bound {
+					out = append(out, diagnostic("Block", name, fmt.Sprintf("spec.filters.%d", i), "cannot expose an immutable bound input"))
+				}
+				if !resourceFilters[filterName] {
+					out = append(out, diagnostic("Block", name, fmt.Sprintf("spec.filters.%d", i), "is not configured by AdminResource "+block.Resource))
+				}
+				if _, exposed := target[filterName]; !exposed {
+					out = append(out, diagnostic("Block", name, fmt.Sprintf("spec.filters.%d", i), "has no matching View exposed filter"))
+				}
+			}
+			for filterName, value := range block.DefaultFilters {
+				definition, exposed := target[filterName]
+				if !interactive[filterName] {
+					out = append(out, diagnostic("Block", name, "spec.defaultFilters."+filterName, "must reference an interactive filter"))
+				} else if exposed {
+					definition.Name = filterName
+					if err := field.Validate(definition, value); err != nil {
+						out = append(out, diagnostic("Block", name, "spec.defaultFilters."+filterName, err.Error()))
+					}
+				}
+			}
 		}
 		if target != nil {
 			for inputName, input := range block.Inputs {
@@ -1116,6 +1151,14 @@ func fieldSet(e appir.Entity) map[string]bool {
 	}
 	return m
 }
+
+func nameSet(values []string) map[string]bool {
+	out := map[string]bool{}
+	for _, value := range values {
+		out[value] = true
+	}
+	return out
+}
 func generate(a *appir.App, name string, e appir.Entity) {
 	fields := []string{"id"}
 	for _, f := range e.Fields {
@@ -1231,5 +1274,23 @@ func normalizeAdminResources(a *appir.App) {
 			resource.Actions = []string{}
 		}
 		a.AdminResources[name] = resource
+	}
+}
+
+func normalizeResourceListBlocks(a *appir.App) {
+	for name, block := range a.Blocks {
+		if block.Type != "resource-list" {
+			continue
+		}
+		if resource, ok := a.AdminResources[block.Resource]; ok {
+			block.View = resource.View
+		}
+		if block.Filters == nil {
+			block.Filters = []string{}
+		}
+		if block.DefaultFilters == nil {
+			block.DefaultFilters = map[string]any{}
+		}
+		a.Blocks[name] = block
 	}
 }

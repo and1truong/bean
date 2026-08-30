@@ -11,7 +11,7 @@ import (
 func TestEveryAcceptedBlockTypeHasRenderer(t *testing.T) {
 	app := appir.Empty()
 	app.Menus["main"] = appir.Menu{Name: "main", Items: []appir.MenuItem{{Label: "Home", Route: "/"}}}
-	tests := map[string]string{"text": "TextBlock", "view": "ViewBlock", "entity": "EntityBlock", "webform": "WebformBlock", "action": "ActionBlock", "menu": "MenuBlock"}
+	tests := map[string]string{"text": "TextBlock", "view": "ViewBlock", "entity": "EntityBlock", "webform": "WebformBlock", "action": "ActionBlock", "menu": "MenuBlock", "resource-list": "ResourceListBlock"}
 	for kind, component := range tests {
 		node, allowed, e := block.Node(app, appir.Block{Name: kind, Type: kind, Text: "text", View: "view", Entity: "entity", Webform: "form", Action: "action", Menu: "main"}, map[string]any{}, beanctx.Request{})
 		if e != nil || !allowed || node.Component != component {

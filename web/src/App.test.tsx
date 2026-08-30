@@ -33,6 +33,22 @@ describe('public rendering',()=>{
     renderApp('/signup')
     expect(await screen.findByLabelText('display name')).toBeInTheDocument()
   })
+
+  it('renders a route-scoped resource list with default filters',async()=>{
+    const fetchMock=vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:true,user:{Roles:['editor']}})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',props:{title:'Moderation'},children:[{component:'ResourceListBlock',props:{resource:'item',view:'item_admin',name:'queue',filters:['status'],defaultFilters:{status:'pending'}}}]}})
+      if(path.includes('/api/admin/manifest'))return response({entities:{item:{Name:'item',Label:'Item',Fields:[{Name:'body',Label:'Body',Type:'text'},{Name:'status',Label:'Status',Type:'enum',Options:['pending','approved']}]}},actions:{},adminResources:{item:{Name:'item',Entity:'item',Label:'Item',Description:'Review queue',LabelField:'body',View:'item_admin',List:{Columns:['body','status'],Search:[],Filters:['status'],Sort:[],PageSize:25},Form:{Fields:[],Readonly:[]},Actions:[]}}})
+      if(path.includes('/api/views/item_admin'))return response({data:[{id:'1',body:'Needs review',status:'pending'}],nextCursor:''})
+      return response({})
+    })
+    vi.stubGlobal('fetch',fetchMock)
+    renderApp('/blog/parent-1/comments')
+    expect(await screen.findByText('Needs review')).toBeInTheDocument()
+    expect(screen.getByLabelText('Status')).toHaveValue('pending')
+    expect(fetchMock.mock.calls.some(([input])=>String(input).includes('_block=queue')&&String(input).includes('status=pending'))).toBe(true)
+  })
 })
 
 function renderApp(path:string){render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter initialEntries={[path]}><App/></MemoryRouter></QueryClientProvider>)}

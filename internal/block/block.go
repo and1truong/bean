@@ -62,6 +62,11 @@ func Node(a *appir.App, b appir.Block, ctx map[string]any, c beanctx.Request) (r
 			}
 		}
 		props["items"] = items
+	case "resource-list":
+		props["resource"] = b.Resource
+		props["view"] = b.View
+		props["filters"] = b.Filters
+		props["defaultFilters"] = b.DefaultFilters
 	}
 	return render.Node{Component: component(b.Type), Props: props}, true, nil
 }
@@ -79,6 +84,8 @@ func component(t string) string {
 		return "ActionBlock"
 	case "menu":
 		return "MenuBlock"
+	case "resource-list":
+		return "ResourceListBlock"
 	}
 	return "UnknownBlock"
 }
