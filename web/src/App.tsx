@@ -24,7 +24,8 @@ function Login(){
     try{
       const result=await api<{csrfToken:string;user:{Roles:string[]}}>('/api/auth/login',{method:'POST',body:JSON.stringify({email,password})})
       sessionStorage.setItem('bean_csrf',result.csrfToken)
-      await qc.invalidateQueries({queryKey:['session']})
+      await qc.cancelQueries()
+      qc.clear()
       const fallback=result.user.Roles.some(role=>role==='editor'||role==='administrator')?'/admin':'/'
       const requested=new URLSearchParams(loc.search).get('next')||fallback
       nav(requested.startsWith('/')&&!requested.startsWith('//')?requested:fallback)
@@ -42,22 +43,27 @@ function Shell({children}:{children:React.ReactNode}){
   const administrator=roles.includes('administrator')
   const logout=useMutation({mutationFn:async()=>{const path=loc.pathname;const result=await api<{protected?:boolean}>('/api/auth/logout?path='+encodeURIComponent(path),{method:'POST',body:'{}'});return {path,protected:path.startsWith('/admin')||path.startsWith('/studio')||result.protected===true}},onSuccess:async result=>{sessionStorage.removeItem('bean_csrf');await qc.resetQueries();const routeChanged=currentPath?.current!==result.path;logoutStarted.current=false;if(result.protected||routeChanged)nav('/',{replace:true})},onError:()=>{logoutStarted.current=false}})
   const stopNavigation=(event:React.MouseEvent)=>{if(logoutStarted.current||logout.isPending)event.preventDefault()}
-  return <><header className="border-b bg-primary text-primary-foreground"><div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"><Link className="text-lg font-semibold tracking-tight" to="/" aria-disabled={logout.isPending} onClick={stopNavigation}>Bean</Link><nav className="flex flex-wrap items-center gap-1" aria-label="Primary navigation">{editor&&<Button variant="ghost" disabled={logout.isPending} asChild><Link to="/admin" aria-disabled={logout.isPending} onClick={stopNavigation}>Admin</Link></Button>}{administrator&&<Button variant="ghost" disabled={logout.isPending} asChild><Link to="/studio" aria-disabled={logout.isPending} onClick={stopNavigation}>Studio</Link></Button>}{session.data?.authenticated?<Button variant="ghost" onClick={()=>{logoutStarted.current=true;logout.mutate()}} disabled={logout.isPending}>Sign out</Button>:<>{manifest.data?.localRegistration&&<Button variant="ghost" asChild><Link to="/signup">Sign up</Link></Button>}<Button variant="secondary" asChild><Link to={'/login?next='+encodeURIComponent(loc.pathname)}>Sign in</Link></Button></>}</nav></div></header>{children}</>
+  return <><header className="border-b bg-primary text-primary-foreground"><div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"><Link className="text-lg font-semibold tracking-tight" to="/" aria-disabled={logout.isPending} onClick={stopNavigation}>Bean</Link><nav className="flex flex-wrap items-center gap-1" aria-label="Primary navigation">{editor&&<Button variant="ghost" disabled={logout.isPending} asChild><Link to="/admin" aria-disabled={logout.isPending} onClick={stopNavigation}>Admin</Link></Button>}{administrator&&<Button variant="ghost" disabled={logout.isPending} asChild><Link to="/studio" aria-disabled={logout.isPending} onClick={stopNavigation}>Studio</Link></Button>}{session.data?.authenticated?<Button variant="ghost" onClick={()=>{logoutStarted.current=true;logout.mutate()}} disabled={logout.isPending}>Sign out</Button>:<>{manifest.data?.localRegistration?.Route&&<Button variant="ghost" asChild><Link to={manifest.data.localRegistration.Route}>Sign up</Link></Button>}<Button variant="secondary" asChild><Link to={'/login?next='+encodeURIComponent(loc.pathname)}>Sign in</Link></Button></>}</nav></div></header>{children}</>
 }
 
 function Renderer({node}:{node:Node}){
   if(node.component==='TextBlock')return <p>{node.props?.text}</p>
   if(node.component==='ViewBlock'||node.component==='EntityBlock')return <ViewBlock name={node.props?.view||node.props?.entity+'_list'} block={node.props?.name} presentation={node.props?.presentation||{}} formattedFields={node.props?.formattedFields||[]}/>
   if(node.component==='ResourceListBlock')return <ResourceListBlock resource={node.props?.resource} view={node.props?.view} block={node.props?.name} filters={node.props?.filters} defaultFilters={node.props?.defaultFilters}/>
-  if(node.component==='WebformBlock')return <WebformBlock name={node.props?.webform} block={node.props?.name}/>
+  if(node.component==='WebformBlock')return <WebformBlock name={node.props?.webform} block={node.props?.name} renderedForm={node.props?.form}/>
   if(node.component==='ActionBlock')return <ActionBlock name={node.props?.action}/>
   if(node.component==='MenuBlock')return <MenuBlock items={node.props?.items||[]}/>
   return <section className="space-y-4" data-component={node.component}><h2 className="font-heading text-2xl font-semibold">{node.props?.title}</h2>{node.children?.map((child,index)=><Renderer key={index} node={child}/>)}</section>
 }
 
-function ViewBlock({name,block,presentation,formattedFields}:{name:string;block:string;presentation:ViewPresentation;formattedFields:string[]}){
-  const loc=useLocation();const[cursors,setCursors]=useState<string[]>(['']);const cursor=cursors[cursors.length-1]
-  const query=new URLSearchParams({_page:loc.pathname,_block:block});if(cursor)query.set('cursor',cursor)
+type ViewBlockProps={name:string;block:string;presentation:ViewPresentation;formattedFields:string[]}
+function ViewBlock(props:ViewBlockProps){
+  const path=useLocation().pathname
+  return <ViewBlockPage key={`${props.name}:${props.block}:${path}`} {...props} path={path}/>
+}
+function ViewBlockPage({name,block,presentation,formattedFields,path}:ViewBlockProps&{path:string}){
+  const[cursors,setCursors]=useState<string[]>(['']);const cursor=cursors[cursors.length-1]
+  const query=new URLSearchParams({_page:path,_block:block});if(cursor)query.set('cursor',cursor)
   const request='/api/views/'+name+'?'+query.toString()
   const result=useQuery({queryKey:['public-view',request],queryFn:()=>api<{data:Row[];nextCursor:string}>(request)})
   if(result.isPending)return <LoadingState/>
@@ -71,8 +77,8 @@ function mergeDetail(rows:Row[],meta:string[]){const result={...rows[0]};for(con
 function ViewBody({row,field,rich}:{row:Row;field:string;rich:boolean}){const selected=row[field];const value=String(selected??row.excerpt??row.description??'');return rich&&selected!==null&&selected!==undefined?<div className="rich-text" dangerouslySetInnerHTML={{__html:String(selected)}}/>:<p className="leading-7">{value}</p>}
 function viewLink(template:string,row:Row){return template.replace(/:([a-zA-Z0-9_.]+)/g,(_,field)=>encodeURIComponent(String(row[field]??'')))}
 
-function WebformBlock({name,block}:{name:string;block:string}){
-  const loc=useLocation();const manifest=useQuery({queryKey:['manifest'],queryFn:()=>api<Manifest>('/api/system/manifest')});const form=manifest.data?.webforms?.[name]
+function WebformBlock({name,block,renderedForm}:{name:string;block:string;renderedForm?:Manifest['webforms'][string]}){
+  const loc=useLocation();const manifest=useQuery({queryKey:['manifest'],queryFn:()=>api<Manifest>('/api/system/manifest'),enabled:!renderedForm});const form=renderedForm||manifest.data?.webforms?.[name]
   const[values,setValues]=useState<Row>({});const[step,setStep]=useState(0);const[done,setDone]=useState('')
   const query=new URLSearchParams({_page:loc.pathname,_block:block})
   const submit=useMutation({mutationFn:()=>api<{confirmation:string}>('/api/webforms/'+name+'/submit?'+query,{method:'POST',body:JSON.stringify(values)}),onSuccess:result=>setDone(result.confirmation)})
@@ -86,7 +92,7 @@ function WebformBlock({name,block}:{name:string;block:string}){
 function evaluate(expression:import('./api').Expression|undefined|null,values:Row):boolean{
   if(!expression)return true;const args=expression.Args||[]
   if(expression.Op==='and')return args.every(item=>evaluate(item,values));if(expression.Op==='or')return args.some(item=>evaluate(item,values));if(expression.Op==='not')return !evaluate(args[0],values)
-  const resolve=(value:typeof expression.Left)=>value?.Source==='input'?values[value.Name||'']:value?.Literal
+  const resolve=(value:typeof expression.Left)=>value?.Source==='input'?values[value.Name||'']:value?.Source==='literal'?value.Literal:undefined
   const left=resolve(expression.Left),right=resolve(expression.Right)
   if(expression.Op==='eq')return left===right;if(expression.Op==='ne')return left!==right;if(expression.Op==='is_null')return left==null;if(expression.Op==='is_not_null')return left!=null;return false
 }

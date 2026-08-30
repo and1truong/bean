@@ -244,7 +244,17 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 		x := dbal.And(predicates...)
 		where = &x
 	}
-	rows, er := s.DB.Select(ctx, dbal.Select{Table: v.Entity, Columns: qualifyAll(storedFields(v.Fields, e), v.Entity, joined), Joins: joins, Where: where, GroupBy: qualifyAll(v.GroupBy, v.Entity, joined), Aggregates: aggregates, OrderBy: orders, Limit: limit + 1, Offset: offset})
+	columns := qualifyAll(storedFields(v.Fields, e), v.Entity, joined)
+	hiddenCursorFields := map[string]bool{}
+	if !aggregateSort {
+		for _, order := range orders {
+			if !containsColumn(columns, order.Column) {
+				columns = append(columns, order.Column)
+				hiddenCursorFields[strings.ReplaceAll(order.Column, ".", "__")] = true
+			}
+		}
+	}
+	rows, er := s.DB.Select(ctx, dbal.Select{Table: v.Entity, Columns: columns, Joins: joins, Where: where, GroupBy: qualifyAll(v.GroupBy, v.Entity, joined), Aggregates: aggregates, OrderBy: orders, Limit: limit + 1, Offset: offset})
 	if er != nil {
 		return Result{}, er
 	}
@@ -262,6 +272,9 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 		}
 	}
 	for _, row := range rows {
+		for fieldName := range hiddenCursorFields {
+			delete(row, fieldName)
+		}
 		for _, selected := range v.Fields {
 			compiled := qualify(selected, v.Entity, len(v.Relationships) > 0)
 			encoded := strings.ReplaceAll(compiled, ".", "__")
@@ -403,6 +416,15 @@ func loadToMany(ctx context.Context, selector rowSelector, entity appir.Entity, 
 		row[name] = values
 	}
 	return nil
+}
+
+func containsColumn(columns []string, wanted string) bool {
+	for _, column := range columns {
+		if column == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 func orderedBy(orders []dbal.Order, field string) bool {

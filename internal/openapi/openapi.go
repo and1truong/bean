@@ -23,10 +23,10 @@ func Generate(a *appir.App) (json.RawMessage, error) {
 		}
 		paths["/api/views/"+name] = map[string]any{"get": map[string]any{"operationId": "view_" + name, "parameters": parameters, "responses": map[string]any{"200": map[string]any{"description": "View result", "headers": map[string]any{"Bean-Next-Cursor": map[string]any{"schema": map[string]any{"type": "string"}}}, "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": map[string]any{"data": map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": props}}}}}}}, "401": errorResponse(), "403": errorResponse()}}}
 	}
-	for name, a := range a.Actions {
+	for name, actionDefinition := range a.Actions {
 		props := map[string]any{}
 		required := []string{}
-		for n, f := range a.Input {
+		for n, f := range actionDefinition.Input {
 			definition := schema(f.Type)
 			if f.Sensitive {
 				definition["writeOnly"] = true
@@ -38,11 +38,11 @@ func Generate(a *appir.App) (json.RawMessage, error) {
 			}
 		}
 		output := map[string]any{}
-		for n, f := range a.Output {
+		for n, f := range actionDefinition.Output {
 			output[n] = schema(f.Type)
 		}
 		security := []any{map[string]any{"cookieAuth": []any{}}}
-		if a.Operation == "register_local_user" {
+		if a.LocalRegistration != nil && a.LocalRegistration.Action == actionDefinition.Name {
 			security = []any{}
 		}
 		paths["/api/actions/"+name] = map[string]any{"post": map[string]any{"operationId": "action_" + name, "security": security, "requestBody": map[string]any{"required": true, "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "additionalProperties": false, "properties": props, "required": required}}}}, "responses": map[string]any{"200": map[string]any{"description": "Action result", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": map[string]any{"data": map[string]any{"type": "object", "properties": output}}}}}}, "400": errorResponse(), "401": errorResponse(), "403": errorResponse(), "409": errorResponse()}}}

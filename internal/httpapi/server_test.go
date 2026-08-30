@@ -90,6 +90,10 @@ func testAdminResourceAPI(t *testing.T, databaseURL string) {
 			t.Fatalf("create status=%d body=%s", created.Code, created.Body.String())
 		}
 	}
+	publicPage := serve(t, handler, http.MethodGet, "/api/views/article_list?limit=1", nil, cookie, "")
+	if publicPage.Code != http.StatusOK || publicPage.Header().Get("Bean-Next-Cursor") == "" {
+		t.Fatalf("public View pagination header missing: status=%d headers=%v body=%s", publicPage.Code, publicPage.Header(), publicPage.Body.String())
+	}
 	list := serve(t, handler, http.MethodGet, "/api/admin/resources/article?q=bet&sort=title&direction=desc", nil, cookie, "")
 	var result struct {
 		Data []map[string]any `json:"data"`

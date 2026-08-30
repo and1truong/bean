@@ -62,7 +62,7 @@ type Action struct {
 	Steps                           []Step
 	Transitions                     map[string][]string
 }
-type LocalRegistration struct{ Action string }
+type LocalRegistration struct{ Action, Route string }
 type Step struct {
 	Op, Result string
 	Entity     string

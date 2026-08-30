@@ -41,6 +41,39 @@ func TestLegacyRichTextIsSanitizedOnRead(t *testing.T) {
 	}
 }
 
+func TestCursorPaginationUsesAnUnselectedTieBreakerWithoutExposingIt(t *testing.T) {
+	ctx := context.Background()
+	database, err := sqlite.Open(filepath.Join(t.TempDir(), "cursor.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err = database.ExecuteMigration(ctx, []string{`CREATE TABLE article (id TEXT PRIMARY KEY, title TEXT NOT NULL)`}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"one", "two", "three"} {
+		if _, err = database.Insert(ctx, dbal.Insert{Table: "article", Values: map[string]dbal.Value{"id": id, "title": "Same"}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	app := appir.Empty()
+	app.Entities["article"] = appir.Entity{Name: "article", Fields: []appir.Field{{Name: "title", Type: "text"}}}
+	app.Views["titles"] = appir.View{Name: "titles", Entity: "article", Fields: []string{"title"}, Sort: []appir.Sort{{Field: "title"}}, DefaultLimit: 2, MaxLimit: 2}
+	service := view.Service{DB: database}
+
+	first, err := service.RunPage(ctx, app, "titles", view.Params{}, beanctx.Request{})
+	if err != nil || len(first.Rows) != 2 || first.NextCursor == "" {
+		t.Fatalf("first page=%+v err=%v", first, err)
+	}
+	if _, exposed := first.Rows[0]["id"]; exposed {
+		t.Fatalf("hidden cursor tie-breaker was exposed: %v", first.Rows)
+	}
+	second, err := service.RunPage(ctx, app, "titles", view.Params{Cursor: first.NextCursor}, beanctx.Request{})
+	if err != nil || len(second.Rows) != 1 || second.Rows[0]["title"] != "Same" {
+		t.Fatalf("second page=%+v err=%v", second, err)
+	}
+}
+
 func TestViewFieldFilterFormatsOutputWithoutChangingSource(t *testing.T) {
 	ctx := context.Background()
 	database, err := sqlite.Open(filepath.Join(t.TempDir(), "filters.db"))

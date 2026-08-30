@@ -197,7 +197,7 @@ definitions:
   - {apiVersion: bean/v1alpha1, kind: Action, metadata: {name: approve_comment}, spec: {entity: comment, operation: transaction, policy: editor_only, confirm: "Approve this comment?", input: {id: {type: uuid, required: true}}, transitions: {pending: [approved]}, steps: [{op: transition, values: {id: $input.id, status: approved}}]}}
   - {apiVersion: bean/v1alpha1, kind: Action, metadata: {name: reject_comment}, spec: {entity: comment, operation: transaction, policy: editor_only, confirm: "Reject this comment?", input: {id: {type: uuid, required: true}}, transitions: {pending: [rejected]}, steps: [{op: transition, values: {id: $input.id, status: rejected}}]}}
   - {apiVersion: bean/v1alpha1, kind: Action, metadata: {name: register_member}, spec: {operation: register_local_user, defaultRole: member}}
-  - {apiVersion: bean/v1alpha1, kind: LocalRegistration, metadata: {name: local}, spec: {action: register_member}}
+  - {apiVersion: bean/v1alpha1, kind: LocalRegistration, metadata: {name: local}, spec: {action: register_member, route: /signup}}
 
   - apiVersion: bean/v1alpha1
     kind: Webform

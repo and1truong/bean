@@ -851,6 +851,13 @@ func validate(a *appir.App) []definition.Diagnostic {
 		if !ok || action.Operation != "register_local_user" {
 			out = append(out, diagnostic("LocalRegistration", "local", "spec.action", "must reference a register_local_user Action"))
 		}
+		if route := a.LocalRegistration.Route; route != "" {
+			if !strings.HasPrefix(route, "/") || strings.Contains(route, ":") {
+				out = append(out, diagnostic("LocalRegistration", "local", "spec.route", "must be a static absolute Page route"))
+			} else if !registrationPageExists(a, route, a.LocalRegistration.Action) {
+				out = append(out, diagnostic("LocalRegistration", "local", "spec.route", "must reference a Page containing a Webform for the registration Action"))
+			}
+		}
 	}
 	layouts := map[string]map[string]bool{"single-column": {"main": true}, "two-column": {"left": true, "right": true}, "sidebar-main": {"sidebar": true, "main": true}, "main-sidebar": {"main": true, "sidebar": true}, "grid": {"main": true}}
 	for name, panel := range a.Panels {
@@ -1142,6 +1149,23 @@ func validateExpr(expression expr.Expr, database bool) error {
 		return fmt.Errorf("database expression right side cannot be a record field")
 	}
 	return nil
+}
+
+func registrationPageExists(a *appir.App, route, actionName string) bool {
+	for _, pageDefinition := range a.Pages {
+		if pageDefinition.Route != route {
+			continue
+		}
+		for _, region := range a.Panels[pageDefinition.Panel].Regions {
+			for _, blockName := range region.Blocks {
+				blockDefinition := a.Blocks[blockName]
+				if blockDefinition.Type == "webform" && a.Webforms[blockDefinition.Webform].Action == actionName {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func validateForm(name string, form appir.Webform) []definition.Diagnostic {

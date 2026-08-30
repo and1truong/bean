@@ -6,6 +6,7 @@ import (
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/block"
 	beanctx "github.com/beanruntime/bean/internal/context"
+	"github.com/beanruntime/bean/internal/expr"
 )
 
 func TestEveryAcceptedBlockTypeHasRenderer(t *testing.T) {
@@ -17,6 +18,20 @@ func TestEveryAcceptedBlockTypeHasRenderer(t *testing.T) {
 		if e != nil || !allowed || node.Component != component {
 			t.Fatalf("type=%s node=%+v allowed=%v err=%v", kind, node, allowed, e)
 		}
+	}
+}
+
+func TestWebformConditionsBindServerContextForBrowserEvaluation(t *testing.T) {
+	app := appir.Empty()
+	app.Webforms["form"] = appir.Webform{Name: "form", Elements: []appir.FormElement{{Name: "detail", Visible: &expr.Expr{Op: "eq", Left: &expr.Value{Source: "tenant"}, Right: &expr.Value{Source: "input", Name: "tenant"}}}}}
+	node, allowed, err := block.Node(app, appir.Block{Name: "form_block", Type: "webform", Webform: "form"}, nil, beanctx.Request{TenantID: "tenant-1"})
+	if err != nil || !allowed {
+		t.Fatalf("allowed=%v err=%v", allowed, err)
+	}
+	form := node.Props["form"].(appir.Webform)
+	condition := form.Elements[0].Visible
+	if condition.Left.Source != "literal" || condition.Left.Literal != "tenant-1" || condition.Right.Source != "input" {
+		t.Fatalf("condition was not safely bound: %+v", condition)
 	}
 }
 

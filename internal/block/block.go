@@ -6,6 +6,7 @@ import (
 
 	"github.com/beanruntime/bean/internal/appir"
 	beanctx "github.com/beanruntime/bean/internal/context"
+	"github.com/beanruntime/bean/internal/expr"
 	"github.com/beanruntime/bean/internal/field"
 	"github.com/beanruntime/bean/internal/policy"
 	"github.com/beanruntime/bean/internal/render"
@@ -55,6 +56,13 @@ func Node(a *appir.App, b appir.Block, ctx map[string]any, c beanctx.Request) (r
 		props["entity"] = b.Entity
 	case "webform":
 		props["webform"] = b.Webform
+		form := a.Webforms[b.Webform]
+		boundElements, err := bindFormElements(form.Elements, c)
+		if err != nil {
+			return render.Node{}, false, fmt.Errorf("render Webform conditions: %w", err)
+		}
+		form.Elements = boundElements
+		props["form"] = form
 	case "action":
 		props["action"] = b.Action
 	case "menu":
@@ -73,6 +81,33 @@ func Node(a *appir.App, b appir.Block, ctx map[string]any, c beanctx.Request) (r
 	}
 	return render.Node{Component: component(b.Type), Props: props}, true, nil
 }
+func bindFormElements(elements []appir.FormElement, c beanctx.Request) ([]appir.FormElement, error) {
+	bound := make([]appir.FormElement, len(elements))
+	for i, element := range elements {
+		bound[i] = element
+		var err error
+		if element.Visible != nil {
+			condition, bindErr := expr.BindContext(*element.Visible, c)
+			if bindErr != nil {
+				return nil, bindErr
+			}
+			bound[i].Visible = &condition
+		}
+		if element.RequiredWhen != nil {
+			condition, bindErr := expr.BindContext(*element.RequiredWhen, c)
+			if bindErr != nil {
+				return nil, bindErr
+			}
+			bound[i].RequiredWhen = &condition
+		}
+		bound[i].Children, err = bindFormElements(element.Children, c)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return bound, nil
+}
+
 func formattedFields(a *appir.App, b appir.Block) []string {
 	viewDefinition, exists := a.Views[b.View]
 	if !exists {

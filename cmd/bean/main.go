@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -109,12 +110,13 @@ func serveCommand(args []string) error {
 	databaseURL := f.String("database-url", os.Getenv("BEAN_DATABASE_URL"), "database URL (PostgreSQL or SQLite)")
 	addr := f.String("addr", "127.0.0.1:8080", "listen address")
 	secure := f.Bool("secure-cookie", false, "set Secure session cookies")
+	trustedProxy := f.String("trusted-proxy", "", "comma-separated trusted reverse-proxy IPs or CIDRs")
 	if e := f.Parse(args); e != nil {
 		return e
 	}
-	return serve(databaseTarget(*db, *databaseURL), *addr, *secure)
+	return serve(databaseTarget(*db, *databaseURL), *addr, *secure, *trustedProxy)
 }
-func serve(db, addr string, secure bool) error {
+func serve(db, addr string, secure bool, trustedProxy string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	r, e := bootstrap.Open(ctx, db, secure)
@@ -122,6 +124,21 @@ func serve(db, addr string, secure bool) error {
 		return e
 	}
 	defer r.DB.Close()
+	for _, value := range strings.Split(trustedProxy, ",") {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		prefix, parseErr := netip.ParsePrefix(value)
+		if parseErr != nil {
+			address, addressErr := netip.ParseAddr(value)
+			if addressErr != nil {
+				return fmt.Errorf("invalid trusted proxy %q", value)
+			}
+			prefix = netip.PrefixFrom(address, address.BitLen())
+		}
+		r.HTTP.TrustedProxies = append(r.HTTP.TrustedProxies, prefix)
+	}
 	server := &http.Server{Addr: addr, Handler: r.HTTP.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
 	errors := make(chan error, 1)
 	workerDone := make(chan struct{})
@@ -333,7 +350,7 @@ func demoCommand(args []string) error {
 	if e != nil {
 		return e
 	}
-	return serve(target, *addr, false)
+	return serve(target, *addr, false, "")
 }
 func dbFlag(name string, args []string) (string, error) {
 	f := flag.NewFlagSet(name, flag.ContinueOnError)

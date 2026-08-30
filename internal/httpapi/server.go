@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,20 +34,21 @@ import (
 )
 
 type Server struct {
-	Kernel        *kernel.Kernel
-	Store         *release.Store
-	Auth          auth.Service
-	Actions       action.Service
-	Views         view.Service
-	SecureCookies bool
-	Logger        *slog.Logger
-	limiter       *loginLimiter
-	signupLimiter *loginLimiter
+	Kernel         *kernel.Kernel
+	Store          *release.Store
+	Auth           auth.Service
+	Actions        action.Service
+	Views          view.Service
+	SecureCookies  bool
+	TrustedProxies []netip.Prefix
+	Logger         *slog.Logger
+	limiter        *loginLimiter
+	signupLimiter  *loginLimiter
 }
 
 func (s *Server) Handler() http.Handler {
-	s.limiter = &loginLimiter{attempts: map[string][]time.Time{}}
-	s.signupLimiter = &loginLimiter{attempts: map[string][]time.Time{}}
+	s.limiter = newLoginLimiter()
+	s.signupLimiter = newLoginLimiter()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { write(w, 200, map[string]string{"status": "ok"}) })
 	mux.HandleFunc("GET /readyz", s.ready)
@@ -205,7 +208,7 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, map[string]any{"authenticated": true, "user": c.User, "tenantId": c.TenantID, "csrfToken": session.CSRF})
 }
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
-	ip := clientIP(r)
+	ip := s.clientIP(r)
 	if !s.limiter.allow(ip) {
 		problem(w, 429, "rate_limited", "Too many login attempts.", requestID(r))
 		return
@@ -249,7 +252,7 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 	filters := queryMap(r)
-	bound, e := s.boundBlockInputs(r, a, "view", r.PathValue("name"))
+	bound, viewContext, e := s.boundBlockInputs(r, a, "view", r.PathValue("name"))
 	if e != nil {
 		problem(w, 400, "bound_input", e.Error(), requestID(r))
 		return
@@ -276,10 +279,13 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	result, e := s.Views.RunPage(r.Context(), a, r.PathValue("name"), view.Params{Filter: filters, Limit: limit, Offset: offset, Cursor: r.URL.Query().Get("cursor")}, s.ctx(r))
+	result, e := s.Views.RunPage(r.Context(), a, r.PathValue("name"), view.Params{Filter: filters, Limit: limit, Offset: offset, Cursor: r.URL.Query().Get("cursor")}, viewContext)
 	if e != nil {
 		respondError(w, r, e)
 		return
+	}
+	if result.NextCursor != "" {
+		w.Header().Set("Bean-Next-Cursor", result.NextCursor)
 	}
 	write(w, 200, map[string]any{"data": result.Rows, "nextCursor": result.NextCursor})
 }
@@ -304,7 +310,7 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request) {
 	if definition := a.Actions[r.PathValue("name")]; definition.Operation == "register_local_user" && (a.LocalRegistration == nil || a.LocalRegistration.Action != definition.Name) {
 		problem(w, 404, "not_found", "Action not found.", requestID(r))
 		return
-	} else if definition.Operation == "register_local_user" && !s.signupLimiter.allow(clientIP(r)) {
+	} else if definition.Operation == "register_local_user" && !s.signupLimiter.allow(s.clientIP(r)) {
 		problem(w, 429, "rate_limited", "Too many signup attempts.", requestID(r))
 		return
 	}
@@ -332,7 +338,7 @@ func (s *Server) form(w http.ResponseWriter, r *http.Request) {
 			problem(w, 404, "not_found", "Webform not found.", requestID(r))
 			return
 		}
-		if !s.signupLimiter.allow(clientIP(r)) {
+		if !s.signupLimiter.allow(s.clientIP(r)) {
 			problem(w, 429, "rate_limited", "Too many signup attempts.", requestID(r))
 			return
 		}
@@ -346,11 +352,12 @@ func (s *Server) form(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	bound, e := s.boundBlockInputs(r, a, "webform", f.Name)
+	bound, formContext, e := s.boundBlockInputs(r, a, "webform", f.Name)
 	if e != nil {
 		problem(w, 400, "bound_input", e.Error(), requestID(r))
 		return
 	}
+	c = formContext
 	for name, value := range bound {
 		if _, collision := in[name]; collision {
 			problem(w, 400, "bound_input", "Bound input cannot be supplied by the client.", requestID(r))
@@ -650,12 +657,15 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 	for key := range r.URL.Query() {
 		query[key] = r.URL.Query().Get(key)
 	}
-	ctx, e := page.ResolveContext(p, params, query, s.ctx(r))
+	requestContext := s.ctx(r)
+	ctx, e := page.ResolveContext(p, params, query, requestContext)
 	if e != nil {
 		problem(w, 400, "missing_context", "Required page context is missing.", requestID(r))
 		return
 	}
-	tree, allowed, e := page.Node(a, p, ctx, s.ctx(r))
+	requestContext.RouteParams = params
+	requestContext.Values = ctx
+	tree, allowed, e := page.Node(a, p, ctx, requestContext)
 	if e != nil {
 		problem(w, 400, "missing_context", "Required render context is missing.", requestID(r))
 		return
@@ -667,17 +677,18 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, map[string]any{"tree": tree})
 }
 
-func (s *Server) boundBlockInputs(r *http.Request, a *appir.App, kind, target string) (map[string]any, error) {
+func (s *Server) boundBlockInputs(r *http.Request, a *appir.App, kind, target string) (map[string]any, beanctx.Request, error) {
+	requestContext := s.ctx(r)
 	pagePath, blockName := r.URL.Query().Get("_page"), r.URL.Query().Get("_block")
 	if pagePath == "" && blockName == "" {
-		return nil, nil
+		return nil, requestContext, nil
 	}
 	if pagePath == "" || blockName == "" {
-		return nil, fmt.Errorf("page and block context must be supplied together")
+		return nil, requestContext, fmt.Errorf("page and block context must be supplied together")
 	}
 	p, routeParams, matched := page.Match(a, pagePath)
 	if !matched {
-		return nil, fmt.Errorf("bound page was not found")
+		return nil, requestContext, fmt.Errorf("bound page was not found")
 	}
 	found := false
 	for _, region := range a.Panels[p.Panel].Regions {
@@ -687,7 +698,7 @@ func (s *Server) boundBlockInputs(r *http.Request, a *appir.App, kind, target st
 	}
 	definition, exists := a.Blocks[blockName]
 	if !found || !exists || kind == "view" && definition.View != target || kind == "webform" && definition.Webform != target {
-		return nil, fmt.Errorf("bound block does not match this request")
+		return nil, requestContext, fmt.Errorf("bound block does not match this request")
 	}
 	query := map[string]string{}
 	for key := range r.URL.Query() {
@@ -695,16 +706,18 @@ func (s *Server) boundBlockInputs(r *http.Request, a *appir.App, kind, target st
 			query[key] = r.URL.Query().Get(key)
 		}
 	}
-	contextValues, err := page.ResolveContext(p, routeParams, query, s.ctx(r))
+	contextValues, err := page.ResolveContext(p, routeParams, query, requestContext)
 	if err != nil {
-		return nil, fmt.Errorf("required bound context is missing")
+		return nil, requestContext, fmt.Errorf("required bound context is missing")
 	}
-	node, allowed, err := block.Node(a, definition, contextValues, s.ctx(r))
+	requestContext.RouteParams = routeParams
+	requestContext.Values = contextValues
+	node, allowed, err := block.Node(a, definition, contextValues, requestContext)
 	if err != nil || !allowed {
-		return nil, fmt.Errorf("bound block is unavailable")
+		return nil, requestContext, fmt.Errorf("bound block is unavailable")
 	}
 	inputs, _ := node.Props["inputs"].(map[string]any)
-	return inputs, nil
+	return inputs, requestContext, nil
 }
 
 func (s *Server) fallback(w http.ResponseWriter, r *http.Request) {
@@ -903,33 +916,101 @@ func absoluteURL(r *http.Request) string {
 	}
 	return scheme + "://" + r.Host + r.URL.Path
 }
-func clientIP(r *http.Request) string {
-	if x := r.Header.Get("X-Forwarded-For"); x != "" {
-		return strings.TrimSpace(strings.Split(x, ",")[0])
+func (s *Server) clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
 	}
-	return strings.Split(r.RemoteAddr, ":")[0]
+	peer, peerErr := netip.ParseAddr(host)
+	if peerErr == nil && trustedProxy(peer, s.TrustedProxies) {
+		chain := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
+		for index := len(chain) - 1; index >= 0; index-- {
+			address, parseErr := netip.ParseAddr(strings.TrimSpace(chain[index]))
+			if parseErr != nil {
+				return host
+			}
+			if !trustedProxy(address, s.TrustedProxies) || index == 0 {
+				return address.String()
+			}
+		}
+	}
+	return host
+}
+
+func trustedProxy(address netip.Addr, configured []netip.Prefix) bool {
+	for _, prefix := range configured {
+		if prefix.Contains(address) {
+			return true
+		}
+	}
+	return false
+}
+
+const (
+	loginLimitWindow     = time.Minute
+	loginLimitAttempts   = 10
+	loginLimitMaxEntries = 10000
+	loginLimitOverflow   = "\x00overflow"
+)
+
+type loginLimitEntry struct {
+	attempts []time.Time
+	updated  time.Time
 }
 
 type loginLimiter struct {
-	mu       sync.Mutex
-	attempts map[string][]time.Time
+	mu         sync.Mutex
+	attempts   map[string]loginLimitEntry
+	lastSweep  time.Time
+	maxEntries int
+}
+
+func newLoginLimiter() *loginLimiter {
+	return &loginLimiter{attempts: map[string]loginLimitEntry{}, maxEntries: loginLimitMaxEntries}
 }
 
 func (l *loginLimiter) allow(ip string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	cut := time.Now().Add(-time.Minute)
-	xs := l.attempts[ip][:0]
-	for _, t := range l.attempts[ip] {
-		if t.After(cut) {
-			xs = append(xs, t)
+	now := time.Now()
+	cut := now.Add(-loginLimitWindow)
+	if l.lastSweep.IsZero() || now.Sub(l.lastSweep) >= loginLimitWindow {
+		for key, entry := range l.attempts {
+			if entry.updated.Before(cut) {
+				delete(l.attempts, key)
+			}
+		}
+		l.lastSweep = now
+	}
+	key := "ip:" + ip
+	if _, exists := l.attempts[key]; !exists && len(l.attempts) >= l.maxEntries {
+		key = loginLimitOverflow
+		if _, exists = l.attempts[key]; !exists {
+			var oldestKey string
+			var oldest time.Time
+			for candidate, entry := range l.attempts {
+				if oldestKey == "" || entry.updated.Before(oldest) {
+					oldestKey, oldest = candidate, entry.updated
+				}
+			}
+			delete(l.attempts, oldestKey)
 		}
 	}
-	if len(xs) >= 10 {
-		l.attempts[ip] = xs
+	entry := l.attempts[key]
+	active := entry.attempts[:0]
+	for _, attempt := range entry.attempts {
+		if attempt.After(cut) {
+			active = append(active, attempt)
+		}
+	}
+	entry.attempts = active
+	entry.updated = now
+	if len(active) >= loginLimitAttempts {
+		l.attempts[key] = entry
 		return false
 	}
-	l.attempts[ip] = append(xs, time.Now())
+	entry.attempts = append(entry.attempts, now)
+	l.attempts[key] = entry
 	return true
 }
 

@@ -27,12 +27,12 @@ describe('public rendering',()=>{
     vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
       const path=String(input)
       if(path.includes('/api/system/session'))return response({authenticated:false})
-      if(path.includes('/api/system/manifest'))return response({localRegistration:{Action:'register_member'}})
+      if(path.includes('/api/system/manifest'))return response({localRegistration:{Action:'register_member',Route:'/register'}})
       if(path.includes('/api/system/page'))return response({tree:{component:'TextBlock',props:{text:'Registration enabled'}}})
       return response({})
     }))
     renderApp('/')
-    expect(await screen.findByRole('link',{name:'Sign up'})).toBeInTheDocument()
+    expect(await screen.findByRole('link',{name:'Sign up'})).toHaveAttribute('href','/register')
   })
 
   it('renders an unfiltered fallback as text when a formatted field is absent',async()=>{
@@ -66,6 +66,49 @@ describe('public rendering',()=>{
     expect(await screen.findByText('First result')).toBeInTheDocument()
     expect(await screen.findByText('Second result')).toBeInTheDocument()
     expect(fetchMock.mock.calls.filter(([input])=>String(input).includes('/api/views/shared'))).toHaveLength(2)
+  })
+
+  it('resets View pagination when a reused block moves to another bound page',async()=>{
+    let navigate:NavigateFunction=()=>{}
+    const viewRequests:string[]=[]
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'ViewBlock',props:{name:'category_posts',view:'posts',formattedFields:[],presentation:{TitleField:'title'}}}})
+      if(path.includes('/api/views/posts')){
+        viewRequests.push(path)
+        if(path.includes('%2Fcategories%2Fa')&&path.includes('cursor='))return response({data:[{id:'a2',title:'A page two'}],nextCursor:''})
+        if(path.includes('%2Fcategories%2Fa'))return response({data:[{id:'a1',title:'A page one'}],nextCursor:'category-a-page-2'})
+        return response({data:[{id:'b1',title:'B page one'}],nextCursor:''})
+      }
+      return response({})
+    }))
+    render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter initialEntries={['/categories/a']}><NavigationDriver capture={value=>{navigate=value}}/><App/></MemoryRouter></QueryClientProvider>)
+    expect(await screen.findByText('A page one')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button',{name:'Next'}))
+    expect(await screen.findByText('A page two')).toBeInTheDocument()
+    act(()=>navigate('/categories/b'))
+    expect(await screen.findByText('B page one')).toBeInTheDocument()
+    const categoryBRequest=viewRequests.find(request=>request.includes('%2Fcategories%2Fb'))
+    expect(categoryBRequest).not.toContain('cursor=')
+  })
+
+  it('clears cached data from the previous identity before navigating after login',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/auth/login'))return response({csrfToken:'new-csrf',user:{Roles:['member']}})
+      if(path.includes('/api/system/session'))return response({authenticated:true,user:{Roles:['member']}})
+      if(path.includes('/api/system/page'))return response({tree:{component:'TextBlock',props:{text:'Member home'}}})
+      return response({})
+    }))
+    const client=new QueryClient({defaultOptions:{queries:{retry:false,staleTime:Infinity}}})
+    client.setQueryData(['admin-record','previous-user-secret'],{data:{private:'cached value'}})
+    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/login']}><App/></MemoryRouter></QueryClientProvider>)
+    fireEvent.change(screen.getByTestId('email'),{target:{value:'member@example.test'}})
+    fireEvent.change(screen.getByTestId('password'),{target:{value:'password'}})
+    fireEvent.click(screen.getByTestId('login'))
+    expect(await screen.findByText('Member home')).toBeInTheDocument()
+    expect(client.getQueryData(['admin-record','previous-user-secret'])).toBeUndefined()
   })
 
   it('clears protected cached data and leaves protected routes after logout',async()=>{

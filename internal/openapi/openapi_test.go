@@ -27,6 +27,8 @@ func TestSensitiveInputsAreWriteOnlyAndRegistrationIsAnonymous(t *testing.T) {
 	a := appir.Empty()
 	a.AppID = "test"
 	a.Actions["signup"] = appir.Action{Name: "signup", Operation: "register_local_user", Input: map[string]appir.Field{"password": {Name: "password", Type: "password", Sensitive: true}}}
+	a.Actions["disabled_signup"] = appir.Action{Name: "disabled_signup", Operation: "register_local_user"}
+	a.LocalRegistration = &appir.LocalRegistration{Action: "signup"}
 	doc, err := openapi.Generate(a)
 	if err != nil {
 		t.Fatal(err)
@@ -39,5 +41,9 @@ func TestSensitiveInputsAreWriteOnlyAndRegistrationIsAnonymous(t *testing.T) {
 	password := post["requestBody"].(map[string]any)["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)["properties"].(map[string]any)["password"].(map[string]any)
 	if password["writeOnly"] != true || password["format"] != "password" || len(post["security"].([]any)) != 0 {
 		t.Fatalf("registration OpenAPI=%v", post)
+	}
+	disabled := decoded["paths"].(map[string]any)["/api/actions/disabled_signup"].(map[string]any)["post"].(map[string]any)
+	if len(disabled["security"].([]any)) == 0 {
+		t.Fatalf("disabled registration action was documented as anonymous: %v", disabled)
 	}
 }
