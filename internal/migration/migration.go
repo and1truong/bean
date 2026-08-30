@@ -26,6 +26,7 @@ type Plan struct {
 	Descriptions []string
 }
 type Inspector interface {
+	Dialect() string
 	Tables(context.Context) ([]string, error)
 	Columns(context.Context, string) ([]dbal.Column, error)
 }

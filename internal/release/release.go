@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/beanruntime/bean/internal/appir"
@@ -258,9 +259,9 @@ func (s *Store) ValidateStorage(ctx context.Context, app *appir.App) error {
 		if inspectErr != nil {
 			return fmt.Errorf("inspect active release table %s: %w", entity.Name, inspectErr)
 		}
-		physicalColumns := map[string]bool{}
+		physicalColumns := map[string]dbal.Column{}
 		for _, column := range columns {
-			physicalColumns[column.Name] = true
+			physicalColumns[column.Name] = column
 		}
 		required := []string{"id", "created_at", "updated_at", "version"}
 		for _, field := range entity.Fields {
@@ -283,8 +284,16 @@ func (s *Store) ValidateStorage(ctx context.Context, app *appir.App) error {
 			required = append(required, "deleted_at")
 		}
 		for _, name := range required {
-			if !physicalColumns[name] {
+			if _, exists := physicalColumns[name]; !exists {
 				return fmt.Errorf("active release %s requires missing column %s.%s", app.ReleaseID, entity.Name, name)
+			}
+		}
+		if s.Inspector.Dialect() == "postgres" {
+			for _, fieldDefinition := range entity.Fields {
+				column, exists := physicalColumns[fieldDefinition.Name]
+				if fieldDefinition.Type == "boolean" && exists && !strings.EqualFold(column.LogicalType, "boolean") {
+					return fmt.Errorf("active release %s requires PostgreSQL boolean column %s.%s; found %s and an explicit data migration is required", app.ReleaseID, entity.Name, fieldDefinition.Name, column.LogicalType)
+				}
 			}
 		}
 	}

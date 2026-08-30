@@ -11,6 +11,8 @@ import (
 	"github.com/beanruntime/bean/internal/uid"
 )
 
+const TenantIDPayloadKey = "_beanTenantId"
+
 func Schedule(ctx context.Context, tx dbal.Transaction, name string, runAt time.Time, payload any) error {
 	b, err := json.Marshal(payload)
 	if err != nil {

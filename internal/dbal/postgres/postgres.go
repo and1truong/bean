@@ -30,7 +30,8 @@ func Open(databaseURL string) (*DB, error) {
 	return &DB{db: database}, nil
 }
 
-func (d *DB) Close() error { return d.db.Close() }
+func (d *DB) Close() error    { return d.db.Close() }
+func (d *DB) Dialect() string { return "postgres" }
 func (d *DB) Select(ctx context.Context, query dbal.Select) ([]dbal.Row, error) {
 	return selectRows(ctx, d.db, d.compiler, query)
 }

@@ -33,7 +33,8 @@ func Open(path string) (*DB, error) {
 	}
 	return &DB{db: d}, nil
 }
-func (d *DB) Close() error { return d.db.Close() }
+func (d *DB) Close() error    { return d.db.Close() }
+func (d *DB) Dialect() string { return "sqlite" }
 func (d *DB) Select(ctx context.Context, q dbal.Select) ([]dbal.Row, error) {
 	return selectRows(ctx, d.db, d.compiler, q)
 }

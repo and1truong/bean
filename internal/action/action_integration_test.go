@@ -95,6 +95,43 @@ func TestManyToManyActionWriteAndViewTraversal(t *testing.T) {
 	}
 }
 
+func TestWritePolicyReceivesHydratedBooleanRecord(t *testing.T) {
+	ctx := context.Background()
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "policy-hydration.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	k := kernel.New()
+	store := &release.Store{DB: db, Migrations: db, Inspector: db, Kernel: k, OpenAPI: openapi.Generate}
+	if err = store.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	condition := map[string]any{"op": "eq", "left": map[string]any{"source": "record", "name": "featured"}, "right": map[string]any{"source": "literal", "literal": true}}
+	definitions := []definition.Definition{
+		{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "featured_only"}, Spec: map[string]any{"condition": condition}},
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "document"}, Spec: map[string]any{"policy": "featured_only", "fields": []any{map[string]any{"name": "title", "type": "string", "required": true}, map[string]any{"name": "featured", "type": "boolean", "required": true}, map[string]any{"name": "settings", "type": "json", "required": true}}}},
+	}
+	if err = store.SaveBundle(ctx, "default", definition.Bundle{Name: "policy hydration", Definitions: definitions}); err != nil {
+		t.Fatal(err)
+	}
+	if _, diagnostics, publishErr := store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) != 0 {
+		t.Fatalf("publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	app, _ := k.Active()
+	engine := action.Service{DB: db}
+	document, err := engine.Execute(ctx, app, "document_create", map[string]any{"title": "before", "featured": true, "settings": map[string]any{"scope": "private"}}, admin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := admin()
+	request.RequestID = "policy-update"
+	updated, err := engine.Execute(ctx, app, "document_update", map[string]any{"id": document["id"], "title": "after"}, request)
+	if err != nil || updated["title"] != "after" || updated["featured"] != true {
+		t.Fatalf("updated=%v err=%v", updated, err)
+	}
+}
+
 func TestEveryTransactionStepHasRuntimeSemantics(t *testing.T) {
 	ctx := context.Background()
 	db, e := sqlite.Open(filepath.Join(t.TempDir(), "steps.db"))
@@ -141,7 +178,9 @@ func TestEveryTransactionStepHasRuntimeSemantics(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	result, e := engine.Execute(ctx, app, "flow", map[string]any{"id": item["id"], "name": "after"}, admin())
+	request := admin()
+	request.TenantID = "00000000-0000-4000-8000-00000000000a"
+	result, e := engine.Execute(ctx, app, "flow", map[string]any{"id": item["id"], "name": "after"}, request)
 	if e != nil || result["message"] != "after" || result["status"] != "done" || result["count"] != int64(2) {
 		t.Fatalf("result=%v err=%v", result, e)
 	}
@@ -149,6 +188,12 @@ func TestEveryTransactionStepHasRuntimeSemantics(t *testing.T) {
 		rows, er := db.Select(ctx, dbal.Select{Table: table, Limit: 10})
 		if er != nil || len(rows) != 1 {
 			t.Fatalf("table=%s rows=%v err=%v", table, rows, er)
+		}
+		if table == "bean_job" {
+			var payload map[string]any
+			if er = json.Unmarshal([]byte(fmt.Sprint(rows[0]["payload"])), &payload); er != nil || payload[job.TenantIDPayloadKey] != request.TenantID {
+				t.Fatalf("scheduled payload=%v err=%v", payload, er)
+			}
 		}
 	}
 	if _, e = engine.Execute(ctx, app, "item_delete", map[string]any{"id": item["id"]}, admin()); e != nil {

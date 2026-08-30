@@ -76,13 +76,15 @@ func OpenURL(ctx context.Context, databaseURL string, secure bool) (*Runtime, er
 	runner := job.Runner{DB: db, Handle: func(ctx context.Context, name string, payload map[string]any) error {
 		app, ok := k.Active()
 		if !ok {
-			return nil
+			return fmt.Errorf("Job %s cannot run without an active release", name)
 		}
 		definition, ok := app.Jobs[name]
 		if !ok {
-			return nil
+			return fmt.Errorf("Job %s is not defined in the active release", name)
 		}
-		_, e := actions.Execute(ctx, app, definition.Action, payload, beanctx.Request{User: &beanctx.User{ID: "system", Roles: []string{"administrator"}}, RequestID: "job:" + name})
+		tenantID, _ := payload[job.TenantIDPayloadKey].(string)
+		delete(payload, job.TenantIDPayloadKey)
+		_, e := actions.Execute(ctx, app, definition.Action, payload, beanctx.Request{User: &beanctx.User{ID: "system", Roles: []string{"administrator"}}, TenantID: tenantID, RequestID: "job:" + name})
 		return e
 	}}
 	outbox := event.Runner{DB: db, Deliver: func(ctx context.Context, topic string, _ map[string]any) error {

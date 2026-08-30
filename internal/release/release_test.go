@@ -2,6 +2,7 @@ package release_test
 
 import (
 	"context"
+	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/dbal/sqlite"
 	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/kernel"
@@ -11,6 +12,24 @@ import (
 	"path/filepath"
 	"testing"
 )
+
+func TestStorageValidationAllowsLegacySQLiteBoolean(t *testing.T) {
+	ctx := context.Background()
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "legacy-boolean.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err = db.ExecuteMigration(ctx, []string{`CREATE TABLE feature (id TEXT PRIMARY KEY,enabled INTEGER,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,version INTEGER NOT NULL)`}); err != nil {
+		t.Fatal(err)
+	}
+	app := appir.Empty()
+	app.ReleaseID = "legacy-release"
+	app.Entities["feature"] = appir.Entity{Name: "feature", Fields: []appir.Field{{Name: "enabled", Type: "boolean"}}}
+	if err = (&release.Store{Inspector: db}).ValidateStorage(ctx, app); err != nil {
+		t.Fatal(err)
+	}
+}
 
 type failingMigrations struct {
 	base *sqlite.DB

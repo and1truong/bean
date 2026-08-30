@@ -71,7 +71,11 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 			if x != nil {
 				return x
 			}
-			if len(rows) == 0 || !policy.Can(app.Policies[a.Policy], true, request, recordMap(rows[0])) {
+			if len(rows) == 0 {
+				return &dbal.Error{Code: dbal.NotFound, Message: "record not found"}
+			}
+			hydrate(rows[0], e)
+			if !policy.Can(app.Policies[a.Policy], true, request, recordMap(rows[0])) {
 				return &dbal.Error{Code: dbal.NotFound, Message: "record not found"}
 			}
 		}
@@ -482,6 +486,7 @@ func steps(ctx context.Context, tx dbal.Transaction, app *appir.App, a appir.Act
 			if len(loaded) == 0 {
 				return nil, &dbal.Error{Code: dbal.NotFound, Message: "record not found"}
 			}
+			hydrate(loaded[0], entity)
 			if entity.Policy != "" && !authorize(app, entity.Policy, true, c, recordMap(loaded[0])) {
 				return nil, &dbal.Error{Code: dbal.NotFound, Message: "record not found"}
 			}
@@ -517,6 +522,7 @@ func steps(ctx context.Context, tx dbal.Transaction, app *appir.App, a appir.Act
 			if len(loaded) == 0 {
 				return nil, &dbal.Error{Code: dbal.NotFound, Message: "record not found"}
 			}
+			hydrate(loaded[0], entity)
 			if entity.Policy != "" && !authorize(app, entity.Policy, true, c, recordMap(loaded[0])) {
 				return nil, &dbal.Error{Code: dbal.NotFound, Message: "record not found"}
 			}
@@ -535,9 +541,12 @@ func steps(ctx context.Context, tx dbal.Transaction, app *appir.App, a appir.Act
 				return nil, e
 			}
 		case "schedule":
-			payload := any(bindings)
+			payload := bindings
 			if len(step.Values) > 0 {
 				payload = resolveValues(step.Values, input, results, c)
+			}
+			if c.TenantID != "" {
+				payload[job.TenantIDPayloadKey] = c.TenantID
 			}
 			if e := job.Schedule(ctx, tx, step.Job, time.Now().UTC(), payload); e != nil {
 				return nil, e
@@ -723,6 +732,9 @@ func syncRelations(ctx context.Context, tx dbal.Transaction, app *appir.App, ent
 			rows, e := tx.Select(ctx, dbal.Select{Table: target.Name, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: targetField, Value: value}, Limit: 1})
 			if e != nil {
 				return e
+			}
+			if len(rows) > 0 {
+				hydrate(rows[0], target)
 			}
 			if len(rows) == 0 || target.Policy != "" && !authorize(app, target.Policy, false, c, recordMap(rows[0])) {
 				return &dbal.Error{Code: dbal.NotFound, Message: "related record not found"}
