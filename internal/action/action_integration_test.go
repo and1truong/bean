@@ -95,6 +95,64 @@ func TestManyToManyActionWriteAndViewTraversal(t *testing.T) {
 	}
 }
 
+func TestScalarRelationRejectsCrossTenantTarget(t *testing.T) {
+	ctx := context.Background()
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "scalar-relation.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	k := kernel.New()
+	store := &release.Store{DB: db, Migrations: db, Inspector: db, Kernel: k, OpenAPI: openapi.Generate}
+	if err = store.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	definitions := []definition.Definition{
+		{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "tenant"}, Spec: map[string]any{"tenant": true}},
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "category"}, Spec: map[string]any{"tenant": true, "policy": "tenant", "fields": []any{map[string]any{"name": "name", "type": "string", "required": true}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"tenant": true, "policy": "tenant", "fields": []any{map[string]any{"name": "title", "type": "string", "required": true}, map[string]any{"name": "category_id", "type": "relation", "required": true, "relation": map[string]any{"entity": "category", "kind": "many-to-one", "targetField": "id"}}}}},
+	}
+	if err = store.SaveBundle(ctx, "default", definition.Bundle{Name: "scalar relation", Definitions: definitions}); err != nil {
+		t.Fatal(err)
+	}
+	if _, diagnostics, publishErr := store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) != 0 {
+		t.Fatalf("publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	app, _ := k.Active()
+	engine := action.Service{DB: db}
+	tenantA := beanctx.Request{User: &beanctx.User{ID: "00000000-0000-4000-8000-000000000001"}, TenantID: "00000000-0000-4000-8000-00000000000a", RequestID: "tenant-a"}
+	tenantB := beanctx.Request{User: &beanctx.User{ID: "00000000-0000-4000-8000-000000000002"}, TenantID: "00000000-0000-4000-8000-00000000000b", RequestID: "tenant-b"}
+	category, err := engine.Execute(ctx, app, "category_create", map[string]any{"name": "Tenant A"}, tenantA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = engine.Execute(ctx, app, "article_create", map[string]any{"title": "Cross tenant", "category_id": category["id"]}, tenantB); !dbal.IsCode(err, dbal.NotFound) {
+		t.Fatalf("want hidden cross-tenant target, got %v", err)
+	}
+	rows, err := db.Select(ctx, dbal.Select{Table: "article", Limit: 10})
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("cross-tenant relation committed: rows=%v err=%v", rows, err)
+	}
+}
+
+func TestAnonymousCannotReadOwnerScopedGeneratedView(t *testing.T) {
+	ctx := context.Background()
+	db, app := runtime(t, "community")
+	defer db.Close()
+	engine := action.Service{DB: db}
+	if _, err := engine.Execute(ctx, app, "profile_create", map[string]any{"display_name": "Owner"}, admin()); err != nil {
+		t.Fatal(err)
+	}
+	views := view.Service{DB: db}
+	if _, err := views.Run(ctx, app, "profile_list", view.Params{}, beanctx.Request{}); !dbal.IsCode(err, dbal.NotFound) {
+		t.Fatalf("anonymous owner view error=%v", err)
+	}
+	rows, err := views.Run(ctx, app, "profile_list", view.Params{}, admin())
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("owner rows=%v err=%v", rows, err)
+	}
+}
+
 func TestWritePolicyReceivesHydratedBooleanRecord(t *testing.T) {
 	ctx := context.Background()
 	db, err := sqlite.Open(filepath.Join(t.TempDir(), "policy-hydration.db"))
@@ -282,6 +340,38 @@ func TestIdempotencyKeyRejectsDifferentInput(t *testing.T) {
 		t.Fatalf("orders=%v err=%v", orders, err)
 	}
 }
+
+func TestIdempotencyKeyIsScopedToPrincipalAndTenant(t *testing.T) {
+	db, app := runtime(t, "commerce")
+	defer db.Close()
+	ctx := context.Background()
+	engine := action.Service{DB: db}
+	product, err := engine.Execute(ctx, app, "product_create", map[string]any{"name": "Scoped", "price": 100, "inventory": 3}, admin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := admin()
+	first.TenantID = "00000000-0000-4000-8000-00000000000a"
+	second := admin()
+	second.User.ID = "00000000-0000-4000-8000-000000000002"
+	second.TenantID = "00000000-0000-4000-8000-00000000000b"
+	input := map[string]any{"product_id": product["id"], "quantity": 1, "_idempotencyKey": "shared-client-key"}
+	if _, err = engine.Execute(ctx, app, "place_order", input, first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = engine.Execute(ctx, app, "place_order", input, second); err != nil {
+		t.Fatal(err)
+	}
+	orders, err := db.Select(ctx, dbal.Select{Table: "order", Columns: []string{"id"}, Limit: 10})
+	if err != nil || len(orders) != 2 {
+		t.Fatalf("orders=%v err=%v", orders, err)
+	}
+	replays, err := db.Select(ctx, dbal.Select{Table: "bean_idempotency", Columns: []string{"key"}, Limit: 10})
+	if err != nil || len(replays) != 2 || replays[0]["key"] == replays[1]["key"] {
+		t.Fatalf("idempotency rows=%v err=%v", replays, err)
+	}
+}
+
 func admin() beanctx.Request {
 	return beanctx.Request{User: &beanctx.User{ID: "00000000-0000-4000-8000-000000000001", Email: "admin@example.test", Roles: []string{"administrator"}}, RequestID: "test"}
 }

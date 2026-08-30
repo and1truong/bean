@@ -131,7 +131,10 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 		}
 		redact = p.Redact
 	}
-	if v.Policy == "" && e.Owner && c.User != nil {
+	if v.Policy == "" && e.Owner {
+		if c.User == nil {
+			return Result{}, &dbal.Error{Code: dbal.NotFound, Message: "View not found"}
+		}
 		predicates = append(predicates, dbal.Predicate{Op: dbal.OpEQ, Column: "owner_id", Value: c.User.ID})
 	}
 	if v.Policy == "" && e.Tenant {

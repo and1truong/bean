@@ -45,7 +45,18 @@ func (d *DB) Delete(ctx context.Context, query dbal.Delete) (dbal.Result, error)
 	return deleteRows(ctx, d.db, d.compiler, query)
 }
 func (d *DB) Transaction(ctx context.Context, operation func(dbal.Transaction) error) error {
-	transaction, err := d.db.BeginTx(ctx, nil)
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		err = d.transaction(ctx, operation)
+		if !dbal.IsCode(err, dbal.SerializationFailure) {
+			return err
+		}
+	}
+	return err
+}
+
+func (d *DB) transaction(ctx context.Context, operation func(dbal.Transaction) error) error {
+	transaction, err := d.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return translate(err)
 	}

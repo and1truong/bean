@@ -10,9 +10,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/beanruntime/bean/examples"
 	"github.com/beanruntime/bean/internal/bootstrap"
+	"github.com/beanruntime/bean/internal/compiler"
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/definition"
 )
@@ -111,6 +115,61 @@ func testAdminResourceAPI(t *testing.T, databaseURL string) {
 	invalid := serve(t, handler, http.MethodGet, "/api/admin/resources/article?filter.title=Beta", nil, cookie, "")
 	if invalid.Code != http.StatusBadRequest {
 		t.Fatalf("undeclared filter status=%v", invalid.Code)
+	}
+	bookingSource, err := examples.Open("booking")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bookingBundle, err := definition.Decode(bookingSource)
+	bookingSource.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := compiler.Compile("default", 2, bookingBundle.Definitions)
+	if len(compiled.Diagnostics) != 0 {
+		t.Fatalf("booking diagnostics=%v", compiled.Diagnostics)
+	}
+	if err = runtime.DB.ExecuteMigration(ctx, []string{
+		`CREATE TABLE resource (id TEXT PRIMARY KEY,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,version INTEGER NOT NULL,name TEXT NOT NULL)`,
+		`CREATE TABLE booking (id TEXT PRIMARY KEY,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,version INTEGER NOT NULL,resource_id TEXT NOT NULL,start_at TEXT NOT NULL,end_at TEXT NOT NULL,status TEXT NOT NULL,FOREIGN KEY(resource_id) REFERENCES resource(id))`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err = runtime.Kernel.Activate(compiled.App); err != nil {
+		t.Fatal(err)
+	}
+	resourceResponse := serve(t, handler, http.MethodPost, "/api/actions/resource_create", map[string]any{"name": "Concurrent room"}, cookie, csrf)
+	var resourceResult struct {
+		Data map[string]any `json:"data"`
+	}
+	decodeResponse(t, resourceResponse, &resourceResult)
+	bookingInput := map[string]any{"resource_id": resourceResult.Data["id"], "start_at": time.Now().UTC().Add(time.Hour).Format(time.RFC3339), "end_at": time.Now().UTC().Add(2 * time.Hour).Format(time.RFC3339)}
+	start := make(chan struct{})
+	responses := make(chan *httptest.ResponseRecorder, 2)
+	var workers sync.WaitGroup
+	for range 2 {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			<-start
+			responses <- serve(t, handler, http.MethodPost, "/api/actions/book_resource", bookingInput, cookie, csrf)
+		}()
+	}
+	close(start)
+	workers.Wait()
+	close(responses)
+	succeeded := 0
+	for response := range responses {
+		if response.Code == http.StatusOK {
+			succeeded++
+		}
+	}
+	if succeeded != 1 {
+		t.Fatalf("successful concurrent bookings=%d", succeeded)
+	}
+	bookings, err := runtime.DB.Select(ctx, dbal.Select{Table: "booking", Columns: []string{"id"}, Limit: 10})
+	if err != nil || len(bookings) != 1 {
+		t.Fatalf("bookings=%v err=%v", bookings, err)
 	}
 }
 

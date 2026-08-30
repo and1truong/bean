@@ -50,6 +50,9 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 		}
 	}
 	idempotencyKey, _ := input["_idempotencyKey"].(string)
+	if idempotencyKey != "" {
+		idempotencyKey = scopedIdempotencyKey(idempotencyKey, request)
+	}
 	inputHash, fingerprintErr := fingerprint(input)
 	if fingerprintErr != nil {
 		return nil, &dbal.Error{Code: dbal.InvalidQuery, Message: "Action input cannot be fingerprinted", Cause: fingerprintErr}
@@ -184,6 +187,12 @@ func fingerprint(input map[string]any) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("%x", sha256.Sum256(encoded)), nil
+}
+
+func scopedIdempotencyKey(key string, request beanctx.Request) string {
+	principal := request.TenantID + "\x00" + userID(request)
+	scope := sha256.Sum256([]byte(principal))
+	return fmt.Sprintf("%x:%s", scope, key)
 }
 func create(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.Entity, input map[string]any, c beanctx.Request) (dbal.Row, error) {
 	values := map[string]dbal.Value{}
@@ -717,12 +726,16 @@ func toMany(f appir.Field) bool {
 }
 func syncRelations(ctx context.Context, tx dbal.Transaction, app *appir.App, entity appir.Entity, entityID string, input map[string]any, c beanctx.Request, replace bool) error {
 	for _, f := range entity.Fields {
-		if !toMany(f) || input[f.Name] == nil {
+		if f.Type != "relation" || f.Relation == nil || input[f.Name] == nil {
 			continue
 		}
-		values, ok := input[f.Name].([]any)
-		if !ok {
-			return &dbal.Error{Code: dbal.InvalidQuery, Message: f.Name + " must be a list of UUIDs"}
+		values := []any{input[f.Name]}
+		if toMany(f) {
+			var ok bool
+			values, ok = input[f.Name].([]any)
+			if !ok {
+				return &dbal.Error{Code: dbal.InvalidQuery, Message: f.Name + " must be a list of UUIDs"}
+			}
 		}
 		target := app.Entities[f.Relation.Entity]
 		targetField := f.Relation.TargetField
@@ -737,9 +750,12 @@ func syncRelations(ctx context.Context, tx dbal.Transaction, app *appir.App, ent
 			if len(rows) > 0 {
 				hydrate(rows[0], target)
 			}
-			if len(rows) == 0 || target.Policy != "" && !authorize(app, target.Policy, false, c, recordMap(rows[0])) {
+			if len(rows) == 0 || !canReference(app, target, c, rows[0]) {
 				return &dbal.Error{Code: dbal.NotFound, Message: "related record not found"}
 			}
+		}
+		if !toMany(f) {
+			continue
 		}
 		table := entity.Name + "_" + f.Name
 		entityColumn := entity.Name + "_id"
@@ -757,6 +773,17 @@ func syncRelations(ctx context.Context, tx dbal.Transaction, app *appir.App, ent
 	}
 	return nil
 }
+
+func canReference(app *appir.App, target appir.Entity, c beanctx.Request, row dbal.Row) bool {
+	if target.Tenant && (c.TenantID == "" || fmt.Sprint(row["tenant_id"]) != c.TenantID) {
+		return false
+	}
+	if target.Owner && target.Policy == "" && (c.User == nil || fmt.Sprint(row["owner_id"]) != c.User.ID) {
+		return false
+	}
+	return target.Policy == "" || authorize(app, target.Policy, false, c, recordMap(row))
+}
+
 func authorize(app *appir.App, name string, write bool, c beanctx.Request, row map[string]any) bool {
 	if c.User != nil {
 		for _, r := range c.User.Roles {
