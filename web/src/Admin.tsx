@@ -78,10 +78,11 @@ function csv(value:string){return value.split(',').map(role=>role.trim()).filter
 type ResourceListScope={view:string;block:string;filters:string[];defaultFilters:Record<string,any>}
 
 export function ResourceListBlock({resource,view,block,filters=[],defaultFilters={}}:{resource:string;view:string;block:string;filters?:string[];defaultFilters?:Record<string,any>}){
+  const path=useLocation().pathname
   const manifest=useQuery({queryKey:['admin-manifest'],queryFn:()=>api<AdminManifest>('/api/admin/manifest')})
   if(manifest.isPending)return <LoadingState label="Loading resource list…"/>
   if(manifest.error)return <ErrorAlert error={manifest.error}/>
-  return <ResourceList manifest={manifest.data} resourceName={resource} scope={{view,block,filters,defaultFilters}}/>
+  return <ResourceList key={`${resource}:${block}:${path}`} manifest={manifest.data} resourceName={resource} scope={{view,block,filters,defaultFilters}}/>
 }
 
 function ResourceList({manifest,resourceName,scope}:{manifest:AdminManifest;resourceName?:string;scope?:ResourceListScope}){

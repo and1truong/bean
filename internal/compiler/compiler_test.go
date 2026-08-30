@@ -156,6 +156,22 @@ func TestLocalRegistrationRouteMustRenderItsSelectedAction(t *testing.T) {
 	}
 }
 
+func TestResourceListBlockRequiresEditorOnlyPolicy(t *testing.T) {
+	defs := []definition.Definition{
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "note"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "body", "type": "text", "required": true}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "members"}, Spec: map[string]any{"readRoles": []any{"member"}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Block", Metadata: definition.Metadata{Name: "notes"}, Spec: map[string]any{"type": "resource-list", "resource": "note", "policy": "members"}},
+	}
+	result := compiler.Compile("test", 1, defs)
+	found := false
+	for _, diagnostic := range result.Diagnostics {
+		found = found || diagnostic.Kind == "Block" && diagnostic.Name == "notes" && diagnostic.Path == "spec.policy"
+	}
+	if !found {
+		t.Fatalf("non-editor resource-list diagnostics=%v", result.Diagnostics)
+	}
+}
+
 func TestWebformBlockRejectsRenderedAndBoundFieldOverlap(t *testing.T) {
 	defs := []definition.Definition{
 		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "note"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "body", "type": "text", "required": true}}}},
@@ -213,11 +229,12 @@ func TestResourceListBlockValidatesScopeAndFilters(t *testing.T) {
 			"entity": "item", "view": "item_admin", "list": map[string]any{"columns": []any{"id", "status"}, "filters": []any{"parent_id", "status"}},
 		}},
 		{APIVersion: "bean/v1alpha1", Kind: "Block", Metadata: definition.Metadata{Name: "scoped_items"}, Spec: map[string]any{
-			"type": "resource-list", "resource": "item",
+			"type": "resource-list", "resource": "item", "policy": "editor_only",
 			"inputs":   map[string]any{"parent_id": map[string]any{"type": "uuid", "required": true}},
 			"bindings": map[string]any{"parent_id": map[string]any{"source": "context", "name": "id", "required": true}},
 			"filters":  []any{"status"}, "defaultFilters": map[string]any{"status": "pending"},
 		}},
+		{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "editor_only"}, Spec: map[string]any{"readRoles": []any{"editor", "administrator"}}},
 	}
 	result := compiler.Compile("test", 1, defs)
 	if len(result.Diagnostics) != 0 {

@@ -38,7 +38,7 @@ Local signup is disabled unless a `LocalRegistration` definition references a `r
 
 A View or Webform Block may declare typed `inputs` and bind them to Page context. Compilation requires each bound name and type to match the target View filter or Action input, and a Webform Block cannot bind a field that its Webform also renders. HTTP execution recomputes the binding from the matched Page route and rejects client collisions. View Blocks may configure generic `presentation` fields for list/detail mode, title/body/meta fields, route templates, rich-text fields, and empty state. Entity fields may use the `slug` type. Transaction Actions may bind `$now` once for deterministic timestamps.
 
-A `resource-list` Block embeds an AdminResource table and its Actions in a Page. Its bound inputs scope the backing View immutably; `filters` is the allowlist of values a user may change, and `defaultFilters` only controls initial presentation:
+A `resource-list` Block embeds an AdminResource table and its Actions in a Page and must use a Policy whose readers are limited to `editor` and `administrator`. Its bound inputs scope the backing View immutably; `filters` is the allowlist of values a user may change, and `defaultFilters` only controls initial presentation:
 
 ```yaml
 - apiVersion: bean/v1alpha1

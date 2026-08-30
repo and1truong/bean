@@ -60,6 +60,11 @@ func testAdminResourceAPI(t *testing.T, databaseURL string) {
 	decodeResponse(t, login, &session)
 	csrf := session["csrfToken"].(string)
 	cookie := login.Result().Cookies()[0]
+	if err = runtime.HTTP.Auth.Create(ctx, "editor@example.test", "test-password", []string{"editor"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	editorLogin := serve(t, handler, http.MethodPost, "/api/auth/login", map[string]any{"email": "editor@example.test", "password": "test-password"}, nil, "")
+	editorCookie := editorLogin.Result().Cookies()[0]
 	users := serve(t, handler, http.MethodGet, "/api/admin/system/users", nil, cookie, "")
 	if users.Code != http.StatusOK || strings.Contains(users.Body.String(), "password_hash") || strings.Contains(users.Body.String(), "csrf_token") {
 		t.Fatalf("unsafe system users response: status=%d body=%s", users.Code, users.Body.String())
@@ -115,6 +120,15 @@ func testAdminResourceAPI(t *testing.T, databaseURL string) {
 	history := serve(t, handler, http.MethodGet, "/api/admin/audit?entity=article&id="+id, nil, cookie, "")
 	if history.Code != http.StatusOK || !strings.Contains(history.Body.String(), "article_create") {
 		t.Fatalf("history status=%v", history.Code)
+	}
+	if unscoped := serve(t, handler, http.MethodGet, "/api/admin/audit", nil, editorCookie, ""); unscoped.Code != http.StatusForbidden {
+		t.Fatalf("editor unscoped audit status=%v body=%s", unscoped.Code, unscoped.Body.String())
+	}
+	if scoped := serve(t, handler, http.MethodGet, "/api/admin/audit?entity=article&id="+id, nil, editorCookie, ""); scoped.Code != http.StatusOK || !strings.Contains(scoped.Body.String(), "article_create") {
+		t.Fatalf("editor scoped audit status=%v body=%s", scoped.Code, scoped.Body.String())
+	}
+	if system := serve(t, handler, http.MethodGet, "/api/admin/audit?entity=bean_job&id=failed-job", nil, editorCookie, ""); system.Code != http.StatusForbidden {
+		t.Fatalf("editor system audit status=%v body=%s", system.Code, system.Body.String())
 	}
 	invalid := serve(t, handler, http.MethodGet, "/api/admin/resources/article?filter.title=Beta", nil, cookie, "")
 	if invalid.Code != http.StatusBadRequest {

@@ -449,6 +449,30 @@ func (s *Server) audit(w http.ResponseWriter, r *http.Request) {
 	if !s.editor(w, r) {
 		return
 	}
+	requestContext := s.ctx(r)
+	entityName, entityID := r.URL.Query().Get("entity"), r.URL.Query().Get("id")
+	if !role(requestContext.User.Roles, "administrator") {
+		a, active := s.Kernel.Active()
+		if !active || entityName == "" || entityID == "" {
+			problem(w, 403, "forbidden", "Administrator access is required for unscoped audit history.", requestID(r))
+			return
+		}
+		authorized := false
+		for _, resource := range a.AdminResources {
+			if resource.Entity != entityName {
+				continue
+			}
+			result, err := s.Views.RunPage(r.Context(), a, resource.View, view.Params{RecordID: entityID, Limit: 1}, requestContext)
+			if err == nil && len(result.Rows) > 0 {
+				authorized = true
+				break
+			}
+		}
+		if !authorized {
+			problem(w, 403, "forbidden", "Audit history is outside the permitted application scope.", requestID(r))
+			return
+		}
+	}
 	predicates := []dbal.Predicate{}
 	for query, column := range map[string]string{"entity": "entity_type", "id": "entity_id"} {
 		if value := r.URL.Query().Get(query); value != "" {

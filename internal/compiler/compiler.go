@@ -754,6 +754,9 @@ func validate(a *appir.App) []definition.Diagnostic {
 		if block.Type == "resource-list" && block.Resource == "" {
 			out = append(out, diagnostic("Block", name, "spec.resource", "is required"))
 		}
+		if block.Type == "resource-list" && (block.Policy == "" || !editorOnlyReadPolicy(a.Policies[block.Policy])) {
+			out = append(out, diagnostic("Block", name, "spec.policy", "resource-list Block must be restricted to editor and administrator roles"))
+		}
 		refs := []struct{ kind, value string }{{"view", block.View}, {"entity", block.Entity}, {"webform", block.Webform}, {"action", block.Action}, {"resource", block.Resource}}
 		for _, ref := range refs {
 			if ref.value == "" {
@@ -1160,6 +1163,18 @@ func validateExpr(expression expr.Expr, database bool) error {
 		return fmt.Errorf("database expression right side cannot be a record field")
 	}
 	return nil
+}
+
+func editorOnlyReadPolicy(definition appir.Policy) bool {
+	if len(definition.ReadRoles) == 0 {
+		return false
+	}
+	for _, roleName := range definition.ReadRoles {
+		if roleName != "editor" && roleName != "administrator" {
+			return false
+		}
+	}
+	return true
 }
 
 func validateRegistrationPage(a *appir.App, route, actionName string) string {

@@ -220,6 +220,34 @@ describe('public rendering',()=>{
     expect(await screen.findByLabelText('display name')).toBeInTheDocument()
   })
 
+  it('resets scoped resource pagination and selection when its route changes',async()=>{
+    let navigate:NavigateFunction=()=>{}
+    const viewRequests:string[]=[]
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:true,user:{Roles:['editor']}})
+      if(path.includes('/api/system/page'))return response({tree:{component:'ResourceListBlock',props:{resource:'item',view:'item_admin',name:'queue',filters:[],defaultFilters:{}}}})
+      if(path.includes('/api/admin/manifest'))return response({entities:{item:{Name:'item',Label:'Item',Fields:[{Name:'body',Label:'Body',Type:'text'}]}},actions:{},adminResources:{item:{Name:'item',Entity:'item',Label:'Item',Description:'Queue',LabelField:'body',View:'item_admin',List:{Columns:['body'],Search:[],Filters:[],Sort:[],PageSize:1},Form:{Fields:[],Readonly:[]},Actions:[]}}})
+      if(path.includes('/api/views/item_admin')){
+        viewRequests.push(path)
+        if(path.includes('%2Fblog%2FA%2Fcomments')&&path.includes('cursor='))return response({data:[{id:'a2',body:'A page two'}],nextCursor:''})
+        if(path.includes('%2Fblog%2FA%2Fcomments'))return response({data:[{id:'a1',body:'A page one'}],nextCursor:'A-next'})
+        return response({data:[{id:'b1',body:'B page one'}],nextCursor:''})
+      }
+      return response({})
+    }))
+    render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter initialEntries={['/blog/A/comments']}><NavigationDriver capture={value=>{navigate=value}}/><App/></MemoryRouter></QueryClientProvider>)
+    expect(await screen.findByText('A page one')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button',{name:'Next'}))
+    expect(await screen.findByText('A page two')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('checkbox',{name:'Select A page two'}))
+    act(()=>navigate('/blog/B/comments'))
+    expect(await screen.findByText('B page one')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox',{name:'Select B page one'})).not.toBeChecked()
+    const requestB=viewRequests.find(request=>request.includes('%2Fblog%2FB%2Fcomments'))
+    expect(requestB).not.toContain('cursor=')
+  })
+
   it('renders a route-scoped resource list with default filters',async()=>{
     const fetchMock=vi.fn(async(input:string|URL|Request)=>{
       const path=String(input)
