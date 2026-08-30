@@ -144,22 +144,25 @@ func testAdminResourceAPI(t *testing.T, databaseURL string) {
 	}
 	decodeResponse(t, resourceResponse, &resourceResult)
 	bookingInput := map[string]any{"resource_id": resourceResult.Data["id"], "start_at": time.Now().UTC().Add(time.Hour).Format(time.RFC3339), "end_at": time.Now().UTC().Add(2 * time.Hour).Format(time.RFC3339)}
-	start := make(chan struct{})
-	responses := make(chan *httptest.ResponseRecorder, 2)
-	var workers sync.WaitGroup
-	for range 2 {
-		workers.Add(1)
-		go func() {
-			defer workers.Done()
-			<-start
-			responses <- serve(t, handler, http.MethodPost, "/api/actions/book_resource", bookingInput, cookie, csrf)
-		}()
+	concurrentBookings := func(input map[string]any) chan *httptest.ResponseRecorder {
+		start := make(chan struct{})
+		responses := make(chan *httptest.ResponseRecorder, 2)
+		var workers sync.WaitGroup
+		for range 2 {
+			workers.Add(1)
+			go func() {
+				defer workers.Done()
+				<-start
+				responses <- serve(t, handler, http.MethodPost, "/api/actions/book_resource", input, cookie, csrf)
+			}()
+		}
+		close(start)
+		workers.Wait()
+		close(responses)
+		return responses
 	}
-	close(start)
-	workers.Wait()
-	close(responses)
 	succeeded := 0
-	for response := range responses {
+	for response := range concurrentBookings(bookingInput) {
 		if response.Code == http.StatusOK {
 			succeeded++
 		}
@@ -171,6 +174,57 @@ func testAdminResourceAPI(t *testing.T, databaseURL string) {
 	if err != nil || len(bookings) != 1 {
 		t.Fatalf("bookings=%v err=%v", bookings, err)
 	}
+	if strings.HasPrefix(databaseURL, "postgres") {
+		runtime.HTTP.Actions.DB = newIdempotencyBarrierDatabase(runtime.DB)
+		idempotentInput := map[string]any{"resource_id": resourceResult.Data["id"], "start_at": time.Now().UTC().Add(3 * time.Hour).Format(time.RFC3339), "end_at": time.Now().UTC().Add(4 * time.Hour).Format(time.RFC3339), "_idempotencyKey": "concurrent-booking"}
+		ids := map[string]bool{}
+		for response := range concurrentBookings(idempotentInput) {
+			var result struct {
+				Data map[string]any `json:"data"`
+			}
+			decodeResponse(t, response, &result)
+			id, ok := result.Data["id"].(string)
+			if response.Code != http.StatusOK || !ok {
+				t.Fatalf("idempotent booking status=%d body=%s", response.Code, response.Body.String())
+			}
+			ids[id] = true
+		}
+		bookings, err = runtime.DB.Select(ctx, dbal.Select{Table: "booking", Columns: []string{"id"}, Limit: 10})
+		if err != nil || len(ids) != 1 || len(bookings) != 2 {
+			t.Fatalf("idempotent ids=%v bookings=%v err=%v", ids, bookings, err)
+		}
+	}
+}
+
+type idempotencyBarrierDatabase struct {
+	dbal.Database
+	mu        sync.Mutex
+	selected  int
+	completed int
+	ready     chan struct{}
+}
+
+func newIdempotencyBarrierDatabase(database dbal.Database) *idempotencyBarrierDatabase {
+	return &idempotencyBarrierDatabase{Database: database, ready: make(chan struct{})}
+}
+
+func (d *idempotencyBarrierDatabase) Select(ctx context.Context, query dbal.Select) ([]dbal.Row, error) {
+	d.mu.Lock()
+	d.selected++
+	waits := query.Table == "bean_idempotency" && d.selected <= 2
+	d.mu.Unlock()
+	rows, err := d.Database.Select(ctx, query)
+	if !waits {
+		return rows, err
+	}
+	d.mu.Lock()
+	d.completed++
+	if d.completed == 2 {
+		close(d.ready)
+	}
+	d.mu.Unlock()
+	<-d.ready
+	return rows, err
 }
 
 type rejectAuditDatabase struct{ dbal.Database }

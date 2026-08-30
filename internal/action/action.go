@@ -68,6 +68,19 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 	var entityID string
 	changed := []string{}
 	err := s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
+		result = nil
+		entityID = ""
+		changed = nil
+		if idempotencyKey != "" {
+			replay, found, x := lookupReplay(ctx, tx, name, idempotencyKey, inputHash)
+			if x != nil {
+				return x
+			}
+			if found {
+				result = replay
+				return nil
+			}
+		}
 		if a.Policy != "" && (a.Operation == "update" || a.Operation == "delete" || a.Operation == "transition") {
 			id := fmt.Sprint(input["id"])
 			rows, x := tx.Select(ctx, dbal.Select{Table: e.Name, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id}, Limit: 1})
@@ -157,8 +170,16 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 	return result, nil
 }
 func (s Service) replay(ctx context.Context, actionName, key, inputHash string) (dbal.Row, bool, error) {
+	return lookupReplay(ctx, s.DB, actionName, key, inputHash)
+}
+
+type rowSelector interface {
+	Select(context.Context, dbal.Select) ([]dbal.Row, error)
+}
+
+func lookupReplay(ctx context.Context, selector rowSelector, actionName, key, inputHash string) (dbal.Row, bool, error) {
 	p := dbal.And(dbal.Predicate{Op: dbal.OpEQ, Column: "action", Value: actionName}, dbal.Predicate{Op: dbal.OpEQ, Column: "key", Value: key})
-	rows, e := s.DB.Select(ctx, dbal.Select{Table: "bean_idempotency", Columns: []string{"input_hash", "result"}, Where: &p, Limit: 1})
+	rows, e := selector.Select(ctx, dbal.Select{Table: "bean_idempotency", Columns: []string{"input_hash", "result"}, Where: &p, Limit: 1})
 	if e != nil {
 		return nil, false, e
 	}
@@ -386,6 +407,12 @@ func steps(ctx context.Context, tx dbal.Transaction, app *appir.App, a appir.Act
 					predicates = append(predicates, *p)
 				}
 				redact = definition.Redact
+			}
+			if entity.Owner && policyName == "" {
+				if c.User == nil {
+					return nil, &dbal.Error{Code: dbal.NotFound, Message: "records not found"}
+				}
+				predicates = append(predicates, dbal.Predicate{Op: dbal.OpEQ, Column: "owner_id", Value: c.User.ID})
 			}
 			if entity.Tenant && policyName == "" {
 				if c.TenantID == "" {

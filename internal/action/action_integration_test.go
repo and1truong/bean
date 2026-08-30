@@ -153,6 +153,61 @@ func TestAnonymousCannotReadOwnerScopedGeneratedView(t *testing.T) {
 	}
 }
 
+func TestTransactionQueryEnforcesImplicitOwnerScope(t *testing.T) {
+	ctx := context.Background()
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "transaction-owner.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	k := kernel.New()
+	store := &release.Store{DB: db, Migrations: db, Inspector: db, Kernel: k, OpenAPI: openapi.Generate}
+	if err = store.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	definitions := []definition.Definition{
+		{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "public_action"}, Spec: map[string]any{}},
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "profile"}, Spec: map[string]any{"owner": true, "fields": []any{map[string]any{"name": "display_name", "type": "string", "required": true}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "View", Metadata: definition.Metadata{Name: "profiles"}, Spec: map[string]any{"entity": "profile", "fields": []any{"id", "display_name"}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Action", Metadata: definition.Metadata{Name: "query_profiles"}, Spec: map[string]any{"entity": "profile", "operation": "transaction", "policy": "public_action", "input": map[string]any{"request": map[string]any{"type": "string", "required": true}}, "output": map[string]any{"first_id": map[string]any{"type": "uuid", "required": true}}, "steps": []any{
+			map[string]any{"op": "query", "view": "profiles", "result": "profiles"},
+			map[string]any{"op": "return", "values": map[string]any{"first_id": "$result.profiles.0.id"}},
+		}}},
+	}
+	if err = store.SaveBundle(ctx, "default", definition.Bundle{Name: "transaction owner", Definitions: definitions}); err != nil {
+		t.Fatal(err)
+	}
+	if _, diagnostics, publishErr := store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) != 0 {
+		t.Fatalf("publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	app, _ := k.Active()
+	engine := action.Service{DB: db}
+	first := admin()
+	second := admin()
+	second.User.ID = "00000000-0000-4000-8000-000000000002"
+	firstProfile, err := engine.Execute(ctx, app, "profile_create", map[string]any{"display_name": "First"}, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondProfile, err := engine.Execute(ctx, app, "profile_create", map[string]any{"display_name": "Second"}, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := map[string]any{"request": "profiles"}
+	if _, err = engine.Execute(ctx, app, "query_profiles", input, beanctx.Request{}); !dbal.IsCode(err, dbal.NotFound) {
+		t.Fatalf("anonymous transaction query error=%v", err)
+	}
+	for _, test := range []struct {
+		request beanctx.Request
+		want    any
+	}{{first, firstProfile["id"]}, {second, secondProfile["id"]}} {
+		result, executeErr := engine.Execute(ctx, app, "query_profiles", input, test.request)
+		if executeErr != nil || result["first_id"] != test.want {
+			t.Fatalf("result=%v want=%v err=%v", result, test.want, executeErr)
+		}
+	}
+}
+
 func TestWritePolicyReceivesHydratedBooleanRecord(t *testing.T) {
 	ctx := context.Background()
 	db, err := sqlite.Open(filepath.Join(t.TempDir(), "policy-hydration.db"))
