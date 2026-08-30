@@ -810,7 +810,13 @@ func validate(a *appir.App) []definition.Diagnostic {
 			target = a.Views[block.View].ExposedFilters
 		}
 		if block.Type == "webform" && block.Webform != "" {
-			target = a.Actions[a.Webforms[block.Webform].Action].Input
+			formDefinition := a.Webforms[block.Webform]
+			target = a.Actions[formDefinition.Action].Input
+			for _, element := range formDefinition.Elements {
+				if _, bound := block.Bindings[element.Name]; bound {
+					out = append(out, diagnostic("Block", name, "spec.bindings."+element.Name, "cannot bind a field also rendered by the Webform"))
+				}
+			}
 		}
 		if block.Type == "resource-list" && block.Resource != "" {
 			resource := a.AdminResources[block.Resource]
@@ -1197,9 +1203,6 @@ func validateRegistrationPage(a *appir.App, route, actionName string) string {
 			}
 			fields := map[string]bool{}
 			for _, element := range formDefinition.Elements {
-				if _, bound := blockDefinition.Bindings[element.Name]; bound {
-					return "Webform fields cannot duplicate immutable Block bindings: " + element.Name
-				}
 				fields[element.Name] = element.Required && element.Visible == nil
 			}
 			missing = missing[:0]

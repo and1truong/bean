@@ -156,6 +156,22 @@ func TestLocalRegistrationRouteMustRenderItsSelectedAction(t *testing.T) {
 	}
 }
 
+func TestWebformBlockRejectsRenderedAndBoundFieldOverlap(t *testing.T) {
+	defs := []definition.Definition{
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "note"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "body", "type": "text", "required": true}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Webform", Metadata: definition.Metadata{Name: "note_form"}, Spec: map[string]any{"action": "note_create", "elements": []any{map[string]any{"name": "body", "type": "text", "required": true}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Block", Metadata: definition.Metadata{Name: "note_block"}, Spec: map[string]any{"type": "webform", "webform": "note_form", "inputs": map[string]any{"body": map[string]any{"type": "text"}}, "bindings": map[string]any{"body": map[string]any{"source": "context", "name": "body"}}}},
+	}
+	result := compiler.Compile("test", 1, defs)
+	found := false
+	for _, diagnostic := range result.Diagnostics {
+		found = found || diagnostic.Kind == "Block" && diagnostic.Name == "note_block" && diagnostic.Path == "spec.bindings.body"
+	}
+	if !found {
+		t.Fatalf("Webform Block field/binding collision diagnostics=%v", result.Diagnostics)
+	}
+}
+
 func TestExpressionsRejectUnimplementedNowSource(t *testing.T) {
 	defs := []definition.Definition{{
 		APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "future"},
