@@ -77,10 +77,15 @@ function mergeDetail(rows:Row[],meta:string[]){const result={...rows[0]};for(con
 function ViewBody({row,field,rich}:{row:Row;field:string;rich:boolean}){const selected=row[field];const value=String(selected??row.excerpt??row.description??'');return rich&&selected!==null&&selected!==undefined?<div className="rich-text" dangerouslySetInnerHTML={{__html:String(selected)}}/>:<p className="leading-7">{value}</p>}
 function viewLink(template:string,row:Row){return template.replace(/:([a-zA-Z0-9_.]+)/g,(_,field)=>encodeURIComponent(String(row[field]??'')))}
 
-function WebformBlock({name,block,renderedForm}:{name:string;block:string;renderedForm?:Manifest['webforms'][string]}){
-  const loc=useLocation();const manifest=useQuery({queryKey:['manifest'],queryFn:()=>api<Manifest>('/api/system/manifest'),enabled:!renderedForm});const form=renderedForm||manifest.data?.webforms?.[name]
+type WebformBlockProps={name:string;block:string;renderedForm?:Manifest['webforms'][string]}
+function WebformBlock(props:WebformBlockProps){
+  const path=useLocation().pathname
+  return <WebformBlockPage key={`${props.name}:${props.block}:${path}`} {...props} path={path}/>
+}
+function WebformBlockPage({name,block,renderedForm,path}:WebformBlockProps&{path:string}){
+  const manifest=useQuery({queryKey:['manifest'],queryFn:()=>api<Manifest>('/api/system/manifest'),enabled:!renderedForm});const form=renderedForm||manifest.data?.webforms?.[name]
   const[values,setValues]=useState<Row>({});const[step,setStep]=useState(0);const[done,setDone]=useState('')
-  const query=new URLSearchParams({_page:loc.pathname,_block:block})
+  const query=new URLSearchParams({_page:path,_block:block})
   const submit=useMutation({mutationFn:()=>api<{confirmation:string}>('/api/webforms/'+name+'/submit?'+query,{method:'POST',body:JSON.stringify(values)}),onSuccess:result=>setDone(result.confirmation)})
   if(!form)return null
   if(done)return <StatusAlert>{done}</StatusAlert>

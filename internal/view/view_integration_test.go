@@ -44,6 +44,11 @@ func TestCompiledQueryPlanAndOpaqueCursor(t *testing.T) {
 	if e != nil || len(rows) != 1 || rows[0]["total"] != int64(5) {
 		t.Fatalf("rows=%v err=%v", rows, e)
 	}
+	app.Views["book_detail"] = appir.View{Name: "book_detail", Entity: "book", Fields: []string{"id", "title", "category.name"}, Relationships: []appir.ViewRelationship{{Name: "category", Entity: "category", Type: "inner", LocalField: "category_id", TargetField: "id"}}, DefaultLimit: 10, MaxLimit: 10}
+	detail, e := service.RunPage(ctx, app, "book_detail", view.Params{RecordID: "b2"}, beanctx.Request{})
+	if e != nil || len(detail.Rows) != 1 || detail.Rows[0]["id"] != "b2" {
+		t.Fatalf("joined record lookup=%v err=%v", detail, e)
+	}
 	app.Views["books"] = appir.View{Name: "books", Entity: "book", Fields: []string{"id", "title"}, Sort: []appir.Sort{{Field: "title"}}, DefaultLimit: 1, MaxLimit: 2}
 	first, e := service.RunPage(ctx, app, "books", view.Params{}, beanctx.Request{})
 	if e != nil || len(first.Rows) != 1 || first.NextCursor == "" {

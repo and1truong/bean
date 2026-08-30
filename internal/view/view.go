@@ -107,7 +107,7 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 		predicates = append(predicates, dbal.Predicate{Op: dbal.OpEQ, Column: name, Value: value})
 	}
 	if params.RecordID != "" {
-		predicates = append(predicates, dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: params.RecordID})
+		predicates = append(predicates, dbal.Predicate{Op: dbal.OpEQ, Column: qualify("id", v.Entity, joined), Value: params.RecordID})
 	}
 	if params.Search != "" {
 		search := make([]dbal.Predicate, 0, len(params.SearchFields))

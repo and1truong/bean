@@ -208,6 +208,31 @@ describe('public rendering',()=>{
     expect(await screen.findByText('Home after logout')).toBeInTheDocument()
   })
 
+  it('resets Webform values and completion when its bound route changes',async()=>{
+    let navigate:NavigateFunction=()=>{}
+    const submissions:Array<{path:string;body:any}>=[]
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request,init?:RequestInit)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:true,user:{Roles:['member']}})
+      if(path.includes('/api/system/page'))return response({tree:{component:'WebformBlock',props:{name:'comment_form',webform:'comment'}}})
+      if(path.includes('/api/system/manifest'))return response({webforms:{comment:{Elements:[{Name:'body',Type:'textarea',Required:true}],Confirmation:'Sent'}}})
+      if(path.includes('/api/webforms/comment/submit')){submissions.push({path,body:JSON.parse(String(init?.body))});return response({confirmation:'Sent'})}
+      return response({})
+    }))
+    render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter initialEntries={['/posts/a']}><NavigationDriver capture={value=>{navigate=value}}/><App/></MemoryRouter></QueryClientProvider>)
+    const input=await screen.findByLabelText('body')
+    fireEvent.change(input,{target:{value:'Draft for A'}})
+    act(()=>navigate('/posts/b'))
+    expect(await screen.findByLabelText('body')).toHaveValue('')
+    fireEvent.change(screen.getByLabelText('body'),{target:{value:'Comment for B'}})
+    fireEvent.click(screen.getByRole('button',{name:'Submit'}))
+    expect(await screen.findByText('Sent')).toBeInTheDocument()
+    expect(submissions[0].path).toContain('_page=%2Fposts%2Fb')
+    expect(submissions[0].body).toEqual({body:'Comment for B'})
+    act(()=>navigate('/posts/a'))
+    expect(await screen.findByLabelText('body')).toHaveValue('')
+  })
+
   it('renders Webform elements whose optional visibility is null',async()=>{
     vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
       const path=String(input)
