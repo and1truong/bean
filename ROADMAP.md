@@ -20,6 +20,12 @@ The target product description is:
 
 > Bean is a compiled application runtime designed for humans and AI agents to build complete operational software from high-level definitions.
 
+The application-logic boundary is:
+
+> Primitives describe structure. Rules describe local deterministic logic. Extensions perform external effects.
+
+Bean continues to prefer first-class semantics whenever the compiler, runtime, inspection, or test system benefits from understanding behavior structurally. Lifecycle transitions, ownership, and Policy relationships remain first-class Bean semantics. Rules may refine those semantics with local predicates and calculations; they do not replace semantic primitives with scripts.
+
 ## North Star
 
 From an ordinary English prompt, a coding agent can produce and publish a credible demo application in less than five minutes, with no human modification after the initial prompt.
@@ -60,6 +66,7 @@ Presentation remains a separately reported score so a technically correct but un
 - Every new core primitive must increase the set of applications an agent can describe.
 - Application behavior stays in metadata; core packages stay generic.
 - Bean owns application semantics. Providers own infrastructure capabilities.
+- Prefer an existing semantic primitive, then a deterministic rule expression, then a typed extension—in that order.
 - Definitions -> validation -> migration -> immutable AppIR -> atomic activation remains the lifecycle.
 - Reads use Views and writes use Actions.
 - Bean integrates with infrastructure through adapters instead of rebuilding infrastructure products.
@@ -73,12 +80,13 @@ Presentation remains a separately reported score so a technically correct but un
 | 1 | v0.6 | Agent-readable compiler and machine-stable CLI contract | next |
 | 2 | v0.7 | Demo Factory for fast, populated, presentable local applications | planned |
 | 3 | v0.8 | Agent Protocol, MCP adapter, and shipped agent guidance | planned |
-| 4 | v0.8+ | Semantic application model for common business rules | planned |
-| 5a | v0.9a | Generated tests from the semantic application model | planned |
-| 5b | v0.9b | Typed extension boundary | planned |
-| 6 | v1.0 | Qualification of one explicit production envelope | planned |
-| 7 | post-v1.0 | Bean Cloud preview environments | exploratory |
-| 8 | post-v1.0 | Composable application-pattern ecosystem | exploratory |
+| 4 | v0.9 | First-class semantic model for common business structure | planned |
+| 5 | v0.10 | Deterministic Rule Expressions for local application logic | planned |
+| 6 | v0.11 | Generated tests from semantic primitives and rules | planned |
+| 7 | v0.12 | Typed extension boundary for external effects | planned |
+| 8 | v1.0 | Qualification of one explicit production envelope | planned |
+| 9 | post-v1.0 | Bean Cloud preview environments | exploratory |
+| 10 | post-v1.0 | Composable application-pattern ecosystem | exploratory |
 
 ### Phase 0 — Application runtime (complete)
 
@@ -102,7 +110,7 @@ bean app publish
 bean app test
 ```
 
-Every command supports `--json`, a versioned response envelope, documented exit statuses, deterministic ordering, and clean separation between machine output and logs. `app plan` is side-effect-free. `app diff` reports semantic definition/AppIR changes rather than YAML formatting changes. `app publish` reports the candidate checksum and applied release. `app test` runs compile, migration, publication, and startup smoke contracts in an isolated SQLite database; semantic test generation is deferred to v0.9a.
+Every command supports `--json`, a versioned response envelope, documented exit statuses, deterministic ordering, and clean separation between machine output and logs. `app plan` is side-effect-free. `app diff` reports semantic definition/AppIR changes rather than YAML formatting changes. `app publish` reports the candidate checksum and applied release. `app test` runs compile, migration, publication, and startup smoke contracts in an isolated SQLite database; semantic test generation is deferred to v0.11.
 
 Self-description is part of the same contract:
 
@@ -127,7 +135,7 @@ The executable goal and milestones are in [GOAL.md](GOAL.md) and [PLANS.md](PLAN
 
 Optimize time-to-credible-demo using a deliberately bounded vocabulary: Entity, Relation, List, Detail, Form, Board, Tree, Dashboard, Metric, Timeline, Action, Search, and Attachment.
 
-Add composable application patterns for CRUD resources, workflows, approvals, parent/child records, many-to-many tagging, ownership, assignment, comments, activity history, and dashboards. A v0.7 workflow composes an enum, Action, and transition; first-class `Lifecycle` semantics remain deferred to v0.8+. Patterns begin as inspectable definition composition, not hidden runtime behavior.
+Add composable application patterns for CRUD resources, workflows, approvals, parent/child records, many-to-many tagging, ownership, assignment, comments, activity history, and dashboards. A v0.7 workflow composes an enum, Action, and transition; first-class `Lifecycle` semantics remain deferred to v0.9. Patterns begin as inspectable definition composition, not hidden runtime behavior.
 
 Evolve today's literal seed fixtures into deterministic, realistic fixture generation. Add a small typed theme contract such as name, preset, and accent; agents should not generate CSS. Produce a portable local demo with:
 
@@ -182,7 +190,7 @@ Exit criteria:
 - Definition, Release, and Application Plane authorization contracts are independently tested across CLI and MCP.
 - Application Plane authorization preserves the same View-read and Action-write boundaries as HTTP and Admin.
 
-### Phase 4 — v0.8+: semantic application model
+### Phase 4 — v0.9: semantic application model
 
 Add first-class business semantics only where reference applications prove repeated need. `Lifecycle` state machines are the first slice; later candidates include ownership, auditability, soft deletion, terminal-state immutability, and declarative invariants.
 
@@ -194,19 +202,241 @@ Exit criteria:
 
 - At least two unrelated reference applications reuse each accepted semantic primitive.
 - Illegal transitions and policy combinations fail at compile time where possible and deterministically at runtime otherwise.
-- Semantics remain visible in schema, capabilities, inspect, and diff, with stable identifiers and evidence for later test generation.
+- Semantics remain visible in schema, capabilities, inspect, and diff, with stable identifiers and evidence for later rule refinement and test generation.
 
-### Phase 5a — v0.9a: semantic test generation
+### Phase 5 — v0.10: Deterministic Rule Expressions
 
-Use the semantic model to generate schema, policy, transition, route-binding, CRUD smoke, and browser-journey checks. `bean app test --json` reports stable check identifiers and evidence. Generated checks supplement application-specific acceptance tests; they do not claim to infer every business requirement.
+Increase the local application logic agents can express without arbitrary application code or weakening Bean's deterministic, inspectable model. Rules sit between first-class semantic primitives and the later typed extension boundary:
+
+```text
+Semantic application model
+        ↓
+Deterministic rule expressions
+        ↓
+Generated semantic tests
+        ↓
+Typed extension boundary
+```
+
+Without rules, an agent often has to request another Bean primitive or escape into application code. With rules, the intended path is:
+
+```text
+agent intent
+  ↓
+typed Bean structure
+  +
+small local expressions
+  ↓
+compiler validation
+  ↓
+inspectable executable application
+```
+
+This should materially increase the applications that remain entirely inside Bean definitions. The selection order is: existing Bean semantic primitive, deterministic rule expression, then typed extension.
+
+#### Semantic boundary
+
+Do not replace structure with scripts. This loses the lifecycle meaning Bean needs to validate, inspect, diff, authorize, and test:
+
+```yaml
+approve:
+  script: |
+    if invoice.status == "submitted" {
+      invoice.status = "approved"
+    }
+```
+
+Keep the transition first-class and use a rule only for the local predicate:
+
+```yaml
+lifecycle:
+  submitted:
+    approve: approved
+
+actions:
+  approve:
+    when: |
+      user.role == "manager" &&
+      this.total <= user.approval_limit
+```
+
+The same boundary applies to ownership and Policy relationships: Bean retains their structural meaning while rules refine declared behavior. Authorization still compiles through Bean Policy semantics; a rule does not create a parallel authorization system.
+
+#### Rule-language contract
+
+Prefer a deliberately narrow expression and data-transformation model with Bloblang-like properties over an unrestricted embedded language. Bloblang is not an implementation commitment; repository evidence and vertical slices must justify that choice separately.
+
+Rules require:
+
+- deterministic, side-effect-free, bounded evaluation
+- bounded memory, result size, and execution complexity
+- an explicitly typed result required by the consuming field or rule surface
+- stable validation and runtime diagnostics
+- visibility through schema, capabilities, inspect, and semantic diff
+- stable semantics and evidence consumable by generated tests
+
+Rules have no filesystem, network, process execution, direct database access, arbitrary SQL, environment-variable reads, module loading, or global mutable state. They have no implicit clock or random source and cannot call an ambient UUID generator; UUID values must be explicitly injected. Arbitrary JavaScript and Lua are not available.
+
+Context is explicit and injected, for example:
+
+```text
+this
+input
+user
+tenant
+parent
+context.now
+context.request_id
+```
+
+The deterministic contract is:
+
+```text
+same rule
++ same input
++ same injected context
+= same result
+```
+
+#### Initial rule surfaces
+
+Rules do not become available arbitrarily throughout definitions. Start with:
+
+- computed fields and values
+- validation predicates
+- Action guards through `when`
+- derived Action inputs and values
+- conditional requiredness
+- conditional UI visibility where it does not affect authorization
+- declarative invariant predicates
+- deterministic mappings and transformations
+- metric and calculated-value expressions
+
+UI visibility controls presentation only. It never substitutes for server-side validation or authorization.
+
+#### Reference examples
+
+Approval threshold retains the lifecycle while refining the `approve` transition with a local business predicate:
+
+```yaml
+lifecycle:
+  initial: draft
+  states:
+    draft:
+      transitions:
+        submit: submitted
+    submitted:
+      transitions:
+        approve: approved
+        reject: rejected
+
+actions:
+  approve:
+    when: |
+      user.role == "manager" &&
+      this.total <= user.approval_limit
+```
+
+A tiered discount is computed business logic that does not justify a new Bean primitive:
+
+```yaml
+fields:
+  discount_rate:
+    computed: |
+      if this.customer.type == "enterprise" {
+        this.customer.negotiated_discount
+      } else if this.customer.tier == "gold" && this.subtotal >= 100 {
+        0.10
+      } else {
+        0
+      }
+```
+
+Conditional validation expresses that purchases above $10,000 require a purchase-order number:
+
+```yaml
+validations:
+  purchase_order_required:
+    rule: |
+      this.total <= 10000 ||
+      this.purchase_order_number != null
+```
+
+A derived value captures the deterministic request timestamp when an order is submitted:
+
+```yaml
+actions:
+  submit:
+    derive:
+      submitted_at: |
+        context.now
+```
+
+`context.now` is injected by Bean. Rules cannot call a global `now()` function.
+
+A computed SLA state uses that same explicit evaluation time:
+
+```yaml
+fields:
+  overdue:
+    computed: |
+      this.status != "resolved" &&
+      this.due_at < context.now
+```
+
+Conditional form presentation shows a rejection reason only for the rejected outcome:
+
+```yaml
+fields:
+  rejection_reason:
+    visible_when: |
+      input.outcome == "rejected"
+```
+
+This last rule controls presentation only; server-side validation and authorization remain separate contracts.
+
+#### External-effect boundary
+
+Rules must not send email, call Stripe, fetch HTTP endpoints, write arbitrary database rows, publish Kafka events directly, read local files, execute shell commands, or invoke arbitrary JavaScript or Lua. Those behaviors belong behind a typed extension or provider boundary:
+
+```text
+Action
+  ↓
+Bean-controlled transaction / semantics
+  ↓
+declared typed external effect
+  ↓
+extension/provider
+```
+
+#### Exit criteria
+
+- At least three unrelated reference applications use rules without application-specific core code.
+- Together they demonstrate computed values, Action guards, validation, derived values, and one context-dependent rule using injected `context.now`.
+- Rules are visible through schema, capabilities, inspect, semantic diff, and machine diagnostics.
+- Validation catches unknown fields, invalid operators or functions, incompatible result types, and forbidden capabilities before publication where possible.
+- Identical rules, inputs, and injected context evaluate deterministically.
+- Resource limits are enforced and covered by black-box tests.
+- Rules cannot perform I/O or obtain undeclared environment or runtime state.
+- Existing semantic primitives remain structural and are not replaced by scripts.
+- No arbitrary Lua, JavaScript, SQL, network, filesystem, or process execution enters Bean core.
+
+v0.10 is not a general-purpose scripting runtime. Lua may be reconsidered later only behind the typed extension boundary or another strongly sandboxed provider abstraction when a concrete vertical slice proves the need.
+
+### Phase 6 — v0.11: generated semantic and rule tests
+
+Use the semantic model and deterministic rules to generate schema, policy, transition, route-binding, rule-evaluation, CRUD smoke, and browser-journey checks. `bean app test --json` reports stable check identifiers and evidence.
+
+Generated checks cover rule type correctness, evaluation fixtures, Action guard allow/deny cases, invariant violations, representative boundary values, deterministic replay, forbidden capability access, and execution or resource-limit failures. They verify declared semantics and representative boundaries; they do not infer unstated requirements or prove arbitrary business correctness. Generated checks supplement application-specific acceptance tests.
 
 Exit criteria:
 
-- Generated negative transition and policy cases catch seeded defects in reference definitions.
-- Generated checks trace their assertions to semantic definitions and stable identifiers.
+- Generated negative transition and Policy cases catch seeded defects in reference definitions.
+- Generated rule tests catch intentionally seeded guard, validation, calculation, context, and resource-limit defects.
+- Generated checks trace assertions to semantic or rule definitions and stable identifiers.
 - Identical definitions and runtime state produce deterministically ordered results and evidence.
 
-### Phase 5b — v0.9b: typed extension boundary
+### Phase 7 — v0.12: typed extension boundary
 
 Provide a narrow escape hatch without allowing arbitrary scripts throughout metadata:
 
@@ -222,7 +452,7 @@ Exit criteria:
 - Extension unavailability and retry behavior are deterministic and tested.
 - Arbitrary inline JavaScript, SQL, and React remain unsupported.
 
-### Phase 6 — v1.0: production qualification
+### Phase 8 — v1.0: production qualification
 
 Qualify Bean for one deliberately narrow production envelope only after the agent-to-demo loop is strong:
 
@@ -232,7 +462,7 @@ Qualify backup/restore, secrets, migration and upgrade behavior, observability, 
 
 The phase must publish explicit supported topologies, failure models, SLO evidence, restore drills, compatibility windows, and known exclusions. Bean consumes managed databases, storage, identity, and orchestration; it does not become a Kubernetes platform, distributed database, Kafka clone, S3 clone, or identity provider.
 
-### Phase 7 — Bean Cloud
+### Phase 9 — Bean Cloud
 
 Only after the local engine and production contract are proven, provide the narrow hosted loop:
 
@@ -242,7 +472,7 @@ git or prompt -> Bean build -> preview environment -> shareable URL
 
 The minimum platform supplies PostgreSQL, object storage, secrets, domains, logs, deployments, and expiring previews. It does not expand into a general backend-as-a-service or functions platform.
 
-### Phase 8 — application-pattern ecosystem
+### Phase 10 — application-pattern ecosystem
 
 Once the definition and extension compatibility contracts are stable, allow agents to discover and compose versioned packages such as approval workflows, kanban, comments, tenant ownership, and activity feeds.
 
@@ -273,3 +503,4 @@ At each release boundary, answer these questions before widening scope:
 3. Did any application-specific behavior leak into core?
 4. Does the North Star benchmark improve on elapsed time, validation attempts, human interventions, behavior score, or presentation score?
 5. Is the next proposed primitive supported by a real vertical slice rather than infrastructure ambition?
+6. Is proposed behavior structural semantics, a local deterministic rule, or an external effect?
