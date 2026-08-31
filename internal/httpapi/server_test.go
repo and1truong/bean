@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -20,6 +21,73 @@ import (
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/definition"
 )
+
+func TestMultipartWebformStoresAndDownloadsFile(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := bootstrap.Open(ctx, filepath.Join(t.TempDir(), "upload.db"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.DB.Close()
+	bundle := definition.Bundle{Name: "upload", Definitions: []definition.Definition{
+		{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "public_access"}, Spec: map[string]any{}},
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "asset"}, Spec: map[string]any{"policy": "public_access", "fields": []any{map[string]any{"name": "label", "type": "string", "required": true}, map[string]any{"name": "file", "type": "file", "required": true}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Webform", Metadata: definition.Metadata{Name: "upload_asset"}, Spec: map[string]any{"action": "asset_create", "elements": []any{map[string]any{"name": "label", "type": "text", "required": true}, map[string]any{"name": "file", "type": "file", "required": true}}}},
+	}}
+	if err = runtime.Store.SaveBundle(ctx, "default", bundle); err != nil {
+		t.Fatal(err)
+	}
+	if _, diagnostics, publishErr := runtime.Store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) > 0 {
+		t.Fatalf("publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	_ = writer.WriteField("label", "Plan")
+	part, err := writer.CreateFormFile("file", "../plan.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = part.Write([]byte("hello attachment"))
+	_ = writer.Close()
+	request := httptest.NewRequest(http.MethodPost, "/api/webforms/upload_asset/submit", &body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	response := httptest.NewRecorder()
+	runtime.HTTP.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("upload status=%d body=%s", response.Code, response.Body.String())
+	}
+	var result struct{ Data map[string]any }
+	decodeResponse(t, response, &result)
+	fileID := result.Data["file"].(string)
+	download := httptest.NewRecorder()
+	runtime.HTTP.Handler().ServeHTTP(download, httptest.NewRequest(http.MethodGet, "/api/files/"+fileID, nil))
+	if download.Code != http.StatusOK || download.Body.String() != "hello attachment" || !strings.Contains(download.Header().Get("Content-Disposition"), "plan.txt") || strings.Contains(download.Header().Get("Content-Disposition"), "..") {
+		t.Fatalf("download status=%d headers=%v body=%q", download.Code, download.Header(), download.Body.String())
+	}
+	bundle.Definitions[0].Spec = map[string]any{"authenticated": true}
+	if err = runtime.Store.SaveBundle(ctx, "default", bundle); err != nil {
+		t.Fatal(err)
+	}
+	if _, diagnostics, publishErr := runtime.Store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) > 0 {
+		t.Fatalf("protected publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	anonymous := httptest.NewRecorder()
+	runtime.HTTP.Handler().ServeHTTP(anonymous, httptest.NewRequest(http.MethodGet, "/api/files/"+fileID, nil))
+	if anonymous.Code != http.StatusNotFound {
+		t.Fatalf("protected file leaked with status %d", anonymous.Code)
+	}
+	if err = runtime.HTTP.Auth.Bootstrap(ctx, "admin@example.test", "test-password"); err != nil {
+		t.Fatal(err)
+	}
+	login := serve(t, runtime.HTTP.Handler(), http.MethodPost, "/api/auth/login", map[string]any{"email": "admin@example.test", "password": "test-password"}, nil, "")
+	authorizedRequest := httptest.NewRequest(http.MethodGet, "/api/files/"+fileID, nil)
+	authorizedRequest.AddCookie(login.Result().Cookies()[0])
+	authorized := httptest.NewRecorder()
+	runtime.HTTP.Handler().ServeHTTP(authorized, authorizedRequest)
+	if authorized.Code != http.StatusOK || authorized.Body.String() != "hello attachment" {
+		t.Fatalf("authorized download status=%d body=%q", authorized.Code, authorized.Body.String())
+	}
+}
 
 func TestAdminResourceAPIRequiresAdminAndUsesCompiledRuntime(t *testing.T) {
 	testAdminResourceAPI(t, filepath.Join(t.TempDir(), "admin.db"))

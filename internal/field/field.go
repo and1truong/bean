@@ -16,6 +16,14 @@ import (
 var uuid = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
 var slug = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
+const MaxFileBytes = 5 << 20
+
+type Upload struct {
+	Name        string
+	ContentType string
+	Data        []byte
+}
+
 func Validate(f appir.Field, v any) error {
 	if v == nil {
 		if f.Required {
@@ -74,6 +82,19 @@ func Validate(f appir.Field, v any) error {
 		}
 		if _, e := time.Parse(time.RFC3339, s); e != nil {
 			return fmt.Errorf("%s must be RFC3339", f.Name)
+		}
+	case "file":
+		switch upload := v.(type) {
+		case Upload:
+			if upload.Name == "" || len(upload.Data) == 0 || len(upload.Data) > MaxFileBytes {
+				return fmt.Errorf("%s must be a file no larger than %d bytes", f.Name, MaxFileBytes)
+			}
+		case string:
+			if !uuid.MatchString(upload) {
+				return typeError(f)
+			}
+		default:
+			return typeError(f)
 		}
 	case "uuid", "relation":
 		if f.Type == "relation" && f.Relation != nil && (f.Relation.Kind == "one-to-many" || f.Relation.Kind == "many-to-many") {

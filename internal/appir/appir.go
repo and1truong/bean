@@ -119,7 +119,8 @@ type Block struct {
 }
 type ViewPresentation struct {
 	Mode, TitleField, BodyField, LinkRoute, LinkField, EmptyState string
-	MetaFields, RichTextFields                                    []string
+	GroupField, OrderField, ParentField, MoveAction               string
+	MetaFields, RichTextFields, Columns                           []string
 }
 type Region struct {
 	Name   string

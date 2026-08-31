@@ -1,14 +1,18 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net"
 	"net/http"
 	"net/netip"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,6 +26,7 @@ import (
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/definition"
+	"github.com/beanruntime/bean/internal/field"
 	"github.com/beanruntime/bean/internal/kernel"
 	"github.com/beanruntime/bean/internal/page"
 	"github.com/beanruntime/bean/internal/policy"
@@ -60,6 +65,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/auth/login", s.login)
 	mux.HandleFunc("POST /api/auth/logout", s.logout)
 	mux.HandleFunc("GET /api/views/{name}", s.view)
+	mux.HandleFunc("GET /api/files/{id}", s.file)
 	mux.HandleFunc("POST /api/actions/{name}", s.action)
 	mux.HandleFunc("POST /api/webforms/{name}/submit", s.form)
 	mux.HandleFunc("GET /api/admin/definitions", s.definitions)
@@ -110,7 +116,11 @@ func (s *Server) manifest(w http.ResponseWriter, _ *http.Request) {
 		problem(w, 503, "not_ready", "No active release.", "")
 		return
 	}
-	write(w, 200, map[string]any{"appId": a.AppID, "releaseId": a.ReleaseID, "version": a.Version, "entities": a.Entities, "views": a.Views, "actions": a.Actions, "filters": a.Filters, "webforms": a.Webforms, "pages": a.Pages, "localRegistration": a.LocalRegistration})
+	authNavigation := a.LocalRegistration != nil || len(a.Roles) > 0
+	for _, definition := range a.Policies {
+		authNavigation = authNavigation || definition.Authenticated || definition.Owner || definition.Tenant || len(definition.ReadRoles) > 0 || len(definition.WriteRoles) > 0
+	}
+	write(w, 200, map[string]any{"appId": a.AppID, "releaseId": a.ReleaseID, "version": a.Version, "authNavigation": authNavigation, "entities": a.Entities, "views": a.Views, "actions": a.Actions, "filters": a.Filters, "webforms": a.Webforms, "pages": a.Pages, "localRegistration": a.LocalRegistration})
 }
 func (s *Server) adminManifest(w http.ResponseWriter, r *http.Request) {
 	if !s.editor(w, r) {
@@ -289,6 +299,65 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request) {
 	}
 	write(w, 200, map[string]any{"data": result.Rows, "nextCursor": result.NextCursor})
 }
+func (s *Server) file(w http.ResponseWriter, r *http.Request) {
+	a, active := s.Kernel.Active()
+	if !active || !s.fileAllowed(r, a, r.PathValue("id")) {
+		problem(w, 404, "not_found", "File not found.", requestID(r))
+		return
+	}
+	rows, err := s.Actions.DB.Select(r.Context(), dbal.Select{Table: "bean_blob", Columns: []string{"file_name", "content_type", "content", "created_at"}, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: r.PathValue("id")}, Limit: 1})
+	if err != nil {
+		respondError(w, r, err)
+		return
+	}
+	if len(rows) == 0 {
+		problem(w, 404, "not_found", "File not found.", requestID(r))
+		return
+	}
+	content, err := base64.StdEncoding.DecodeString(fmt.Sprint(rows[0]["content"]))
+	if err != nil {
+		problem(w, 500, "internal", "File content is invalid.", requestID(r))
+		return
+	}
+	contentType := fmt.Sprint(rows[0]["content_type"])
+	if _, _, err = mime.ParseMediaType(contentType); err != nil {
+		contentType = "application/octet-stream"
+	}
+	name := safeFilename(fmt.Sprint(rows[0]["file_name"]))
+	created, _ := time.Parse(time.RFC3339Nano, fmt.Sprint(rows[0]["created_at"]))
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	http.ServeContent(w, r, name, created, bytes.NewReader(content))
+}
+
+func (s *Server) fileAllowed(r *http.Request, a *appir.App, id string) bool {
+	requestContext := s.ctx(r)
+	for _, entity := range a.Entities {
+		for _, definition := range entity.Fields {
+			if definition.Type != "file" {
+				continue
+			}
+			rows, err := s.Actions.DB.Select(r.Context(), dbal.Select{Table: entity.Name, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: definition.Name, Value: id}, Limit: 1})
+			if err != nil || len(rows) == 0 {
+				continue
+			}
+			row := map[string]any{}
+			for key, value := range rows[0] {
+				row[key] = value
+			}
+			if entity.SoftDelete && row["deleted_at"] != nil {
+				return false
+			}
+			if entity.Policy != "" {
+				return policy.Can(a.Policies[entity.Policy], false, requestContext, row)
+			}
+			return policy.Can(appir.Policy{Owner: entity.Owner, Tenant: entity.Tenant}, false, requestContext, row)
+		}
+	}
+	return false
+}
+
 func (s *Server) action(w http.ResponseWriter, r *http.Request) {
 	a, ok := s.Kernel.Active()
 	if !ok {
@@ -300,14 +369,15 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request) {
 		problem(w, 403, "csrf", "CSRF validation failed.", requestID(r))
 		return
 	}
-	var in map[string]any
-	if !decode(w, r, &in) {
+	definition := a.Actions[r.PathValue("name")]
+	in, decoded := decodeWebform(w, r, definition)
+	if !decoded {
 		return
 	}
 	if key := r.Header.Get("Idempotency-Key"); key != "" {
 		in["_idempotencyKey"] = key
 	}
-	if definition := a.Actions[r.PathValue("name")]; definition.Operation == "register_local_user" && (a.LocalRegistration == nil || a.LocalRegistration.Action != definition.Name) {
+	if definition.Operation == "register_local_user" && (a.LocalRegistration == nil || a.LocalRegistration.Action != definition.Name) {
 		problem(w, 404, "not_found", "Action not found.", requestID(r))
 		return
 	} else if definition.Operation == "register_local_user" && !s.signupLimiter.allow(s.clientIP(r)) {
@@ -348,8 +418,9 @@ func (s *Server) form(w http.ResponseWriter, r *http.Request) {
 		problem(w, 403, "csrf", "CSRF validation failed.", requestID(r))
 		return
 	}
-	var in map[string]any
-	if !decode(w, r, &in) {
+	actionDefinition = a.Actions[f.Action]
+	in, decoded := decodeWebform(w, r, actionDefinition)
+	if !decoded {
 		return
 	}
 	bound, formContext, e := s.boundBlockInputs(r, a, "webform", f.Name)
@@ -886,6 +957,93 @@ func decode(w http.ResponseWriter, r *http.Request, out any) bool {
 	}
 	return true
 }
+func decodeWebform(w http.ResponseWriter, r *http.Request, action appir.Action) (map[string]any, bool) {
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		var input map[string]any
+		return input, decode(w, r, &input)
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, field.MaxFileBytes+(1<<20))
+	if err := r.ParseMultipartForm(field.MaxFileBytes + (1 << 20)); err != nil {
+		problem(w, 400, "invalid_form", "Multipart form is invalid or too large.", requestID(r))
+		return nil, false
+	}
+	defer r.MultipartForm.RemoveAll()
+	input := map[string]any{}
+	for name, values := range r.MultipartForm.Value {
+		definition, declared := action.Input[name]
+		if !declared || len(values) != 1 {
+			problem(w, 400, "invalid_form", "Multipart form contains an invalid field.", requestID(r))
+			return nil, false
+		}
+		value, err := formValue(values[0], definition)
+		if err != nil {
+			problem(w, 400, "invalid_form", "Multipart form field has an invalid value.", requestID(r))
+			return nil, false
+		}
+		input[name] = value
+	}
+	for name, files := range r.MultipartForm.File {
+		definition, declared := action.Input[name]
+		if !declared || definition.Type != "file" || len(files) != 1 {
+			problem(w, 400, "invalid_form", "Multipart form contains an invalid file field.", requestID(r))
+			return nil, false
+		}
+		opened, err := files[0].Open()
+		if err != nil {
+			problem(w, 400, "invalid_form", "Uploaded file cannot be read.", requestID(r))
+			return nil, false
+		}
+		data, err := io.ReadAll(io.LimitReader(opened, field.MaxFileBytes+1))
+		_ = opened.Close()
+		if err != nil || len(data) == 0 || len(data) > field.MaxFileBytes {
+			problem(w, 400, "invalid_form", "Uploaded file is empty or too large.", requestID(r))
+			return nil, false
+		}
+		contentType := files[0].Header.Get("Content-Type")
+		if contentType == "" {
+			contentType = http.DetectContentType(data)
+		}
+		input[name] = field.Upload{Name: safeFilename(files[0].Filename), ContentType: contentType, Data: data}
+	}
+	return input, true
+}
+
+func formValue(value string, definition appir.Field) (any, error) {
+	if definition.Type == "relation" && definition.Relation != nil && (definition.Relation.Kind == "one-to-many" || definition.Relation.Kind == "many-to-many") {
+		var parsed []any
+		err := json.Unmarshal([]byte(value), &parsed)
+		return parsed, err
+	}
+	switch definition.Type {
+	case "integer", "money":
+		parsed, err := strconv.ParseInt(value, 10, 64)
+		return parsed, err
+	case "boolean":
+		parsed, err := strconv.ParseBool(value)
+		return parsed, err
+	case "json":
+		var parsed any
+		err := json.Unmarshal([]byte(value), &parsed)
+		return parsed, err
+	default:
+		return value, nil
+	}
+}
+
+func safeFilename(name string) string {
+	name = filepath.Base(strings.ReplaceAll(name, "\\", "/"))
+	name = strings.Map(func(r rune) rune {
+		if r < 32 || r == 127 {
+			return -1
+		}
+		return r
+	}, name)
+	if name == "" || name == "." {
+		return "download"
+	}
+	return name
+}
+
 func write(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

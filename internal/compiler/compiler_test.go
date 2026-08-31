@@ -37,6 +37,30 @@ func TestGeneratedCRUDUsesActionsAndViews(t *testing.T) {
 	}
 }
 
+func TestBoardAndTreePresentationsValidateTypedFieldsAndActions(t *testing.T) {
+	defs := []definition.Definition{
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "task"}, Spec: map[string]any{"fields": []any{
+			map[string]any{"name": "title", "type": "string", "required": true},
+			map[string]any{"name": "status", "type": "enum", "options": []any{"todo", "done"}, "required": true},
+			map[string]any{"name": "position", "type": "integer", "required": true},
+			map[string]any{"name": "parent_id", "type": "relation", "relation": map[string]any{"entity": "task", "kind": "many-to-one", "targetField": "id"}},
+		}}},
+		{APIVersion: "bean/v1alpha1", Kind: "View", Metadata: definition.Metadata{Name: "tasks"}, Spec: map[string]any{"entity": "task", "fields": []any{"id", "title", "status", "position", "parent_id"}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Action", Metadata: definition.Metadata{Name: "move_task"}, Spec: map[string]any{"entity": "task", "operation": "transition", "transitions": map[string]any{"todo": []any{"done"}, "done": []any{"todo"}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Block", Metadata: definition.Metadata{Name: "board"}, Spec: map[string]any{"type": "view", "view": "tasks", "presentation": map[string]any{"mode": "board", "titleField": "title", "groupField": "status", "orderField": "position", "moveAction": "move_task", "columns": []any{"todo", "done"}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Block", Metadata: definition.Metadata{Name: "tree"}, Spec: map[string]any{"type": "view", "view": "tasks", "presentation": map[string]any{"mode": "tree", "titleField": "title", "parentField": "parent_id", "orderField": "position"}}},
+	}
+	result := compiler.Compile("test", 1, defs)
+	if len(result.Diagnostics) > 0 {
+		t.Fatalf("valid presentations diagnostics=%v", result.Diagnostics)
+	}
+	broken := append([]definition.Definition{}, defs...)
+	broken[3].Spec = map[string]any{"type": "view", "view": "tasks", "presentation": map[string]any{"mode": "board", "titleField": "title", "groupField": "title", "moveAction": "task_update", "columns": []any{"unknown"}}}
+	if diagnostics := compiler.Compile("test", 1, broken).Diagnostics; len(diagnostics) < 2 {
+		t.Fatalf("invalid board accepted: %v", diagnostics)
+	}
+}
+
 func TestAdminResourceReferencesAreValidated(t *testing.T) {
 	defs := []definition.Definition{
 		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "book"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}}}},

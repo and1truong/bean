@@ -835,6 +835,9 @@ func validate(a *appir.App) []definition.Diagnostic {
 				out = append(out, diagnostic("Block", name, "spec."+ref.kind, "invalid Block input reference "+ref.value))
 			}
 		}
+		if block.Type == "view" && block.View != "" {
+			out = append(out, validatePresentation(name, block, a)...)
+		}
 		if block.Menu != "" {
 			if _, ok := a.Menus[block.Menu]; !ok {
 				out = append(out, diagnostic("Block", name, "spec.menu", "references missing Menu "+block.Menu))
@@ -1061,6 +1064,75 @@ func recordFields(expression *expr.Expr) []string {
 	return out
 }
 
+func validatePresentation(name string, block appir.Block, a *appir.App) []definition.Diagnostic {
+	presentation := block.Presentation
+	if presentation.Mode == "" {
+		return nil
+	}
+	out := []definition.Diagnostic{}
+	if !map[string]bool{"list": true, "detail": true, "board": true, "tree": true}[presentation.Mode] {
+		return []definition.Diagnostic{diagnostic("Block", name, "spec.presentation.mode", "has no registered presentation renderer")}
+	}
+	viewDefinition := a.Views[block.View]
+	entity := a.Entities[viewDefinition.Entity]
+	selected := nameSet(viewDefinition.Fields)
+	fieldDefinition := func(fieldName string) (appir.Field, bool) {
+		if fieldName == "id" {
+			return appir.Field{Name: "id", Type: "uuid"}, true
+		}
+		for _, candidate := range entity.Fields {
+			if candidate.Name == fieldName {
+				return candidate, true
+			}
+		}
+		return appir.Field{}, false
+	}
+	for path, fieldName := range map[string]string{"titleField": presentation.TitleField, "bodyField": presentation.BodyField, "groupField": presentation.GroupField, "orderField": presentation.OrderField, "parentField": presentation.ParentField} {
+		if fieldName != "" && !selected[fieldName] {
+			out = append(out, diagnostic("Block", name, "spec.presentation."+path, "must be selected by View "+block.View))
+		}
+	}
+	if presentation.Mode == "board" {
+		group, exists := fieldDefinition(presentation.GroupField)
+		if presentation.GroupField == "" || !exists || group.Type != "enum" {
+			out = append(out, diagnostic("Block", name, "spec.presentation.groupField", "board requires a selected enum field"))
+		}
+		if len(presentation.Columns) == 0 {
+			out = append(out, diagnostic("Block", name, "spec.presentation.columns", "board requires at least one column"))
+		}
+		allowedColumns := nameSet(group.Options)
+		for i, column := range presentation.Columns {
+			if !allowedColumns[column] {
+				out = append(out, diagnostic("Block", name, fmt.Sprintf("spec.presentation.columns.%d", i), "is not an option of "+presentation.GroupField))
+			}
+		}
+		action, exists := a.Actions[presentation.MoveAction]
+		stateField := action.StateField
+		if stateField == "" {
+			stateField = "status"
+		}
+		if presentation.MoveAction == "" || !exists || action.Entity != viewDefinition.Entity || action.Operation != "transition" || stateField != presentation.GroupField {
+			out = append(out, diagnostic("Block", name, "spec.presentation.moveAction", "must reference a transition Action for the board entity and group field"))
+		}
+	}
+	if presentation.Mode == "tree" {
+		parent, exists := fieldDefinition(presentation.ParentField)
+		if presentation.ParentField == "" || !exists || parent.Type != "relation" || parent.Relation == nil || parent.Relation.Entity != viewDefinition.Entity || parent.Relation.Kind != "many-to-one" {
+			out = append(out, diagnostic("Block", name, "spec.presentation.parentField", "tree requires a selected many-to-one self relation"))
+		}
+		if presentation.TitleField == "" {
+			out = append(out, diagnostic("Block", name, "spec.presentation.titleField", "tree requires a selected title field"))
+		}
+		if presentation.OrderField != "" {
+			order, exists := fieldDefinition(presentation.OrderField)
+			if !exists || order.Type != "integer" {
+				out = append(out, diagnostic("Block", name, "spec.presentation.orderField", "tree order field must be an integer"))
+			}
+		}
+	}
+	return out
+}
+
 func compatibleFormType(formType, fieldType string) bool {
 	allowed := map[string][]string{
 		"text":             {"string", "text", "richtext", "uuid", "url", "slug"},
@@ -1074,6 +1146,7 @@ func compatibleFormType(formType, fieldType string) bool {
 		"date":             {"date"},
 		"datetime":         {"datetime"},
 		"entity reference": {"relation", "uuid"},
+		"file":             {"file"},
 		"group":            {"json"},
 	}
 	for _, candidate := range allowed[formType] {
@@ -1301,7 +1374,7 @@ func validateRegistrationPage(a *appir.App, route, actionName string) string {
 }
 
 func validateForm(name string, form appir.Webform) []definition.Diagnostic {
-	allowed := map[string]bool{"text": true, "textarea": true, "email": true, "password": true, "number": true, "integer": true, "checkbox": true, "select": true, "date": true, "datetime": true, "entity reference": true, "group": true}
+	allowed := map[string]bool{"text": true, "textarea": true, "email": true, "password": true, "number": true, "integer": true, "checkbox": true, "select": true, "date": true, "datetime": true, "entity reference": true, "file": true, "group": true}
 	out := []definition.Diagnostic{}
 	seen := map[string]bool{}
 	var walk func([]appir.FormElement, string)

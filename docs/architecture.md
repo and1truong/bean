@@ -24,6 +24,10 @@ The application Admin is metadata-driven rather than a raw-table editor: AdminRe
 
 Studio visual editors mutate the normal definition `spec` for Entity, View, Action, Policy, and AdminResource. Reference choices come from current draft definitions. The advanced JSON view reads and writes the same object, so there is no second visual metadata format and supported fields survive round trips. Validate returns compiler diagnostics, target schema, and migration preview before publish.
 
+Board and tree rendering are typed View presentations: the compiler verifies selected grouping, parent, order, title, and transition references before activation. The browser receives only normalized presentation metadata, reads rows through the declared View, and writes board movement through the declared Action.
+
+Small `file` values enter only through bounded multipart requests. Action execution inserts immutable blob metadata/content and the referencing Entity value in one database transaction, while replacement and hard deletion remove the old blob in that transaction. Downloads first find a live compiled Entity reference and apply its read policy; client filenames are response metadata only and never storage paths.
+
 ## Qualified failure boundary
 
 v0.4 tests unexpected Bean process termination and restart while the local filesystem or PostgreSQL service remains functional. It does not claim recovery from corrupted media, dishonest fsync, host loss, database failover, network partitions, backup loss, or concurrent Bean writers. SQLite integrity/foreign-key checks and active-release/schema checks provide deterministic failure evidence, not a substitute for backup and disaster recovery.

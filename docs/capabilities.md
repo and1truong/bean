@@ -11,6 +11,8 @@
 | Local identity | Opt-in signup Action, bcrypt passwords, fixed role, safe output, independent throttle | complete | compiler, auth, HTTP, SQLite/PostgreSQL blog tests |
 | Bound blocks | Compiler-checked immutable Page/Block values for Views, Webforms, and scoped AdminResource lists | complete | binding/filter diagnostics, tamper tests, React tests, blog browser journey |
 | Content rendering | Generic list/detail links, named content Filters, safe Markdown, metadata fields, legacy rich text, empty states, cursor controls | complete | Filter/View/React XSS tests and blog browser journey |
+| Operational presentation | Compiler-validated enum boards and expandable self-relation trees | complete | compiler/React contracts and Asana Lite browser journey |
+| Small file attachments | 5 MiB multipart `file` fields, transactional metadata/content, policy-checked download, replacement/deletion cleanup | complete | field/Action/HTTP/React contracts and Asana Lite browser journey |
 | UI system | Source-owned shadcn primitives, shared Bean tokens, accessible confirmations, responsive Shell/Public/Admin/System/Studio surfaces | complete | frontend lint/unit/build, `ui.spec.ts`, and full Playwright gate |
 | Actions | Typed I/O, full declared step set, rollback, concurrency, audit, job/outbox intent | complete | Action integration and race tests |
 | Idempotency | Atomic result persistence and canonical input fingerprint conflict | complete | replay and changed-input contracts |
@@ -26,6 +28,7 @@
 | Visual acceptance | Core application authored and published without specification JSON | complete | `studio-builder.spec.ts` |
 | Qualification | contract, fuzz-smoke, compatibility, race, black-box, crash, PostgreSQL and Playwright | complete | terminal make targets |
 | Blog vertical slice | Draft/publish, category/tag relations, signup/login, comments, moderation, RSS | complete | `make test-blog` and PostgreSQL browser parity |
+| Asana Lite vertical slice | Anonymous local projects, root-task board, arbitrary-depth tree, route-bound subtasks, and multiple attachments | complete | `asana.spec.ts` browser journey |
 
 ## Explicit limits
 
@@ -34,5 +37,6 @@
 - Outbox delivery is at-least-once. A crash after delivery but before acknowledgement can duplicate an effect.
 - v0.5 crash qualification assumes a functioning filesystem or PostgreSQL service. Corruption, host loss, backup/restore, and point-in-time recovery are outside scope.
 - The visual builder covers the core operational definition path; non-core page composition kinds use advanced JSON in this slice.
+- Tree presentation is bounded by the View maximum of 200 rows. File fields are bounded small attachments stored as base64 metadata content; external object storage, resumable transfer, scanning, and media processing are outside this slice.
 - SQLite/PostgreSQL parity is contract and workflow parity, not identical query plans or operational characteristics.
 - External security review, load envelopes, SLOs, supply-chain signing, and production release certification remain future work.

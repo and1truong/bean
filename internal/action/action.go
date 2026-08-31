@@ -3,6 +3,7 @@ package action
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -45,7 +46,13 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 		return nil, &dbal.Error{Code: dbal.Conflict, Message: "Action is not permitted"}
 	}
 	for inputName, definition := range a.Input {
-		if er := field.Validate(definition, input[inputName]); er != nil {
+		value := input[inputName]
+		if definition.Type == "file" && value != nil {
+			if _, upload := value.(field.Upload); !upload {
+				return nil, &dbal.Error{Code: dbal.InvalidQuery, Message: inputName + " must be uploaded as multipart form data"}
+			}
+		}
+		if er := field.Validate(definition, value); er != nil {
 			return nil, &dbal.Error{Code: dbal.InvalidQuery, Message: er.Error()}
 		}
 	}
@@ -248,6 +255,13 @@ func create(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.En
 			if f.Type == "richtext" {
 				v = field.SanitizeRichText(v.(string))
 			}
+			if f.Type == "file" {
+				storedUpload, uploadErr := storeUpload(ctx, tx, v)
+				if uploadErr != nil {
+					return nil, uploadErr
+				}
+				v = storedUpload
+			}
 			stored, er := field.Encode(f, v)
 			if er != nil {
 				return nil, &dbal.Error{Code: dbal.InvalidQuery, Message: er.Error()}
@@ -300,6 +314,7 @@ func update(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.En
 	hydrate(row, e)
 	values := map[string]dbal.Value{}
 	fields := map[string]appir.Field{}
+	replacedBlobs := []string{}
 	stateField := a.StateField
 	if stateField == "" {
 		stateField = "status"
@@ -330,6 +345,16 @@ func update(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.En
 		if f.Type == "richtext" && v != nil {
 			v = field.SanitizeRichText(v.(string))
 		}
+		if f.Type == "file" && v != nil {
+			storedUpload, uploadErr := storeUpload(ctx, tx, v)
+			if uploadErr != nil {
+				return nil, uploadErr
+			}
+			if old := fmt.Sprint(row[k]); old != "" {
+				replacedBlobs = append(replacedBlobs, old)
+			}
+			v = storedUpload
+		}
 		stored, encodeErr := field.Encode(f, v)
 		if encodeErr != nil {
 			return nil, &dbal.Error{Code: dbal.InvalidQuery, Message: encodeErr.Error()}
@@ -345,6 +370,11 @@ func update(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.En
 	}
 	if er = syncRelations(ctx, tx, app, e, id, input, c, true); er != nil {
 		return nil, er
+	}
+	for _, blobID := range replacedBlobs {
+		if _, er = tx.Delete(ctx, dbal.Delete{Table: "bean_blob", Where: dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: blobID}, ExpectedRows: 1}); er != nil {
+			return nil, er
+		}
 	}
 	for k, v := range values {
 		row[k] = v
@@ -364,8 +394,45 @@ func remove(ctx context.Context, tx dbal.Transaction, e appir.Entity, input map[
 		_, er := tx.Update(ctx, dbal.Update{Table: e.Name, Values: map[string]dbal.Value{"deleted_at": now}, Where: dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id}, ExpectedRows: 1})
 		return dbal.Row{"id": id}, er
 	}
-	_, er := tx.Delete(ctx, dbal.Delete{Table: e.Name, Where: dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id}, ExpectedRows: 1})
-	return dbal.Row{"id": id}, er
+	rows, er := tx.Select(ctx, dbal.Select{Table: e.Name, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id}, Limit: 1})
+	if er != nil {
+		return nil, er
+	}
+	if len(rows) == 0 {
+		return nil, &dbal.Error{Code: dbal.NotFound, Message: "record not found"}
+	}
+	if _, er = tx.Delete(ctx, dbal.Delete{Table: e.Name, Where: dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id}, ExpectedRows: 1}); er != nil {
+		return nil, er
+	}
+	for _, definition := range e.Fields {
+		if definition.Type != "file" || rows[0][definition.Name] == nil {
+			continue
+		}
+		if _, er = tx.Delete(ctx, dbal.Delete{Table: "bean_blob", Where: dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: rows[0][definition.Name]}, ExpectedRows: 1}); er != nil {
+			return nil, er
+		}
+	}
+	return dbal.Row{"id": id}, nil
+}
+
+func storeUpload(ctx context.Context, tx dbal.Transaction, value any) (string, error) {
+	upload, ok := value.(field.Upload)
+	if !ok {
+		return "", &dbal.Error{Code: dbal.InvalidQuery, Message: "file must be uploaded as multipart form data"}
+	}
+	id := uid.New()
+	contentType := strings.TrimSpace(upload.ContentType)
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	_, err := tx.Insert(ctx, dbal.Insert{Table: "bean_blob", Values: map[string]dbal.Value{
+		"id": id, "file_name": upload.Name, "content_type": contentType, "size": len(upload.Data),
+		"content": base64.StdEncoding.EncodeToString(upload.Data), "created_at": time.Now().UTC().Format(time.RFC3339Nano),
+	}})
+	if err != nil {
+		return "", err
+	}
+	return id, nil
 }
 func steps(ctx context.Context, tx dbal.Transaction, app *appir.App, a appir.Action, input map[string]any, c beanctx.Request) (dbal.Row, error) {
 	var out dbal.Row

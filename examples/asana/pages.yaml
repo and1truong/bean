@@ -1,0 +1,67 @@
+kind: Menu
+name: main_navigation
+items:
+  - {label: Projects, route: /}
+---
+kind: Block
+name: main_menu
+type: menu
+menu: main_navigation
+---
+kind: Block
+name: home_intro
+type: text
+text: Create a project, then manage its tasks without accounts or external services.
+---
+kind: Block
+name: project_help
+type: text
+text: The board contains root tasks. The tree below includes every nested subtask up to the local 200-task project limit.
+---
+kind: Block
+name: task_help
+type: text
+text: Add a subtask to create the next hierarchy level, or upload one or more small attachments.
+---
+kind: Panel
+name: home_panel
+layout: single-column
+regions:
+  - name: main
+    blocks: [main_menu, home_intro, project_list, create_project]
+---
+kind: Panel
+name: project_panel
+layout: single-column
+regions:
+  - name: main
+    blocks: [main_menu, project_summary, project_help, project_board, project_tree, create_root_task_block]
+---
+kind: Panel
+name: task_panel
+layout: single-column
+regions:
+  - name: main
+    blocks: [main_menu, task_summary, task_help, create_subtask_block, attachment_list, upload_attachment_block]
+---
+kind: Page
+name: home
+route: /
+title: Asana Lite
+panel: home_panel
+---
+kind: Page
+name: project
+route: /projects/:id
+title: Project
+panel: project_panel
+context:
+  id: {source: route, name: id, required: true}
+---
+kind: Page
+name: task
+route: /tasks/:id
+title: Task
+panel: task_panel
+context:
+  id: {source: route, name: id, required: true}

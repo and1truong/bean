@@ -26,6 +26,19 @@ func TestStorageEncodingPreservesJSONAndBooleanTypes(t *testing.T) {
 	}
 }
 
+func TestFileUploadRequiresContentWithinBound(t *testing.T) {
+	definition := appir.Field{Name: "file", Type: "file", Required: true}
+	if err := field.Validate(definition, field.Upload{Name: "plan.txt", ContentType: "text/plain", Data: []byte("ok")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := field.Validate(definition, field.Upload{Name: "large.bin", Data: make([]byte, field.MaxFileBytes+1)}); err == nil {
+		t.Fatal("oversized file accepted")
+	}
+	if err := field.Validate(definition, map[string]any{"name": "forged"}); err == nil {
+		t.Fatal("forged JSON file accepted")
+	}
+}
+
 func TestMoneyRejectsFloatLikeStringAndRichTextSanitizes(t *testing.T) {
 	if e := field.Validate(appir.Field{Name: "price", Type: "money"}, "1.50"); e == nil {
 		t.Fatal("money string accepted")
