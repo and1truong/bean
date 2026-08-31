@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/url"
 	"strings"
 
 	"github.com/beanruntime/bean/internal/dbal"
@@ -13,6 +14,22 @@ import (
 type DB struct {
 	db       *sql.DB
 	compiler Compiler
+}
+
+func OpenReadOnly(path string) (*DB, error) {
+	location := url.URL{Scheme: "file", Path: path}
+	dsn := location.String() + "?mode=ro&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
+	d, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, err
+	}
+	d.SetMaxOpenConns(1)
+	d.SetMaxIdleConns(1)
+	if err = d.Ping(); err != nil {
+		d.Close()
+		return nil, err
+	}
+	return &DB{db: d}, nil
 }
 
 func Open(path string) (*DB, error) {

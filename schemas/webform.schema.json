@@ -1,0 +1,131 @@
+{
+  "$defs": {
+    "github_com_beanruntime_bean_internal_appir_FormElement": {
+      "additionalProperties": false,
+      "properties": {
+        "children": {
+          "items": {
+            "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_FormElement"
+          },
+          "type": "array"
+        },
+        "max": {
+          "type": "number"
+        },
+        "maxLength": {
+          "type": "integer"
+        },
+        "min": {
+          "type": "number"
+        },
+        "minLength": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "pattern": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "requiredWhen": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_expr_Expr"
+        },
+        "type": {
+          "type": "string"
+        },
+        "visible": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_expr_Expr"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_expr_Expr": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "items": {
+            "$ref": "#/$defs/github_com_beanruntime_bean_internal_expr_Expr"
+          },
+          "type": "array"
+        },
+        "left": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_expr_Value"
+        },
+        "op": {
+          "type": "string"
+        },
+        "right": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_expr_Value"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_expr_Value": {
+      "additionalProperties": false,
+      "properties": {
+        "literal": {},
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$id": "https://bean.build/schemas/webform.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "type": "string"
+    },
+    "apiVersion": {
+      "const": "bean/v1alpha1"
+    },
+    "confirmation": {
+      "type": "string"
+    },
+    "elements": {
+      "items": {
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_FormElement"
+      },
+      "type": "array"
+    },
+    "kind": {
+      "const": "Webform"
+    },
+    "name": {
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "steps": {
+      "items": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "kind",
+    "name"
+  ],
+  "title": "Bean Webform definition",
+  "type": "object"
+}

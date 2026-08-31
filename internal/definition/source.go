@@ -35,13 +35,18 @@ func (d Diagnostics) Error() string {
 
 func LoadFile(filename string) (Bundle, []Diagnostic) {
 	bundle, diagnostics, _ := loadFile(filename)
+	ClassifyDiagnostics(diagnostics)
+	enrichManifestCandidates(diagnostics)
 	return bundle, diagnostics
 }
 
 // LoadFileForValidation reports whether every source document required to
 // validate definition dependencies was recovered successfully.
 func LoadFileForValidation(filename string) (Bundle, []Diagnostic, bool) {
-	return loadFile(filename)
+	bundle, diagnostics, complete := loadFile(filename)
+	ClassifyDiagnostics(diagnostics)
+	enrichManifestCandidates(diagnostics)
+	return bundle, diagnostics, complete
 }
 
 func loadFile(filename string) (Bundle, []Diagnostic, bool) {
@@ -55,7 +60,17 @@ func loadFile(filename string) (Bundle, []Diagnostic, bool) {
 
 func LoadFS(filesystem fs.FS, manifestPath string) (Bundle, []Diagnostic) {
 	bundle, diagnostics, _ := loadFS(filesystem, manifestPath)
+	ClassifyDiagnostics(diagnostics)
+	enrichManifestCandidates(diagnostics)
 	return bundle, diagnostics
+}
+
+func enrichManifestCandidates(diagnostics []Diagnostic) {
+	for index := range diagnostics {
+		if diagnostics[index].Code == "BEAN-E1002" && diagnostics[index].Kind == "" && len(diagnostics[index].Candidates) == 0 {
+			diagnostics[index].Candidates = []string{"apiVersion", "name", "resources"}
+		}
+	}
 }
 
 func decodeSource(reader io.Reader, sourcePath string) (Bundle, []Diagnostic) {

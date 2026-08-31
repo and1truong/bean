@@ -33,6 +33,11 @@ type Published struct {
 	ActivatedAt string `json:"activatedAt"`
 }
 
+type MigrationPlanError struct{ Err error }
+
+func (e *MigrationPlanError) Error() string { return e.Err.Error() }
+func (e *MigrationPlanError) Unwrap() error { return e.Err }
+
 func (s *Store) Initialize(ctx context.Context) error {
 	if err := s.Migrations.ExecuteMigration(ctx, migration.MetadataSchema()); err != nil {
 		return err
@@ -99,6 +104,41 @@ func (s *Store) SaveBundle(ctx context.Context, appID string, b definition.Bundl
 	}
 	return nil
 }
+
+// SaveBundleExact replaces the current draft definition set with the supplied
+// valid bundle. Historical active releases retain their immutable AppIR and
+// checksums; removed draft revisions are not part of the runtime contract.
+func (s *Store) SaveBundleExact(ctx context.Context, appID string, b definition.Bundle) error {
+	if e := s.SaveBundle(ctx, appID, b); e != nil {
+		return e
+	}
+	wanted := map[string]bool{}
+	for _, d := range b.Definitions {
+		namespace := d.Metadata.Namespace
+		if namespace == "" {
+			namespace = "default"
+		}
+		wanted[d.Kind+"/"+namespace+"/"+d.Metadata.Name] = true
+	}
+	rows, e := s.DB.Select(ctx, dbal.Select{Table: "bean_definition", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "app_id", Value: appID}, Limit: 200})
+	if e != nil {
+		return e
+	}
+	for _, row := range rows {
+		key := fmt.Sprint(row["kind"]) + "/" + fmt.Sprint(row["namespace"]) + "/" + fmt.Sprint(row["name"])
+		if wanted[key] {
+			continue
+		}
+		id := row["id"]
+		if _, e = s.DB.Delete(ctx, dbal.Delete{Table: "bean_definition_revision", Where: dbal.Predicate{Op: dbal.OpEQ, Column: "definition_id", Value: id}}); e != nil {
+			return e
+		}
+		if _, e = s.DB.Delete(ctx, dbal.Delete{Table: "bean_definition", Where: dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id}, ExpectedRows: 1}); e != nil {
+			return e
+		}
+	}
+	return nil
+}
 func (s *Store) Draft(ctx context.Context, appID string) ([]definition.Definition, error) {
 	rows, e := s.DB.Select(ctx, dbal.Select{Table: "bean_definition", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "app_id", Value: appID}, OrderBy: []dbal.Order{{Column: "kind"}, {Column: "name"}}, Limit: 200})
 	if e != nil {
@@ -144,7 +184,36 @@ func (s *Store) Preview(ctx context.Context, appID string) (compiler.Result, mig
 		old = schemaOf(current)
 	}
 	plan, err := migration.Build(old, result.Schema)
-	return result, plan, err
+	if err != nil {
+		return result, plan, &MigrationPlanError{Err: err}
+	}
+	return result, plan, nil
+}
+
+// PreviewBundle compiles and plans source definitions without changing draft,
+// schema, release, or activation state.
+func (s *Store) PreviewBundle(ctx context.Context, appID string, bundle definition.Bundle) (compiler.Result, migration.Plan, error) {
+	result := compiler.Compile(appID, s.nextVersion(ctx, appID), bundle.Definitions)
+	if len(result.Diagnostics) > 0 {
+		return result, migration.Plan{}, nil
+	}
+	current, err := s.activeApp(ctx, appID)
+	if err != nil {
+		return result, migration.Plan{}, err
+	}
+	var old migration.Schema
+	if current != nil {
+		old = schemaOf(current)
+	}
+	plan, err := migration.Build(old, result.Schema)
+	if err != nil {
+		return result, plan, &MigrationPlanError{Err: err}
+	}
+	return result, plan, nil
+}
+
+func (s *Store) ActiveApp(ctx context.Context, appID string) (*appir.App, error) {
+	return s.activeApp(ctx, appID)
 }
 func (s *Store) Publish(ctx context.Context, appID string) (Published, []definition.Diagnostic, error) {
 	r, e := s.Validate(ctx, appID)

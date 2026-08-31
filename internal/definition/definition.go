@@ -32,18 +32,79 @@ type Bundle struct {
 	Seed        map[string][]map[string]any `json:"seed,omitempty" yaml:"seed,omitempty"`
 }
 type Position struct {
-	Path   string
-	Line   int
-	Column int
+	Path   string `json:"path,omitempty"`
+	Line   int    `json:"line,omitempty"`
+	Column int    `json:"column,omitempty"`
 }
 type Source struct {
 	Position
 	Locations map[string]Position
 }
 type Diagnostic struct {
-	Kind, Name, Path, Message string
-	Source                    Position
-	Related                   *Position
+	Code       string    `json:"code,omitempty"`
+	Kind       string    `json:"kind,omitempty"`
+	Name       string    `json:"name,omitempty"`
+	Path       string    `json:"path,omitempty"`
+	Message    string    `json:"message"`
+	Value      any       `json:"value,omitempty"`
+	Candidates []string  `json:"candidates,omitempty"`
+	Source     Position  `json:"source,omitempty"`
+	Related    *Position `json:"related,omitempty"`
+}
+
+// ClassifyDiagnostics assigns stable public codes without making human
+// wording part of the machine interface. Callers may add more specific codes
+// at the point where a diagnostic is created.
+func ClassifyDiagnostics(diagnostics []Diagnostic) {
+	for index := range diagnostics {
+		if diagnostics[index].Code == "" {
+			diagnostics[index].Code = DiagnosticCode(diagnostics[index])
+		}
+	}
+}
+
+func DiagnosticCode(d Diagnostic) string {
+	message := strings.ToLower(d.Message)
+	path := strings.ToLower(d.Path)
+	kind := strings.ToLower(d.Kind)
+	switch {
+	case strings.Contains(message, "unknown field") || message == "unknown manifest field":
+		return "BEAN-E1002"
+	case strings.Contains(message, "duplicate") || strings.Contains(message, "listed more than once"):
+		return "BEAN-E1004"
+	case message == "is required" || strings.Contains(message, "requires ") || strings.Contains(message, "must include"):
+		return "BEAN-E1003"
+	case path == "apiversion" || strings.Contains(message, "bean/v1alpha1"):
+		return "BEAN-E1005"
+	case strings.Contains(message, "unsupported definition kind"):
+		return "BEAN-E1101"
+	case strings.Contains(message, "machine name") || strings.Contains(message, "must match ^"):
+		return "BEAN-E1102"
+	case strings.Contains(message, "missing field") || strings.Contains(message, "missing target field"):
+		return "BEAN-E2101"
+	case strings.Contains(message, "references missing"):
+		return "BEAN-E2001"
+	case strings.Contains(message, "reference") || strings.Contains(message, "matching"):
+		return "BEAN-E2002"
+	case kind == "action" || strings.Contains(message, "transition action"):
+		return "BEAN-E2201"
+	case kind == "policy" || strings.Contains(path, "policy") || strings.Contains(message, "role"):
+		return "BEAN-E2301"
+	case kind == "block" && strings.Contains(path, "presentation") || strings.Contains(message, "renderer") || strings.Contains(message, "serializer"):
+		return "BEAN-E2401"
+	case strings.Contains(path, "binding") || strings.Contains(message, "bound input") || strings.Contains(message, "resolver"):
+		return "BEAN-E2501"
+	case kind == "page" && strings.Contains(path, "route") || strings.Contains(message, "page route"):
+		return "BEAN-E2601"
+	case kind == "release" || strings.Contains(path, "migration") || strings.Contains(message, "migration"):
+		return "BEAN-E2701"
+	case strings.Contains(path, "field") || strings.Contains(message, "field"):
+		return "BEAN-E2101"
+	case strings.Contains(message, "yaml") || strings.Contains(message, "mapping") || strings.Contains(message, "manifest") || strings.Contains(message, "resource") || strings.Contains(message, "file path"):
+		return "BEAN-E1001"
+	default:
+		return "BEAN-E2900"
+	}
 }
 
 func (d Diagnostic) Error() string {

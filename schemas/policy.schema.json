@@ -1,0 +1,105 @@
+{
+  "$defs": {
+    "github_com_beanruntime_bean_internal_expr_Expr": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "items": {
+            "$ref": "#/$defs/github_com_beanruntime_bean_internal_expr_Expr"
+          },
+          "type": "array"
+        },
+        "left": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_expr_Value"
+        },
+        "op": {
+          "type": "string"
+        },
+        "right": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_expr_Value"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_expr_Value": {
+      "additionalProperties": false,
+      "properties": {
+        "literal": {},
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$id": "https://bean.build/schemas/policy.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "bean/v1alpha1"
+    },
+    "authenticated": {
+      "type": "boolean"
+    },
+    "bypassOwnerRoles": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "condition": {
+      "$ref": "#/$defs/github_com_beanruntime_bean_internal_expr_Expr"
+    },
+    "kind": {
+      "const": "Policy"
+    },
+    "name": {
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "owner": {
+      "type": "boolean"
+    },
+    "ownerOrPublic": {
+      "type": "boolean"
+    },
+    "publicField": {
+      "type": "string"
+    },
+    "publicValue": {},
+    "readRoles": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "redact": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "tenant": {
+      "type": "boolean"
+    },
+    "writeRoles": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "kind",
+    "name"
+  ],
+  "title": "Bean Policy definition",
+  "type": "object"
+}

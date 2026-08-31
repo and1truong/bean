@@ -4,12 +4,12 @@ Status values: `pending`, `active`, `done`. A milestone is `done` only when its 
 
 | Milestone | Deliverable | Evidence | Status |
 | --- | --- | --- | --- |
-| 0 | Freeze the CLI envelope, exit-status, diagnostic-code, schema, capability, inspect, plan, diff, publish, and test contracts | contract document, fixtures, and failing black-box tests | active |
-| 1 | Versioned JSON output and stable diagnostic taxonomy for existing validation/publication paths | CLI and compiler contract tests, including redaction and deterministic ordering | pending |
-| 2 | Canonical JSON Schemas plus capability discovery generated from or checked against compiler vocabulary | all maintained examples validate; schema drift tests pass | pending |
-| 3 | Source/application inspection and side-effect-free semantic plan/diff | compiler/release tests and database non-mutation evidence | pending |
-| 4 | Unified `app init`, `app publish`, and isolated lifecycle `app test` loop | JSON-only black-box harness and repair benchmark | pending |
-| 5 | Compatibility documentation and repository qualification | `make check` and `make build` | pending |
+| 0 | Freeze the CLI envelope, exit-status, diagnostic-code, schema, capability, inspect, plan, diff, publish, and test contracts | contract document, fixtures, and failing black-box tests | done |
+| 1 | Versioned JSON output and stable diagnostic taxonomy for existing validation/publication paths | CLI and compiler contract tests, including redaction and deterministic ordering | done |
+| 2 | Canonical JSON Schemas plus capability discovery generated from or checked against compiler vocabulary | all maintained examples validate; schema drift tests pass | done |
+| 3 | Source/application inspection and side-effect-free semantic plan/diff | compiler/release tests and database non-mutation evidence | done |
+| 4 | Unified `app init`, `app publish`, and isolated lifecycle `app test` loop | JSON-only black-box harness and repair benchmark | done |
+| 5 | Compatibility documentation and repository qualification | `make check` and `make build` | done |
 
 ## Working rules
 

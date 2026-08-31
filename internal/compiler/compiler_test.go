@@ -19,6 +19,34 @@ func TestDiagnosticsAreActionable(t *testing.T) {
 		t.Fatalf("diagnostic=%+v", d)
 	}
 }
+
+func TestTransitionDiagnosticsValidateStateEdges(t *testing.T) {
+	definitions := []definition.Definition{
+		{
+			APIVersion: definition.APIVersion,
+			Kind:       "Entity",
+			Metadata:   definition.Metadata{Name: "candidate"},
+			Spec: map[string]any{"fields": []any{
+				map[string]any{"name": "status", "type": "enum", "options": []any{"applied", "interview", "hired"}},
+			}},
+		},
+		{
+			APIVersion: definition.APIVersion,
+			Kind:       "Action",
+			Metadata:   definition.Metadata{Name: "advance_candidate"},
+			Spec:       map[string]any{"entity": "candidate", "operation": "transition", "transitions": map[string]any{"screening": []any{"offer"}}},
+		},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if len(diagnostics) != 2 {
+		t.Fatalf("diagnostics=%v", diagnostics)
+	}
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Code != "BEAN-E2201" || len(diagnostic.Candidates) != 3 {
+			t.Fatalf("diagnostic=%+v", diagnostic)
+		}
+	}
+}
 func TestGeneratedCRUDUsesActionsAndViews(t *testing.T) {
 	defs := []definition.Definition{{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "book"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string", "required": true}}}}}
 	r := compiler.Compile("test", 1, defs)

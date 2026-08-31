@@ -59,7 +59,7 @@ func writeBundle(t *testing.T, path string, author bool) {
 	if author {
 		fields = "[{name: title, type: string, required: true}, {name: author, type: string}]"
 	}
-	body := fmt.Sprintf("name: Crash test\ndefinitions:\n  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: book}, spec: {fields: %s}}\n", fields)
+	body := fmt.Sprintf("apiVersion: bean/v1alpha1\nname: Crash test\n---\nkind: Entity\nname: book\nfields: %s\n", fields)
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}

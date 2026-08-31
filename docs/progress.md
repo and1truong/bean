@@ -2,9 +2,16 @@
 
 ## Current
 
-Bean v0.6 agent-readable compiler implementation is complete through milestone 4; repository qualification is active. The real binary now supports the full init/capabilities/schema/validate/inspect/plan/diff/publish/test loop with human output or a versioned `bean.cli/v1alpha1` JSON envelope.
+Bean v0.6 agent-readable compiler is complete. The real binary supports the full init/capabilities/schema/validate/inspect/plan/diff/publish/test loop with human output or a versioned `bean.cli/v1alpha1` JSON envelope.
 
-Stable diagnostic families, source-relative paths, compiler-derived candidates, credential redaction, canonical generated schemas, normalized inspection, read-only target planning, semantic AppIR diff, exact-source draft replacement, atomic release activation, and isolated SQLite restart smoke tests have focused evidence. The black-box applicant-tracking harness repairs unknown Entity, unknown field, and invalid transition defects without parsing English messages, then publishes and proves a zero-change diff.
+Stable diagnostic families, source-relative paths, compiler-derived candidates, credential redaction, canonical generated schemas, normalized inspection, read-only target planning, semantic AppIR diff, exact-source draft replacement, atomic release activation, and isolated SQLite restart smoke tests have focused evidence. Draft 2020-12 validation accepts all nine maintained applications and rejects invalid manifest/definition shapes. The black-box applicant-tracking harness repairs unknown Entity, unknown field, and invalid transition defects without parsing English messages, then publishes and proves a zero-change diff.
+
+## v0.6 verification record
+
+- `make check` passes vet, frontend lint/typecheck and 24 React tests, all Go tests, focused contracts, fuzz-smoke, AppIR compatibility, JSON-only repair black-box, race, and 12/12 Playwright workflows.
+- `make test-crash` passes both supported publication crash/restart points with canonical application sources.
+- `make test-postgres` passes reusable PostgreSQL DBAL/HTTP contracts and the complete blog browser journey on PostgreSQL 17.
+- `make build` passes and `bin/bean version` reports `bean 0.6.0-alpha`.
 
 ## Roadmap baseline
 

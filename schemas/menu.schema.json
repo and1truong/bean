@@ -1,0 +1,49 @@
+{
+  "$defs": {
+    "github_com_beanruntime_bean_internal_appir_MenuItem": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "policy": {
+          "type": "string"
+        },
+        "route": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$id": "https://bean.build/schemas/menu.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "bean/v1alpha1"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_MenuItem"
+      },
+      "type": "array"
+    },
+    "kind": {
+      "const": "Menu"
+    },
+    "name": {
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "name"
+  ],
+  "title": "Bean Menu definition",
+  "type": "object"
+}
