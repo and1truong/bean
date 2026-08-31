@@ -1,14 +1,87 @@
+apiVersion: bean/v1alpha1
 name: CRM
-definitions:
-  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: company}, spec: {label: Company, owner: true, fields: [{name: name, label: Name, type: string, required: true}]}}
-  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: contact}, spec: {label: Contact, owner: true, policy: owned_records, fields: [{name: name, label: Name, type: string, required: true}, {name: email, label: Email, type: email}, {name: company_id, label: Company, type: relation}]}}
-  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: deal}, spec: {label: Deal, owner: true, policy: owned_records, fields: [{name: title, label: Title, type: string, required: true}, {name: status, label: Stage, type: enum, required: true, options: [lead, qualified, won, lost]}, {name: amount, label: Amount, type: money}]}}
-  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: activity}, spec: {label: Activity, owner: true, fields: [{name: subject, label: Subject, type: string, required: true}, {name: deal_id, label: Deal, type: relation}, {name: occurred_at, label: Occurred, type: datetime}]}}
-  - {apiVersion: bean/v1alpha1, kind: Policy, metadata: {name: owned_records}, spec: {readRoles: [salesperson, manager], writeRoles: [salesperson, manager], bypassOwnerRoles: [manager], owner: true}}
-  - {apiVersion: bean/v1alpha1, kind: Policy, metadata: {name: manager_records}, spec: {readRoles: [manager], writeRoles: [manager]}}
-  - {apiVersion: bean/v1alpha1, kind: View, metadata: {name: contacts}, spec: {entity: contact, fields: [id, name, email, owner_id], policy: owned_records, displays: {table: {type: json, route: /api/contacts}}}}
-  - {apiVersion: bean/v1alpha1, kind: View, metadata: {name: deal_pipeline}, spec: {entity: deal, fields: [id, title, status, amount], policy: owned_records, displays: {kanban: {type: json, route: /api/deals}}}}
-  - {apiVersion: bean/v1alpha1, kind: Action, metadata: {name: move_deal}, spec: {entity: deal, operation: transition, policy: owned_records, transitions: {lead: [qualified], qualified: [won, lost]}}}
-  - {apiVersion: bean/v1alpha1, kind: Role, metadata: {name: salesperson}, spec: {permissions: [contacts, deal_pipeline, move_deal]}}
-  - {apiVersion: bean/v1alpha1, kind: Role, metadata: {name: manager}, spec: {permissions: [contacts, deal_pipeline, move_deal]}}
-seed: {}
+---
+kind: Entity
+name: company
+fields:
+  - {label: Name, name: name, required: true, type: string}
+label: Company
+owner: true
+---
+kind: Entity
+name: contact
+fields:
+  - {label: Name, name: name, required: true, type: string}
+  - {label: Email, name: email, type: email}
+  - {label: Company, name: company_id, type: relation}
+label: Contact
+owner: true
+policy: owned_records
+---
+kind: Entity
+name: deal
+fields:
+  - {label: Title, name: title, required: true, type: string}
+  - label: Stage
+    name: status
+    options: [lead, qualified, won, lost]
+    required: true
+    type: enum
+  - {label: Amount, name: amount, type: money}
+label: Deal
+owner: true
+policy: owned_records
+---
+kind: Entity
+name: activity
+fields:
+  - {label: Subject, name: subject, required: true, type: string}
+  - {label: Deal, name: deal_id, type: relation}
+  - {label: Occurred, name: occurred_at, type: datetime}
+label: Activity
+owner: true
+---
+kind: Policy
+name: owned_records
+bypassOwnerRoles: [manager]
+owner: true
+readRoles: [salesperson, manager]
+writeRoles: [salesperson, manager]
+---
+kind: Policy
+name: manager_records
+readRoles: [manager]
+writeRoles: [manager]
+---
+kind: View
+name: contacts
+displays:
+  table: {route: /api/contacts, type: json}
+entity: contact
+fields: [id, name, email, owner_id]
+policy: owned_records
+---
+kind: View
+name: deal_pipeline
+displays:
+  kanban: {route: /api/deals, type: json}
+entity: deal
+fields: [id, title, status, amount]
+policy: owned_records
+---
+kind: Action
+name: move_deal
+entity: deal
+operation: transition
+policy: owned_records
+transitions:
+  lead: [qualified]
+  qualified: [won, lost]
+---
+kind: Role
+name: salesperson
+permissions: [contacts, deal_pipeline, move_deal]
+---
+kind: Role
+name: manager
+permissions: [contacts, deal_pipeline, move_deal]

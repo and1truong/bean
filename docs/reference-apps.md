@@ -9,4 +9,4 @@
 - `community`: profiles/posts/comments/reactions/follows with private-to-public transitions.
 - `blog`: draft/publish posts, categories, many-to-many tags, opt-in member signup, bound comments, post-scoped moderation queues, safe Markdown content filtering, public rendering, and RSS.
 
-Every application is a YAML bundle; core Go and React code contains no application-name branches.
+Every application uses the same manifest and flat YAML definition format. Small examples keep definitions inline; the larger blog is split into explicit feature-oriented resources. Core Go and React code contains no application-name branches.

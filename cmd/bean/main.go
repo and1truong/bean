@@ -18,6 +18,7 @@ import (
 	"github.com/beanruntime/bean/examples"
 	"github.com/beanruntime/bean/internal/action"
 	"github.com/beanruntime/bean/internal/bootstrap"
+	"github.com/beanruntime/bean/internal/compiler"
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/definition"
 )
@@ -59,7 +60,7 @@ func run(args []string) error {
 	}
 }
 func usage() error {
-	return fmt.Errorf("usage: bean {init|serve|validate|publish|migrate|app import|app export|user create|demo|version}")
+	return fmt.Errorf("usage: bean {init|serve|validate|publish|migrate|app validate|app import|app export|user create|demo|version}")
 }
 func userCommand(args []string) error {
 	if len(args) == 0 || args[0] != "create" {
@@ -230,26 +231,40 @@ func migrateCommand(args []string) error {
 }
 func appCommand(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: bean app {import|export}")
+		return fmt.Errorf("usage: bean app {validate|import|export}")
 	}
 	switch args[0] {
-	case "import":
-		f := flag.NewFlagSet("app import", flag.ContinueOnError)
-		db := f.String("db", "bean.db", "SQLite database")
-		databaseURL := f.String("database-url", os.Getenv("BEAN_DATABASE_URL"), "database URL (PostgreSQL or SQLite)")
-		file := f.String("file", "", "YAML bundle")
+	case "validate":
+		f := flag.NewFlagSet("app validate", flag.ContinueOnError)
+		file := f.String("file", "", "application manifest")
 		if e := f.Parse(args[1:]); e != nil {
 			return e
 		}
 		if *file == "" {
 			return fmt.Errorf("--file is required")
 		}
-		in, e := os.Open(*file)
+		bundle, e := loadValidSource(*file, os.Stderr)
 		if e != nil {
 			return e
 		}
-		defer in.Close()
-		return importBundle(databaseTarget(*db, *databaseURL), in)
+		fmt.Printf("valid: %s — %d definitions\n", bundle.Name, len(bundle.Definitions))
+		return nil
+	case "import":
+		f := flag.NewFlagSet("app import", flag.ContinueOnError)
+		db := f.String("db", "bean.db", "SQLite database")
+		databaseURL := f.String("database-url", os.Getenv("BEAN_DATABASE_URL"), "database URL (PostgreSQL or SQLite)")
+		file := f.String("file", "", "application manifest")
+		if e := f.Parse(args[1:]); e != nil {
+			return e
+		}
+		if *file == "" {
+			return fmt.Errorf("--file is required")
+		}
+		bundle, e := loadValidSource(*file, os.Stderr)
+		if e != nil {
+			return e
+		}
+		return importBundle(databaseTarget(*db, *databaseURL), bundle)
 	case "export":
 		f := flag.NewFlagSet("app export", flag.ContinueOnError)
 		db := f.String("db", "bean.db", "SQLite database")
@@ -280,11 +295,7 @@ func appCommand(args []string) error {
 		return fmt.Errorf("unknown app command %q", args[0])
 	}
 }
-func importBundle(db string, in io.Reader) error {
-	bundle, e := definition.Decode(in)
-	if e != nil {
-		return e
-	}
+func importBundle(db string, bundle definition.Bundle) error {
 	r, e := bootstrap.Open(context.Background(), db, false)
 	if e != nil {
 		return e
@@ -292,6 +303,59 @@ func importBundle(db string, in io.Reader) error {
 	defer r.DB.Close()
 	return r.Store.SaveBundle(context.Background(), "default", bundle)
 }
+
+func loadValidSource(filename string, diagnosticsOut io.Writer) (definition.Bundle, error) {
+	bundle, diagnostics, complete := definition.LoadFileForValidation(filename)
+	if complete {
+		diagnostics = mergeSourceDiagnostics(diagnostics, compiler.Compile("default", 1, bundle.Definitions).Diagnostics)
+	} else {
+		diagnostics = mergeSourceDiagnostics(diagnostics, compiler.CompileRecovered("default", 1, bundle.Definitions).Diagnostics)
+	}
+	if len(diagnostics) == 0 {
+		return bundle, nil
+	}
+	for _, diagnostic := range diagnostics {
+		fmt.Fprintln(diagnosticsOut, diagnostic.Error())
+	}
+	label := "errors"
+	if len(diagnostics) == 1 {
+		label = "error"
+	}
+	return bundle, fmt.Errorf("application source is invalid (%d %s)", len(diagnostics), label)
+}
+
+func mergeSourceDiagnostics(loader, compiled []definition.Diagnostic) []definition.Diagnostic {
+	diagnostics := append([]definition.Diagnostic{}, loader...)
+	invalidAPIVersion := false
+	duplicates := map[string]bool{}
+	missingRequiredField := map[string]bool{}
+	for _, diagnostic := range loader {
+		if diagnostic.Path == "apiVersion" {
+			invalidAPIVersion = true
+		}
+		if diagnostic.Message == "is required" && (diagnostic.Path == "kind" || diagnostic.Path == "name") {
+			missingRequiredField[diagnosticSourceKey(diagnostic)+"/"+diagnostic.Path] = true
+		}
+		if diagnostic.Message == "duplicate definition" {
+			duplicates[diagnostic.Kind+"/"+diagnostic.Name] = true
+		}
+	}
+	for _, diagnostic := range compiled {
+		if invalidAPIVersion && diagnostic.Path == "apiVersion" ||
+			diagnostic.Path == "kind" && missingRequiredField[diagnosticSourceKey(diagnostic)+"/kind"] ||
+			diagnostic.Path == "metadata.name" && missingRequiredField[diagnosticSourceKey(diagnostic)+"/name"] ||
+			diagnostic.Message == "duplicate machine name" && duplicates[diagnostic.Kind+"/"+diagnostic.Name] {
+			continue
+		}
+		diagnostics = append(diagnostics, diagnostic)
+	}
+	return diagnostics
+}
+
+func diagnosticSourceKey(diagnostic definition.Diagnostic) string {
+	return fmt.Sprintf("%s:%d:%d", diagnostic.Source.Path, diagnostic.Source.Line, diagnostic.Source.Column)
+}
+
 func demoCommand(args []string) error {
 	f := flag.NewFlagSet("demo", flag.ContinueOnError)
 	name := f.String("app", "cms", "reference application")
@@ -307,12 +371,7 @@ func demoCommand(args []string) error {
 			return e
 		}
 	}
-	file, e := examples.Open(*name)
-	if e != nil {
-		return e
-	}
-	bundle, e := definition.Decode(file)
-	file.Close()
+	bundle, e := examples.Load(*name)
 	if e != nil {
 		return e
 	}

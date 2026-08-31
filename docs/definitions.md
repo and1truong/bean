@@ -1,31 +1,29 @@
 # Definitions
 
-Definitions use `apiVersion: bean/v1alpha1`, a supported `kind`, lowercase namespaced metadata, and a typed specification. Supported kinds are Entity, View, Action, Webform, Policy, Filter, Block, Panel, Page, Role, Menu, Job, AdminResource, and LocalRegistration. Bundle files contain `name`, `definitions`, and optional seed rows.
+An application source starts with an `app.yaml` manifest containing `apiVersion: bean/v1alpha1`, the application name, and optional explicit local `resources`. Definition documents follow the manifest after `---`, or live in the listed resource files. Each definition has a top-level `kind`, machine `name`, optional `namespace`, and its kind-specific fields. Supported kinds are Entity, View, Action, Webform, Policy, Filter, Block, Panel, Page, Role, Menu, Job, AdminResource, and LocalRegistration.
 
-Compilation validates envelopes, names, fields, references, relation kinds, limits, Action steps, Panel regions, and route uniqueness. Diagnostics identify kind, name, specification path, and a corrective message. Generated CRUD is emitted as Views and Actions inside AppIR.
+Compilation validates envelopes, names, fields, references, relation kinds, limits, Action steps, Panel regions, and route uniqueness. Diagnostics identify the source file, line, column, kind, name, field path, and a corrective message. Generated CRUD is emitted as Views and Actions inside AppIR.
 
 ## Admin resources
 
 Every Entity receives a generated AdminResource backed by its generated list View and create/update/delete Actions. Add an explicit definition to control its presentation and domain operations:
 
 ```yaml
-- apiVersion: bean/v1alpha1
-  kind: AdminResource
-  metadata: {name: article}
-  spec:
-    entity: article
-    description: Editorial content
-    labelField: title
-    list:
-      columns: [id, title, status, updated_at]
-      search: [title, body]
-      filters: [status]
-      sort: [{field: updated_at, desc: true}]
-      pageSize: 25
-    form:
-      fields: [title, body, status]
-      readonly: [created_at, updated_at, version]
-    actions: [publish_article]
+kind: AdminResource
+name: article
+entity: article
+description: Editorial content
+labelField: title
+list:
+  columns: [id, title, status, updated_at]
+  search: [title, body]
+  filters: [status]
+  sort: [{field: updated_at, desc: true}]
+  pageSize: 25
+form:
+  fields: [title, body, status]
+  readonly: [created_at, updated_at, version]
+actions: [publish_article]
 ```
 
 `view`, `createAction`, `updateAction`, and `deleteAction` may override the generated names. Configured list fields must be selected by the View, and every Action must target the same Entity. Publication fails on invalid references. Application Admin requires editor or administrator access; System Admin and Studio remain administrator-only. Admin can only search, filter, or sort fields declared by metadata.
@@ -41,16 +39,14 @@ A View or Webform Block may declare typed `inputs` and bind them to Page context
 A `resource-list` Block embeds an AdminResource table and its Actions in a Page and must use a Policy whose readers are limited to `editor` and `administrator`. Its bound inputs scope the backing View immutably; `filters` is the allowlist of values a user may change, and `defaultFilters` only controls initial presentation:
 
 ```yaml
-- apiVersion: bean/v1alpha1
-  kind: Block
-  metadata: {name: project_tasks}
-  spec:
-    type: resource-list
-    resource: task
-    inputs: {project_id: {type: uuid, required: true}}
-    bindings: {project_id: {source: context, name: id, required: true}}
-    filters: [status]
-    defaultFilters: {status: open}
+kind: Block
+name: project_tasks
+type: resource-list
+resource: task
+inputs: {project_id: {type: uuid, required: true}}
+bindings: {project_id: {source: context, name: id, required: true}}
+filters: [status]
+defaultFilters: {status: open}
 ```
 
 Compilation requires bound and interactive fields to be exposed by the AdminResource View, requires interactive fields to be configured by the AdminResource, and rejects overlap between the two sets. Page, Block, View, and Action policies continue to authorize reads and writes independently.
@@ -60,19 +56,16 @@ Compilation requires bound and interactive fields to be exposed by the AdminReso
 A `Filter` is a named, immutable output-formatting pipeline. Views opt individual selected textual fields into a Filter; source data remains unchanged and another View, such as an Admin View, can return the source for editing.
 
 ```yaml
-- apiVersion: bean/v1alpha1
-  kind: Filter
-  metadata: {name: markdown}
-  spec:
-    steps: [{type: markdown}]
+kind: Filter
+name: markdown
+steps: [{type: markdown}]
 
-- apiVersion: bean/v1alpha1
-  kind: View
-  metadata: {name: published_article}
-  spec:
-    entity: article
-    fields: [id, title, body]
-    fieldFilters: {body: markdown}
+---
+kind: View
+name: published_article
+entity: article
+fields: [id, title, body]
+fieldFilters: {body: markdown}
 ```
 
 `markdown` is the first supported step. It produces sanitized HTML: raw HTML, executable content, images, event attributes, and unsafe URL schemes are removed. Filtering occurs after policy redaction and is part of the View output contract for JSON, CSV, RSS, and Page rendering. Action input and output remain unformatted. Content Filters are distinct from View predicates and `exposedFilters`, which constrain database queries.

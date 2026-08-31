@@ -1,18 +1,23 @@
-// Package examples embeds the seven reference applications in the Bean binary.
+// Package examples embeds the reference applications in the Bean binary.
 package examples
 
 import (
 	"embed"
 	"fmt"
-	"io/fs"
+
+	"github.com/beanruntime/bean/internal/definition"
 )
 
-//go:embed */app.yaml
+//go:embed */*.yaml
 var files embed.FS
 
-func Open(name string) (fs.File, error) {
+func Load(name string) (definition.Bundle, error) {
 	if name == "" {
-		return nil, fmt.Errorf("app name is required")
+		return definition.Bundle{}, fmt.Errorf("app name is required")
 	}
-	return files.Open(name + "/app.yaml")
+	bundle, diagnostics := definition.LoadFS(files, name+"/app.yaml")
+	if len(diagnostics) > 0 {
+		return bundle, definition.Diagnostics(diagnostics)
+	}
+	return bundle, nil
 }

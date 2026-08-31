@@ -1,0 +1,11 @@
+kind: Menu
+name: public_nav
+items:
+  - {label: Home, route: /}
+  - {label: Categories, route: /categories}
+  - {label: Tags, route: /tags}
+---
+kind: Block
+name: public_menu
+menu: public_nav
+type: menu

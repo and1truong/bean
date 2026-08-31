@@ -1,0 +1,207 @@
+kind: Policy
+name: member_write
+authenticated: true
+readRoles: [member, editor, administrator]
+writeRoles: [member, editor, administrator]
+---
+kind: Policy
+name: comment_access
+authenticated: true
+bypassOwnerRoles: [editor, administrator]
+owner: true
+readRoles: [editor, administrator]
+writeRoles: [member, editor, administrator]
+---
+kind: Policy
+name: approved_only
+condition:
+  left: {name: status, source: record}
+  op: eq
+  right: {literal: approved, source: literal}
+---
+kind: Entity
+name: comment
+fields:
+  - label: Post
+    name: post_id
+    relation: {entity: post, kind: many-to-one, targetField: id}
+    required: true
+    type: relation
+  - {label: Comment, name: body, required: true, type: text}
+  - {label: Author, name: author_display_name, required: true, type: string}
+  - label: Status
+    name: status
+    options: [pending, approved, rejected]
+    required: true
+    type: enum
+indexes:
+  - [post_id, status, created_at]
+label: Comment
+owner: true
+policy: comment_access
+---
+kind: View
+name: approved_comments
+defaultLimit: 100
+entity: comment
+exposedFilters:
+  post_slug: {name: post.slug, required: true, type: slug}
+fieldFilters: {body: markdown}
+fields: [id, body, author_display_name, created_at]
+filter:
+  left: {name: status, source: record}
+  op: eq
+  right: {literal: approved, source: literal}
+maxLimit: 100
+policy: approved_only
+relationships:
+  - {entity: post, localField: post_id, name: post, targetField: id, type: inner}
+sort:
+  - {field: created_at}
+---
+kind: View
+name: comment_admin
+entity: comment
+exposedFilters:
+  post_id: {name: post_id, required: true, type: uuid}
+  status:
+    name: status
+    options: [pending, approved, rejected]
+    type: enum
+fields: [id, post_id, body, author_display_name, status, owner_id, created_at, updated_at, version]
+policy: editor_only
+sort:
+  - {desc: true, field: created_at}
+---
+kind: Action
+name: submit_comment
+entity: comment
+input:
+  body: {required: true, type: text}
+  post_slug: {required: true, type: slug}
+operation: transaction
+policy: member_write
+steps:
+  - op: query
+    result: post
+    view: published_post
+    where:
+      left: {name: slug, source: record}
+      op: eq
+      right: {name: post_slug, source: input}
+  - op: create
+    values: {author_display_name: $user.display_name, body: $input.body, post_id: $result.post.0.id, status: pending}
+---
+kind: Action
+name: comment_status_transition_guard
+entity: comment
+operation: transition
+policy: editor_only
+transitions: {}
+---
+kind: Action
+name: approve_comment
+confirm: Approve this comment?
+entity: comment
+input:
+  id: {required: true, type: uuid}
+operation: transaction
+policy: editor_only
+steps:
+  - op: transition
+    values: {id: $input.id, status: approved}
+transitions:
+  pending: [approved]
+---
+kind: Action
+name: reject_comment
+confirm: Reject this comment?
+entity: comment
+input:
+  id: {required: true, type: uuid}
+operation: transaction
+policy: editor_only
+steps:
+  - op: transition
+    values: {id: $input.id, status: rejected}
+transitions:
+  pending: [rejected]
+---
+kind: Webform
+name: comment_form
+action: submit_comment
+confirmation: Your comment is awaiting approval.
+elements:
+  - {maxLength: 5000, minLength: 1, name: body, required: true, type: textarea}
+---
+kind: AdminResource
+name: comment
+actions: [approve_comment, reject_comment]
+description: Comment moderation queue
+entity: comment
+form:
+  fields: [body]
+  readonly: [post_id, author_display_name, status, owner_id, created_at, updated_at, version]
+labelField: author_display_name
+list:
+  columns: [id, post_id, author_display_name, body, status, created_at]
+  filters: [status, post_id]
+  pageSize: 25
+  search: [body, author_display_name]
+  sort:
+    - {desc: true, field: created_at}
+view: comment_admin
+---
+kind: Block
+name: post_comments
+bindings:
+  post_slug: {name: slug, required: true, source: context}
+inputs:
+  post_slug: {required: true, type: slug}
+presentation:
+  bodyField: body
+  emptyState: No approved comments yet.
+  metaFields: [created_at]
+  mode: list
+  titleField: author_display_name
+type: view
+view: approved_comments
+---
+kind: Block
+name: submit_comment_form
+bindings:
+  post_slug: {name: slug, required: true, source: context}
+inputs:
+  post_slug: {required: true, type: slug}
+policy: member_write
+type: webform
+webform: comment_form
+---
+kind: Block
+name: post_comment_queue
+bindings:
+  post_id: {name: id, required: true, source: context}
+defaultFilters: {status: pending}
+filters: [status]
+inputs:
+  post_id: {required: true, type: uuid}
+policy: editor_only
+resource: comment
+type: resource-list
+---
+kind: Panel
+name: post_comment_queue_panel
+layout: single-column
+policy: editor_only
+regions:
+  - blocks: [post_comment_queue]
+    name: main
+---
+kind: Page
+name: post_comment_queue
+context:
+  id: {name: id, required: true, source: route}
+panel: post_comment_queue_panel
+policy: editor_only
+route: /blog/:id/comments
+title: Comment moderation

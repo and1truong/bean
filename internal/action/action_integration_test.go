@@ -17,7 +17,6 @@ import (
 	"github.com/beanruntime/bean/internal/openapi"
 	"github.com/beanruntime/bean/internal/release"
 	"github.com/beanruntime/bean/internal/view"
-	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -38,14 +37,9 @@ func runtime(t *testing.T, name string) (*sqlite.DB, *appir.App) {
 	if e = s.Initialize(ctx); e != nil {
 		t.Fatal(e)
 	}
-	f, e := os.Open(filepath.Join("..", "..", "examples", name, "app.yaml"))
-	if e != nil {
-		t.Fatal(e)
-	}
-	defer f.Close()
-	bundle, e := definition.Decode(f)
-	if e != nil {
-		t.Fatal(e)
+	bundle, diagnostics := definition.LoadFile(filepath.Join("..", "..", "examples", name, "app.yaml"))
+	if len(diagnostics) > 0 {
+		t.Fatal(definition.Diagnostics(diagnostics))
 	}
 	if e = s.SaveBundle(ctx, "default", bundle); e != nil {
 		t.Fatal(e)
