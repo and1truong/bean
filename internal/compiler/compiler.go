@@ -1377,8 +1377,8 @@ func validateForm(name string, form appir.Webform) []definition.Diagnostic {
 	allowed := map[string]bool{"text": true, "textarea": true, "email": true, "password": true, "number": true, "integer": true, "checkbox": true, "select": true, "date": true, "datetime": true, "entity reference": true, "file": true, "group": true}
 	out := []definition.Diagnostic{}
 	seen := map[string]bool{}
-	var walk func([]appir.FormElement, string)
-	walk = func(elements []appir.FormElement, path string) {
+	var walk func([]appir.FormElement, string, bool)
+	walk = func(elements []appir.FormElement, path string, nested bool) {
 		for i, element := range elements {
 			p := fmt.Sprintf("%s.%d", path, i)
 			if element.Name == "" {
@@ -1390,11 +1390,14 @@ func validateForm(name string, form appir.Webform) []definition.Diagnostic {
 			if !allowed[element.Type] {
 				out = append(out, diagnostic("Webform", name, p+".type", "has no server and UI implementation"))
 			}
+			if nested && element.Type == "file" {
+				out = append(out, diagnostic("Webform", name, p+".type", "file elements are not supported inside repeating groups"))
+			}
 			if element.Type == "group" {
 				if len(element.Children) == 0 {
 					out = append(out, diagnostic("Webform", name, p+".children", "repeating group requires children"))
 				}
-				walk(element.Children, p+".children")
+				walk(element.Children, p+".children", true)
 			} else if len(element.Children) > 0 {
 				out = append(out, diagnostic("Webform", name, p+".children", "is only valid for group elements"))
 			}
@@ -1407,7 +1410,7 @@ func validateForm(name string, form appir.Webform) []definition.Diagnostic {
 			}
 		}
 	}
-	walk(form.Elements, "spec.elements")
+	walk(form.Elements, "spec.elements", false)
 	stepUse := map[string]int{}
 	for i, step := range form.Steps {
 		for _, element := range step {

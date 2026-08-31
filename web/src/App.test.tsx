@@ -48,13 +48,13 @@ describe('public rendering',()=>{
     expect(screen.queryByRole('link',{name:'Sign in'})).not.toBeInTheDocument()
   })
 
-  it('renders board movement and an arbitrary-depth task tree',async()=>{
+  it('renders allowed board movement and an arbitrary-depth task tree',async()=>{
     const fetchMock=vi.fn(async(input:string|URL|Request,init?:RequestInit)=>{
       const path=String(input)
       if(path.includes('/api/system/session'))return response({authenticated:false})
-      if(path.includes('/api/system/manifest'))return response({authNavigation:false})
+      if(path.includes('/api/system/manifest'))return response({authNavigation:false,actions:{move_task:{Transitions:{todo:['in_progress'],in_progress:['done'],done:[]}}}})
       if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[
-        {component:'ViewBlock',props:{name:'board',view:'roots',formattedFields:[],fileFields:[],presentation:{Mode:'board',TitleField:'title',BodyField:'description',GroupField:'status',MoveAction:'move_task',Columns:['todo','done']}}},
+        {component:'ViewBlock',props:{name:'board',view:'roots',formattedFields:[],fileFields:[],presentation:{Mode:'board',TitleField:'title',BodyField:'description',GroupField:'status',MoveAction:'move_task',Columns:['todo','in_progress','done']}}},
         {component:'ViewBlock',props:{name:'tree',view:'tree',formattedFields:[],fileFields:[],presentation:{Mode:'tree',TitleField:'title',ParentField:'parent_id',OrderField:'position',LinkRoute:'/tasks/:id'}}},
       ]}})
       if(path.includes('_block=board'))return response({data:[{id:'a',title:'Root A',description:'Plan',status:'todo'}],nextCursor:''})
@@ -68,7 +68,11 @@ describe('public rendering',()=>{
     const presentationRequests=fetchMock.mock.calls.map(([input])=>String(input)).filter(path=>path.includes('/api/views/'))
     expect(presentationRequests).toHaveLength(2)
     expect(presentationRequests.every(path=>path.includes('limit=200'))).toBe(true)
-    fireEvent.change(screen.getByRole('combobox',{name:'Status for Root A'}),{target:{value:'done'}})
+    const status=screen.getByRole('combobox',{name:'Status for Root A'})
+    expect(status).toHaveTextContent('Todo')
+    expect(status).toHaveTextContent('In progress')
+    expect(status).not.toHaveTextContent('Done')
+    fireEvent.change(status,{target:{value:'in_progress'}})
     await waitFor(()=>expect(fetchMock.mock.calls.some(([input])=>String(input).includes('/api/actions/move_task'))).toBe(true))
     expect(screen.getByTestId('tree-view')).toContainElement(screen.getByRole('link',{name:'Grandchild C'}))
   })

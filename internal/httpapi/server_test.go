@@ -31,8 +31,8 @@ func TestMultipartWebformStoresAndDownloadsFile(t *testing.T) {
 	defer runtime.DB.Close()
 	bundle := definition.Bundle{Name: "upload", Definitions: []definition.Definition{
 		{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "public_access"}, Spec: map[string]any{}},
-		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "asset"}, Spec: map[string]any{"policy": "public_access", "fields": []any{map[string]any{"name": "label", "type": "string", "required": true}, map[string]any{"name": "file", "type": "file", "required": true}}}},
-		{APIVersion: "bean/v1alpha1", Kind: "Webform", Metadata: definition.Metadata{Name: "upload_asset"}, Spec: map[string]any{"action": "asset_create", "elements": []any{map[string]any{"name": "label", "type": "text", "required": true}, map[string]any{"name": "file", "type": "file", "required": true}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "asset"}, Spec: map[string]any{"policy": "public_access", "fields": []any{map[string]any{"name": "label", "type": "string", "required": true}, map[string]any{"name": "enabled", "type": "boolean", "required": true}, map[string]any{"name": "file", "type": "file", "required": true}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Webform", Metadata: definition.Metadata{Name: "upload_asset"}, Spec: map[string]any{"action": "asset_create", "elements": []any{map[string]any{"name": "label", "type": "text", "required": true}, map[string]any{"name": "enabled", "type": "checkbox", "required": true}, map[string]any{"name": "file", "type": "file", "required": true}}}},
 	}}
 	if err = runtime.Store.SaveBundle(ctx, "default", bundle); err != nil {
 		t.Fatal(err)
@@ -43,6 +43,7 @@ func TestMultipartWebformStoresAndDownloadsFile(t *testing.T) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	_ = writer.WriteField("label", "Plan")
+	_ = writer.WriteField("enabled", "true")
 	part, err := writer.CreateFormFile("file", "../plan.txt")
 	if err != nil {
 		t.Fatal(err)
@@ -59,6 +60,13 @@ func TestMultipartWebformStoresAndDownloadsFile(t *testing.T) {
 	var result struct{ Data map[string]any }
 	decodeResponse(t, response, &result)
 	fileID := result.Data["file"].(string)
+	bundle.Definitions[0].Spec = map[string]any{"condition": map[string]any{"left": map[string]any{"source": "record", "name": "enabled"}, "op": "eq", "right": map[string]any{"source": "literal", "literal": true}}}
+	if err = runtime.Store.SaveBundle(ctx, "default", bundle); err != nil {
+		t.Fatal(err)
+	}
+	if _, diagnostics, publishErr := runtime.Store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) > 0 {
+		t.Fatalf("typed-policy publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
 	download := httptest.NewRecorder()
 	runtime.HTTP.Handler().ServeHTTP(download, httptest.NewRequest(http.MethodGet, "/api/files/"+fileID, nil))
 	if download.Code != http.StatusOK || download.Body.String() != "hello attachment" || !strings.Contains(download.Header().Get("Content-Disposition"), "plan.txt") || strings.Contains(download.Header().Get("Content-Disposition"), "..") {

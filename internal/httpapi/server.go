@@ -349,6 +349,11 @@ func (s *Server) fileAllowed(r *http.Request, a *appir.App, id string) bool {
 			for key, value := range rows[0] {
 				row[key] = value
 			}
+			for _, fieldDefinition := range entity.Fields {
+				if value, ok := row[fieldDefinition.Name]; ok {
+					row[fieldDefinition.Name] = field.Decode(fieldDefinition, value)
+				}
+			}
 			if entity.SoftDelete && row["deleted_at"] != nil {
 				return false
 			}

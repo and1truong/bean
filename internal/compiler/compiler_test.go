@@ -219,6 +219,21 @@ func TestWebformBlockRejectsRenderedAndBoundFieldOverlap(t *testing.T) {
 	}
 }
 
+func TestWebformRejectsFileElementsInsideRepeatingGroups(t *testing.T) {
+	defs := []definition.Definition{
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "submission"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "attachments", "type": "json"}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Webform", Metadata: definition.Metadata{Name: "submission_form"}, Spec: map[string]any{"action": "submission_create", "elements": []any{map[string]any{"name": "attachments", "type": "group", "children": []any{map[string]any{"name": "file", "type": "file"}}}}}},
+	}
+	result := compiler.Compile("test", 1, defs)
+	found := false
+	for _, diagnostic := range result.Diagnostics {
+		found = found || diagnostic.Kind == "Webform" && diagnostic.Name == "submission_form" && diagnostic.Path == "spec.elements.0.children.0.type"
+	}
+	if !found {
+		t.Fatalf("nested file diagnostics=%v", result.Diagnostics)
+	}
+}
+
 func TestExpressionsRejectUnimplementedNowSource(t *testing.T) {
 	defs := []definition.Definition{{
 		APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "future"},
