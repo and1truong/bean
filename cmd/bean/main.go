@@ -306,10 +306,8 @@ func importBundle(db string, bundle definition.Bundle) error {
 
 func loadValidSource(filename string, diagnosticsOut io.Writer) (definition.Bundle, error) {
 	bundle, diagnostics := definition.LoadFile(filename)
-	if len(diagnostics) == 0 {
-		result := compiler.Compile("default", 1, bundle.Definitions)
-		diagnostics = result.Diagnostics
-	}
+	result := compiler.Compile("default", 1, bundle.Definitions)
+	diagnostics = append(diagnostics, result.Diagnostics...)
 	if len(diagnostics) == 0 {
 		return bundle, nil
 	}
