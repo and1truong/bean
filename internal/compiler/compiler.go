@@ -1089,6 +1089,30 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 		return appir.Field{}, false
 	}
 	redacted := nameSet(a.Policies[viewDefinition.Policy].Redact)
+	if presentation.Mode == "board" || presentation.Mode == "tree" {
+		aggregates := map[string]bool{}
+		for _, aggregate := range viewDefinition.Aggregates {
+			aggregates[aggregate.Alias] = true
+		}
+		for _, sortDefinition := range viewDefinition.Sort {
+			if aggregates[sortDefinition.Field] {
+				out = append(out, diagnostic("Block", name, "spec.presentation.mode", "board and tree presentations do not support aggregate-sorted Views"))
+				break
+			}
+		}
+	}
+	if parts := strings.Split(presentation.BodyField, "."); len(parts) == 2 {
+		for _, relationship := range viewDefinition.Relationships {
+			if relationship.Name != parts[0] {
+				continue
+			}
+			for _, relatedField := range a.Entities[relationship.Entity].Fields {
+				if relatedField.Name == parts[1] && relatedField.Type == "file" {
+					out = append(out, diagnostic("Block", name, "spec.presentation.bodyField", "related file fields are not supported by presentation downloads"))
+				}
+			}
+		}
+	}
 	for _, match := range regexp.MustCompile(`:([a-zA-Z0-9_.]+)`).FindAllStringSubmatch(presentation.LinkRoute, -1) {
 		fieldName := match[1]
 		if !selected[fieldName] {

@@ -87,6 +87,24 @@ func TestBoardAndTreePresentationsValidateTypedFieldsAndActions(t *testing.T) {
 	if diagnostics = compiler.Compile("test", 1, badLink).Diagnostics; !hasDiagnostic(diagnostics, "tree", "spec.presentation.linkRoute") {
 		t.Fatalf("unselected presentation link field accepted: %v", diagnostics)
 	}
+	aggregateSorted := append([]definition.Definition{}, defs...)
+	aggregateSorted[1].Spec = map[string]any{"entity": "task", "fields": []any{"id", "title", "status", "position", "parent_id"}, "groupBy": []any{"id", "title", "status", "position", "parent_id"}, "aggregates": []any{map[string]any{"function": "count", "field": "id", "alias": "task_count"}}, "sort": []any{map[string]any{"field": "task_count"}}}
+	if diagnostics = compiler.Compile("test", 1, aggregateSorted).Diagnostics; !hasDiagnostic(diagnostics, "board", "spec.presentation.mode") || !hasDiagnostic(diagnostics, "tree", "spec.presentation.mode") {
+		t.Fatalf("aggregate-sorted structured View accepted: %v", diagnostics)
+	}
+}
+
+func TestPresentationRejectsRelatedFileDownloads(t *testing.T) {
+	defs := []definition.Definition{
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "attachment"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "file", "type": "file"}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "task"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}, map[string]any{"name": "attachment_id", "type": "relation", "relation": map[string]any{"entity": "attachment", "kind": "many-to-one", "targetField": "id"}}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "View", Metadata: definition.Metadata{Name: "tasks"}, Spec: map[string]any{"entity": "task", "fields": []any{"id", "title", "attachment.file"}, "relationships": []any{map[string]any{"name": "attachment", "entity": "attachment", "localField": "attachment_id", "targetField": "id", "type": "left"}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Block", Metadata: definition.Metadata{Name: "tasks"}, Spec: map[string]any{"type": "view", "view": "tasks", "presentation": map[string]any{"mode": "list", "titleField": "title", "bodyField": "attachment.file"}}},
+	}
+	diagnostics := compiler.Compile("test", 1, defs).Diagnostics
+	if !hasDiagnostic(diagnostics, "tasks", "spec.presentation.bodyField") {
+		t.Fatalf("related file presentation accepted: %v", diagnostics)
+	}
 }
 
 func hasDiagnostic(diagnostics []definition.Diagnostic, name, path string) bool {
