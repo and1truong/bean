@@ -23,6 +23,28 @@ func TestGeneratedDocumentValidates(t *testing.T) {
 	}
 }
 
+func TestFileInputsUseMultipartBinarySchemas(t *testing.T) {
+	a := appir.Empty()
+	a.AppID = "test"
+	a.Actions["upload"] = appir.Action{Name: "upload", Operation: "create", Input: map[string]appir.Field{"label": {Name: "label", Type: "string"}, "file": {Name: "file", Type: "file", Required: true}}}
+	doc, err := openapi.Generate(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	if err = json.Unmarshal(doc, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	content := decoded["paths"].(map[string]any)["/api/actions/upload"].(map[string]any)["post"].(map[string]any)["requestBody"].(map[string]any)["content"].(map[string]any)
+	if _, advertisedJSON := content["application/json"]; advertisedJSON {
+		t.Fatalf("file Action advertised JSON: %v", content)
+	}
+	file := content["multipart/form-data"].(map[string]any)["schema"].(map[string]any)["properties"].(map[string]any)["file"].(map[string]any)
+	if file["type"] != "string" || file["format"] != "binary" {
+		t.Fatalf("file schema=%v", file)
+	}
+}
+
 func TestSensitiveInputsAreWriteOnlyAndRegistrationIsAnonymous(t *testing.T) {
 	a := appir.Empty()
 	a.AppID = "test"

@@ -31,7 +31,9 @@ func TestMultipartWebformStoresAndDownloadsFile(t *testing.T) {
 	defer runtime.DB.Close()
 	bundle := definition.Bundle{Name: "upload", Definitions: []definition.Definition{
 		{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "public_access"}, Spec: map[string]any{}},
+		{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "restricted_access"}, Spec: map[string]any{"authenticated": true}},
 		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "asset"}, Spec: map[string]any{"policy": "public_access", "fields": []any{map[string]any{"name": "label", "type": "string", "required": true}, map[string]any{"name": "enabled", "type": "boolean", "required": true}, map[string]any{"name": "file", "type": "file", "required": true}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "View", Metadata: definition.Metadata{Name: "restricted_assets"}, Spec: map[string]any{"entity": "asset", "policy": "restricted_access", "fields": []any{"id", "file"}}},
 		{APIVersion: "bean/v1alpha1", Kind: "Webform", Metadata: definition.Metadata{Name: "upload_asset"}, Spec: map[string]any{"action": "asset_create", "elements": []any{map[string]any{"name": "label", "type": "text", "required": true}, map[string]any{"name": "enabled", "type": "checkbox", "required": true}, map[string]any{"name": "file", "type": "file", "required": true}}}},
 	}}
 	if err = runtime.Store.SaveBundle(ctx, "default", bundle); err != nil {
@@ -60,6 +62,14 @@ func TestMultipartWebformStoresAndDownloadsFile(t *testing.T) {
 	var result struct{ Data map[string]any }
 	decodeResponse(t, response, &result)
 	fileID := result.Data["file"].(string)
+	for _, path := range []string{"/api/files/" + fileID, "/api/files/" + fileID + "?view=restricted_assets"} {
+		denied := httptest.NewRecorder()
+		runtime.HTTP.Handler().ServeHTTP(denied, httptest.NewRequest(http.MethodGet, path, nil))
+		if denied.Code != http.StatusNotFound {
+			t.Fatalf("download without an authorized View leaked with status %d", denied.Code)
+		}
+	}
+	filePath := "/api/files/" + fileID + "?view=asset_list"
 	bundle.Definitions[0].Spec = map[string]any{"condition": map[string]any{"left": map[string]any{"source": "record", "name": "enabled"}, "op": "eq", "right": map[string]any{"source": "literal", "literal": true}}}
 	if err = runtime.Store.SaveBundle(ctx, "default", bundle); err != nil {
 		t.Fatal(err)
@@ -68,7 +78,7 @@ func TestMultipartWebformStoresAndDownloadsFile(t *testing.T) {
 		t.Fatalf("typed-policy publish=%v diagnostics=%v", publishErr, diagnostics)
 	}
 	download := httptest.NewRecorder()
-	runtime.HTTP.Handler().ServeHTTP(download, httptest.NewRequest(http.MethodGet, "/api/files/"+fileID, nil))
+	runtime.HTTP.Handler().ServeHTTP(download, httptest.NewRequest(http.MethodGet, filePath, nil))
 	if download.Code != http.StatusOK || download.Body.String() != "hello attachment" || !strings.Contains(download.Header().Get("Content-Disposition"), "plan.txt") || strings.Contains(download.Header().Get("Content-Disposition"), "..") {
 		t.Fatalf("download status=%d headers=%v body=%q", download.Code, download.Header(), download.Body.String())
 	}
@@ -80,7 +90,7 @@ func TestMultipartWebformStoresAndDownloadsFile(t *testing.T) {
 		t.Fatalf("protected publish=%v diagnostics=%v", publishErr, diagnostics)
 	}
 	anonymous := httptest.NewRecorder()
-	runtime.HTTP.Handler().ServeHTTP(anonymous, httptest.NewRequest(http.MethodGet, "/api/files/"+fileID, nil))
+	runtime.HTTP.Handler().ServeHTTP(anonymous, httptest.NewRequest(http.MethodGet, filePath, nil))
 	if anonymous.Code != http.StatusNotFound {
 		t.Fatalf("protected file leaked with status %d", anonymous.Code)
 	}
@@ -88,7 +98,7 @@ func TestMultipartWebformStoresAndDownloadsFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	login := serve(t, runtime.HTTP.Handler(), http.MethodPost, "/api/auth/login", map[string]any{"email": "admin@example.test", "password": "test-password"}, nil, "")
-	authorizedRequest := httptest.NewRequest(http.MethodGet, "/api/files/"+fileID, nil)
+	authorizedRequest := httptest.NewRequest(http.MethodGet, filePath, nil)
 	authorizedRequest.AddCookie(login.Result().Cookies()[0])
 	authorized := httptest.NewRecorder()
 	runtime.HTTP.Handler().ServeHTTP(authorized, authorizedRequest)
@@ -102,7 +112,7 @@ func TestMultipartWebformStoresAndDownloadsFile(t *testing.T) {
 	if _, diagnostics, publishErr := runtime.Store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) > 0 {
 		t.Fatalf("redacted publish=%v diagnostics=%v", publishErr, diagnostics)
 	}
-	redactedRequest := httptest.NewRequest(http.MethodGet, "/api/files/"+fileID, nil)
+	redactedRequest := httptest.NewRequest(http.MethodGet, filePath, nil)
 	redactedRequest.AddCookie(login.Result().Cookies()[0])
 	redacted := httptest.NewRecorder()
 	runtime.HTTP.Handler().ServeHTTP(redacted, redactedRequest)

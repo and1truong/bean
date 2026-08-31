@@ -353,10 +353,17 @@ func (s *Server) file(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) fileAllowed(r *http.Request, a *appir.App, id string) bool {
+	viewDefinition, exists := a.Views[r.URL.Query().Get("view")]
+	if !exists {
+		return false
+	}
 	requestContext := s.ctx(r)
 	for _, entity := range a.Entities {
+		if viewDefinition.Entity != entity.Name {
+			continue
+		}
 		for _, definition := range entity.Fields {
-			if definition.Type != "file" {
+			if definition.Type != "file" || !stringSet(viewDefinition.Fields)[definition.Name] {
 				continue
 			}
 			rows, err := s.Actions.DB.Select(r.Context(), dbal.Select{Table: entity.Name, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: definition.Name, Value: id}, Limit: 1})
@@ -375,8 +382,8 @@ func (s *Server) fileAllowed(r *http.Request, a *appir.App, id string) bool {
 			if entity.SoftDelete && row["deleted_at"] != nil {
 				return false
 			}
-			if entity.Policy != "" {
-				policyDefinition := a.Policies[entity.Policy]
+			if viewDefinition.Policy != "" {
+				policyDefinition := a.Policies[viewDefinition.Policy]
 				if stringSet(policyDefinition.Redact)[definition.Name] {
 					return false
 				}
