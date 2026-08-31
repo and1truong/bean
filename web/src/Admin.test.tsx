@@ -4,7 +4,7 @@ import {MemoryRouter} from 'react-router-dom'
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query'
 import {Admin} from './Admin'
 
-const manifest={appId:'default',releaseId:'release-1',version:3,entities:{article:{Name:'article',Label:'Article',Fields:[{Name:'title',Label:'Title',Type:'string',Required:true},{Name:'status',Label:'Status',Type:'enum',Required:true,Options:['draft','published']}]}},actions:{article_create:{Name:'article_create',Entity:'article',Operation:'create',Input:{}},article_update:{Name:'article_update',Entity:'article',Operation:'update',Input:{}},article_delete:{Name:'article_delete',Entity:'article',Operation:'delete',Input:{}}},adminResources:{article:{Name:'article',Entity:'article',Label:'Article',Description:'Editorial content',LabelField:'title',View:'article_list',CreateAction:'article_create',UpdateAction:'article_update',DeleteAction:'article_delete',List:{Columns:['id','title','status'],Search:['title'],Filters:['status'],Sort:[],PageSize:25},Form:{Fields:['title','status'],Readonly:['created_at','updated_at','version']},Actions:[]}}}
+const manifest={appId:'default',releaseId:'release-1',version:3,entities:{article:{Name:'article',Label:'Article',Fields:[{Name:'title',Label:'Title',Type:'string',Required:true},{Name:'status',Label:'Status',Type:'enum',Required:true,Options:['draft','published']},{Name:'file',Label:'File',Type:'file',Required:false}]}},actions:{article_create:{Name:'article_create',Entity:'article',Operation:'create',Input:{}},article_update:{Name:'article_update',Entity:'article',Operation:'update',Input:{}},article_delete:{Name:'article_delete',Entity:'article',Operation:'delete',Input:{}}},adminResources:{article:{Name:'article',Entity:'article',Label:'Article',Description:'Editorial content',LabelField:'title',View:'article_list',CreateAction:'article_create',UpdateAction:'article_update',DeleteAction:'article_delete',List:{Columns:['id','title','status'],Search:['title'],Filters:['status'],Sort:[],PageSize:25},Form:{Fields:['title','status','file'],Readonly:['created_at','updated_at','version']},Actions:[]}}}
 
 afterEach(()=>vi.restoreAllMocks())
 function show(path:string){return render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter initialEntries={[path]}><Admin/></MemoryRouter></QueryClientProvider>)}
@@ -25,6 +25,13 @@ describe('Admin',()=>{
     expect(await screen.findByRole('heading',{name:'Add Article'})).toBeInTheDocument()
     expect(screen.getByTestId('field-title')).toBeRequired()
     expect(screen.getByTestId('field-status').tagName).toBe('SELECT')
+  })
+
+  it('uses the AdminResource View for current file downloads',async()=>{
+    vi.spyOn(globalThis,'fetch').mockImplementation(async input=>{const url=String(input);if(url.includes('/api/admin/resources/article/a1'))return new Response(JSON.stringify({data:{id:'a1',title:'Bean ships',status:'draft',file:'blob-1'}}),{status:200});return new Response(JSON.stringify(manifest),{status:200})})
+    show('/article/a1')
+    const download=await screen.findByRole('link',{name:'Download current file'})
+    expect(download).toHaveAttribute('href','/api/files/blob-1?view=article_list')
   })
 
   it('renders protected system operations without secret fields',async()=>{

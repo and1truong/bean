@@ -1,0 +1,231 @@
+kind: Entity
+name: task
+label: Task
+policy: public_access
+fields:
+  - label: Project
+    name: project_id
+    required: true
+    type: relation
+    relation: {entity: project, kind: many-to-one, targetField: id}
+  - label: Parent task
+    name: parent_id
+    type: relation
+    relation: {entity: task, kind: many-to-one, targetField: id}
+  - {label: Title, name: title, required: true, type: string}
+  - {label: Description, name: description, type: text}
+  - {label: Status, name: status, required: true, type: enum, options: [todo, in_progress, done]}
+  - {label: Priority, name: priority, required: true, type: enum, options: [low, medium, high]}
+  - {label: Due date, name: due_date, type: date}
+  - {label: Position, name: position, required: true, type: integer}
+indexes:
+  - [project_id, parent_id, position]
+---
+kind: Action
+name: create_root_task
+entity: task
+operation: transaction
+policy: public_access
+input:
+  project_id:
+    name: project_id
+    required: true
+    type: relation
+    relation: {entity: project, kind: many-to-one, targetField: id}
+  title: {name: title, required: true, type: string}
+  description: {name: description, type: text}
+  priority: {name: priority, required: true, type: enum, options: [low, medium, high]}
+  due_date: {name: due_date, type: date}
+steps:
+  - op: create
+    values:
+      project_id: $input.project_id
+      title: $input.title
+      description: $input.description
+      priority: $input.priority
+      due_date: $input.due_date
+      status: todo
+      position: 0
+---
+kind: Action
+name: create_subtask
+entity: task
+operation: transaction
+policy: public_access
+input:
+  parent_id:
+    name: parent_id
+    required: true
+    type: relation
+    relation: {entity: task, kind: many-to-one, targetField: id}
+  title: {name: title, required: true, type: string}
+  description: {name: description, type: text}
+  priority: {name: priority, required: true, type: enum, options: [low, medium, high]}
+  due_date: {name: due_date, type: date}
+steps:
+  - op: load
+    entity: task
+    result: parent
+    values: {id: $input.parent_id}
+  - op: create
+    entity: task
+    values:
+      project_id: $result.parent.project_id
+      parent_id: $input.parent_id
+      title: $input.title
+      description: $input.description
+      priority: $input.priority
+      due_date: $input.due_date
+      status: todo
+      position: 0
+---
+kind: Action
+name: move_task
+entity: task
+operation: transition
+policy: public_access
+transitions:
+  todo: [in_progress, done]
+  in_progress: [todo, done]
+  done: [todo, in_progress]
+---
+kind: View
+name: project_root_tasks
+entity: task
+fields: [id, project_id, parent_id, title, description, status, priority, due_date, position]
+exposedFilters:
+  project_id:
+    name: project_id
+    required: true
+    type: relation
+    relation: {entity: project, kind: many-to-one, targetField: id}
+filter:
+  left: {source: record, name: parent_id}
+  op: is_null
+sort:
+  - {field: position}
+maxLimit: 200
+defaultLimit: 200
+---
+kind: View
+name: project_task_tree
+entity: task
+fields: [id, project_id, parent_id, title, status, priority, due_date, position]
+exposedFilters:
+  project_id:
+    name: project_id
+    required: true
+    type: relation
+    relation: {entity: project, kind: many-to-one, targetField: id}
+sort:
+  - {field: position}
+maxLimit: 200
+defaultLimit: 200
+---
+kind: View
+name: task_detail
+entity: task
+fields: [id, project_id, parent_id, title, description, status, priority, due_date, position, created_at, updated_at]
+exposedFilters:
+  id: {name: id, required: true, type: uuid}
+---
+kind: Webform
+name: create_root_task_form
+action: create_root_task
+confirmation: Task created. Refresh the project to see it.
+elements:
+  - {name: title, required: true, type: text, maxLength: 200}
+  - {name: description, type: textarea, maxLength: 5000}
+  - {name: priority, required: true, type: select, options: [low, medium, high]}
+  - {name: due_date, type: date}
+---
+kind: Webform
+name: create_subtask_form
+action: create_subtask
+confirmation: Subtask created. Open the project tree to see the full hierarchy.
+elements:
+  - {name: title, required: true, type: text, maxLength: 200}
+  - {name: description, type: textarea, maxLength: 5000}
+  - {name: priority, required: true, type: select, options: [low, medium, high]}
+  - {name: due_date, type: date}
+---
+kind: Block
+name: project_board
+type: view
+view: project_root_tasks
+inputs:
+  project_id:
+    required: true
+    type: relation
+    relation: {entity: project, kind: many-to-one, targetField: id}
+bindings:
+  project_id: {source: context, name: id, required: true}
+presentation:
+  mode: board
+  titleField: title
+  bodyField: description
+  metaFields: [priority, due_date]
+  linkRoute: /tasks/:id
+  groupField: status
+  orderField: position
+  moveAction: move_task
+  columns: [todo, in_progress, done]
+  emptyState: Create the first task below.
+---
+kind: Block
+name: project_tree
+type: view
+view: project_task_tree
+inputs:
+  project_id:
+    required: true
+    type: relation
+    relation: {entity: project, kind: many-to-one, targetField: id}
+bindings:
+  project_id: {source: context, name: id, required: true}
+presentation:
+  mode: tree
+  titleField: title
+  parentField: parent_id
+  orderField: position
+  metaFields: [status, priority, due_date]
+  linkRoute: /tasks/:id
+  emptyState: No task hierarchy yet.
+---
+kind: Block
+name: task_summary
+type: view
+view: task_detail
+inputs:
+  id: {required: true, type: uuid}
+bindings:
+  id: {source: context, name: id, required: true}
+presentation:
+  mode: detail
+  titleField: title
+  bodyField: description
+  metaFields: [status, priority, due_date]
+---
+kind: Block
+name: create_root_task_block
+type: webform
+webform: create_root_task_form
+inputs:
+  project_id:
+    required: true
+    type: relation
+    relation: {entity: project, kind: many-to-one, targetField: id}
+bindings:
+  project_id: {source: context, name: id, required: true}
+---
+kind: Block
+name: create_subtask_block
+type: webform
+webform: create_subtask_form
+inputs:
+  parent_id:
+    required: true
+    type: relation
+    relation: {entity: task, kind: many-to-one, targetField: id}
+bindings:
+  parent_id: {source: context, name: id, required: true}

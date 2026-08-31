@@ -3,6 +3,7 @@ package compiler
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -835,6 +836,9 @@ func validate(a *appir.App) []definition.Diagnostic {
 				out = append(out, diagnostic("Block", name, "spec."+ref.kind, "invalid Block input reference "+ref.value))
 			}
 		}
+		if block.Type == "view" && block.View != "" {
+			out = append(out, validatePresentation(name, block, a)...)
+		}
 		if block.Menu != "" {
 			if _, ok := a.Menus[block.Menu]; !ok {
 				out = append(out, diagnostic("Block", name, "spec.menu", "references missing Menu "+block.Menu))
@@ -1061,6 +1065,126 @@ func recordFields(expression *expr.Expr) []string {
 	return out
 }
 
+func validatePresentation(name string, block appir.Block, a *appir.App) []definition.Diagnostic {
+	presentation := block.Presentation
+	if presentation.Mode == "" {
+		return nil
+	}
+	out := []definition.Diagnostic{}
+	if !map[string]bool{"list": true, "detail": true, "board": true, "tree": true}[presentation.Mode] {
+		return []definition.Diagnostic{diagnostic("Block", name, "spec.presentation.mode", "has no registered presentation renderer")}
+	}
+	viewDefinition := a.Views[block.View]
+	entity := a.Entities[viewDefinition.Entity]
+	selected := nameSet(viewDefinition.Fields)
+	fieldDefinition := func(fieldName string) (appir.Field, bool) {
+		if fieldName == "id" {
+			return appir.Field{Name: "id", Type: "uuid"}, true
+		}
+		for _, candidate := range entity.Fields {
+			if candidate.Name == fieldName {
+				return candidate, true
+			}
+		}
+		return appir.Field{}, false
+	}
+	redacted := nameSet(a.Policies[viewDefinition.Policy].Redact)
+	if presentation.Mode == "board" || presentation.Mode == "tree" {
+		aggregates := map[string]bool{}
+		for _, aggregate := range viewDefinition.Aggregates {
+			aggregates[aggregate.Alias] = true
+		}
+		for _, sortDefinition := range viewDefinition.Sort {
+			if aggregates[sortDefinition.Field] {
+				out = append(out, diagnostic("Block", name, "spec.presentation.mode", "board and tree presentations do not support aggregate-sorted Views"))
+				break
+			}
+		}
+	}
+	if parts := strings.Split(presentation.BodyField, "."); len(parts) == 2 {
+		for _, relationship := range viewDefinition.Relationships {
+			if relationship.Name != parts[0] {
+				continue
+			}
+			for _, relatedField := range a.Entities[relationship.Entity].Fields {
+				if relatedField.Name == parts[1] && relatedField.Type == "file" {
+					out = append(out, diagnostic("Block", name, "spec.presentation.bodyField", "related file fields are not supported by presentation downloads"))
+				}
+			}
+		}
+	}
+	for _, match := range regexp.MustCompile(`:([a-zA-Z0-9_.]+)`).FindAllStringSubmatch(presentation.LinkRoute, -1) {
+		fieldName := match[1]
+		if !selected[fieldName] {
+			out = append(out, diagnostic("Block", name, "spec.presentation.linkRoute", "field "+fieldName+" must be selected by View "+block.View))
+		} else if redacted[fieldName] {
+			out = append(out, diagnostic("Block", name, "spec.presentation.linkRoute", "field "+fieldName+" must not be redacted by View policy "+viewDefinition.Policy))
+		}
+	}
+	for path, fieldName := range map[string]string{"titleField": presentation.TitleField, "bodyField": presentation.BodyField, "groupField": presentation.GroupField, "orderField": presentation.OrderField, "parentField": presentation.ParentField} {
+		if fieldName != "" && !selected[fieldName] {
+			out = append(out, diagnostic("Block", name, "spec.presentation."+path, "must be selected by View "+block.View))
+		}
+		if (presentation.Mode == "board" || presentation.Mode == "tree") && fieldName != "" && redacted[fieldName] && path != "bodyField" {
+			out = append(out, diagnostic("Block", name, "spec.presentation."+path, "must not be redacted by View policy "+viewDefinition.Policy))
+		}
+	}
+	if presentation.Mode == "board" {
+		if presentation.TitleField == "" {
+			out = append(out, diagnostic("Block", name, "spec.presentation.titleField", "board requires a selected title field"))
+		}
+		group, exists := fieldDefinition(presentation.GroupField)
+		if presentation.GroupField == "" || !exists || group.Type != "enum" {
+			out = append(out, diagnostic("Block", name, "spec.presentation.groupField", "board requires a selected enum field"))
+		}
+		if len(presentation.Columns) == 0 {
+			out = append(out, diagnostic("Block", name, "spec.presentation.columns", "board requires at least one column"))
+		}
+		allowedColumns := nameSet(group.Options)
+		for i, column := range presentation.Columns {
+			if !allowedColumns[column] {
+				out = append(out, diagnostic("Block", name, fmt.Sprintf("spec.presentation.columns.%d", i), "is not an option of "+presentation.GroupField))
+			}
+		}
+		action, exists := a.Actions[presentation.MoveAction]
+		stateField := action.StateField
+		if stateField == "" {
+			stateField = "status"
+		}
+		if presentation.MoveAction == "" || !exists || action.Entity != viewDefinition.Entity || action.Operation != "transition" || stateField != presentation.GroupField {
+			out = append(out, diagnostic("Block", name, "spec.presentation.moveAction", "must reference a transition Action for the board entity and group field"))
+		} else {
+			for inputName, inputDefinition := range action.Input {
+				if inputDefinition.Required && inputName != "id" && inputName != presentation.GroupField {
+					out = append(out, diagnostic("Block", name, "spec.presentation.moveAction", "transition Action has unsupported required input "+inputName))
+				}
+			}
+		}
+		if presentation.OrderField != "" {
+			order, orderExists := fieldDefinition(presentation.OrderField)
+			if !orderExists || order.Type != "integer" {
+				out = append(out, diagnostic("Block", name, "spec.presentation.orderField", "board order field must be an integer"))
+			}
+		}
+	}
+	if presentation.Mode == "tree" {
+		parent, exists := fieldDefinition(presentation.ParentField)
+		if presentation.ParentField == "" || !exists || parent.Type != "relation" || parent.Relation == nil || parent.Relation.Entity != viewDefinition.Entity || parent.Relation.Kind != "many-to-one" {
+			out = append(out, diagnostic("Block", name, "spec.presentation.parentField", "tree requires a selected many-to-one self relation"))
+		}
+		if presentation.TitleField == "" {
+			out = append(out, diagnostic("Block", name, "spec.presentation.titleField", "tree requires a selected title field"))
+		}
+		if presentation.OrderField != "" {
+			order, exists := fieldDefinition(presentation.OrderField)
+			if !exists || order.Type != "integer" {
+				out = append(out, diagnostic("Block", name, "spec.presentation.orderField", "tree order field must be an integer"))
+			}
+		}
+	}
+	return out
+}
+
 func compatibleFormType(formType, fieldType string) bool {
 	allowed := map[string][]string{
 		"text":             {"string", "text", "richtext", "uuid", "url", "slug"},
@@ -1074,6 +1198,7 @@ func compatibleFormType(formType, fieldType string) bool {
 		"date":             {"date"},
 		"datetime":         {"datetime"},
 		"entity reference": {"relation", "uuid"},
+		"file":             {"file"},
 		"group":            {"json"},
 	}
 	for _, candidate := range allowed[formType] {
@@ -1301,11 +1426,11 @@ func validateRegistrationPage(a *appir.App, route, actionName string) string {
 }
 
 func validateForm(name string, form appir.Webform) []definition.Diagnostic {
-	allowed := map[string]bool{"text": true, "textarea": true, "email": true, "password": true, "number": true, "integer": true, "checkbox": true, "select": true, "date": true, "datetime": true, "entity reference": true, "group": true}
+	allowed := map[string]bool{"text": true, "textarea": true, "email": true, "password": true, "number": true, "integer": true, "checkbox": true, "select": true, "date": true, "datetime": true, "entity reference": true, "file": true, "group": true}
 	out := []definition.Diagnostic{}
 	seen := map[string]bool{}
-	var walk func([]appir.FormElement, string)
-	walk = func(elements []appir.FormElement, path string) {
+	var walk func([]appir.FormElement, string, bool)
+	walk = func(elements []appir.FormElement, path string, nested bool) {
 		for i, element := range elements {
 			p := fmt.Sprintf("%s.%d", path, i)
 			if element.Name == "" {
@@ -1317,11 +1442,14 @@ func validateForm(name string, form appir.Webform) []definition.Diagnostic {
 			if !allowed[element.Type] {
 				out = append(out, diagnostic("Webform", name, p+".type", "has no server and UI implementation"))
 			}
+			if nested && element.Type == "file" {
+				out = append(out, diagnostic("Webform", name, p+".type", "file elements are not supported inside repeating groups"))
+			}
 			if element.Type == "group" {
 				if len(element.Children) == 0 {
 					out = append(out, diagnostic("Webform", name, p+".children", "repeating group requires children"))
 				}
-				walk(element.Children, p+".children")
+				walk(element.Children, p+".children", true)
 			} else if len(element.Children) > 0 {
 				out = append(out, diagnostic("Webform", name, p+".children", "is only valid for group elements"))
 			}
@@ -1334,7 +1462,7 @@ func validateForm(name string, form appir.Webform) []definition.Diagnostic {
 			}
 		}
 	}
-	walk(form.Elements, "spec.elements")
+	walk(form.Elements, "spec.elements", false)
 	stepUse := map[string]int{}
 	for i, step := range form.Steps {
 		for _, element := range step {

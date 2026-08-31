@@ -52,6 +52,7 @@ func Node(a *appir.App, b appir.Block, ctx map[string]any, c beanctx.Request) (r
 		props["view"] = b.View
 		props["presentation"] = b.Presentation
 		props["formattedFields"] = formattedFields(a, b)
+		props["fileFields"] = fileFields(a, b)
 	case "entity":
 		props["entity"] = b.Entity
 	case "webform":
@@ -106,6 +107,24 @@ func bindFormElements(elements []appir.FormElement, c beanctx.Request) ([]appir.
 		}
 	}
 	return bound, nil
+}
+
+func fileFields(a *appir.App, b appir.Block) []string {
+	viewDefinition, exists := a.Views[b.View]
+	if !exists {
+		return []string{}
+	}
+	selected := map[string]bool{}
+	for _, name := range viewDefinition.Fields {
+		selected[name] = true
+	}
+	out := []string{}
+	for _, definition := range a.Entities[viewDefinition.Entity].Fields {
+		if definition.Type == "file" && selected[definition.Name] {
+			out = append(out, definition.Name)
+		}
+	}
+	return out
 }
 
 func formattedFields(a *appir.App, b appir.Block) []string {

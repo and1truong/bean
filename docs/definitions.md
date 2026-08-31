@@ -51,6 +51,37 @@ defaultFilters: {status: open}
 
 Compilation requires bound and interactive fields to be exposed by the AdminResource View, requires interactive fields to be configured by the AdminResource, and rejects overlap between the two sets. Page, Block, View, and Action policies continue to authorize reads and writes independently.
 
+## Board and tree presentations
+
+A View Block can render an operational board when its presentation names a selected enum `groupField`, explicit enum `columns`, and a `moveAction`. Compilation requires the Action to be a transition for the same Entity and state field. Reads remain on the bound View and moves remain on the Action:
+
+```yaml
+presentation:
+  mode: board
+  titleField: title
+  groupField: status
+  orderField: position
+  columns: [todo, in_progress, done]
+  moveAction: move_task
+```
+
+A tree presentation requires a selected many-to-one self relation. It groups a flat View result by `parentField`, orders siblings by an optional integer `orderField`, renders arbitrary nesting with expand/collapse controls, and links nodes through the normal route template. The existing View maximum bounds one tree at 200 rows.
+
+```yaml
+presentation:
+  mode: tree
+  titleField: title
+  parentField: parent_id
+  orderField: position
+  linkRoute: /tasks/:id
+```
+
+## File fields
+
+`file` is a bounded immutable upload reference. It is accepted only from multipart Action or Webform requests, is limited to 5 MiB, and is persisted with generated identity, safe display filename, media type, size, and base64 content in `bean_blob` within the application Action transaction. Entity rows store only the generated identifier. Replacing or hard-deleting the row removes the previous blob in the same transaction; soft deletion retains it. Downloads require a live referencing row and apply that Entity's read policy before returning attachment content with `nosniff` and attachment response headers.
+
+For multiple files, define an attachment Entity with one `file` field plus a many-to-one relation to the owning record. This keeps cardinality and application labels in metadata rather than introducing a collection-valued binary column.
+
 ## Content filters
 
 A `Filter` is a named, immutable output-formatting pipeline. Views opt individual selected textual fields into a Filter; source data remains unchanged and another View, such as an Admin View, can return the source for editing.

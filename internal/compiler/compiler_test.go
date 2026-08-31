@@ -37,6 +37,90 @@ func TestGeneratedCRUDUsesActionsAndViews(t *testing.T) {
 	}
 }
 
+func TestBoardAndTreePresentationsValidateTypedFieldsAndActions(t *testing.T) {
+	defs := []definition.Definition{
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "task"}, Spec: map[string]any{"fields": []any{
+			map[string]any{"name": "title", "type": "string", "required": true},
+			map[string]any{"name": "status", "type": "enum", "options": []any{"todo", "done"}, "required": true},
+			map[string]any{"name": "position", "type": "integer", "required": true},
+			map[string]any{"name": "parent_id", "type": "relation", "relation": map[string]any{"entity": "task", "kind": "many-to-one", "targetField": "id"}},
+		}}},
+		{APIVersion: "bean/v1alpha1", Kind: "View", Metadata: definition.Metadata{Name: "tasks"}, Spec: map[string]any{"entity": "task", "fields": []any{"id", "title", "status", "position", "parent_id"}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Action", Metadata: definition.Metadata{Name: "move_task"}, Spec: map[string]any{"entity": "task", "operation": "transition", "transitions": map[string]any{"todo": []any{"done"}, "done": []any{"todo"}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Block", Metadata: definition.Metadata{Name: "board"}, Spec: map[string]any{"type": "view", "view": "tasks", "presentation": map[string]any{"mode": "board", "titleField": "title", "groupField": "status", "orderField": "position", "moveAction": "move_task", "columns": []any{"todo", "done"}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Block", Metadata: definition.Metadata{Name: "tree"}, Spec: map[string]any{"type": "view", "view": "tasks", "presentation": map[string]any{"mode": "tree", "titleField": "title", "parentField": "parent_id", "orderField": "position"}}},
+	}
+	result := compiler.Compile("test", 1, defs)
+	if len(result.Diagnostics) > 0 {
+		t.Fatalf("valid presentations diagnostics=%v", result.Diagnostics)
+	}
+	broken := append([]definition.Definition{}, defs...)
+	broken[3].Spec = map[string]any{"type": "view", "view": "tasks", "presentation": map[string]any{"mode": "board", "titleField": "title", "groupField": "title", "moveAction": "task_update", "columns": []any{"unknown"}}}
+	if diagnostics := compiler.Compile("test", 1, broken).Diagnostics; len(diagnostics) < 2 {
+		t.Fatalf("invalid board accepted: %v", diagnostics)
+	}
+	redacted := append([]definition.Definition{}, defs...)
+	redacted[1].Spec = map[string]any{"entity": "task", "policy": "task_access", "fields": []any{"id", "title", "status", "position", "parent_id"}}
+	redacted = append(redacted, definition.Definition{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "task_access"}, Spec: map[string]any{"redact": []any{"title", "status", "parent_id"}}})
+	diagnostics := compiler.Compile("test", 1, redacted).Diagnostics
+	paths := map[string]bool{}
+	for _, diagnostic := range diagnostics {
+		paths[diagnostic.Name+":"+diagnostic.Path] = true
+	}
+	for _, path := range []string{"board:spec.presentation.titleField", "board:spec.presentation.groupField", "tree:spec.presentation.titleField", "tree:spec.presentation.parentField"} {
+		if !paths[path] {
+			t.Fatalf("redacted presentation field %s accepted: %v", path, diagnostics)
+		}
+	}
+	missingTitle := append([]definition.Definition{}, defs...)
+	missingTitle[3].Spec = map[string]any{"type": "view", "view": "tasks", "presentation": map[string]any{"mode": "board", "groupField": "status", "moveAction": "move_task", "columns": []any{"todo", "done"}}}
+	if diagnostics = compiler.Compile("test", 1, missingTitle).Diagnostics; !hasDiagnostic(diagnostics, "board", "spec.presentation.titleField") {
+		t.Fatalf("board without a title field accepted: %v", diagnostics)
+	}
+	badOrder := append([]definition.Definition{}, defs...)
+	badOrder[3].Spec = map[string]any{"type": "view", "view": "tasks", "presentation": map[string]any{"mode": "board", "titleField": "title", "groupField": "status", "orderField": "title", "moveAction": "move_task", "columns": []any{"todo", "done"}}}
+	if diagnostics = compiler.Compile("test", 1, badOrder).Diagnostics; !hasDiagnostic(diagnostics, "board", "spec.presentation.orderField") {
+		t.Fatalf("nonnumeric board order accepted: %v", diagnostics)
+	}
+	extraInput := append([]definition.Definition{}, defs...)
+	extraInput[2].Spec = map[string]any{"entity": "task", "operation": "transition", "input": map[string]any{"reason": map[string]any{"type": "string", "required": true}}, "transitions": map[string]any{"todo": []any{"done"}, "done": []any{"todo"}}}
+	if diagnostics = compiler.Compile("test", 1, extraInput).Diagnostics; !hasDiagnostic(diagnostics, "board", "spec.presentation.moveAction") {
+		t.Fatalf("board Action with extra required input accepted: %v", diagnostics)
+	}
+	badLink := append([]definition.Definition{}, defs...)
+	badLink[4].Spec = map[string]any{"type": "view", "view": "tasks", "presentation": map[string]any{"mode": "tree", "titleField": "title", "parentField": "parent_id", "linkRoute": "/tasks/:slug"}}
+	if diagnostics = compiler.Compile("test", 1, badLink).Diagnostics; !hasDiagnostic(diagnostics, "tree", "spec.presentation.linkRoute") {
+		t.Fatalf("unselected presentation link field accepted: %v", diagnostics)
+	}
+	aggregateSorted := append([]definition.Definition{}, defs...)
+	aggregateSorted[1].Spec = map[string]any{"entity": "task", "fields": []any{"id", "title", "status", "position", "parent_id"}, "groupBy": []any{"id", "title", "status", "position", "parent_id"}, "aggregates": []any{map[string]any{"function": "count", "field": "id", "alias": "task_count"}}, "sort": []any{map[string]any{"field": "task_count"}}}
+	if diagnostics = compiler.Compile("test", 1, aggregateSorted).Diagnostics; !hasDiagnostic(diagnostics, "board", "spec.presentation.mode") || !hasDiagnostic(diagnostics, "tree", "spec.presentation.mode") {
+		t.Fatalf("aggregate-sorted structured View accepted: %v", diagnostics)
+	}
+}
+
+func TestPresentationRejectsRelatedFileDownloads(t *testing.T) {
+	defs := []definition.Definition{
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "attachment"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "file", "type": "file"}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "task"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}, map[string]any{"name": "attachment_id", "type": "relation", "relation": map[string]any{"entity": "attachment", "kind": "many-to-one", "targetField": "id"}}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "View", Metadata: definition.Metadata{Name: "tasks"}, Spec: map[string]any{"entity": "task", "fields": []any{"id", "title", "attachment.file"}, "relationships": []any{map[string]any{"name": "attachment", "entity": "attachment", "localField": "attachment_id", "targetField": "id", "type": "left"}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Block", Metadata: definition.Metadata{Name: "tasks"}, Spec: map[string]any{"type": "view", "view": "tasks", "presentation": map[string]any{"mode": "list", "titleField": "title", "bodyField": "attachment.file"}}},
+	}
+	diagnostics := compiler.Compile("test", 1, defs).Diagnostics
+	if !hasDiagnostic(diagnostics, "tasks", "spec.presentation.bodyField") {
+		t.Fatalf("related file presentation accepted: %v", diagnostics)
+	}
+}
+
+func hasDiagnostic(diagnostics []definition.Diagnostic, name, path string) bool {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Name == name && diagnostic.Path == path {
+			return true
+		}
+	}
+	return false
+}
+
 func TestAdminResourceReferencesAreValidated(t *testing.T) {
 	defs := []definition.Definition{
 		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "book"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}}}},
@@ -192,6 +276,21 @@ func TestWebformBlockRejectsRenderedAndBoundFieldOverlap(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("Webform Block field/binding collision diagnostics=%v", result.Diagnostics)
+	}
+}
+
+func TestWebformRejectsFileElementsInsideRepeatingGroups(t *testing.T) {
+	defs := []definition.Definition{
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "submission"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "attachments", "type": "json"}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Webform", Metadata: definition.Metadata{Name: "submission_form"}, Spec: map[string]any{"action": "submission_create", "elements": []any{map[string]any{"name": "attachments", "type": "group", "children": []any{map[string]any{"name": "file", "type": "file"}}}}}},
+	}
+	result := compiler.Compile("test", 1, defs)
+	found := false
+	for _, diagnostic := range result.Diagnostics {
+		found = found || diagnostic.Kind == "Webform" && diagnostic.Name == "submission_form" && diagnostic.Path == "spec.elements.0.children.0.type"
+	}
+	if !found {
+		t.Fatalf("nested file diagnostics=%v", result.Diagnostics)
 	}
 }
 

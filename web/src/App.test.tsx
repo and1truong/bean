@@ -35,6 +35,72 @@ describe('public rendering',()=>{
     expect(await screen.findByRole('link',{name:'Sign up'})).toHaveAttribute('href','/register')
   })
 
+  it('hides authentication navigation for an anonymous-only application',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/manifest'))return response({authNavigation:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'TextBlock',props:{text:'Local tasks'}}})
+      return response({})
+    }))
+    renderApp('/')
+    expect(await screen.findByText('Local tasks')).toBeInTheDocument()
+    expect(screen.queryByRole('link',{name:'Sign in'})).not.toBeInTheDocument()
+  })
+
+  it('renders allowed board movement and an arbitrary-depth task tree',async()=>{
+    const fetchMock=vi.fn(async(input:string|URL|Request,init?:RequestInit)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/manifest'))return response({authNavigation:false,actions:{move_task:{Transitions:{todo:['in_progress'],in_progress:['done'],done:[]}}}})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[
+        {component:'ViewBlock',props:{name:'board',view:'roots',formattedFields:[],fileFields:[],presentation:{Mode:'board',TitleField:'title',BodyField:'description',GroupField:'status',OrderField:'position',MoveAction:'move_task',Columns:['todo','in_progress','done']}}},
+        {component:'ViewBlock',props:{name:'tree',view:'tree',formattedFields:[],fileFields:[],presentation:{Mode:'tree',TitleField:'title',ParentField:'parent_id',OrderField:'position',LinkRoute:'/tasks/:id'}}},
+      ]}})
+      if(path.includes('_block=board')&&path.includes('cursor=board-next'))return response({data:[{id:'z',title:'Earlier task',description:'First',status:'todo',position:1}],nextCursor:''})
+      if(path.includes('_block=board'))return response({data:[{id:'a',title:'Root A',description:'Plan',status:'todo',position:2}],nextCursor:'board-next'})
+      if(path.includes('_block=tree'))return response({data:[{id:'a',title:'Root A',parent_id:null,position:1},{id:'b',title:'Child B',parent_id:'a',position:1},{id:'c',title:'Grandchild C',parent_id:'b',position:1}],nextCursor:''})
+      if(path.includes('/api/actions/move_task'))return response({data:{id:'a',status:JSON.parse(String(init?.body)).status}})
+      return response({})
+    })
+    vi.stubGlobal('fetch',fetchMock)
+    renderApp('/projects/p')
+    expect(await screen.findByText('Grandchild C')).toBeInTheDocument()
+    const todoColumn=screen.getByRole('heading',{name:'Todo'}).parentElement!
+    expect(todoColumn.textContent!.indexOf('Earlier task')).toBeLessThan(todoColumn.textContent!.indexOf('Root A'))
+    const presentationRequests=fetchMock.mock.calls.map(([input])=>String(input)).filter(path=>path.includes('/api/views/'))
+    expect(presentationRequests).toHaveLength(3)
+    expect(presentationRequests.every(path=>path.includes('limit='))).toBe(true)
+    expect(presentationRequests.some(path=>path.includes('cursor=board-next'))).toBe(true)
+    const status=screen.getByRole('combobox',{name:'Status for Root A'})
+    expect(status).toHaveTextContent('Todo')
+    expect(status).toHaveTextContent('In progress')
+    expect(status).not.toHaveTextContent('Done')
+    fireEvent.change(status,{target:{value:'in_progress'}})
+    await waitFor(()=>expect(fetchMock.mock.calls.some(([input])=>String(input).includes('/api/actions/move_task'))).toBe(true))
+    await waitFor(()=>expect(fetchMock.mock.calls.filter(([input])=>String(input).includes('_block=tree'))).toHaveLength(2))
+    expect(screen.getByTestId('tree-view')).toContainElement(screen.getByRole('link',{name:'Grandchild C'}))
+  })
+
+  it('submits file Webforms as multipart data',async()=>{
+    let submitted:BodyInit|null|undefined
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request,init?:RequestInit)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/manifest'))return response({authNavigation:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'WebformBlock',props:{name:'upload',webform:'upload',form:{Name:'upload',Elements:[{Name:'label',Type:'text',Required:true},{Name:'file',Type:'file',Required:true}],Confirmation:'Uploaded'}}}})
+      if(path.includes('/api/webforms/upload/submit')){submitted=init?.body;return response({confirmation:'Uploaded'})}
+      return response({})
+    }))
+    renderApp('/upload')
+    fireEvent.change(await screen.findByLabelText('label'),{target:{value:'Plan'}})
+    fireEvent.change(screen.getByLabelText('file'),{target:{files:[new File(['hello'],'plan.txt',{type:'text/plain'})]}})
+    fireEvent.submit(screen.getByRole('button',{name:'Submit'}).closest('form')!)
+    expect(await screen.findByText('Uploaded')).toBeInTheDocument()
+    expect(submitted).toBeInstanceOf(FormData)
+    expect((submitted as FormData).get('file')).toBeInstanceOf(File)
+  })
+
   it('renders an unfiltered fallback as text when a formatted field is absent',async()=>{
     vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
       const path=String(input)

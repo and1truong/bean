@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,7 +20,168 @@ import (
 	"github.com/beanruntime/bean/internal/compiler"
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/definition"
+	"github.com/beanruntime/bean/internal/field"
 )
+
+func TestMultipartWebformStoresAndDownloadsFile(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := bootstrap.Open(ctx, filepath.Join(t.TempDir(), "upload.db"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.DB.Close()
+	bundle := definition.Bundle{Name: "upload", Definitions: []definition.Definition{
+		{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "public_access"}, Spec: map[string]any{}},
+		{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "restricted_access"}, Spec: map[string]any{"authenticated": true}},
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "asset"}, Spec: map[string]any{"policy": "public_access", "fields": []any{map[string]any{"name": "label", "type": "string", "required": true}, map[string]any{"name": "enabled", "type": "boolean", "required": true}, map[string]any{"name": "status", "type": "enum", "options": []any{"draft", "published"}, "required": true}, map[string]any{"name": "file", "type": "file", "required": true}, map[string]any{"name": "thumbnail", "type": "file"}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "View", Metadata: definition.Metadata{Name: "restricted_assets"}, Spec: map[string]any{"entity": "asset", "policy": "restricted_access", "fields": []any{"id", "file"}}},
+		{APIVersion: "bean/v1alpha1", Kind: "View", Metadata: definition.Metadata{Name: "published_assets"}, Spec: map[string]any{"entity": "asset", "fields": []any{"id", "file"}, "filter": map[string]any{"left": map[string]any{"source": "record", "name": "status"}, "op": "eq", "right": map[string]any{"source": "literal", "literal": "published"}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Webform", Metadata: definition.Metadata{Name: "upload_asset"}, Spec: map[string]any{"action": "asset_create", "elements": []any{map[string]any{"name": "label", "type": "text", "required": true}, map[string]any{"name": "enabled", "type": "checkbox", "required": true}, map[string]any{"name": "status", "type": "select", "required": true}, map[string]any{"name": "file", "type": "file", "required": true}, map[string]any{"name": "thumbnail", "type": "file"}}}},
+	}}
+	if err = runtime.Store.SaveBundle(ctx, "default", bundle); err != nil {
+		t.Fatal(err)
+	}
+	if _, diagnostics, publishErr := runtime.Store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) > 0 {
+		t.Fatalf("publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	_ = writer.WriteField("label", "Plan")
+	_ = writer.WriteField("enabled", "true")
+	_ = writer.WriteField("status", "published")
+	primaryContent := bytes.Repeat([]byte("a"), (1<<20)+1024)
+	part, err := writer.CreateFormFile("file", "../plan.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = part.Write(primaryContent)
+	thumbnail, err := writer.CreateFormFile("thumbnail", "thumbnail.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = thumbnail.Write(bytes.Repeat([]byte("b"), field.MaxFileBytes))
+	_ = writer.Close()
+	request := httptest.NewRequest(http.MethodPost, "/api/webforms/upload_asset/submit", &body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	response := httptest.NewRecorder()
+	runtime.HTTP.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("upload status=%d body=%s", response.Code, response.Body.String())
+	}
+	var result struct{ Data map[string]any }
+	decodeResponse(t, response, &result)
+	fileID := result.Data["file"].(string)
+	for _, path := range []string{"/api/files/" + fileID, "/api/files/" + fileID + "?view=restricted_assets"} {
+		denied := httptest.NewRecorder()
+		runtime.HTTP.Handler().ServeHTTP(denied, httptest.NewRequest(http.MethodGet, path, nil))
+		if denied.Code != http.StatusNotFound {
+			t.Fatalf("download without an authorized View leaked with status %d", denied.Code)
+		}
+	}
+	publishedPath := "/api/files/" + fileID + "?view=published_assets"
+	published := httptest.NewRecorder()
+	runtime.HTTP.Handler().ServeHTTP(published, httptest.NewRequest(http.MethodGet, publishedPath, nil))
+	if published.Code != http.StatusOK {
+		t.Fatalf("published View download status=%d", published.Code)
+	}
+	if update := serve(t, runtime.HTTP.Handler(), http.MethodPost, "/api/actions/asset_update", map[string]any{"id": result.Data["id"], "status": "draft"}, nil, ""); update.Code != http.StatusOK {
+		t.Fatalf("draft update status=%d body=%s", update.Code, update.Body.String())
+	}
+	draft := httptest.NewRecorder()
+	runtime.HTTP.Handler().ServeHTTP(draft, httptest.NewRequest(http.MethodGet, publishedPath, nil))
+	if draft.Code != http.StatusNotFound {
+		t.Fatalf("View predicate bypassed with status %d", draft.Code)
+	}
+	if update := serve(t, runtime.HTTP.Handler(), http.MethodPost, "/api/actions/asset_update", map[string]any{"id": result.Data["id"], "status": "published"}, nil, ""); update.Code != http.StatusOK {
+		t.Fatalf("publish update status=%d body=%s", update.Code, update.Body.String())
+	}
+	filePath := "/api/files/" + fileID + "?view=asset_list"
+	bundle.Definitions[0].Spec = map[string]any{"condition": map[string]any{"left": map[string]any{"source": "record", "name": "enabled"}, "op": "eq", "right": map[string]any{"source": "literal", "literal": true}}}
+	if err = runtime.Store.SaveBundle(ctx, "default", bundle); err != nil {
+		t.Fatal(err)
+	}
+	if _, diagnostics, publishErr := runtime.Store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) > 0 {
+		t.Fatalf("typed-policy publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	download := httptest.NewRecorder()
+	runtime.HTTP.Handler().ServeHTTP(download, httptest.NewRequest(http.MethodGet, filePath, nil))
+	if download.Code != http.StatusOK || !bytes.Equal(download.Body.Bytes(), primaryContent) || !strings.Contains(download.Header().Get("Content-Disposition"), "plan.txt") || strings.Contains(download.Header().Get("Content-Disposition"), "..") {
+		t.Fatalf("download status=%d headers=%v body length=%d", download.Code, download.Header(), download.Body.Len())
+	}
+	bundle.Definitions[0].Spec = map[string]any{"authenticated": true}
+	if err = runtime.Store.SaveBundle(ctx, "default", bundle); err != nil {
+		t.Fatal(err)
+	}
+	if _, diagnostics, publishErr := runtime.Store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) > 0 {
+		t.Fatalf("protected publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	anonymous := httptest.NewRecorder()
+	runtime.HTTP.Handler().ServeHTTP(anonymous, httptest.NewRequest(http.MethodGet, filePath, nil))
+	if anonymous.Code != http.StatusNotFound {
+		t.Fatalf("protected file leaked with status %d", anonymous.Code)
+	}
+	if err = runtime.HTTP.Auth.Bootstrap(ctx, "admin@example.test", "test-password"); err != nil {
+		t.Fatal(err)
+	}
+	login := serve(t, runtime.HTTP.Handler(), http.MethodPost, "/api/auth/login", map[string]any{"email": "admin@example.test", "password": "test-password"}, nil, "")
+	authorizedRequest := httptest.NewRequest(http.MethodGet, filePath, nil)
+	authorizedRequest.AddCookie(login.Result().Cookies()[0])
+	authorized := httptest.NewRecorder()
+	runtime.HTTP.Handler().ServeHTTP(authorized, authorizedRequest)
+	if authorized.Code != http.StatusOK || !bytes.Equal(authorized.Body.Bytes(), primaryContent) {
+		t.Fatalf("authorized download status=%d body length=%d", authorized.Code, authorized.Body.Len())
+	}
+	bundle.Definitions[0].Spec = map[string]any{"authenticated": true, "redact": []any{"file"}}
+	if err = runtime.Store.SaveBundle(ctx, "default", bundle); err != nil {
+		t.Fatal(err)
+	}
+	if _, diagnostics, publishErr := runtime.Store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) > 0 {
+		t.Fatalf("redacted publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	redactedRequest := httptest.NewRequest(http.MethodGet, filePath, nil)
+	redactedRequest.AddCookie(login.Result().Cookies()[0])
+	redacted := httptest.NewRecorder()
+	runtime.HTTP.Handler().ServeHTTP(redacted, redactedRequest)
+	if redacted.Code != http.StatusNotFound {
+		t.Fatalf("redacted file leaked with status %d", redacted.Code)
+	}
+}
+
+func TestManifestKeepsAuthenticationNavigationForImplicitRequirements(t *testing.T) {
+	entity := func(scope string) definition.Definition {
+		return definition.Definition{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "item"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}}, scope: true}}
+	}
+	cases := map[string][]definition.Definition{
+		"owner":  {entity("owner")},
+		"tenant": {entity("tenant")},
+		"user condition": {
+			{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "assigned"}, Spec: map[string]any{"condition": map[string]any{"left": map[string]any{"source": "record", "name": "assignee_id"}, "op": "eq", "right": map[string]any{"source": "user", "name": "id"}}}},
+			{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "item"}, Spec: map[string]any{"policy": "assigned", "fields": []any{map[string]any{"name": "assignee_id", "type": "string"}}}},
+		},
+	}
+	for name, definitions := range cases {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			runtime, err := bootstrap.Open(ctx, filepath.Join(t.TempDir(), "manifest.db"), false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer runtime.DB.Close()
+			if err = runtime.Store.SaveBundle(ctx, "default", definition.Bundle{Name: name, Definitions: definitions}); err != nil {
+				t.Fatal(err)
+			}
+			if _, diagnostics, publishErr := runtime.Store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) > 0 {
+				t.Fatalf("publish=%v diagnostics=%v", publishErr, diagnostics)
+			}
+			response := serve(t, runtime.HTTP.Handler(), http.MethodGet, "/api/system/manifest", nil, nil, "")
+			var manifest map[string]any
+			decodeResponse(t, response, &manifest)
+			if manifest["authNavigation"] != true {
+				t.Fatalf("manifest authNavigation=%v", manifest["authNavigation"])
+			}
+		})
+	}
+}
 
 func TestAdminResourceAPIRequiresAdminAndUsesCompiledRuntime(t *testing.T) {
 	testAdminResourceAPI(t, filepath.Join(t.TempDir(), "admin.db"))

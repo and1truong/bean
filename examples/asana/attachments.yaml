@@ -1,0 +1,65 @@
+kind: Entity
+name: attachment
+label: Attachment
+policy: public_access
+fields:
+  - label: Task
+    name: task_id
+    required: true
+    type: relation
+    relation: {entity: task, kind: many-to-one, targetField: id}
+  - {label: Label, name: label, required: true, type: string}
+  - {label: File, name: file, required: true, type: file}
+indexes:
+  - [task_id]
+---
+kind: View
+name: task_attachments
+entity: attachment
+fields: [id, task_id, label, file, created_at]
+exposedFilters:
+  task_id:
+    name: task_id
+    required: true
+    type: relation
+    relation: {entity: task, kind: many-to-one, targetField: id}
+sort:
+  - {desc: true, field: created_at}
+---
+kind: Webform
+name: upload_attachment_form
+action: attachment_create
+confirmation: Attachment uploaded.
+elements:
+  - {name: label, required: true, type: text, maxLength: 200}
+  - {name: file, required: true, type: file}
+---
+kind: Block
+name: attachment_list
+type: view
+view: task_attachments
+inputs:
+  task_id:
+    required: true
+    type: relation
+    relation: {entity: task, kind: many-to-one, targetField: id}
+bindings:
+  task_id: {source: context, name: id, required: true}
+presentation:
+  mode: list
+  titleField: label
+  bodyField: file
+  metaFields: [created_at]
+  emptyState: No attachments yet.
+---
+kind: Block
+name: upload_attachment_block
+type: webform
+webform: upload_attachment_form
+inputs:
+  task_id:
+    required: true
+    type: relation
+    relation: {entity: task, kind: many-to-one, targetField: id}
+bindings:
+  task_id: {source: context, name: id, required: true}

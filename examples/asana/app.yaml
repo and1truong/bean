@@ -1,0 +1,8 @@
+apiVersion: bean/v1alpha1
+name: Asana Lite
+resources:
+  - access.yaml
+  - projects.yaml
+  - tasks.yaml
+  - attachments.yaml
+  - pages.yaml

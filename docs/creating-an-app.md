@@ -24,4 +24,8 @@ Each Entity gets a default administration resource. Define an AdminResource when
 
 For user-authored Markdown, store the source in a textual Entity field, define a named `Filter` with a `markdown` step, and reference it from the public View through `fieldFilters`. Keep the Admin View unfiltered so editors read and update source Markdown rather than generated HTML.
 
+Use a `file` field on a related attachment Entity when a record needs one or more uploads. A matching Webform `file` element sends multipart data; Bean limits each file to 5 MiB, stores its bytes and metadata in the Action transaction, and exposes downloads by generated identifier. Keep a separate human-readable label field because client filenames are never storage paths.
+
+A View Block may use compiler-validated `board` or `tree` presentation. Boards group an enum field and invoke a declared transition Action. Trees consume a selected many-to-one self relation and build an expandable hierarchy from the bounded View result. See `examples/asana` for both patterns.
+
 Use a SQLite path for an embedded deployment or pass a PostgreSQL URL through `--database-url`/`BEAN_DATABASE_URL`. Definitions and AppIR are backend-neutral; do not put backend SQL in definitions.

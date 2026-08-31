@@ -270,7 +270,7 @@ func addJoinTable(p *Plan, entity string, field Field) {
 func toMany(kind string) bool { return kind == "one-to-many" || kind == "many-to-many" }
 func sqlType(t string) (string, error) {
 	switch t {
-	case "string", "text", "richtext", "slug", "enum", "date", "datetime", "uuid", "email", "url", "json", "relation":
+	case "string", "text", "richtext", "slug", "enum", "date", "datetime", "uuid", "email", "url", "json", "relation", "file":
 		return "TEXT", nil
 	case "integer", "money":
 		return "INTEGER", nil
@@ -332,6 +332,7 @@ func MetadataSchema() []string {
 		`CREATE TABLE IF NOT EXISTS bean_outbox (id TEXT PRIMARY KEY,topic TEXT NOT NULL,payload TEXT NOT NULL,created_at TEXT NOT NULL,delivered_at TEXT,status TEXT NOT NULL,attempts INTEGER NOT NULL,retry_delay INTEGER NOT NULL,max_attempts INTEGER NOT NULL,last_error TEXT,claim_token TEXT,claimed_at TEXT,next_attempt_at TEXT)`,
 		`CREATE TABLE IF NOT EXISTS bean_job (id TEXT PRIMARY KEY,name TEXT NOT NULL,run_at TEXT NOT NULL,status TEXT NOT NULL,payload TEXT NOT NULL,attempts INTEGER NOT NULL,retry_delay INTEGER NOT NULL,last_error TEXT,completed_at TEXT,claim_token TEXT,claimed_at TEXT,next_attempt_at TEXT,max_attempts INTEGER NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS bean_idempotency (action TEXT NOT NULL,key TEXT NOT NULL,input_hash TEXT NOT NULL,result TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(action,key))`,
+		`CREATE TABLE IF NOT EXISTS bean_blob (id TEXT PRIMARY KEY,file_name TEXT NOT NULL,content_type TEXT NOT NULL,size INTEGER NOT NULL,content TEXT NOT NULL,created_at TEXT NOT NULL)`,
 	}
 }
 
