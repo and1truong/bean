@@ -87,6 +87,47 @@ func TestMultipartWebformStoresAndDownloadsFile(t *testing.T) {
 	if authorized.Code != http.StatusOK || authorized.Body.String() != "hello attachment" {
 		t.Fatalf("authorized download status=%d body=%q", authorized.Code, authorized.Body.String())
 	}
+	bundle.Definitions[0].Spec = map[string]any{"authenticated": true, "redact": []any{"file"}}
+	if err = runtime.Store.SaveBundle(ctx, "default", bundle); err != nil {
+		t.Fatal(err)
+	}
+	if _, diagnostics, publishErr := runtime.Store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) > 0 {
+		t.Fatalf("redacted publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	redactedRequest := httptest.NewRequest(http.MethodGet, "/api/files/"+fileID, nil)
+	redactedRequest.AddCookie(login.Result().Cookies()[0])
+	redacted := httptest.NewRecorder()
+	runtime.HTTP.Handler().ServeHTTP(redacted, redactedRequest)
+	if redacted.Code != http.StatusNotFound {
+		t.Fatalf("redacted file leaked with status %d", redacted.Code)
+	}
+}
+
+func TestManifestKeepsAuthenticationNavigationForImplicitEntityScopes(t *testing.T) {
+	for _, scope := range []string{"owner", "tenant"} {
+		t.Run(scope, func(t *testing.T) {
+			ctx := context.Background()
+			runtime, err := bootstrap.Open(ctx, filepath.Join(t.TempDir(), scope+".db"), false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer runtime.DB.Close()
+			entity := map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}}, scope: true}
+			bundle := definition.Bundle{Name: scope, Definitions: []definition.Definition{{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "item"}, Spec: entity}}}
+			if err = runtime.Store.SaveBundle(ctx, "default", bundle); err != nil {
+				t.Fatal(err)
+			}
+			if _, diagnostics, publishErr := runtime.Store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) > 0 {
+				t.Fatalf("publish=%v diagnostics=%v", publishErr, diagnostics)
+			}
+			response := serve(t, runtime.HTTP.Handler(), http.MethodGet, "/api/system/manifest", nil, nil, "")
+			var manifest map[string]any
+			decodeResponse(t, response, &manifest)
+			if manifest["authNavigation"] != true {
+				t.Fatalf("manifest authNavigation=%v", manifest["authNavigation"])
+			}
+		})
+	}
 }
 
 func TestAdminResourceAPIRequiresAdminAndUsesCompiledRuntime(t *testing.T) {

@@ -94,7 +94,7 @@ func TestFileFieldPersistsAndDeletesBlobInActionTransaction(t *testing.T) {
 	if err = store.Initialize(ctx); err != nil {
 		t.Fatal(err)
 	}
-	defs := []definition.Definition{{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "asset"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "label", "type": "string", "required": true}, map[string]any{"name": "file", "type": "file", "required": true}}}}}
+	defs := []definition.Definition{{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "asset"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "label", "type": "string", "required": true}, map[string]any{"name": "file", "type": "file"}}}}}
 	if err = store.SaveBundle(ctx, "default", definition.Bundle{Name: "files", Definitions: defs}); err != nil {
 		t.Fatal(err)
 	}
@@ -112,10 +112,23 @@ func TestFileFieldPersistsAndDeletesBlobInActionTransaction(t *testing.T) {
 	if err != nil || len(blobs) != 1 || blobs[0]["content"] != base64.StdEncoding.EncodeToString([]byte("hello")) {
 		t.Fatalf("blob=%v err=%v", blobs, err)
 	}
+	cleared, err := engine.Execute(ctx, app, "asset_update", map[string]any{"id": created["id"], "file": nil}, admin())
+	if err != nil || cleared["file"] != nil {
+		t.Fatalf("clear result=%v err=%v", cleared, err)
+	}
+	blobs, err = db.Select(ctx, dbal.Select{Table: "bean_blob", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: blobID}, Limit: 1})
+	if err != nil || len(blobs) != 0 {
+		t.Fatalf("cleared blob=%v err=%v", blobs, err)
+	}
+	replaced, err := engine.Execute(ctx, app, "asset_update", map[string]any{"id": created["id"], "file": field.Upload{Name: "replacement.txt", ContentType: "text/plain", Data: []byte("replacement")}}, admin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacementID := fmt.Sprint(replaced["file"])
 	if _, err = engine.Execute(ctx, app, "asset_delete", map[string]any{"id": created["id"]}, admin()); err != nil {
 		t.Fatal(err)
 	}
-	blobs, err = db.Select(ctx, dbal.Select{Table: "bean_blob", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: blobID}, Limit: 1})
+	blobs, err = db.Select(ctx, dbal.Select{Table: "bean_blob", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: replacementID}, Limit: 1})
 	if err != nil || len(blobs) != 0 {
 		t.Fatalf("deleted blob=%v err=%v", blobs, err)
 	}

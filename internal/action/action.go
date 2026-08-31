@@ -345,15 +345,19 @@ func update(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.En
 		if f.Type == "richtext" && v != nil {
 			v = field.SanitizeRichText(v.(string))
 		}
-		if f.Type == "file" && v != nil {
-			storedUpload, uploadErr := storeUpload(ctx, tx, v)
-			if uploadErr != nil {
-				return nil, uploadErr
+		if f.Type == "file" {
+			if row[k] != nil {
+				if old := fmt.Sprint(row[k]); old != "" {
+					replacedBlobs = append(replacedBlobs, old)
+				}
 			}
-			if old := fmt.Sprint(row[k]); old != "" {
-				replacedBlobs = append(replacedBlobs, old)
+			if v != nil {
+				storedUpload, uploadErr := storeUpload(ctx, tx, v)
+				if uploadErr != nil {
+					return nil, uploadErr
+				}
+				v = storedUpload
 			}
-			v = storedUpload
 		}
 		stored, encodeErr := field.Encode(f, v)
 		if encodeErr != nil {

@@ -120,6 +120,9 @@ func (s *Server) manifest(w http.ResponseWriter, _ *http.Request) {
 	for _, definition := range a.Policies {
 		authNavigation = authNavigation || definition.Authenticated || definition.Owner || definition.Tenant || len(definition.ReadRoles) > 0 || len(definition.WriteRoles) > 0
 	}
+	for _, entity := range a.Entities {
+		authNavigation = authNavigation || entity.Owner || entity.Tenant
+	}
 	write(w, 200, map[string]any{"appId": a.AppID, "releaseId": a.ReleaseID, "version": a.Version, "authNavigation": authNavigation, "entities": a.Entities, "views": a.Views, "actions": a.Actions, "filters": a.Filters, "webforms": a.Webforms, "pages": a.Pages, "localRegistration": a.LocalRegistration})
 }
 func (s *Server) adminManifest(w http.ResponseWriter, r *http.Request) {
@@ -350,7 +353,11 @@ func (s *Server) fileAllowed(r *http.Request, a *appir.App, id string) bool {
 				return false
 			}
 			if entity.Policy != "" {
-				return policy.Can(a.Policies[entity.Policy], false, requestContext, row)
+				policyDefinition := a.Policies[entity.Policy]
+				if stringSet(policyDefinition.Redact)[definition.Name] {
+					return false
+				}
+				return policy.Can(policyDefinition, false, requestContext, row)
 			}
 			return policy.Can(appir.Policy{Owner: entity.Owner, Tenant: entity.Tenant}, false, requestContext, row)
 		}

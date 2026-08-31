@@ -63,7 +63,7 @@ function ViewBlock(props:ViewBlockProps){
 }
 function ViewBlockPage({name,block,presentation,formattedFields,fileFields,path}:ViewBlockProps&{path:string}){
   const[cursors,setCursors]=useState<string[]>(['']);const cursor=cursors[cursors.length-1]
-  const query=new URLSearchParams({_page:path,_block:block});if(cursor)query.set('cursor',cursor)
+  const query=new URLSearchParams({_page:path,_block:block});if(presentation.Mode==='board'||presentation.Mode==='tree')query.set('limit','200');else if(cursor)query.set('cursor',cursor)
   const request='/api/views/'+name+'?'+query.toString()
   const result=useQuery({queryKey:['public-view',request],queryFn:()=>api<{data:Row[];nextCursor:string}>(request)})
   if(result.isPending)return <LoadingState/>
