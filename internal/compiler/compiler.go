@@ -1087,9 +1087,13 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 		}
 		return appir.Field{}, false
 	}
+	redacted := nameSet(a.Policies[viewDefinition.Policy].Redact)
 	for path, fieldName := range map[string]string{"titleField": presentation.TitleField, "bodyField": presentation.BodyField, "groupField": presentation.GroupField, "orderField": presentation.OrderField, "parentField": presentation.ParentField} {
 		if fieldName != "" && !selected[fieldName] {
 			out = append(out, diagnostic("Block", name, "spec.presentation."+path, "must be selected by View "+block.View))
+		}
+		if (presentation.Mode == "board" || presentation.Mode == "tree") && fieldName != "" && redacted[fieldName] && path != "bodyField" {
+			out = append(out, diagnostic("Block", name, "spec.presentation."+path, "must not be redacted by View policy "+viewDefinition.Policy))
 		}
 	}
 	if presentation.Mode == "board" {

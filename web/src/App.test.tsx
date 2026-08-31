@@ -54,10 +54,10 @@ describe('public rendering',()=>{
       if(path.includes('/api/system/session'))return response({authenticated:false})
       if(path.includes('/api/system/manifest'))return response({authNavigation:false,actions:{move_task:{Transitions:{todo:['in_progress'],in_progress:['done'],done:[]}}}})
       if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[
-        {component:'ViewBlock',props:{name:'board',view:'roots',formattedFields:[],fileFields:[],presentation:{Mode:'board',TitleField:'title',BodyField:'description',GroupField:'status',MoveAction:'move_task',Columns:['todo','in_progress','done']}}},
+        {component:'ViewBlock',props:{name:'board',view:'roots',formattedFields:[],fileFields:[],presentation:{Mode:'board',TitleField:'title',BodyField:'description',GroupField:'status',OrderField:'position',MoveAction:'move_task',Columns:['todo','in_progress','done']}}},
         {component:'ViewBlock',props:{name:'tree',view:'tree',formattedFields:[],fileFields:[],presentation:{Mode:'tree',TitleField:'title',ParentField:'parent_id',OrderField:'position',LinkRoute:'/tasks/:id'}}},
       ]}})
-      if(path.includes('_block=board'))return response({data:[{id:'a',title:'Root A',description:'Plan',status:'todo'}],nextCursor:''})
+      if(path.includes('_block=board'))return response({data:[{id:'a',title:'Root A',description:'Plan',status:'todo',position:2},{id:'z',title:'Earlier task',description:'First',status:'todo',position:1}],nextCursor:''})
       if(path.includes('_block=tree'))return response({data:[{id:'a',title:'Root A',parent_id:null,position:1},{id:'b',title:'Child B',parent_id:'a',position:1},{id:'c',title:'Grandchild C',parent_id:'b',position:1}],nextCursor:''})
       if(path.includes('/api/actions/move_task'))return response({data:{id:'a',status:JSON.parse(String(init?.body)).status}})
       return response({})
@@ -65,6 +65,8 @@ describe('public rendering',()=>{
     vi.stubGlobal('fetch',fetchMock)
     renderApp('/projects/p')
     expect(await screen.findByText('Grandchild C')).toBeInTheDocument()
+    const todoColumn=screen.getByRole('heading',{name:'Todo'}).parentElement!
+    expect(todoColumn.textContent!.indexOf('Earlier task')).toBeLessThan(todoColumn.textContent!.indexOf('Root A'))
     const presentationRequests=fetchMock.mock.calls.map(([input])=>String(input)).filter(path=>path.includes('/api/views/'))
     expect(presentationRequests).toHaveLength(2)
     expect(presentationRequests.every(path=>path.includes('limit=200'))).toBe(true)
