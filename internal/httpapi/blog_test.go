@@ -17,7 +17,6 @@ import (
 	"github.com/beanruntime/bean/internal/bootstrap"
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/dbal"
-	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/view"
 )
 
@@ -44,12 +43,7 @@ func testBlogSecurityAndWorkflowContract(t *testing.T, databaseURL string) {
 	if err = runtime.HTTP.Auth.Bootstrap(ctx, "admin@example.test", "test-password"); err != nil {
 		t.Fatal(err)
 	}
-	source, err := examples.Open("blog")
-	if err != nil {
-		t.Fatal(err)
-	}
-	bundle, err := definition.Decode(source)
-	source.Close()
+	bundle, err := examples.Load("blog")
 	if err != nil {
 		t.Fatal(err)
 	}

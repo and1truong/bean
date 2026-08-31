@@ -134,12 +134,7 @@ func testAdminResourceAPI(t *testing.T, databaseURL string) {
 	if invalid.Code != http.StatusBadRequest {
 		t.Fatalf("undeclared filter status=%v", invalid.Code)
 	}
-	bookingSource, err := examples.Open("booking")
-	if err != nil {
-		t.Fatal(err)
-	}
-	bookingBundle, err := definition.Decode(bookingSource)
-	bookingSource.Close()
+	bookingBundle, err := examples.Load("booking")
 	if err != nil {
 		t.Fatal(err)
 	}

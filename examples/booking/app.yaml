@@ -1,19 +1,57 @@
+apiVersion: bean/v1alpha1
 name: Booking
-definitions:
-  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: resource}, spec: {label: Resource, fields: [{name: name, label: Name, type: string, required: true}]}}
-  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: booking}, spec: {label: Booking, fields: [{name: resource_id, label: Resource, type: relation, required: true}, {name: start_at, label: Start, type: datetime, required: true}, {name: end_at, label: End, type: datetime, required: true}, {name: status, label: Status, type: enum, required: true, options: [confirmed, cancelled]}]}}
-  - apiVersion: bean/v1alpha1
-    kind: Action
-    metadata: {name: book_resource}
-    spec:
-      entity: booking
-      operation: transaction
-      input: {resource_id: {type: relation, required: true}, start_at: {type: datetime, required: true}, end_at: {type: datetime, required: true}}
-      steps:
-        - {op: assert_no_overlap, values: {match: resource_id, start: start_at, end: end_at, message: The requested booking overlaps an existing booking.}}
-        - {op: create, result: booking, values: {resource_id: $input.resource_id, start_at: $input.start_at, end_at: $input.end_at, status: confirmed}}
-        - {op: schedule, job: booking_reminder, values: {id: $result.booking.id, status: cancelled}}
-  - {apiVersion: bean/v1alpha1, kind: Action, metadata: {name: cancel_booking}, spec: {entity: booking, operation: transition, transitions: {confirmed: [cancelled]}}}
-  - {apiVersion: bean/v1alpha1, kind: Job, metadata: {name: booking_reminder}, spec: {action: cancel_booking}}
-  - {apiVersion: bean/v1alpha1, kind: View, metadata: {name: resource_calendar}, spec: {entity: booking, fields: [id, resource_id, start_at, end_at, status], displays: {calendar: {type: json, route: /api/calendar}}}}
-seed: {}
+---
+kind: Entity
+name: resource
+fields:
+  - {label: Name, name: name, required: true, type: string}
+label: Resource
+---
+kind: Entity
+name: booking
+fields:
+  - {label: Resource, name: resource_id, required: true, type: relation}
+  - {label: Start, name: start_at, required: true, type: datetime}
+  - {label: End, name: end_at, required: true, type: datetime}
+  - label: Status
+    name: status
+    options: [confirmed, cancelled]
+    required: true
+    type: enum
+label: Booking
+---
+kind: Action
+name: book_resource
+entity: booking
+input:
+  end_at: {required: true, type: datetime}
+  resource_id: {required: true, type: relation}
+  start_at: {required: true, type: datetime}
+operation: transaction
+steps:
+  - op: assert_no_overlap
+    values: {end: end_at, match: resource_id, message: The requested booking overlaps an existing booking., start: start_at}
+  - op: create
+    result: booking
+    values: {end_at: $input.end_at, resource_id: $input.resource_id, start_at: $input.start_at, status: confirmed}
+  - job: booking_reminder
+    op: schedule
+    values: {id: $result.booking.id, status: cancelled}
+---
+kind: Action
+name: cancel_booking
+entity: booking
+operation: transition
+transitions:
+  confirmed: [cancelled]
+---
+kind: Job
+name: booking_reminder
+action: cancel_booking
+---
+kind: View
+name: resource_calendar
+displays:
+  calendar: {route: /api/calendar, type: json}
+entity: booking
+fields: [id, resource_id, start_at, end_at, status]

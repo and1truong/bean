@@ -23,6 +23,7 @@ Runtime needs only `bin/bean` and one database:
 
 ```bash
 ./bin/bean init --db ./bean.db --admin-email admin@example.test --admin-password test-password
+./bin/bean app validate --file ./examples/blog/app.yaml
 ./bin/bean app import --db ./bean.db --file ./examples/blog/app.yaml
 ./bin/bean publish --db ./bean.db
 ./bin/bean serve --db ./bean.db --addr 127.0.0.1:8080

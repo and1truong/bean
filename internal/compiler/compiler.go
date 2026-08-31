@@ -35,11 +35,12 @@ type stepSource struct {
 	Where, Condition                                 *expr.Expr
 }
 
-func Compile(appID string, version int, defs []definition.Definition) Result {
+func Compile(appID string, version int, defs []definition.Definition) (r Result) {
+	defer func() { definition.LocateDiagnostics(defs, r.Diagnostics) }()
 	a := appir.Empty()
 	a.AppID = appID
 	a.Version = version
-	r := Result{App: a}
+	r = Result{App: a}
 	seen := map[string]bool{}
 	for _, d := range defs {
 		r.Diagnostics = append(r.Diagnostics, definition.ValidateEnvelope(d)...)

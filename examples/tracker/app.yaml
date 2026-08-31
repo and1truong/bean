@@ -1,8 +1,43 @@
+apiVersion: bean/v1alpha1
 name: Issue Tracker
-definitions:
-  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: project}, spec: {label: Project, fields: [{name: name, label: Name, type: string, required: true}]}}
-  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: issue}, spec: {label: Issue, fields: [{name: title, label: Title, type: string, required: true}, {name: status, label: Status, type: enum, required: true, options: [todo, in_progress, done]}, {name: assignee_id, label: Assignee, type: uuid}, {name: project_id, label: Project, type: relation}]}}
-  - {apiVersion: bean/v1alpha1, kind: Entity, metadata: {name: comment}, spec: {label: Comment, fields: [{name: issue_id, label: Issue, type: relation, required: true}, {name: body, label: Body, type: text, required: true}]}}
-  - {apiVersion: bean/v1alpha1, kind: View, metadata: {name: issue_kanban}, spec: {entity: issue, fields: [id, title, status, assignee_id], displays: {kanban: {type: json, route: /api/issues/kanban}}}}
-  - {apiVersion: bean/v1alpha1, kind: Action, metadata: {name: move_issue}, spec: {entity: issue, operation: transition, transitions: {todo: [in_progress], in_progress: [done]}}}
-seed: {}
+---
+kind: Entity
+name: project
+fields:
+  - {label: Name, name: name, required: true, type: string}
+label: Project
+---
+kind: Entity
+name: issue
+fields:
+  - {label: Title, name: title, required: true, type: string}
+  - label: Status
+    name: status
+    options: [todo, in_progress, done]
+    required: true
+    type: enum
+  - {label: Assignee, name: assignee_id, type: uuid}
+  - {label: Project, name: project_id, type: relation}
+label: Issue
+---
+kind: Entity
+name: comment
+fields:
+  - {label: Issue, name: issue_id, required: true, type: relation}
+  - {label: Body, name: body, required: true, type: text}
+label: Comment
+---
+kind: View
+name: issue_kanban
+displays:
+  kanban: {route: /api/issues/kanban, type: json}
+entity: issue
+fields: [id, title, status, assignee_id]
+---
+kind: Action
+name: move_issue
+entity: issue
+operation: transition
+transitions:
+  in_progress: [done]
+  todo: [in_progress]

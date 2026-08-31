@@ -1,0 +1,68 @@
+kind: Role
+name: member
+permissions: [comment_submit]
+---
+kind: Role
+name: editor
+permissions: [content_manage, comment_moderate]
+---
+kind: Policy
+name: editor_only
+readRoles: [editor, administrator]
+writeRoles: [editor, administrator]
+---
+kind: Action
+name: register_member
+defaultRole: member
+operation: register_local_user
+---
+kind: LocalRegistration
+name: local
+action: register_member
+route: /signup
+---
+kind: Webform
+name: signup
+action: register_member
+confirmation: Account created. You can now sign in.
+elements:
+  - {maxLength: 80, minLength: 2, name: display_name, required: true, type: text}
+  - {name: email, required: true, type: email}
+  - {minLength: 10, name: password, required: true, type: password}
+  - {minLength: 10, name: password_confirmation, required: true, type: password}
+---
+kind: Block
+name: signup_form
+type: webform
+webform: signup
+---
+kind: Block
+name: login_help
+text: Sign in with your email and password.
+type: text
+---
+kind: Panel
+name: signup_panel
+layout: single-column
+regions:
+  - blocks: [public_menu, signup_form]
+    name: main
+---
+kind: Panel
+name: login_panel
+layout: single-column
+regions:
+  - blocks: [public_menu, login_help]
+    name: main
+---
+kind: Page
+name: signup
+panel: signup_panel
+route: /signup
+title: Sign up
+---
+kind: Page
+name: login
+panel: login_panel
+route: /login
+title: Sign in
