@@ -64,6 +64,26 @@ func TestLoadFSReportsDuplicateDefinitionsAtSecondSource(t *testing.T) {
 	}
 }
 
+func TestCompilerDiagnosticUsesFirstDuplicateDefinitionSource(t *testing.T) {
+	files := fstest.MapFS{
+		"app.yaml": {Data: []byte("apiVersion: bean/v1alpha1\nname: Duplicate\nresources: [one.yaml, two.yaml]\n")},
+		"one.yaml": {Data: []byte("kind: Entity\nname: post\nfields: []\nlabell: Post\n")},
+		"two.yaml": {Data: []byte("kind: Entity\nname: post\nfields: []\n")},
+	}
+
+	bundle, _ := definition.LoadFS(files, "app.yaml")
+	result := compiler.Compile("test", 1, bundle.Definitions)
+	for _, diagnostic := range result.Diagnostics {
+		if strings.Contains(diagnostic.Message, "unknown field") {
+			if !strings.Contains(diagnostic.Error(), "one.yaml:4:1") {
+				t.Fatalf("compiler diagnostic source = %q", diagnostic.Error())
+			}
+			return
+		}
+	}
+	t.Fatalf("unknown-field diagnostic missing: %v", result.Diagnostics)
+}
+
 func TestCompilerDiagnosticUsesDefinitionFieldLocation(t *testing.T) {
 	files := fstest.MapFS{
 		"app.yaml": {Data: []byte("apiVersion: bean/v1alpha1\nname: Typo\n---\nkind: Entity\nname: post\nfields: []\nlabell: Post\n")},

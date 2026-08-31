@@ -231,17 +231,19 @@ func compile(appID string, version int, defs []definition.Definition, validateGr
 			a.LocalRegistration = &x
 		}
 	}
-	if !validateGraph {
-		return r
-	}
+	unavailable := unavailableDefinitions(r.Diagnostics)
 	for name, entity := range a.Entities {
 		generate(a, name, entity)
 	}
 	normalizeActions(a)
 	normalizeAdminResources(a)
 	normalizeResourceListBlocks(a)
-	r.Diagnostics = append(r.Diagnostics, validate(a)...)
-	if len(r.Diagnostics) > 0 {
+	validationDiagnostics := suppressUnavailableDependencies(validate(a), unavailable)
+	if !validateGraph {
+		validationDiagnostics = suppressMissingDependencies(validationDiagnostics)
+	}
+	r.Diagnostics = append(r.Diagnostics, validationDiagnostics...)
+	if !validateGraph || len(r.Diagnostics) > 0 {
 		return r
 	}
 	for _, e := range a.Entities {
@@ -270,6 +272,49 @@ func compile(appID string, version int, defs []definition.Definition, validateGr
 func diag(d definition.Definition, path, msg string) definition.Diagnostic {
 	return definition.Diagnostic{Kind: d.Kind, Name: d.Metadata.Name, Path: path, Message: msg}
 }
+
+func unavailableDefinitions(diagnostics []definition.Diagnostic) map[string]bool {
+	unavailable := map[string]bool{}
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Path == "spec" {
+			unavailable[diagnostic.Kind+"/"+diagnostic.Name] = true
+		}
+	}
+	return unavailable
+}
+
+func suppressUnavailableDependencies(diagnostics []definition.Diagnostic, unavailable map[string]bool) []definition.Diagnostic {
+	out := make([]definition.Diagnostic, 0, len(diagnostics))
+	for _, diagnostic := range diagnostics {
+		if target, ok := missingDependency(diagnostic.Message); !ok || !unavailable[target] {
+			out = append(out, diagnostic)
+		}
+	}
+	return out
+}
+
+func suppressMissingDependencies(diagnostics []definition.Diagnostic) []definition.Diagnostic {
+	out := make([]definition.Diagnostic, 0, len(diagnostics))
+	for _, diagnostic := range diagnostics {
+		if _, missing := missingDependency(diagnostic.Message); !missing {
+			out = append(out, diagnostic)
+		}
+	}
+	return out
+}
+
+func missingDependency(message string) (string, bool) {
+	const prefix = "references missing "
+	if !strings.HasPrefix(message, prefix) {
+		return "", false
+	}
+	parts := strings.SplitN(strings.TrimPrefix(message, prefix), " ", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", false
+	}
+	return parts[0] + "/" + parts[1], true
+}
+
 func compileBinding(value any) appir.ValueBinding {
 	if text, ok := value.(string); ok && strings.HasPrefix(text, "$") {
 		if text == "$now" {

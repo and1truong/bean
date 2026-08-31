@@ -64,7 +64,27 @@ func TestLoadValidSourceDefersDependencyValidationForIncompleteSources(t *testin
 	if err := os.WriteFile(manifest, []byte("apiVersion: bean/v1alpha1\nname: Broken\nresources: [missing.yaml, views.yaml]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(resource, []byte("kind: View\nname: posts\nentity: post\nfields: [id]\n"), 0o600); err != nil {
+	if err := os.WriteFile(resource, []byte("kind: View\nname: posts\nentity: post\nfields: [id]\n---\nkind: Filter\nname: invalid\nsteps: [{type: unsupported}]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var output bytes.Buffer
+	_, err := loadValidSource(manifest, &output)
+	if err == nil || err.Error() != "application source is invalid (2 errors)" {
+		t.Fatalf("loadValidSource() error = %v", err)
+	}
+	if strings.Contains(output.String(), "references missing Entity post") {
+		t.Fatalf("dependency diagnostic from incomplete source:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "has no registered filter implementation") {
+		t.Fatalf("local validation diagnostic missing:\n%s", output.String())
+	}
+}
+
+func TestLoadValidSourceSuppressesDependenciesOnUndecodableDefinitions(t *testing.T) {
+	directory := t.TempDir()
+	manifest := filepath.Join(directory, "app.yaml")
+	if err := os.WriteFile(manifest, []byte("apiVersion: bean/v1alpha1\nname: Broken\n---\nkind: Entity\nname: post\nfields: []\nlabell: Post\n---\nkind: View\nname: posts\nentity: post\nfields: [id]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -74,7 +94,26 @@ func TestLoadValidSourceDefersDependencyValidationForIncompleteSources(t *testin
 		t.Fatalf("loadValidSource() error = %v", err)
 	}
 	if strings.Contains(output.String(), "references missing Entity post") {
-		t.Fatalf("dependency diagnostic from incomplete source:\n%s", output.String())
+		t.Fatalf("dependency diagnostic from undecodable definition:\n%s", output.String())
+	}
+}
+
+func TestLoadValidSourceDeduplicatesMissingEnvelopeFields(t *testing.T) {
+	for _, source := range []string{
+		"apiVersion: bean/v1alpha1\nname: Broken\n---\nname: post\nfields: []\n",
+		"apiVersion: bean/v1alpha1\nname: Broken\n---\nkind: Entity\nfields: []\n",
+	} {
+		directory := t.TempDir()
+		manifest := filepath.Join(directory, "app.yaml")
+		if err := os.WriteFile(manifest, []byte(source), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		var output bytes.Buffer
+		_, err := loadValidSource(manifest, &output)
+		if err == nil || err.Error() != "application source is invalid (1 error)" {
+			t.Fatalf("loadValidSource() error = %v\n%s", err, output.String())
+		}
 	}
 }
 

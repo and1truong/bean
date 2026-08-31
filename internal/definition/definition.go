@@ -81,8 +81,9 @@ func Encode(w io.Writer, b Bundle) error { return encodeSource(w, b) }
 func LocateDiagnostics(definitions []Definition, diagnostics []Diagnostic) {
 	sources := map[string]*Source{}
 	for _, d := range definitions {
-		if d.Source != nil {
-			sources[d.Kind+"/"+d.Metadata.Name] = d.Source
+		key := d.Kind + "/" + d.Metadata.Name
+		if d.Source != nil && sources[key] == nil {
+			sources[key] = d.Source
 		}
 	}
 	for i := range diagnostics {

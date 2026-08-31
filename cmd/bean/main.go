@@ -328,24 +328,32 @@ func mergeSourceDiagnostics(loader, compiled []definition.Diagnostic) []definiti
 	diagnostics := append([]definition.Diagnostic{}, loader...)
 	invalidAPIVersion := false
 	duplicates := map[string]bool{}
+	missingRequiredField := map[string]bool{}
 	for _, diagnostic := range loader {
 		if diagnostic.Path == "apiVersion" {
 			invalidAPIVersion = true
+		}
+		if diagnostic.Message == "is required" && (diagnostic.Path == "kind" || diagnostic.Path == "name") {
+			missingRequiredField[diagnosticSourceKey(diagnostic)+"/"+diagnostic.Path] = true
 		}
 		if diagnostic.Message == "duplicate definition" {
 			duplicates[diagnostic.Kind+"/"+diagnostic.Name] = true
 		}
 	}
 	for _, diagnostic := range compiled {
-		if invalidAPIVersion && diagnostic.Path == "apiVersion" {
-			continue
-		}
-		if diagnostic.Message == "duplicate machine name" && duplicates[diagnostic.Kind+"/"+diagnostic.Name] {
+		if invalidAPIVersion && diagnostic.Path == "apiVersion" ||
+			diagnostic.Path == "kind" && missingRequiredField[diagnosticSourceKey(diagnostic)+"/kind"] ||
+			diagnostic.Path == "metadata.name" && missingRequiredField[diagnosticSourceKey(diagnostic)+"/name"] ||
+			diagnostic.Message == "duplicate machine name" && duplicates[diagnostic.Kind+"/"+diagnostic.Name] {
 			continue
 		}
 		diagnostics = append(diagnostics, diagnostic)
 	}
 	return diagnostics
+}
+
+func diagnosticSourceKey(diagnostic definition.Diagnostic) string {
+	return fmt.Sprintf("%s:%d:%d", diagnostic.Source.Path, diagnostic.Source.Line, diagnostic.Source.Column)
 }
 
 func demoCommand(args []string) error {
