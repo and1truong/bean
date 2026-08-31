@@ -3,6 +3,7 @@ package compiler
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -1088,6 +1089,14 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 		return appir.Field{}, false
 	}
 	redacted := nameSet(a.Policies[viewDefinition.Policy].Redact)
+	for _, match := range regexp.MustCompile(`:([a-zA-Z0-9_.]+)`).FindAllStringSubmatch(presentation.LinkRoute, -1) {
+		fieldName := match[1]
+		if !selected[fieldName] {
+			out = append(out, diagnostic("Block", name, "spec.presentation.linkRoute", "field "+fieldName+" must be selected by View "+block.View))
+		} else if redacted[fieldName] {
+			out = append(out, diagnostic("Block", name, "spec.presentation.linkRoute", "field "+fieldName+" must not be redacted by View policy "+viewDefinition.Policy))
+		}
+	}
 	for path, fieldName := range map[string]string{"titleField": presentation.TitleField, "bodyField": presentation.BodyField, "groupField": presentation.GroupField, "orderField": presentation.OrderField, "parentField": presentation.ParentField} {
 		if fieldName != "" && !selected[fieldName] {
 			out = append(out, diagnostic("Block", name, "spec.presentation."+path, "must be selected by View "+block.View))

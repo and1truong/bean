@@ -82,6 +82,11 @@ func TestBoardAndTreePresentationsValidateTypedFieldsAndActions(t *testing.T) {
 	if diagnostics = compiler.Compile("test", 1, extraInput).Diagnostics; !hasDiagnostic(diagnostics, "board", "spec.presentation.moveAction") {
 		t.Fatalf("board Action with extra required input accepted: %v", diagnostics)
 	}
+	badLink := append([]definition.Definition{}, defs...)
+	badLink[4].Spec = map[string]any{"type": "view", "view": "tasks", "presentation": map[string]any{"mode": "tree", "titleField": "title", "parentField": "parent_id", "linkRoute": "/tasks/:slug"}}
+	if diagnostics = compiler.Compile("test", 1, badLink).Diagnostics; !hasDiagnostic(diagnostics, "tree", "spec.presentation.linkRoute") {
+		t.Fatalf("unselected presentation link field accepted: %v", diagnostics)
+	}
 }
 
 func hasDiagnostic(diagnostics []definition.Diagnostic, name, path string) bool {
