@@ -78,6 +78,7 @@ describe('public rendering',()=>{
     expect(status).not.toHaveTextContent('Done')
     fireEvent.change(status,{target:{value:'in_progress'}})
     await waitFor(()=>expect(fetchMock.mock.calls.some(([input])=>String(input).includes('/api/actions/move_task'))).toBe(true))
+    await waitFor(()=>expect(fetchMock.mock.calls.filter(([input])=>String(input).includes('_block=tree'))).toHaveLength(2))
     expect(screen.getByTestId('tree-view')).toContainElement(screen.getByRole('link',{name:'Grandchild C'}))
   })
 

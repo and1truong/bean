@@ -72,6 +72,11 @@ func TestBoardAndTreePresentationsValidateTypedFieldsAndActions(t *testing.T) {
 			t.Fatalf("redacted presentation field %s accepted: %v", path, diagnostics)
 		}
 	}
+	missingTitle := append([]definition.Definition{}, defs...)
+	missingTitle[3].Spec = map[string]any{"type": "view", "view": "tasks", "presentation": map[string]any{"mode": "board", "groupField": "status", "moveAction": "move_task", "columns": []any{"todo", "done"}}}
+	if diagnostics = compiler.Compile("test", 1, missingTitle).Diagnostics; !hasDiagnostic(diagnostics, "board", "spec.presentation.titleField") {
+		t.Fatalf("board without a title field accepted: %v", diagnostics)
+	}
 	badOrder := append([]definition.Definition{}, defs...)
 	badOrder[3].Spec = map[string]any{"type": "view", "view": "tasks", "presentation": map[string]any{"mode": "board", "titleField": "title", "groupField": "status", "orderField": "title", "moveAction": "move_task", "columns": []any{"todo", "done"}}}
 	if diagnostics = compiler.Compile("test", 1, badOrder).Diagnostics; !hasDiagnostic(diagnostics, "board", "spec.presentation.orderField") {

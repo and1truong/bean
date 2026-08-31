@@ -1130,6 +1130,9 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 		}
 	}
 	if presentation.Mode == "board" {
+		if presentation.TitleField == "" {
+			out = append(out, diagnostic("Block", name, "spec.presentation.titleField", "board requires a selected title field"))
+		}
 		group, exists := fieldDefinition(presentation.GroupField)
 		if presentation.GroupField == "" || !exists || group.Type != "enum" {
 			out = append(out, diagnostic("Block", name, "spec.presentation.groupField", "board requires a selected enum field"))
