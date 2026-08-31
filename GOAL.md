@@ -1,31 +1,97 @@
-# Goal: Asana Lite local application vertical slice
+# Goal: Bean v0.6 agent-readable compiler
 
-Build and qualify a metadata-only Asana Lite reference application for one local user, with no application login or registration, while adding only generic Bean primitives.
+Turn Bean's compiler and release lifecycle into a stable machine-facing contract that coding agents can use without parsing human terminal output or inspecting Bean source code.
 
 ## Primary outcome
 
-A user can run one embedded SQLite executable, create projects, manage root tasks on a status board, open task details, create and render subtasks at arbitrary nesting depths, and upload/download multiple task attachments.
+A tool-agnostic client can initialize an application workspace, discover Bean's vocabulary, validate and repair definitions, inspect compiled meaning, preview changes, publish, and run lifecycle smoke tests using versioned JSON responses only.
 
-## Acceptance criteria
+```text
+definitions -> validate -> inspect -> plan -> diff -> publish -> test
+                     ^                                  |
+                     +-------- structured repair -------+
+```
 
-- `examples/asana/app.yaml` and feature-oriented resources define all application-specific entities, Views, Actions, Webforms, Pages, Panels, Blocks, and menus; core code contains no Asana-specific branch.
-- The public application does not advertise sign-in or registration when its compiled metadata has no authenticated application surface.
-- Projects and tasks are created through public Webforms; every task belongs to one project and has title, description, status, priority, due date, parent, and sibling position metadata.
-- A generic board presentation groups root tasks into compiler-validated status columns and moves cards only through a declared transition Action.
-- A generic tree presentation renders a flat, project-scoped View as an expandable arbitrary-depth task hierarchy using compiler-validated id, parent, title, link, and order fields.
-- Subtasks are created through an immutable parent route binding; the Action derives the project from the parent so clients cannot cross projects or create hierarchy cycles through the accepted UI.
-- A generic `file` field and Webform element accept bounded multipart uploads. File bytes and metadata are persisted transactionally with the Action, downloads use generated identifiers and safe response headers, replacement/deletion cleans up referenced blobs, and filenames never become storage paths.
-- Tasks support multiple attachments through a metadata-defined attachment Entity related to task; no attachment-specific behavior is hard-coded in core.
-- Compiler, field, Action, HTTP, React, and Playwright evidence covers invalid metadata, file limits, anonymous use, board movement, deep nesting, and upload/download.
-- Existing examples and compatibility guarantees remain green.
+## Command contract
 
-## Explicit limits
+The supported v0.6 loop is:
 
-- One Bean process, one local user, and SQLite are the acceptance deployment; existing PostgreSQL contracts must continue to compile and pass their reusable tests.
-- A project tree is bounded by the existing View limit of 200 tasks in this slice; server-recursive queries and virtualized trees are deferred.
-- Board movement is accessible without requiring drag-and-drop. Pointer drag-and-drop and sibling reordering are optional follow-up UX.
-- Attachments are bounded small operational files stored in Bean metadata storage, not external object storage, resumable uploads, media processing, or antivirus scanning.
-- Authentication, registration, assignment to users, notifications, dependencies, timeline/calendar views, and destructive schema migration are out of scope.
+```bash
+bean app init
+bean capabilities
+bean schema
+bean app validate
+bean app inspect
+bean app plan
+bean app diff
+bean app publish
+bean app test
+```
+
+Every command supports `--json`. Human output remains useful, but machine clients never need it.
+
+- `app init` creates the smallest valid source workspace, not a product template.
+- `capabilities` describes supported definition kinds, field types, Action operations, presentations, limits, and optional runtime capabilities.
+- `schema` emits or locates canonical JSON Schemas for the bundle and each definition kind.
+- `app validate` performs source loading, schema validation, compilation, and reference validation without database mutation.
+- `app inspect` returns normalized compiled meaning and resolved references for the application or one named definition.
+- `app plan` is side-effect-free and reports validation plus the migration/release plan against an optional target database.
+- `app diff` reports semantic definition and AppIR changes between the candidate and active release, ignoring source formatting.
+- `app publish` validates, plans, applies additive migration, and atomically activates the exact candidate while reporting its checksum and release identity.
+- `app test` runs compile, migration, publication, and startup smoke contracts in an isolated SQLite database. Semantic/generated business tests remain a later roadmap phase.
+
+## Machine interface
+
+- JSON responses use one documented, versioned envelope with command identity, success state, result, and diagnostics.
+- JSON stdout contains no logs or human prose. Logs go to stderr and are disabled or structured explicitly.
+- Collections and suggestions have deterministic ordering; equivalent input and state produce equivalent semantic output.
+- Exit statuses distinguish success, definition/validation refusal, command usage, and runtime failure.
+- Every public diagnostic has a stable code such as `BEAN-E1001`, a canonical source-relative path, a human message, and source location when available.
+- Diagnostics include the offending value only when it is safe and include deterministic candidate suggestions only when the compiler can derive them.
+- Stable codes and structured fields follow an explicit compatibility policy; message wording is not an API.
+- Sensitive definition inputs, secrets, passwords, file bytes, and database credentials never appear in diagnostics, inspection, plans, diffs, or test output.
+
+## Schema and introspection contract
+
+- Publish canonical schemas for the application manifest/bundle and every supported definition kind.
+- Generate schemas and capability descriptions from the same typed vocabulary or verify them against it so documentation cannot silently drift from compilation.
+- Represent cross-definition references and compiler-only semantic constraints through inspection/capabilities when JSON Schema cannot express them.
+- Include schema/API version and Bean compatibility information in machine responses.
+- Keep source-mode commands useful without a database; require a database only for comparisons or activation that depend on persisted state.
+
+## Acceptance scenario
+
+1. A black-box client creates a minimal workspace with `bean app init --json`.
+2. It discovers the vocabulary through `bean capabilities --json` and `bean schema --json`.
+3. It submits an intentionally invalid applicant-tracking definition.
+4. It repairs unknown references, invalid field use, and invalid Action transitions using only diagnostic codes, paths, candidates, schemas, and inspection.
+5. `app validate`, `app plan`, and `app diff` succeed without mutating the target database.
+6. `app publish` activates the candidate through the existing migration and immutable AppIR lifecycle.
+7. `app test` proves the candidate compiles, migrates, publishes, and starts in isolation.
+8. Repeating read-only commands against unchanged source/state produces the same normalized payload.
+
+## Measurable acceptance criteria
+
+- Every command in the supported loop has human and JSON black-box tests.
+- A JSON-only harness completes the loop without regular expressions over prose.
+- Every emitted compiler/loader diagnostic belongs to a tested stable code family; unknown/unclassified errors fail the contract suite.
+- Canonical schemas accept every maintained example and reject representative unknown fields and invalid shapes before compilation.
+- Inspect output resolves Entity, relation, View, Action, Policy, Webform, Page, and presentation references used by maintained examples.
+- Plan and diff are proven side-effect-free by database state checks.
+- JSON output is parseable on success and failure and contains no mixed log lines.
+- Existing definitions, human CLI workflows, source locations, AppIR compatibility, SQLite/PostgreSQL behavior, and atomic activation remain green.
+- A recorded repair benchmark publishes the invalid acceptance fixture without Bean source inspection or human definition edits.
+
+## Explicit non-goals
+
+- Embedding an LLM, prompt UI, or provider-specific agent logic in Bean
+- MCP or another network agent protocol; v0.6 first establishes the transport-neutral service and CLI contract
+- New CRM, calendar, chat, realtime, OAuth, storage, or infrastructure surfaces
+- Application patterns, generated realistic seed data, themes, or hosted sharing
+- New lifecycle/ownership semantic primitives
+- Generated semantic, policy, transition, or browser tests beyond lifecycle smoke checks
+- Arbitrary code, JavaScript, SQL, React, plugin, or extension escape hatches
+- Destructive migrations or broader production-readiness claims
 
 ## Terminal gates
 

@@ -1,4 +1,35 @@
-# Asana Lite local application plan
+# Bean v0.6 agent-readable compiler plan
+
+Status values: `pending`, `active`, `done`. A milestone is `done` only when its listed evidence passes.
+
+| Milestone | Deliverable | Evidence | Status |
+| --- | --- | --- | --- |
+| 0 | Freeze the CLI envelope, exit-status, diagnostic-code, schema, capability, inspect, plan, diff, publish, and test contracts | contract document, fixtures, and failing black-box tests | active |
+| 1 | Versioned JSON output and stable diagnostic taxonomy for existing validation/publication paths | CLI and compiler contract tests, including redaction and deterministic ordering | pending |
+| 2 | Canonical JSON Schemas plus capability discovery generated from or checked against compiler vocabulary | all maintained examples validate; schema drift tests pass | pending |
+| 3 | Source/application inspection and side-effect-free semantic plan/diff | compiler/release tests and database non-mutation evidence | pending |
+| 4 | Unified `app init`, `app publish`, and isolated lifecycle `app test` loop | JSON-only black-box harness and repair benchmark | pending |
+| 5 | Compatibility documentation and repository qualification | `make check` and `make build` | pending |
+
+## Working rules
+
+- Treat codes, paths, envelope fields, ordering, exit statuses, and redaction as public API.
+- Derive machine descriptions from compiler vocabulary where possible; do not maintain an unrelated second schema model.
+- Keep source-only commands database-free and make planning/diffing explicitly side-effect-free.
+- Preserve source-aware human diagnostics while adding structured output; do not regress existing CLI users.
+- Reuse the compiler, release, migration, AppIR, View, and Action services; CLI and future MCP must not fork behavior.
+- Do not add application primitives, agent-provider logic, MCP, hosting, or generated semantic tests in this goal.
+- Add failing black-box evidence before changing a public command contract and run the nearest test after every milestone.
+- Keep `GOAL.md`, `ROADMAP.md`, and `docs/progress.md` current as milestones move.
+
+## Terminal gates
+
+```bash
+make check
+make build
+```
+
+# Completed Asana Lite local application plan
 
 | Milestone | Deliverable | Evidence | Status |
 | --- | --- | --- | --- |
