@@ -34,16 +34,28 @@ func (d Diagnostics) Error() string {
 }
 
 func LoadFile(filename string) (Bundle, []Diagnostic) {
-	directory := filepath.Dir(filename)
-	bundle, diagnostics := loadFS(os.DirFS(directory), filepath.Base(filename))
-	if directory != "." {
-		prefixSources(&bundle, diagnostics, filepath.ToSlash(directory))
-	}
+	bundle, diagnostics, _ := loadFile(filename)
 	return bundle, diagnostics
 }
 
+// LoadFileForValidation reports whether every source document required to
+// validate definition dependencies was recovered successfully.
+func LoadFileForValidation(filename string) (Bundle, []Diagnostic, bool) {
+	return loadFile(filename)
+}
+
+func loadFile(filename string) (Bundle, []Diagnostic, bool) {
+	directory := filepath.Dir(filename)
+	bundle, diagnostics, complete := loadFS(os.DirFS(directory), filepath.Base(filename))
+	if directory != "." {
+		prefixSources(&bundle, diagnostics, filepath.ToSlash(directory))
+	}
+	return bundle, diagnostics, complete
+}
+
 func LoadFS(filesystem fs.FS, manifestPath string) (Bundle, []Diagnostic) {
-	return loadFS(filesystem, manifestPath)
+	bundle, diagnostics, _ := loadFS(filesystem, manifestPath)
+	return bundle, diagnostics
 }
 
 func decodeSource(reader io.Reader, sourcePath string) (Bundle, []Diagnostic) {
@@ -55,7 +67,7 @@ func decodeSource(reader io.Reader, sourcePath string) (Bundle, []Diagnostic) {
 	if len(documents) == 0 {
 		return Bundle{}, append(diagnostics, Diagnostic{Source: Position{Path: sourcePath, Line: 1, Column: 1}, Message: "application manifest is empty"})
 	}
-	root, rootDiagnostics := decodeManifest(documents[0], sourcePath)
+	root, rootDiagnostics, _ := decodeManifest(documents[0], sourcePath)
 	diagnostics = append(diagnostics, rootDiagnostics...)
 	if len(root.Resources) > 0 {
 		diagnostics = append(diagnostics, Diagnostic{Source: mappingKeyPosition(sourcePath, documentRoot(documents[0]), "resources"), Path: "resources", Message: "resources require loading from a file"})
@@ -66,24 +78,27 @@ func decodeSource(reader io.Reader, sourcePath string) (Bundle, []Diagnostic) {
 	return Bundle{Name: root.Name, Definitions: definitions}, diagnostics
 }
 
-func loadFS(filesystem fs.FS, manifestPath string) (Bundle, []Diagnostic) {
+func loadFS(filesystem fs.FS, manifestPath string) (Bundle, []Diagnostic, bool) {
 	if !fs.ValidPath(manifestPath) || manifestPath == "." {
-		return Bundle{}, []Diagnostic{{Source: Position{Path: manifestPath, Line: 1, Column: 1}, Message: "manifest path must be a relative file path"}}
+		return Bundle{}, []Diagnostic{{Source: Position{Path: manifestPath, Line: 1, Column: 1}, Message: "manifest path must be a relative file path"}}, false
 	}
 	data, err := fs.ReadFile(filesystem, manifestPath)
 	if err != nil {
-		return Bundle{}, []Diagnostic{{Source: Position{Path: manifestPath, Line: 1, Column: 1}, Message: err.Error()}}
+		return Bundle{}, []Diagnostic{{Source: Position{Path: manifestPath, Line: 1, Column: 1}, Message: err.Error()}}, false
 	}
 	documents, diagnostics := decodeYAML(data, manifestPath)
+	complete := len(diagnostics) == 0
 	if len(documents) == 0 {
-		return Bundle{}, append(diagnostics, Diagnostic{Source: Position{Path: manifestPath, Line: 1, Column: 1}, Message: "application manifest is empty"})
+		return Bundle{}, append(diagnostics, Diagnostic{Source: Position{Path: manifestPath, Line: 1, Column: 1}, Message: "application manifest is empty"}), false
 	}
-	root, rootDiagnostics := decodeManifest(documents[0], manifestPath)
+	root, rootDiagnostics, manifestComplete := decodeManifest(documents[0], manifestPath)
 	diagnostics = append(diagnostics, rootDiagnostics...)
+	complete = complete && manifestComplete
 	bundle := Bundle{Name: root.Name}
 	definitions, definitionDiagnostics := decodeDefinitions(documents[1:], root.APIVersion, manifestPath)
 	bundle.Definitions = append(bundle.Definitions, definitions...)
 	diagnostics = append(diagnostics, definitionDiagnostics...)
+	complete = complete && len(definitionDiagnostics) == 0
 
 	base := path.Dir(manifestPath)
 	seenResources := map[string]Position{}
@@ -96,6 +111,7 @@ func loadFS(filesystem fs.FS, manifestPath string) (Bundle, []Diagnostic) {
 		}
 		if !fs.ValidPath(resource) || resource == "." || strings.HasPrefix(resource, "/") {
 			diagnostics = append(diagnostics, Diagnostic{Source: position, Message: fmt.Sprintf("resource %q must be a relative path without '..'", resource)})
+			complete = false
 			continue
 		}
 		resourcePath := path.Join(base, resource)
@@ -107,6 +123,7 @@ func loadFS(filesystem fs.FS, manifestPath string) (Bundle, []Diagnostic) {
 		resourceData, readErr := fs.ReadFile(filesystem, resourcePath)
 		if readErr != nil {
 			diagnostics = append(diagnostics, Diagnostic{Source: position, Message: fmt.Sprintf("resource %q: %v", resource, readErr)})
+			complete = false
 			continue
 		}
 		resourceDocuments, resourceDiagnostics := decodeYAML(resourceData, resourcePath)
@@ -114,17 +131,18 @@ func loadFS(filesystem fs.FS, manifestPath string) (Bundle, []Diagnostic) {
 		resourceDefinitions, resourceDefinitionDiagnostics := decodeDefinitions(resourceDocuments, root.APIVersion, resourcePath)
 		bundle.Definitions = append(bundle.Definitions, resourceDefinitions...)
 		diagnostics = append(diagnostics, resourceDefinitionDiagnostics...)
+		complete = complete && len(resourceDiagnostics) == 0 && len(resourceDefinitionDiagnostics) == 0
 	}
 
 	diagnostics = append(diagnostics, duplicateDefinitionDiagnostics(bundle.Definitions)...)
-	return bundle, diagnostics
+	return bundle, diagnostics, complete
 }
 
-func decodeManifest(document *yaml.Node, sourcePath string) (manifest, []Diagnostic) {
+func decodeManifest(document *yaml.Node, sourcePath string) (manifest, []Diagnostic, bool) {
 	position := nodePosition(sourcePath, document)
 	root := documentRoot(document)
 	if root == nil || root.Kind != yaml.MappingNode {
-		return manifest{}, []Diagnostic{{Source: position, Message: "application manifest must be a mapping"}}
+		return manifest{}, []Diagnostic{{Source: position, Message: "application manifest must be a mapping"}}, false
 	}
 	diagnostics := duplicateKeyDiagnostics(root, sourcePath, "")
 	allowed := map[string]bool{"apiVersion": true, "name": true, "resources": true}
@@ -137,7 +155,7 @@ func decodeManifest(document *yaml.Node, sourcePath string) (manifest, []Diagnos
 	var result manifest
 	if err := root.Decode(&result); err != nil {
 		diagnostics = append(diagnostics, yamlDiagnostic(sourcePath, err))
-		return result, diagnostics
+		return result, diagnostics, false
 	}
 	if result.APIVersion == "" {
 		diagnostics = append(diagnostics, Diagnostic{Source: position, Path: "apiVersion", Message: "is required"})
@@ -147,7 +165,7 @@ func decodeManifest(document *yaml.Node, sourcePath string) (manifest, []Diagnos
 	if strings.TrimSpace(result.Name) == "" {
 		diagnostics = append(diagnostics, Diagnostic{Source: position, Path: "name", Message: "is required"})
 	}
-	return result, diagnostics
+	return result, diagnostics, true
 }
 
 func decodeDefinitions(documents []*yaml.Node, apiVersion, sourcePath string) ([]Definition, []Diagnostic) {

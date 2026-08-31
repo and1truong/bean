@@ -35,7 +35,17 @@ type stepSource struct {
 	Where, Condition                                 *expr.Expr
 }
 
-func Compile(appID string, version int, defs []definition.Definition) (r Result) {
+func Compile(appID string, version int, defs []definition.Definition) Result {
+	return compile(appID, version, defs, true)
+}
+
+// CompileRecovered validates independently decodable definitions without
+// validating dependencies that may be absent from an unrecovered source file.
+func CompileRecovered(appID string, version int, defs []definition.Definition) Result {
+	return compile(appID, version, defs, false)
+}
+
+func compile(appID string, version int, defs []definition.Definition, validateGraph bool) (r Result) {
 	defer func() { definition.LocateDiagnostics(defs, r.Diagnostics) }()
 	a := appir.Empty()
 	a.AppID = appID
@@ -221,7 +231,7 @@ func Compile(appID string, version int, defs []definition.Definition) (r Result)
 			a.LocalRegistration = &x
 		}
 	}
-	if len(r.Diagnostics) > 0 {
+	if !validateGraph {
 		return r
 	}
 	for name, entity := range a.Entities {

@@ -305,9 +305,12 @@ func importBundle(db string, bundle definition.Bundle) error {
 }
 
 func loadValidSource(filename string, diagnosticsOut io.Writer) (definition.Bundle, error) {
-	bundle, diagnostics := definition.LoadFile(filename)
-	result := compiler.Compile("default", 1, bundle.Definitions)
-	diagnostics = append(diagnostics, result.Diagnostics...)
+	bundle, diagnostics, complete := definition.LoadFileForValidation(filename)
+	if complete {
+		diagnostics = mergeSourceDiagnostics(diagnostics, compiler.Compile("default", 1, bundle.Definitions).Diagnostics)
+	} else {
+		diagnostics = mergeSourceDiagnostics(diagnostics, compiler.CompileRecovered("default", 1, bundle.Definitions).Diagnostics)
+	}
 	if len(diagnostics) == 0 {
 		return bundle, nil
 	}
@@ -320,6 +323,31 @@ func loadValidSource(filename string, diagnosticsOut io.Writer) (definition.Bund
 	}
 	return bundle, fmt.Errorf("application source is invalid (%d %s)", len(diagnostics), label)
 }
+
+func mergeSourceDiagnostics(loader, compiled []definition.Diagnostic) []definition.Diagnostic {
+	diagnostics := append([]definition.Diagnostic{}, loader...)
+	invalidAPIVersion := false
+	duplicates := map[string]bool{}
+	for _, diagnostic := range loader {
+		if diagnostic.Path == "apiVersion" {
+			invalidAPIVersion = true
+		}
+		if diagnostic.Message == "duplicate definition" {
+			duplicates[diagnostic.Kind+"/"+diagnostic.Name] = true
+		}
+	}
+	for _, diagnostic := range compiled {
+		if invalidAPIVersion && diagnostic.Path == "apiVersion" {
+			continue
+		}
+		if diagnostic.Message == "duplicate machine name" && duplicates[diagnostic.Kind+"/"+diagnostic.Name] {
+			continue
+		}
+		diagnostics = append(diagnostics, diagnostic)
+	}
+	return diagnostics
+}
+
 func demoCommand(args []string) error {
 	f := flag.NewFlagSet("demo", flag.ContinueOnError)
 	name := f.String("app", "cms", "reference application")
