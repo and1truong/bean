@@ -1117,6 +1117,18 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 		}
 		if presentation.MoveAction == "" || !exists || action.Entity != viewDefinition.Entity || action.Operation != "transition" || stateField != presentation.GroupField {
 			out = append(out, diagnostic("Block", name, "spec.presentation.moveAction", "must reference a transition Action for the board entity and group field"))
+		} else {
+			for inputName, inputDefinition := range action.Input {
+				if inputDefinition.Required && inputName != "id" && inputName != presentation.GroupField {
+					out = append(out, diagnostic("Block", name, "spec.presentation.moveAction", "transition Action has unsupported required input "+inputName))
+				}
+			}
+		}
+		if presentation.OrderField != "" {
+			order, orderExists := fieldDefinition(presentation.OrderField)
+			if !orderExists || order.Type != "integer" {
+				out = append(out, diagnostic("Block", name, "spec.presentation.orderField", "board order field must be an integer"))
+			}
 		}
 	}
 	if presentation.Mode == "tree" {

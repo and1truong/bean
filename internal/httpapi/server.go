@@ -353,11 +353,23 @@ func (s *Server) file(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) fileAllowed(r *http.Request, a *appir.App, id string) bool {
-	viewDefinition, exists := a.Views[r.URL.Query().Get("view")]
+	viewName := r.URL.Query().Get("view")
+	viewDefinition, exists := a.Views[viewName]
 	if !exists {
 		return false
 	}
-	requestContext := s.ctx(r)
+	bound, requestContext, err := s.boundBlockInputs(r, a, "view", viewName)
+	if err != nil {
+		return false
+	}
+	filters := queryMap(r)
+	delete(filters, "view")
+	for name, value := range bound {
+		if _, collision := filters[name]; collision {
+			return false
+		}
+		filters[name] = value
+	}
 	for _, entity := range a.Entities {
 		if viewDefinition.Entity != entity.Name {
 			continue
@@ -366,30 +378,12 @@ func (s *Server) fileAllowed(r *http.Request, a *appir.App, id string) bool {
 			if definition.Type != "file" || !stringSet(viewDefinition.Fields)[definition.Name] {
 				continue
 			}
-			rows, err := s.Actions.DB.Select(r.Context(), dbal.Select{Table: entity.Name, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: definition.Name, Value: id}, Limit: 1})
+			rows, err := s.Actions.DB.Select(r.Context(), dbal.Select{Table: entity.Name, Columns: []string{"id"}, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: definition.Name, Value: id}, Limit: 1})
 			if err != nil || len(rows) == 0 {
 				continue
 			}
-			row := map[string]any{}
-			for key, value := range rows[0] {
-				row[key] = value
-			}
-			for _, fieldDefinition := range entity.Fields {
-				if value, ok := row[fieldDefinition.Name]; ok {
-					row[fieldDefinition.Name] = field.Decode(fieldDefinition, value)
-				}
-			}
-			if entity.SoftDelete && row["deleted_at"] != nil {
-				return false
-			}
-			if viewDefinition.Policy != "" {
-				policyDefinition := a.Policies[viewDefinition.Policy]
-				if stringSet(policyDefinition.Redact)[definition.Name] {
-					return false
-				}
-				return policy.Can(policyDefinition, false, requestContext, row)
-			}
-			return policy.Can(appir.Policy{Owner: entity.Owner, Tenant: entity.Tenant}, false, requestContext, row)
+			result, runErr := s.Views.RunPage(r.Context(), a, viewName, view.Params{Filter: filters, RecordID: fmt.Sprint(rows[0]["id"]), Limit: 1}, requestContext)
+			return runErr == nil && len(result.Rows) == 1 && fmt.Sprint(result.Rows[0][definition.Name]) == id
 		}
 	}
 	return false
@@ -999,8 +993,16 @@ func decodeWebform(w http.ResponseWriter, r *http.Request, action appir.Action) 
 		var input map[string]any
 		return input, decode(w, r, &input)
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, field.MaxFileBytes+(1<<20))
-	if err := r.ParseMultipartForm(field.MaxFileBytes + (1 << 20)); err != nil {
+	fileFields := 0
+	for _, definition := range action.Input {
+		if definition.Type == "file" {
+			fileFields++
+		}
+	}
+	bodyLimit := int64(1 << 20)
+	bodyLimit += int64(fileFields) * int64(field.MaxFileBytes)
+	r.Body = http.MaxBytesReader(w, r.Body, bodyLimit)
+	if err := r.ParseMultipartForm(bodyLimit); err != nil {
 		problem(w, 400, "invalid_form", "Multipart form is invalid or too large.", requestID(r))
 		return nil, false
 	}

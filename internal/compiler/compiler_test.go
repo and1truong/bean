@@ -72,6 +72,25 @@ func TestBoardAndTreePresentationsValidateTypedFieldsAndActions(t *testing.T) {
 			t.Fatalf("redacted presentation field %s accepted: %v", path, diagnostics)
 		}
 	}
+	badOrder := append([]definition.Definition{}, defs...)
+	badOrder[3].Spec = map[string]any{"type": "view", "view": "tasks", "presentation": map[string]any{"mode": "board", "titleField": "title", "groupField": "status", "orderField": "title", "moveAction": "move_task", "columns": []any{"todo", "done"}}}
+	if diagnostics = compiler.Compile("test", 1, badOrder).Diagnostics; !hasDiagnostic(diagnostics, "board", "spec.presentation.orderField") {
+		t.Fatalf("nonnumeric board order accepted: %v", diagnostics)
+	}
+	extraInput := append([]definition.Definition{}, defs...)
+	extraInput[2].Spec = map[string]any{"entity": "task", "operation": "transition", "input": map[string]any{"reason": map[string]any{"type": "string", "required": true}}, "transitions": map[string]any{"todo": []any{"done"}, "done": []any{"todo"}}}
+	if diagnostics = compiler.Compile("test", 1, extraInput).Diagnostics; !hasDiagnostic(diagnostics, "board", "spec.presentation.moveAction") {
+		t.Fatalf("board Action with extra required input accepted: %v", diagnostics)
+	}
+}
+
+func hasDiagnostic(diagnostics []definition.Diagnostic, name, path string) bool {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Name == name && diagnostic.Path == path {
+			return true
+		}
+	}
+	return false
 }
 
 func TestAdminResourceReferencesAreValidated(t *testing.T) {

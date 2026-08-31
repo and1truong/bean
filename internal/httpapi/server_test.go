@@ -20,6 +20,7 @@ import (
 	"github.com/beanruntime/bean/internal/compiler"
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/definition"
+	"github.com/beanruntime/bean/internal/field"
 )
 
 func TestMultipartWebformStoresAndDownloadsFile(t *testing.T) {
@@ -32,9 +33,10 @@ func TestMultipartWebformStoresAndDownloadsFile(t *testing.T) {
 	bundle := definition.Bundle{Name: "upload", Definitions: []definition.Definition{
 		{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "public_access"}, Spec: map[string]any{}},
 		{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "restricted_access"}, Spec: map[string]any{"authenticated": true}},
-		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "asset"}, Spec: map[string]any{"policy": "public_access", "fields": []any{map[string]any{"name": "label", "type": "string", "required": true}, map[string]any{"name": "enabled", "type": "boolean", "required": true}, map[string]any{"name": "file", "type": "file", "required": true}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "asset"}, Spec: map[string]any{"policy": "public_access", "fields": []any{map[string]any{"name": "label", "type": "string", "required": true}, map[string]any{"name": "enabled", "type": "boolean", "required": true}, map[string]any{"name": "status", "type": "enum", "options": []any{"draft", "published"}, "required": true}, map[string]any{"name": "file", "type": "file", "required": true}, map[string]any{"name": "thumbnail", "type": "file"}}}},
 		{APIVersion: "bean/v1alpha1", Kind: "View", Metadata: definition.Metadata{Name: "restricted_assets"}, Spec: map[string]any{"entity": "asset", "policy": "restricted_access", "fields": []any{"id", "file"}}},
-		{APIVersion: "bean/v1alpha1", Kind: "Webform", Metadata: definition.Metadata{Name: "upload_asset"}, Spec: map[string]any{"action": "asset_create", "elements": []any{map[string]any{"name": "label", "type": "text", "required": true}, map[string]any{"name": "enabled", "type": "checkbox", "required": true}, map[string]any{"name": "file", "type": "file", "required": true}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "View", Metadata: definition.Metadata{Name: "published_assets"}, Spec: map[string]any{"entity": "asset", "fields": []any{"id", "file"}, "filter": map[string]any{"left": map[string]any{"source": "record", "name": "status"}, "op": "eq", "right": map[string]any{"source": "literal", "literal": "published"}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Webform", Metadata: definition.Metadata{Name: "upload_asset"}, Spec: map[string]any{"action": "asset_create", "elements": []any{map[string]any{"name": "label", "type": "text", "required": true}, map[string]any{"name": "enabled", "type": "checkbox", "required": true}, map[string]any{"name": "status", "type": "select", "required": true}, map[string]any{"name": "file", "type": "file", "required": true}, map[string]any{"name": "thumbnail", "type": "file"}}}},
 	}}
 	if err = runtime.Store.SaveBundle(ctx, "default", bundle); err != nil {
 		t.Fatal(err)
@@ -46,11 +48,18 @@ func TestMultipartWebformStoresAndDownloadsFile(t *testing.T) {
 	writer := multipart.NewWriter(&body)
 	_ = writer.WriteField("label", "Plan")
 	_ = writer.WriteField("enabled", "true")
+	_ = writer.WriteField("status", "published")
+	primaryContent := bytes.Repeat([]byte("a"), (1<<20)+1024)
 	part, err := writer.CreateFormFile("file", "../plan.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _ = part.Write([]byte("hello attachment"))
+	_, _ = part.Write(primaryContent)
+	thumbnail, err := writer.CreateFormFile("thumbnail", "thumbnail.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = thumbnail.Write(bytes.Repeat([]byte("b"), field.MaxFileBytes))
 	_ = writer.Close()
 	request := httptest.NewRequest(http.MethodPost, "/api/webforms/upload_asset/submit", &body)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
@@ -69,6 +78,23 @@ func TestMultipartWebformStoresAndDownloadsFile(t *testing.T) {
 			t.Fatalf("download without an authorized View leaked with status %d", denied.Code)
 		}
 	}
+	publishedPath := "/api/files/" + fileID + "?view=published_assets"
+	published := httptest.NewRecorder()
+	runtime.HTTP.Handler().ServeHTTP(published, httptest.NewRequest(http.MethodGet, publishedPath, nil))
+	if published.Code != http.StatusOK {
+		t.Fatalf("published View download status=%d", published.Code)
+	}
+	if update := serve(t, runtime.HTTP.Handler(), http.MethodPost, "/api/actions/asset_update", map[string]any{"id": result.Data["id"], "status": "draft"}, nil, ""); update.Code != http.StatusOK {
+		t.Fatalf("draft update status=%d body=%s", update.Code, update.Body.String())
+	}
+	draft := httptest.NewRecorder()
+	runtime.HTTP.Handler().ServeHTTP(draft, httptest.NewRequest(http.MethodGet, publishedPath, nil))
+	if draft.Code != http.StatusNotFound {
+		t.Fatalf("View predicate bypassed with status %d", draft.Code)
+	}
+	if update := serve(t, runtime.HTTP.Handler(), http.MethodPost, "/api/actions/asset_update", map[string]any{"id": result.Data["id"], "status": "published"}, nil, ""); update.Code != http.StatusOK {
+		t.Fatalf("publish update status=%d body=%s", update.Code, update.Body.String())
+	}
 	filePath := "/api/files/" + fileID + "?view=asset_list"
 	bundle.Definitions[0].Spec = map[string]any{"condition": map[string]any{"left": map[string]any{"source": "record", "name": "enabled"}, "op": "eq", "right": map[string]any{"source": "literal", "literal": true}}}
 	if err = runtime.Store.SaveBundle(ctx, "default", bundle); err != nil {
@@ -79,8 +105,8 @@ func TestMultipartWebformStoresAndDownloadsFile(t *testing.T) {
 	}
 	download := httptest.NewRecorder()
 	runtime.HTTP.Handler().ServeHTTP(download, httptest.NewRequest(http.MethodGet, filePath, nil))
-	if download.Code != http.StatusOK || download.Body.String() != "hello attachment" || !strings.Contains(download.Header().Get("Content-Disposition"), "plan.txt") || strings.Contains(download.Header().Get("Content-Disposition"), "..") {
-		t.Fatalf("download status=%d headers=%v body=%q", download.Code, download.Header(), download.Body.String())
+	if download.Code != http.StatusOK || !bytes.Equal(download.Body.Bytes(), primaryContent) || !strings.Contains(download.Header().Get("Content-Disposition"), "plan.txt") || strings.Contains(download.Header().Get("Content-Disposition"), "..") {
+		t.Fatalf("download status=%d headers=%v body length=%d", download.Code, download.Header(), download.Body.Len())
 	}
 	bundle.Definitions[0].Spec = map[string]any{"authenticated": true}
 	if err = runtime.Store.SaveBundle(ctx, "default", bundle); err != nil {
@@ -102,8 +128,8 @@ func TestMultipartWebformStoresAndDownloadsFile(t *testing.T) {
 	authorizedRequest.AddCookie(login.Result().Cookies()[0])
 	authorized := httptest.NewRecorder()
 	runtime.HTTP.Handler().ServeHTTP(authorized, authorizedRequest)
-	if authorized.Code != http.StatusOK || authorized.Body.String() != "hello attachment" {
-		t.Fatalf("authorized download status=%d body=%q", authorized.Code, authorized.Body.String())
+	if authorized.Code != http.StatusOK || !bytes.Equal(authorized.Body.Bytes(), primaryContent) {
+		t.Fatalf("authorized download status=%d body length=%d", authorized.Code, authorized.Body.Len())
 	}
 	bundle.Definitions[0].Spec = map[string]any{"authenticated": true, "redact": []any{"file"}}
 	if err = runtime.Store.SaveBundle(ctx, "default", bundle); err != nil {
