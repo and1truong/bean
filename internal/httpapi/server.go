@@ -26,6 +26,7 @@ import (
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/definition"
+	"github.com/beanruntime/bean/internal/expr"
 	"github.com/beanruntime/bean/internal/field"
 	"github.com/beanruntime/bean/internal/kernel"
 	"github.com/beanruntime/bean/internal/page"
@@ -118,7 +119,7 @@ func (s *Server) manifest(w http.ResponseWriter, _ *http.Request) {
 	}
 	authNavigation := a.LocalRegistration != nil || len(a.Roles) > 0
 	for _, definition := range a.Policies {
-		authNavigation = authNavigation || definition.Authenticated || definition.Owner || definition.Tenant || len(definition.ReadRoles) > 0 || len(definition.WriteRoles) > 0
+		authNavigation = authNavigation || definition.Authenticated || definition.Owner || definition.Tenant || len(definition.ReadRoles) > 0 || len(definition.WriteRoles) > 0 || authenticationCondition(definition.Condition)
 	}
 	for _, entity := range a.Entities {
 		authNavigation = authNavigation || entity.Owner || entity.Tenant
@@ -212,6 +213,23 @@ func (s *Server) adminResourceRecord(w http.ResponseWriter, r *http.Request) {
 	}
 	write(w, 200, map[string]any{"data": result.Rows[0]})
 }
+func authenticationCondition(condition *expr.Expr) bool {
+	if condition == nil {
+		return false
+	}
+	for _, value := range []*expr.Value{condition.Left, condition.Right} {
+		if value != nil && (value.Source == "user" || value.Source == "tenant") {
+			return true
+		}
+	}
+	for i := range condition.Args {
+		if authenticationCondition(&condition.Args[i]) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 	c, session, ok := s.requestContext(r)
 	if !ok {

@@ -111,18 +111,27 @@ func TestMultipartWebformStoresAndDownloadsFile(t *testing.T) {
 	}
 }
 
-func TestManifestKeepsAuthenticationNavigationForImplicitEntityScopes(t *testing.T) {
-	for _, scope := range []string{"owner", "tenant"} {
-		t.Run(scope, func(t *testing.T) {
+func TestManifestKeepsAuthenticationNavigationForImplicitRequirements(t *testing.T) {
+	entity := func(scope string) definition.Definition {
+		return definition.Definition{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "item"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}}, scope: true}}
+	}
+	cases := map[string][]definition.Definition{
+		"owner":  {entity("owner")},
+		"tenant": {entity("tenant")},
+		"user condition": {
+			{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "assigned"}, Spec: map[string]any{"condition": map[string]any{"left": map[string]any{"source": "record", "name": "assignee_id"}, "op": "eq", "right": map[string]any{"source": "user", "name": "id"}}}},
+			{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "item"}, Spec: map[string]any{"policy": "assigned", "fields": []any{map[string]any{"name": "assignee_id", "type": "string"}}}},
+		},
+	}
+	for name, definitions := range cases {
+		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
-			runtime, err := bootstrap.Open(ctx, filepath.Join(t.TempDir(), scope+".db"), false)
+			runtime, err := bootstrap.Open(ctx, filepath.Join(t.TempDir(), "manifest.db"), false)
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer runtime.DB.Close()
-			entity := map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}}, scope: true}
-			bundle := definition.Bundle{Name: scope, Definitions: []definition.Definition{{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "item"}, Spec: entity}}}
-			if err = runtime.Store.SaveBundle(ctx, "default", bundle); err != nil {
+			if err = runtime.Store.SaveBundle(ctx, "default", definition.Bundle{Name: name, Definitions: definitions}); err != nil {
 				t.Fatal(err)
 			}
 			if _, diagnostics, publishErr := runtime.Store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) > 0 {
