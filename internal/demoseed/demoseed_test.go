@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/beanruntime/bean/internal/appir"
+	"github.com/beanruntime/bean/internal/expr"
 	fieldpkg "github.com/beanruntime/bean/internal/field"
 )
 
@@ -71,6 +72,33 @@ func TestGenerateRejectsRepeatedUniqueValuesBeforeSeeding(t *testing.T) {
 			t.Fatalf("error=%v", err)
 		}
 	})
+	t.Run("system field", func(t *testing.T) {
+		app := appir.Empty()
+		app.Entities["sample"] = appir.Entity{Name: "sample", Fields: []appir.Field{{Name: "name", Type: "string", Required: true}}, Unique: [][]string{{"version"}}}
+		app.DemoSeed = &appir.DemoSeed{Name: "demo", Entities: map[string]appir.DemoSeedEntity{"sample": {Count: 2}}}
+		if _, err := Generate(app, 42); err == nil || !strings.Contains(err.Error(), "unique constraint sample(version)") {
+			t.Fatalf("error=%v", err)
+		}
+	})
+}
+
+func TestVerificationAppBuildsUnrestrictedCompleteViews(t *testing.T) {
+	app := appir.Empty()
+	app.Entities["sample"] = appir.Entity{Name: "sample", Owner: true, Tenant: true, SoftDelete: true, Fields: []appir.Field{{Name: "name", Type: "string"}}}
+	filter := &expr.Expr{}
+	app.Views["sample_list"] = appir.View{Name: "sample_list", Entity: "other", Fields: []string{"name"}, Relationships: []appir.ViewRelationship{{Name: "related"}}, Filter: filter, ContextFilter: filter, GroupBy: []string{"name"}, Aggregates: []appir.Aggregate{{Function: "count", Field: "id", Alias: "total"}}, Policy: "scoped", FieldFilters: map[string]string{"name": "markdown"}, MaxLimit: 2}
+	app.DemoSeed = &appir.DemoSeed{Name: "demo", Entities: map[string]appir.DemoSeedEntity{"sample": {Count: 1}}}
+	verification, err := verificationApp(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := verification.Views["sample_list"]
+	if view.Entity != "sample" || !reflect.DeepEqual(view.Fields, []string{"id", "name", "owner_id", "tenant_id", "deleted_at", "created_at", "updated_at", "version"}) || view.Filter != nil || view.ContextFilter != nil || len(view.Relationships) != 0 || len(view.GroupBy) != 0 || len(view.Aggregates) != 0 || len(view.FieldFilters) != 0 {
+		t.Fatalf("verification View=%+v", view)
+	}
+	if view.Policy == "" || verification.Policies[view.Policy].Name != view.Policy || verification.Entities["sample"].SoftDelete {
+		t.Fatalf("verification scope was not removed: view=%+v entity=%+v", view, verification.Entities["sample"])
+	}
 }
 
 func TestGenerateCoversSupportedScalarTypesAndSkipsUnsafeFields(t *testing.T) {

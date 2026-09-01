@@ -630,9 +630,12 @@ func validate(a *appir.App) []definition.Diagnostic {
 					if _, seeded := a.DemoSeed.Entities[field.Relation.Entity]; !seeded {
 						out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path, "requires seeded relation Entity "+field.Relation.Entity))
 					} else if field.Relation.TargetField != "id" {
-						target, exists := entityFieldDefinition(a.Entities[field.Relation.Entity], field.Relation.TargetField)
+						targetEntity := a.Entities[field.Relation.Entity]
+						target, exists := entityFieldDefinition(targetEntity, field.Relation.TargetField)
 						if exists && (target.Sensitive || target.Type == "password" || target.Type == "file") {
 							out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path, "cannot generate relation target field "+field.Relation.Entity+"."+field.Relation.TargetField))
+						} else if !exists && fieldSet(targetEntity)[field.Relation.TargetField] {
+							out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path, "cannot generate relation target system field "+field.Relation.Entity+"."+field.Relation.TargetField))
 						}
 					}
 				}
@@ -641,23 +644,6 @@ func validate(a *appir.App) []definition.Diagnostic {
 				}
 				if field.Unique && field.Type == "enum" && seed.Count > len(field.Options) {
 					out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path+".count", "exceeds the unique enum options available to field "+field.Name))
-				}
-			}
-			verificationView := a.Views[entityName+"_list"]
-			if verificationView.Entity != entityName {
-				out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path, "requires "+entityName+"_list to read Entity "+entityName+" for replay verification"))
-			}
-			selected := nameSet(verificationView.Fields)
-			for _, field := range entity.Fields {
-				if !selected[field.Name] {
-					out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path, "requires "+entityName+"_list to select field "+field.Name+" for replay verification"))
-				}
-			}
-			if policyDefinition, exists := a.Policies[verificationView.Policy]; exists {
-				for _, fieldName := range policyDefinition.Redact {
-					if selected[fieldName] {
-						out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path, "cannot verify redacted seed field "+fieldName+" through "+entityName+"_list"))
-					}
 				}
 			}
 			total += seed.Count

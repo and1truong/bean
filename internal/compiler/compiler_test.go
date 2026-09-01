@@ -203,17 +203,16 @@ func TestDemoSeedRejectsRequiredRelationCycles(t *testing.T) {
 	}
 }
 
-func TestDemoSeedRejectsImpossibleUniqueValuesAndPartialVerificationView(t *testing.T) {
+func TestDemoSeedRejectsImpossibleUniqueValues(t *testing.T) {
 	definitions := []definition.Definition{
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "sample"}, Spec: map[string]any{"fields": []any{
 			map[string]any{"name": "enabled", "type": "boolean", "unique": true},
 			map[string]any{"name": "state", "type": "enum", "unique": true, "options": []any{"one", "two"}},
 		}}},
-		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "sample_list"}, Spec: map[string]any{"entity": "sample", "fields": []any{"id", "enabled"}}},
 		{APIVersion: definition.APIVersion, Kind: "DemoSeed", Metadata: definition.Metadata{Name: "demo"}, Spec: map[string]any{"entities": map[string]any{"sample": map[string]any{"count": 3}}}},
 	}
 	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
-	if !hasDiagnostic(diagnostics, "demo", "spec.entities.sample.count") || !hasDiagnostic(diagnostics, "demo", "spec.entities.sample") {
+	if !hasDiagnostic(diagnostics, "demo", "spec.entities.sample.count") {
 		t.Fatalf("impossible seed accepted: %v", diagnostics)
 	}
 }
@@ -226,6 +225,17 @@ func TestDemoSeedRejectsUnsupportedRequiredRelationTarget(t *testing.T) {
 	}
 	if diagnostics := compiler.Compile("test", 1, definitions).Diagnostics; !hasDiagnostic(diagnostics, "demo", "spec.entities.contact") {
 		t.Fatalf("unsupported target accepted: %v", diagnostics)
+	}
+}
+
+func TestDemoSeedRejectsRequiredRelationTargetingSystemField(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "account"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "name", "type": "string"}}}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "contact"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "account_version", "type": "relation", "required": true, "relation": map[string]any{"entity": "account", "kind": "many-to-one", "targetField": "version"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "DemoSeed", Metadata: definition.Metadata{Name: "demo"}, Spec: map[string]any{"entities": map[string]any{"account": map[string]any{"count": 1}, "contact": map[string]any{"count": 1}}}},
+	}
+	if diagnostics := compiler.Compile("test", 1, definitions).Diagnostics; !hasDiagnostic(diagnostics, "demo", "spec.entities.contact") {
+		t.Fatalf("system target accepted: %v", diagnostics)
 	}
 }
 

@@ -200,6 +200,43 @@ func TestAgentDemoSeedVerifiesCustomCreateActionOutput(t *testing.T) {
 	}
 }
 
+func TestAgentDemoSeedInspectsAllPhysicalRowsBeforeWriting(t *testing.T) {
+	directory := t.TempDir()
+	manifest := filepath.Join(directory, "app.yaml")
+	database := filepath.Join(directory, "bean.db")
+	source := "apiVersion: bean/v1alpha1\nname: Partial Target\n---\nkind: Entity\nname: a_empty\nfields:\n  - {name: name, type: string, required: true}\n---\nkind: Entity\nname: z_existing\nfields:\n  - {name: name, type: string, required: true}\n---\nkind: View\nname: z_existing_list\nentity: z_existing\nfields: [id, name, created_at, updated_at, version]\nfilter:\n  left: {name: name, source: record}\n  op: eq\n  right: {literal: generated, source: literal}\ndefaultLimit: 1\nmaxLimit: 1\n---\nkind: DemoSeed\nname: demo\nentities:\n  a_empty: {count: 1}\n  z_existing: {count: 1}\n"
+	if err := os.WriteFile(manifest, []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if exit := execute([]string{"app", "publish", "--file", manifest, "--db", database, "--json"}, &stdout, &stderr); exit != exitOK {
+		t.Fatalf("publish exit=%d stderr=%s stdout=%s", exit, stderr.String(), stdout.String())
+	}
+	runtime, err := bootstrap.Open(context.Background(), database, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stamp := "2026-01-01T00:00:00Z"
+	if _, err = runtime.DB.Insert(context.Background(), dbal.Insert{Table: "z_existing", Values: map[string]dbal.Value{"id": "00000000-0000-4000-8000-000000000001", "name": "hidden", "created_at": stamp, "updated_at": stamp, "version": 1}}); err != nil {
+		t.Fatal(err)
+	}
+	runtime.DB.Close()
+	stdout.Reset()
+	stderr.Reset()
+	if exit := execute([]string{"demo", "seed", "--file", manifest, "--db", database, "--json"}, &stdout, &stderr); exit != exitRuntime || !strings.Contains(stdout.String(), "non-empty target") {
+		t.Fatalf("seed exit=%d stderr=%s stdout=%s", exit, stderr.String(), stdout.String())
+	}
+	runtime, err = bootstrap.Open(context.Background(), database, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := runtime.DB.Select(context.Background(), dbal.Select{Table: "a_empty"})
+	runtime.DB.Close()
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("seed wrote before inspecting all entities: rows=%v err=%v", rows, err)
+	}
+}
+
 func TestAgentCapabilitiesAndSchemaAreSelfDescribing(t *testing.T) {
 	for _, test := range []struct {
 		args    []string

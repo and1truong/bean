@@ -67,7 +67,7 @@ func Generate(app *appir.App, seed int64) ([]Record, error) {
 			generated[entityName] = append(generated[entityName], record)
 		}
 	}
-	if err := validateGeneratedUniqueness(app, records); err != nil {
+	if err := validateGeneratedUniqueness(app, records, seed); err != nil {
 		return nil, err
 	}
 	return records, nil
@@ -90,7 +90,7 @@ func Run(ctx context.Context, database dbal.Database, app *appir.App, seed int64
 	}
 	sort.Strings(roles)
 	request := beanctx.Request{User: &beanctx.User{ID: stableUUID(seed, "owner", 0), Email: "demo@bean.local", Roles: roles}, TenantID: stableUUID(seed, "tenant", 0), RequestID: fmt.Sprintf("demo-seed:%d", seed)}
-	empty, exact, err := inspectTarget(ctx, database, app, records, request)
+	empty, exact, err := inspectTarget(ctx, database, app, records, request, seed)
 	if err != nil {
 		return Result{}, err
 	}
@@ -120,7 +120,7 @@ func Run(ctx context.Context, database dbal.Database, app *appir.App, seed int64
 			return Result{}, fmt.Errorf("seed %s: %w", record.Entity, err)
 		}
 	}
-	_, exact, err = inspectTarget(ctx, database, app, records, request)
+	_, exact, err = inspectTarget(ctx, database, app, records, request, seed)
 	if err != nil {
 		return Result{}, err
 	}
@@ -130,7 +130,11 @@ func Run(ctx context.Context, database dbal.Database, app *appir.App, seed int64
 	return result, nil
 }
 
-func inspectTarget(ctx context.Context, database dbal.Database, app *appir.App, records []Record, request beanctx.Request) (bool, bool, error) {
+func inspectTarget(ctx context.Context, database dbal.Database, app *appir.App, records []Record, request beanctx.Request, seed int64) (bool, bool, error) {
+	verification, err := verificationApp(app)
+	if err != nil {
+		return false, false, fmt.Errorf("prepare seed verification Views: %w", err)
+	}
 	expected := map[string]map[string]Record{}
 	for _, record := range records {
 		if expected[record.Entity] == nil {
@@ -139,12 +143,18 @@ func inspectTarget(ctx context.Context, database dbal.Database, app *appir.App, 
 		expected[record.Entity][record.ID] = record
 	}
 	empty := true
+	exact := true
 	views := view.Service{DB: database}
+	entityNames := make([]string, 0, len(app.DemoSeed.Entities))
 	for entityName := range app.DemoSeed.Entities {
+		entityNames = append(entityNames, entityName)
+	}
+	sort.Strings(entityNames)
+	for _, entityName := range entityNames {
 		rows := []dbal.Row{}
 		cursor := ""
 		for {
-			page, err := views.RunPage(ctx, app, entityName+"_list", view.Params{Limit: 200, Cursor: cursor}, request)
+			page, err := views.RunPage(ctx, verification, entityName+"_list", view.Params{Limit: 200, Cursor: cursor}, request)
 			if err != nil {
 				return false, false, fmt.Errorf("verify seeded View %s_list: %w", entityName, err)
 			}
@@ -158,29 +168,81 @@ func inspectTarget(ctx context.Context, database dbal.Database, app *appir.App, 
 			empty = false
 		}
 		if len(rows) != len(expected[entityName]) {
-			return empty, false, nil
+			exact = false
+			continue
 		}
 		entity := app.Entities[entityName]
 		for _, row := range rows {
 			record, exists := expected[entityName][fmt.Sprint(row["id"])]
 			if !exists {
-				return empty, false, nil
+				exact = false
+				break
 			}
-			for _, field := range entity.Fields {
-				value, generated := record.Values[field.Name]
-				if !generated && emptyValue(row[field.Name]) {
+			for _, fieldName := range verificationFields(entity)[1:] {
+				value, generated := generatedConstraintValue(app, entityName, record, fieldName, seed)
+				if !generated && emptyValue(row[fieldName]) {
 					continue
 				}
-				if canonical(row[field.Name]) != canonical(value) {
-					return empty, false, nil
+				if canonical(row[fieldName]) != canonical(value) {
+					exact = false
+					break
 				}
 			}
 		}
 	}
-	return empty, !empty, nil
+	return empty, exact && !empty, nil
 }
 
-func validateGeneratedUniqueness(app *appir.App, records []Record) error {
+func verificationApp(app *appir.App) (*appir.App, error) {
+	verification, err := app.Clone()
+	if err != nil {
+		return nil, err
+	}
+	const policyName = "__bean_demo_seed_verification"
+	verification.Policies[policyName] = appir.Policy{Name: policyName}
+	for entityName := range app.DemoSeed.Entities {
+		entity := verification.Entities[entityName]
+		fields := verificationFields(entity)
+		if entity.SoftDelete {
+			entity.SoftDelete = false
+			verification.Entities[entityName] = entity
+		}
+		viewName := entityName + "_list"
+		viewDefinition := verification.Views[viewName]
+		viewDefinition.Name = viewName
+		viewDefinition.Entity = entityName
+		viewDefinition.Fields = fields
+		viewDefinition.Relationships = nil
+		viewDefinition.Filter = nil
+		viewDefinition.ContextFilter = nil
+		viewDefinition.FieldFilters = nil
+		viewDefinition.Sort = nil
+		viewDefinition.GroupBy = nil
+		viewDefinition.Aggregates = nil
+		viewDefinition.Policy = policyName
+		verification.Views[viewName] = viewDefinition
+	}
+	return verification, nil
+}
+
+func verificationFields(entity appir.Entity) []string {
+	fields := []string{"id"}
+	for _, field := range entity.Fields {
+		fields = append(fields, field.Name)
+	}
+	if entity.Owner {
+		fields = append(fields, "owner_id")
+	}
+	if entity.Tenant {
+		fields = append(fields, "tenant_id")
+	}
+	if entity.SoftDelete {
+		fields = append(fields, "deleted_at")
+	}
+	return append(fields, "created_at", "updated_at", "version")
+}
+
+func validateGeneratedUniqueness(app *appir.App, records []Record, seed int64) error {
 	byEntity := map[string][]Record{}
 	for _, record := range records {
 		byEntity[record.Entity] = append(byEntity[record.Entity], record)
@@ -209,10 +271,7 @@ func validateGeneratedUniqueness(app *appir.App, records []Record) error {
 				values := make([]any, 0, len(fields))
 				complete := true
 				for _, fieldName := range fields {
-					value, exists := record.Values[fieldName]
-					if fieldName == "id" {
-						value, exists = record.ID, true
-					}
+					value, exists := generatedConstraintValue(app, entityName, record, fieldName, seed)
 					if !exists || value == nil {
 						complete = false
 						break
@@ -231,6 +290,33 @@ func validateGeneratedUniqueness(app *appir.App, records []Record) error {
 		}
 	}
 	return nil
+}
+
+func generatedConstraintValue(app *appir.App, entityName string, record Record, fieldName string, seed int64) (any, bool) {
+	entity := app.Entities[entityName]
+	switch fieldName {
+	case "id":
+		return record.ID, true
+	case "created_at", "updated_at":
+		value := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC).Add(time.Duration(seed%8760) * time.Hour).Format(time.RFC3339Nano)
+		return value, true
+	case "version":
+		return 1, true
+	case "owner_id":
+		if entity.Owner {
+			return stableUUID(seed, "owner", 0), true
+		}
+	case "tenant_id":
+		if entity.Tenant {
+			return stableUUID(seed, "tenant", 0), true
+		}
+	case "deleted_at":
+		if entity.SoftDelete {
+			return nil, true
+		}
+	}
+	value, exists := record.Values[fieldName]
+	return value, exists
 }
 
 func emptyValue(value any) bool {
