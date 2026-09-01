@@ -157,6 +157,26 @@ func TestEveryOperatorEvaluates(t *testing.T) {
 	}
 }
 
+func TestNumericComparisonsPreserveIntegerPrecision(t *testing.T) {
+	left := int64(1 << 53)
+	right := left + 1
+	environment := rule.Environment{Input: map[string]any{"left": left, "right": right}}
+	for _, test := range []struct {
+		expression rule.Expression
+		want       bool
+	}{
+		{expression: op("eq", source("input", "left"), source("input", "right")), want: false},
+		{expression: op("ne", source("input", "left"), source("input", "right")), want: true},
+		{expression: op("lt", source("input", "left"), source("input", "right")), want: true},
+		{expression: op("gte", source("input", "left"), source("input", "right")), want: false},
+	} {
+		got, err := rule.Evaluate(test.expression, environment)
+		if err != nil || got != test.want {
+			t.Fatalf("expression=%s value=%v err=%v want=%v", test.expression.Op, got, err, test.want)
+		}
+	}
+}
+
 func TestTypedEvaluationRejectsRuntimeResultMismatch(t *testing.T) {
 	if _, err := rule.EvaluateTyped(literal("true"), rule.Environment{}, rule.Boolean); err == nil {
 		t.Fatal("string result accepted as boolean")

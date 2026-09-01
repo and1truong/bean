@@ -189,11 +189,14 @@ func requiredLookup(values map[string]any, name, path string) (any, error) {
 }
 
 func valuesEqual(left, right any) bool {
-	leftNumber, leftInteger, leftNumeric := numeric(left)
-	rightNumber, rightInteger, rightNumeric := numeric(right)
+	leftInteger, leftIsInteger := integerValue(left)
+	rightInteger, rightIsInteger := integerValue(right)
+	if leftIsInteger && rightIsInteger {
+		return leftInteger == rightInteger
+	}
+	leftNumber, _, leftNumeric := numeric(left)
+	rightNumber, _, rightNumeric := numeric(right)
 	if leftNumeric && rightNumeric {
-		_ = leftInteger
-		_ = rightInteger
 		return leftNumber == rightNumber
 	}
 	return reflect.DeepEqual(left, right)
@@ -214,6 +217,17 @@ func ordered(left, right any, operator, path string) (bool, error) {
 			}
 		}
 		return false, typeError(path, operator+" requires numbers, dates, or datetimes")
+	}
+	leftInteger, leftIsInteger := integerValue(left)
+	rightInteger, rightIsInteger := integerValue(right)
+	if leftIsInteger && rightIsInteger {
+		comparison := 0
+		if leftInteger < rightInteger {
+			comparison = -1
+		} else if leftInteger > rightInteger {
+			comparison = 1
+		}
+		return compareResult(comparison, operator), nil
 	}
 	leftNumber, _, leftOK := numeric(left)
 	rightNumber, _, rightOK := numeric(right)

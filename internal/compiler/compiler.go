@@ -1313,6 +1313,10 @@ func validateActionRuleBinding(actionName, path string, action appir.Action, ite
 			out = append(out, missingFieldDiagnostic("Action", actionName, path, inputName, false))
 			continue
 		}
+		if actionInput.Sensitive {
+			out = append(out, ruleConsumerDiagnostic("Action", actionName, path, "Rule cannot read sensitive Action input "+inputName))
+			continue
+		}
 		expected, expectedOK := rule.TypeForField(item.Input[inputName].Type)
 		actual, actualOK := rule.TypeForField(actionInput.Type)
 		if !expectedOK || !actualOK || !rule.ResultCompatible(expected, actual) || !rule.ResultCompatible(actual, expected) {

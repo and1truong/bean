@@ -363,7 +363,7 @@ func (s Service) create(ctx context.Context, tx dbal.Transaction, app *appir.App
 			row[f.Name] = input[f.Name]
 		}
 	}
-	if er := validateEntityRules(app, e, row, c); er != nil {
+	if er := validateEntityRules(app, e, completeRuleCandidate(row, e), c); er != nil {
 		return nil, er
 	}
 	if _, er := tx.Insert(ctx, dbal.Insert{Table: e.Name, Values: values}); er != nil {

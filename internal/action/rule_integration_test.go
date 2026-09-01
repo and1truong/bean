@@ -89,6 +89,32 @@ func TestEntityRuleInvariantRollsBackCRUDAndTransactionSteps(t *testing.T) {
 	}
 }
 
+func TestCreateRulesTreatAbsentOptionalAndSystemFieldsAsNull(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "document"}, Spec: map[string]any{
+			"softDelete":  true,
+			"fields":      []any{map[string]any{"name": "note", "type": "string"}},
+			"validations": map[string]any{"not_deleted": "not_deleted"},
+		}},
+		{APIVersion: definition.APIVersion, Kind: "Rule", Metadata: definition.Metadata{Name: "optional_empty"}, Spec: map[string]any{
+			"entity": "document", "result": "boolean",
+			"expression": map[string]any{"op": "is_null", "args": []any{map[string]any{"source": "this", "path": "note"}}},
+		}},
+		{APIVersion: definition.APIVersion, Kind: "Rule", Metadata: definition.Metadata{Name: "not_deleted"}, Spec: map[string]any{
+			"entity": "document", "result": "boolean",
+			"expression": map[string]any{"op": "is_null", "args": []any{map[string]any{"source": "this", "path": "deleted_at"}}},
+		}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "document_create"}, Spec: map[string]any{
+			"entity": "document", "operation": "create", "when": "optional_empty",
+		}},
+	}
+	db, app := publishRuleApp(t, definitions)
+	defer db.Close()
+	if _, err := (action.Service{DB: db}).Execute(context.Background(), app, "document_create", map[string]any{}, admin()); err != nil {
+		t.Fatalf("create with absent nullable fields failed: %v", err)
+	}
+}
+
 func TestRuleFailsClosedWhenRequestContextIsUnavailable(t *testing.T) {
 	definitions := invoiceRuleDefinitions()
 	definitions = append(definitions,

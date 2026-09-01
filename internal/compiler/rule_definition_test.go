@@ -69,6 +69,9 @@ func TestRuleDiagnosticsAreStableAndFailClosed(t *testing.T) {
 		{"forbidden input", func(defs []definition.Definition) {
 			defs[2].Spec["input"].(map[string]any)["amount"].(map[string]any)["type"] = "password"
 		}, "Rule", "spec.input.amount.type", "BEAN-E2351"},
+		{"sensitive Action input", func(defs []definition.Definition) {
+			defs[3].Spec["input"].(map[string]any)["amount"].(map[string]any)["sensitive"] = true
+		}, "Action", "spec.derive.total", "BEAN-E2351"},
 		{"missing guard", func(defs []definition.Definition) { defs[3].Spec["when"] = "missing" }, "Action", "spec.when", "BEAN-E2001"},
 		{"wrong derive result", func(defs []definition.Definition) {
 			defs[3].Spec["derive"].(map[string]any)["note"] = "calculated_total"

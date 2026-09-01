@@ -104,7 +104,27 @@ func createRuleCandidate(entity appir.Entity, input map[string]any, request bean
 	if entity.Tenant {
 		candidate["tenant_id"] = request.TenantID
 	}
-	return candidate
+	return completeRuleCandidate(candidate, entity)
+}
+
+func completeRuleCandidate(candidate dbal.Row, entity appir.Entity) dbal.Row {
+	complete := dbal.Row{"id": nil, "created_at": nil, "updated_at": nil, "version": nil}
+	for _, definition := range entity.Fields {
+		complete[definition.Name] = nil
+	}
+	if entity.Owner {
+		complete["owner_id"] = nil
+	}
+	if entity.Tenant {
+		complete["tenant_id"] = nil
+	}
+	if entity.SoftDelete {
+		complete["deleted_at"] = nil
+	}
+	for name, value := range candidate {
+		complete[name] = value
+	}
+	return complete
 }
 
 func validateEntityRules(app *appir.App, entity appir.Entity, candidate dbal.Row, request beanctx.Request) error {
