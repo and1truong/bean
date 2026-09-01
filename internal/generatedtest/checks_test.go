@@ -35,7 +35,9 @@ func TestStructuralChecksHaveStableSourceTracedOrder(t *testing.T) {
 func TestJourneyChecksExerciseStaticPagesAndViewRoutes(t *testing.T) {
 	app := appir.Empty()
 	app.Entities["note"] = appir.Entity{Name: "note"}
-	app.Views["notes"] = appir.View{Name: "notes", Entity: "note", Displays: map[string]appir.Display{"api": {Type: "json", Route: "/api/notes"}}}
+	app.Views["notes"] = appir.View{Name: "notes", Entity: "note", Displays: map[string]appir.Display{
+		"api": {Type: "json", Route: "/api/notes"}, "inline": {Type: "json"},
+	}}
 	app.Panels["home"] = appir.Panel{Name: "home", Regions: []appir.Region{{Name: "main"}}}
 	app.Pages["home"] = appir.Page{Name: "home", Route: "/", Panel: "home"}
 	handler := http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) { response.WriteHeader(http.StatusOK) })

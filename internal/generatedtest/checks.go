@@ -91,6 +91,9 @@ func JourneyChecks(ctx context.Context, app *appir.App, handler http.Handler) ([
 		}
 		for _, displayName := range sortedKeys(view.Displays) {
 			display := view.Displays[displayName]
+			if display.Route == "" {
+				continue
+			}
 			status := requestStatus(ctx, handler, display.Route)
 			check := passedCheck("generated/journey/View/"+name+"/"+displayName, "View", name, map[string]any{"route": display.Route, "display": displayName, "status": status})
 			if status != http.StatusOK {
