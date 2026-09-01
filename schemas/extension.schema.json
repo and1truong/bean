@@ -1,0 +1,202 @@
+{
+  "$defs": {
+    "github_com_beanruntime_bean_internal_appir_ExtensionRetry": {
+      "additionalProperties": false,
+      "properties": {
+        "delaySeconds": {
+          "maximum": 3600,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "maxAttempts": {
+          "maximum": 10,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "maxAttempts",
+        "delaySeconds"
+      ],
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_Field": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "relation": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_Relation"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "sensitive": {
+          "type": "boolean"
+        },
+        "type": {
+          "enum": [
+            "boolean",
+            "date",
+            "datetime",
+            "decimal",
+            "email",
+            "enum",
+            "integer",
+            "json",
+            "money",
+            "slug",
+            "string",
+            "text",
+            "url",
+            "uuid"
+          ],
+          "type": "string"
+        },
+        "unique": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_Relation": {
+      "additionalProperties": false,
+      "properties": {
+        "entity": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "targetField": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$id": "https://bean.build/schemas/extension.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "bean/v1alpha1"
+    },
+    "authentication": {
+      "enum": [
+        "bearer",
+        "none"
+      ],
+      "type": "string"
+    },
+    "endpoint": {
+      "type": "string"
+    },
+    "failure": {
+      "enum": [
+        "retry_then_fail"
+      ],
+      "type": "string"
+    },
+    "idempotency": {
+      "enum": [
+        "required"
+      ],
+      "type": "string"
+    },
+    "input": {
+      "additionalProperties": {
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_Field"
+      },
+      "type": "object"
+    },
+    "kind": {
+      "const": "Extension"
+    },
+    "name": {
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "output": {
+      "additionalProperties": {
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_Field"
+      },
+      "type": "object"
+    },
+    "permissions": {
+      "items": {
+        "enum": [
+          "network"
+        ],
+        "type": "string"
+      },
+      "maxItems": 1,
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "retry": {
+      "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ExtensionRetry"
+    },
+    "sideEffects": {
+      "items": {
+        "enum": [
+          "external_write"
+        ],
+        "type": "string"
+      },
+      "maxItems": 1,
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "timeoutSeconds": {
+      "maximum": 30,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "transaction": {
+      "enum": [
+        "after_commit"
+      ],
+      "type": "string"
+    },
+    "transport": {
+      "enum": [
+        "http"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "name",
+    "transport",
+    "endpoint",
+    "input",
+    "output",
+    "permissions",
+    "sideEffects",
+    "authentication",
+    "timeoutSeconds",
+    "retry",
+    "idempotency",
+    "transaction",
+    "failure"
+  ],
+  "title": "Bean Extension definition",
+  "type": "object"
+}

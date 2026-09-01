@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -15,6 +17,7 @@ import (
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/expr"
+	beanextension "github.com/beanruntime/bean/internal/extension"
 	"github.com/beanruntime/bean/internal/field"
 	"github.com/beanruntime/bean/internal/migration"
 	"github.com/beanruntime/bean/internal/page"
@@ -456,6 +459,8 @@ func diagnosticRule(kind, path string) definition.DiagnosticRule {
 		return definition.RuleFixture
 	case kind == "TestSuite":
 		return definition.RuleTestSuite
+	case kind == "Extension":
+		return definition.RuleExtension
 	case strings.Contains(strings.ToLower(path), "field"):
 		return definition.RuleMissingField
 	default:
@@ -529,11 +534,110 @@ type validationState struct {
 func validate(a *appir.App) []definition.Diagnostic {
 	state := &validationState{routes: map[string]string{}}
 	out := []definition.Diagnostic{}
-	for _, kind := range []string{"Theme", "DemoSeed", "Filter", "View", "Entity", "Lifecycle", "Rule", "Action", "TestSuite", "Webform", "Policy", "Block", "LocalRegistration", "Panel", "Page", "Job", "Menu", "AdminResource", "Role"} {
+	for _, kind := range []string{"Theme", "DemoSeed", "Filter", "View", "Entity", "Lifecycle", "Rule", "Extension", "Action", "TestSuite", "Webform", "Policy", "Block", "LocalRegistration", "Panel", "Page", "Job", "Menu", "AdminResource", "Role"} {
 		registered, _ := definitionKindRegistry().Lookup(kind)
 		out = append(out, registered.Validate(a, state)...)
 	}
 	return out
+}
+
+func validateExtensions(a *appir.App, _ *validationState) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
+	for _, name := range keys(a.Extensions) {
+		item := a.Extensions[name]
+		values := []struct {
+			path    string
+			actual  string
+			allowed []string
+		}{
+			{"spec.transport", item.Transport, beanextension.Transports()},
+			{"spec.authentication", item.Authentication, beanextension.Authentications()},
+			{"spec.idempotency", item.Idempotency, beanextension.IdempotencyModes()},
+			{"spec.transaction", item.Transaction, beanextension.TransactionModes()},
+			{"spec.failure", item.Failure, beanextension.FailureModes()},
+		}
+		for _, value := range values {
+			if !nameSet(value.allowed)[value.actual] {
+				out = append(out, extensionDiagnostic(name, value.path, "has no supported Extension value"))
+			}
+		}
+		if !validExtensionEndpoint(item.Endpoint) {
+			out = append(out, extensionDiagnostic(name, "spec.endpoint", "must be an absolute HTTPS URL or loopback HTTP URL without credentials, query, or fragment"))
+		}
+		if !sameStrings(item.Permissions, beanextension.Permissions()) {
+			out = append(out, extensionDiagnostic(name, "spec.permissions", "must declare exactly the supported network permission"))
+		}
+		if !sameStrings(item.SideEffects, beanextension.SideEffects()) {
+			out = append(out, extensionDiagnostic(name, "spec.sideEffects", "must declare exactly the supported external-write side effect"))
+		}
+		if item.TimeoutSeconds < beanextension.MinTimeoutSeconds || item.TimeoutSeconds > beanextension.MaxTimeoutSeconds {
+			out = append(out, extensionDiagnostic(name, "spec.timeoutSeconds", fmt.Sprintf("must be between %d and %d", beanextension.MinTimeoutSeconds, beanextension.MaxTimeoutSeconds)))
+		}
+		if item.Retry.MaxAttempts < beanextension.MinAttempts || item.Retry.MaxAttempts > beanextension.MaxAttempts {
+			out = append(out, extensionDiagnostic(name, "spec.retry.maxAttempts", fmt.Sprintf("must be between %d and %d", beanextension.MinAttempts, beanextension.MaxAttempts)))
+		}
+		if item.Retry.DelaySeconds < beanextension.MinDelaySeconds || item.Retry.DelaySeconds > beanextension.MaxDelaySeconds {
+			out = append(out, extensionDiagnostic(name, "spec.retry.delaySeconds", fmt.Sprintf("must be between %d and %d", beanextension.MinDelaySeconds, beanextension.MaxDelaySeconds)))
+		}
+		out = append(out, validateExtensionFields(name, "input", item.Input)...)
+		out = append(out, validateExtensionFields(name, "output", item.Output)...)
+	}
+	return out
+}
+
+func validateExtensionFields(name, group string, fields map[string]appir.Field) []definition.Diagnostic {
+	if len(fields) == 0 {
+		return []definition.Diagnostic{extensionDiagnostic(name, "spec."+group, "requires at least one typed field")}
+	}
+	out := []definition.Diagnostic{}
+	allowedTypes := nameSet([]string{"boolean", "date", "datetime", "decimal", "email", "enum", "integer", "json", "money", "slug", "string", "text", "url", "uuid"})
+	for _, fieldName := range keys(fields) {
+		item := fields[fieldName]
+		path := "spec." + group + "." + fieldName
+		if !testCaseName.MatchString(fieldName) || item.Name != fieldName {
+			out = append(out, extensionDiagnostic(name, path+".name", "must match its machine-name key"))
+		}
+		if !allowedTypes[item.Type] {
+			out = append(out, extensionDiagnostic(name, path+".type", "has no portable Extension field type"))
+		}
+		if item.Sensitive || item.Unique || item.Relation != nil {
+			out = append(out, extensionDiagnostic(name, path, "cannot declare sensitive, unique, or relation storage semantics"))
+		}
+		if item.Type == "enum" && len(item.Options) == 0 {
+			out = append(out, extensionDiagnostic(name, path+".options", "enum requires at least one option"))
+		}
+		if item.Type != "enum" && len(item.Options) > 0 {
+			out = append(out, extensionDiagnostic(name, path+".options", "options are only valid for enum fields"))
+		}
+	}
+	return out
+}
+
+func validExtensionEndpoint(raw string) bool {
+	parsed, err := url.ParseRequestURI(raw)
+	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return false
+	}
+	if parsed.Scheme == "https" {
+		return true
+	}
+	if parsed.Scheme != "http" {
+		return false
+	}
+	host := parsed.Hostname()
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func sameStrings(left, right []string) bool {
+	return strings.Join(left, "\x00") == strings.Join(right, "\x00")
+}
+
+func extensionDiagnostic(name, path, message string) definition.Diagnostic {
+	return definition.NewDiagnostic(definition.RuleExtension, "Extension", name, path, message)
 }
 
 func validateTheme(a *appir.App, _ *validationState) []definition.Diagnostic {

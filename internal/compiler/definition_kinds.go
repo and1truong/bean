@@ -88,6 +88,30 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 	})
 	testSuite.References = testSuiteReferences
 	testSuite.ReferenceCandidates = true
+	extensionKind := mappedDefinitionKind(appir.Extension{}, func(app *appir.App) map[string]appir.Extension { return app.Extensions }, func(name string, value *appir.Extension) {
+		value.Name = name
+		if value.Input == nil {
+			value.Input = map[string]appir.Field{}
+		}
+		if value.Output == nil {
+			value.Output = map[string]appir.Field{}
+		}
+		for fieldName, item := range value.Input {
+			if item.Name == "" {
+				item.Name = fieldName
+				value.Input[fieldName] = item
+			}
+		}
+		for fieldName, item := range value.Output {
+			if item.Name == "" {
+				item.Name = fieldName
+				value.Output[fieldName] = item
+			}
+		}
+		sort.Strings(value.Permissions)
+		sort.Strings(value.SideEffects)
+	})
+	extensionKind.ReferenceCandidates = true
 	policy := mappedDefinitionKind(appir.Policy{}, func(app *appir.App) map[string]appir.Policy { return app.Policies }, nameValue[appir.Policy](func(value *appir.Policy, name string) { value.Name = name }))
 	policy.ReferenceCandidates = true
 	filter := mappedDefinitionKind(appir.Filter{}, func(app *appir.App) map[string]appir.Filter { return app.Filters }, nameValue[appir.Filter](func(value *appir.Filter, name string) { value.Name = name }))
@@ -138,6 +162,7 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 	lifecycle.Validate = validateLifecycles
 	ruleKind.Validate = validateRules
 	testSuite.Validate = validateTestSuites
+	extensionKind.Validate = validateExtensions
 	policy.Validate = validatePolicies
 	filter.Validate = validateFilters
 	webform.Validate = validateWebforms
@@ -159,6 +184,7 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 		registry.Entry[definitionKind]{Name: "Block", Value: block},
 		registry.Entry[definitionKind]{Name: "DemoSeed", Value: demoSeed},
 		registry.Entry[definitionKind]{Name: "Entity", Value: entity},
+		registry.Entry[definitionKind]{Name: "Extension", Value: extensionKind},
 		registry.Entry[definitionKind]{Name: "Filter", Value: filter},
 		registry.Entry[definitionKind]{Name: "Job", Value: job},
 		registry.Entry[definitionKind]{Name: "Lifecycle", Value: lifecycle},

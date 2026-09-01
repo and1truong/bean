@@ -12,7 +12,8 @@ const (
 	LegacyFormat    = "bean/appir/v1"
 	LifecycleFormat = "bean/appir/v2"
 	RuleFormat      = "bean/appir/v3"
-	CurrentFormat   = "bean/appir/v4"
+	TestSuiteFormat = "bean/appir/v4"
+	CurrentFormat   = "bean/appir/v5"
 )
 
 type Field struct {
@@ -136,6 +137,18 @@ type TestSuite struct {
 	Name   string     `json:"name"`
 	Target TestTarget `json:"target"`
 	Tests  []TestCase `json:"tests"`
+}
+type ExtensionRetry struct {
+	MaxAttempts  int
+	DelaySeconds int
+}
+type Extension struct {
+	Name, Transport, Endpoint, Authentication string
+	Idempotency, Transaction, Failure         string
+	Input, Output                             map[string]Field
+	Permissions, SideEffects                  []string
+	TimeoutSeconds                            int
+	Retry                                     ExtensionRetry
 }
 type Lifecycle struct {
 	Name, Entity, StateField, Initial string
@@ -264,6 +277,7 @@ type App struct {
 	Lifecycles        map[string]Lifecycle
 	Rules             map[string]Rule
 	TestSuites        map[string]TestSuite
+	Extensions        map[string]Extension
 	Policies          map[string]Policy
 	Webforms          map[string]Webform
 	Blocks            map[string]Block
@@ -281,10 +295,10 @@ type App struct {
 }
 
 func Empty() *App {
-	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Rules: map[string]Rule{}, TestSuites: map[string]TestSuite{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
+	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Rules: map[string]Rule{}, TestSuites: map[string]TestSuite{}, Extensions: map[string]Extension{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
 }
 func (a *App) ValidateFormat() error {
-	if a.FormatVersion != LegacyFormat && a.FormatVersion != LifecycleFormat && a.FormatVersion != RuleFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != LegacyFormat && a.FormatVersion != LifecycleFormat && a.FormatVersion != RuleFormat && a.FormatVersion != TestSuiteFormat && a.FormatVersion != CurrentFormat {
 		return fmt.Errorf("unsupported AppIR format %q", a.FormatVersion)
 	}
 	if a.FormatVersion == LegacyFormat {
@@ -312,8 +326,11 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != CurrentFormat && len(a.TestSuites) > 0 {
+	if a.FormatVersion != TestSuiteFormat && a.FormatVersion != CurrentFormat && len(a.TestSuites) > 0 {
 		return fmt.Errorf("AppIR format %q cannot contain TestSuite definitions", a.FormatVersion)
+	}
+	if a.FormatVersion != CurrentFormat && len(a.Extensions) > 0 {
+		return fmt.Errorf("AppIR format %q cannot contain Extension definitions", a.FormatVersion)
 	}
 	return nil
 }

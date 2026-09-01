@@ -90,4 +90,20 @@ func TestTestSuiteRequiresV4Format(t *testing.T) {
 	if err := app.ValidateFormat(); err == nil {
 		t.Fatal("v3 AppIR accepted TestSuite semantics that a v0.10 runtime would discard")
 	}
+	app.FormatVersion = appir.TestSuiteFormat
+	if err := app.ValidateFormat(); err != nil {
+		t.Fatalf("v4 AppIR rejected TestSuite semantics: %v", err)
+	}
+}
+
+func TestExtensionRequiresV5Format(t *testing.T) {
+	app := appir.Empty()
+	app.Extensions["notify"] = appir.Extension{Name: "notify", Transport: "http"}
+	if err := app.ValidateFormat(); err != nil {
+		t.Fatal(err)
+	}
+	app.FormatVersion = appir.TestSuiteFormat
+	if err := app.ValidateFormat(); err == nil {
+		t.Fatal("v4 AppIR accepted Extension semantics that a v0.12 runtime would discard")
+	}
 }
