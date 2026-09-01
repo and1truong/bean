@@ -266,12 +266,23 @@ func executeAssertStep(execution stepExecution) (stepOutcome, error) {
 }
 
 func executeNoOverlapStep(execution stepExecution) (stepOutcome, error) {
-	err := noOverlap(execution.ctx, execution.tx, execution.action.Entity, resolveValues(execution.step.Values, execution.input, execution.results, execution.request), execution.input)
+	entity, err := stepEntity(execution.app, execution.action, execution.step)
+	if err != nil {
+		return stepOutcome{}, err
+	}
+	if entity.Policy != "" && !authorize(execution.app, entity.Policy, false, execution.request, nil) {
+		return stepOutcome{}, &dbal.Error{Code: dbal.NotFound, Message: "records not found"}
+	}
+	err = noOverlap(execution.ctx, execution.tx, entity.Name, resolveValues(execution.step.Values, execution.input, execution.results, execution.request), execution.input)
 	return stepOutcome{}, err
 }
 
 func executeDecrementStep(execution stepExecution) (stepOutcome, error) {
-	err := decrement(execution.ctx, execution.tx, resolveValues(execution.step.Values, execution.input, execution.results, execution.request), execution.input)
+	entity, err := stepEntity(execution.app, execution.action, execution.step)
+	if err != nil {
+		return stepOutcome{}, err
+	}
+	err = decrement(execution.ctx, execution.tx, execution.app, entity, execution.request, resolveValues(execution.step.Values, execution.input, execution.results, execution.request), execution.input)
 	return stepOutcome{}, err
 }
 

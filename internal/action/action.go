@@ -511,16 +511,19 @@ func noOverlap(ctx context.Context, tx dbal.Transaction, entity string, cfg, inp
 	}
 	return nil
 }
-func decrement(ctx context.Context, tx dbal.Transaction, cfg, input map[string]any) error {
-	entity := fmt.Sprint(cfg["entity"])
+func decrement(ctx context.Context, tx dbal.Transaction, app *appir.App, entity appir.Entity, request beanctx.Request, cfg, input map[string]any) error {
 	fieldName := stringCfg(cfg, "field", "inventory")
 	idInput := stringCfg(cfg, "id_input", "id")
 	amountInput := stringCfg(cfg, "amount_input", "amount")
-	rows, e := tx.Select(ctx, dbal.Select{Table: entity, Columns: []string{"id", fieldName, "version"}, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: input[idInput]}, Limit: 1})
+	rows, e := tx.Select(ctx, dbal.Select{Table: entity.Name, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: input[idInput]}, Limit: 1})
 	if e != nil {
 		return e
 	}
 	if len(rows) == 0 {
+		return &dbal.Error{Code: dbal.NotFound, Message: "record not found"}
+	}
+	hydrate(rows[0], entity)
+	if entity.Policy != "" && !authorize(app, entity.Policy, true, request, recordMap(rows[0])) {
 		return &dbal.Error{Code: dbal.NotFound, Message: "record not found"}
 	}
 	amount := toInt(input[amountInput])
@@ -530,7 +533,7 @@ func decrement(ctx context.Context, tx dbal.Transaction, cfg, input map[string]a
 	}
 	version := toInt(rows[0]["version"])
 	where := dbal.And(dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: rows[0]["id"]}, dbal.Predicate{Op: dbal.OpEQ, Column: "version", Value: version})
-	_, e = tx.Update(ctx, dbal.Update{Table: entity, Values: map[string]dbal.Value{fieldName: current - amount, "version": version + 1, "updated_at": time.Now().UTC().Format(time.RFC3339Nano)}, Where: where, ExpectedRows: 1})
+	_, e = tx.Update(ctx, dbal.Update{Table: entity.Name, Values: map[string]dbal.Value{fieldName: current - amount, "version": version + 1, "updated_at": time.Now().UTC().Format(time.RFC3339Nano)}, Where: where, ExpectedRows: 1})
 	return e
 }
 func resolveValues(values []appir.Assignment, input map[string]any, results map[string]any, c beanctx.Request) map[string]any {
