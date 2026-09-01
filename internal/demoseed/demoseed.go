@@ -391,6 +391,42 @@ func verificationFields(entity appir.Entity) []string {
 }
 
 func validateGeneratedUniqueness(app *appir.App, records []Record, seed int64) error {
+	if err := validateRecordUniqueness(app, records, seed); err != nil {
+		return err
+	}
+	byEntity := map[string][]Record{}
+	for _, record := range records {
+		byEntity[record.Entity] = append(byEntity[record.Entity], record)
+	}
+	entityNames := make([]string, 0, len(byEntity))
+	for entityName := range byEntity {
+		entityNames = append(entityNames, entityName)
+	}
+	sort.Strings(entityNames)
+	for _, entityName := range entityNames {
+		lifecycle, exists := demoLifecycleForEntity(app, entityName)
+		if !exists {
+			continue
+		}
+		created := []Record{}
+		for _, record := range byEntity[entityName] {
+			transient := record
+			transient.Values = make(map[string]any, len(record.Values))
+			for name, value := range record.Values {
+				transient.Values[name] = value
+			}
+			transient.Values[lifecycle.StateField] = lifecycle.Initial
+			candidate := append(append([]Record{}, created...), transient)
+			if err := validateRecordUniqueness(app, candidate, seed); err != nil {
+				return fmt.Errorf("Lifecycle %s intermediate initial state: %w", lifecycle.Name, err)
+			}
+			created = append(created, record)
+		}
+	}
+	return nil
+}
+
+func validateRecordUniqueness(app *appir.App, records []Record, seed int64) error {
 	byEntity := map[string][]Record{}
 	for _, record := range records {
 		byEntity[record.Entity] = append(byEntity[record.Entity], record)
