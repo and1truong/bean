@@ -110,7 +110,8 @@ func validateTestCase(app *appir.App, suite appir.TestSuite, test appir.TestCase
 	fixtureCount := 0
 	fixtureValues := map[string]bool{}
 	fixtureIdentities := map[string]string{}
-	for entityName, rows := range test.Fixtures {
+	for _, entityName := range keys(test.Fixtures) {
+		rows := test.Fixtures[entityName]
 		for rowIndex, row := range rows {
 			for fieldName, value := range row {
 				fixtureValues[entityName+"/"+fieldName+"/"+fmt.Sprint(value)] = true
@@ -208,6 +209,30 @@ func validateFixtureUniqueness(app *appir.App, suiteName string, fixtures map[st
 					out = append(out, testSuiteDiagnostic(suiteName, rowPath, "duplicates fixture unique constraint at "+first))
 				} else {
 					seen[key] = rowPath
+				}
+			}
+		}
+		for _, item := range entity.Fields {
+			if item.Relation == nil || item.Relation.Kind != "one-to-many" && item.Relation.Kind != "many-to-many" {
+				continue
+			}
+			seen := map[string]string{}
+			for rowIndex, row := range fixtures[entityName] {
+				values, _ := row[item.Name].([]any)
+				for valueIndex, value := range values {
+					if value == nil {
+						continue
+					}
+					key := canonicalTestValue(value)
+					if item.Relation.Kind == "many-to-many" {
+						key = fmt.Sprintf("%d:%s", rowIndex, key)
+					}
+					valuePath := fmt.Sprintf("%s.%s.%d.%s.%d", path, entityName, rowIndex, item.Name, valueIndex)
+					if first := seen[key]; first != "" {
+						out = append(out, duplicateDiagnostic("TestSuite", suiteName, valuePath, "duplicates fixture relation value at "+first))
+					} else {
+						seen[key] = valuePath
+					}
 				}
 			}
 		}
@@ -354,7 +379,7 @@ func validateTestContext(app *appir.App, suiteName string, context appir.TestCon
 func validateFixture(app *appir.App, suiteName string, entity appir.Entity, row map[string]any, path string) []definition.Diagnostic {
 	out := []definition.Diagnostic{}
 	allowed := fieldSet(entity)
-	for name := range row {
+	for _, name := range keys(row) {
 		if !allowed[name] {
 			out = append(out, missingFieldDiagnostic("TestSuite", suiteName, path+"."+name, name, false))
 		}

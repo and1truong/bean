@@ -323,6 +323,7 @@ func assertCase(parentCtx context.Context, database dbal.Database, app *appir.Ap
 	}
 	out = append(out, assertEvents(ctx, database, suite.Name, base, test.Expect)...)
 	out = append(out, assertAudit(ctx, database, suite.Name, base, test.Expect.Audit)...)
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out
 }
 

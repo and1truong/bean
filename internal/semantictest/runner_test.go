@@ -157,6 +157,42 @@ func TestAssertionFailuresAreStableAndDoNotExposeValues(t *testing.T) {
 	}
 }
 
+func TestActionSuiteAssertionDiagnosticsAreSortedByPath(t *testing.T) {
+	const createdID = "00000000-0000-4000-8000-000000000010"
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "note"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string", "required": true}}}},
+		{APIVersion: definition.APIVersion, Kind: "TestSuite", Metadata: definition.Metadata{Name: "note_create_contract"}, Spec: map[string]any{
+			"target": map[string]any{"kind": "Action", "name": "note_create"},
+			"tests": []any{map[string]any{
+				"name": "reports_in_path_order", "context": map[string]any{"actor": map[string]any{"roles": []any{"administrator"}}, "time": fixedNow, "ids": []any{createdID}}, "input": map[string]any{"title": "actual"},
+				"expect": map[string]any{
+					"result":  map[string]any{"id": "00000000-0000-4000-8000-000000000099"},
+					"changes": []any{map[string]any{"entity": "note", "id": createdID, "values": map[string]any{"title": "expected"}}},
+					"events":  []any{map[string]any{"topic": "note.expected", "payload": map[string]any{}}},
+					"audit":   []any{map[string]any{"action": "unexpected_action"}},
+				},
+			}},
+		}},
+	}
+	_, diagnostics, err := semantictest.Run(context.Background(), definition.Bundle{Name: "Ordered failures", Definitions: definitions}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := make([]string, len(diagnostics))
+	for index := range diagnostics {
+		paths[index] = diagnostics[index].Path
+	}
+	want := []string{
+		"tests.reports_in_path_order.expect.audit",
+		"tests.reports_in_path_order.expect.changes.0",
+		"tests.reports_in_path_order.expect.events",
+		"tests.reports_in_path_order.expect.result",
+	}
+	if !reflect.DeepEqual(paths, want) {
+		t.Fatalf("paths=%v diagnostics=%v", paths, diagnostics)
+	}
+}
+
 func TestMaintainedSuitesCatchSeededBehaviorDefects(t *testing.T) {
 	tests := []struct {
 		name        string

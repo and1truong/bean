@@ -185,6 +185,48 @@ func TestTestSuiteRejectsDuplicateFixtureOneToOneRelations(t *testing.T) {
 	assertTestSuiteDiagnostic(t, compiler.Compile("test", 1, definitions).Diagnostics, "spec.tests.0.fixtures.order.1")
 }
 
+func TestTestSuiteRejectsDuplicateToManyFixtureRelations(t *testing.T) {
+	const childID = "00000000-0000-4000-8000-000000000001"
+	for _, test := range []struct {
+		name string
+		kind string
+		rows []any
+		path string
+	}{
+		{
+			name: "one-to-many across rows",
+			kind: "one-to-many",
+			rows: []any{
+				map[string]any{"id": "00000000-0000-4000-8000-000000000002", "quantity": 1, "children": []any{childID}},
+				map[string]any{"id": "00000000-0000-4000-8000-000000000003", "quantity": 2, "children": []any{childID}},
+			},
+			path: "spec.tests.0.fixtures.order.1.children.0",
+		},
+		{
+			name: "many-to-many within row",
+			kind: "many-to-many",
+			rows: []any{
+				map[string]any{"id": "00000000-0000-4000-8000-000000000002", "quantity": 1, "children": []any{childID, childID}},
+			},
+			path: "spec.tests.0.fixtures.order.0.children.1",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			definitions := semanticSuiteDefinitions()
+			definitions[0].Spec["fields"] = []any{
+				map[string]any{"name": "quantity", "type": "integer", "required": true},
+				map[string]any{"name": "children", "type": "relation", "relation": map[string]any{"entity": "child", "kind": test.kind, "targetField": "id"}},
+			}
+			definitions = append(definitions, definition.Definition{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "child"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "name", "type": "string", "required": true}}}})
+			definitions[2].Spec["tests"].([]any)[0].(map[string]any)["fixtures"] = map[string]any{
+				"child": []any{map[string]any{"id": childID, "name": "shared"}},
+				"order": test.rows,
+			}
+			assertTestSuiteDiagnosticCode(t, compiler.Compile("test", 1, definitions).Diagnostics, test.path, "BEAN-E1004")
+		})
+	}
+}
+
 func TestActionTestSuiteValidatesMutationIdentityAndSystemFields(t *testing.T) {
 	definitions := actionAssertionSuiteDefinitions()
 	change := definitions[2].Spec["tests"].([]any)[0].(map[string]any)["expect"].(map[string]any)["changes"].([]any)[0].(map[string]any)
@@ -244,6 +286,23 @@ func TestActionTestSuiteInputDiagnosticsAreSorted(t *testing.T) {
 		}
 	}
 	want := []string{"spec.tests.0.input.alpha", "spec.tests.0.input.zeta"}
+	if !reflect.DeepEqual(paths, want) {
+		t.Fatalf("paths=%v", paths)
+	}
+}
+
+func TestTestSuiteFixtureDiagnosticsAreSorted(t *testing.T) {
+	definitions := semanticSuiteDefinitions()
+	definitions[2].Spec["tests"].([]any)[0].(map[string]any)["fixtures"] = map[string]any{
+		"order": []any{map[string]any{"id": "00000000-0000-4000-8000-000000000001", "quantity": 1, "zeta": true, "alpha": true}},
+	}
+	paths := []string{}
+	for _, diagnostic := range compiler.Compile("test", 1, definitions).Diagnostics {
+		if strings.HasPrefix(diagnostic.Path, "spec.tests.0.fixtures.order.0.") {
+			paths = append(paths, diagnostic.Path)
+		}
+	}
+	want := []string{"spec.tests.0.fixtures.order.0.alpha", "spec.tests.0.fixtures.order.0.zeta"}
 	if !reflect.DeepEqual(paths, want) {
 		t.Fatalf("paths=%v", paths)
 	}
