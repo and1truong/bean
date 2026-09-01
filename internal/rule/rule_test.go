@@ -49,6 +49,7 @@ func TestCheckInfersTypedExpressions(t *testing.T) {
 		want       rule.Type
 	}{
 		{name: "number", expression: op("multiply", source("input", "quantity"), source("input", "unit_price")), want: rule.Number},
+		{name: "large number", expression: literal(json.Number("1e309")), want: rule.Number},
 		{name: "guard", expression: op("and", op("ne", source("this", "status"), literal("won")), op("lte", source("this", "total"), literal(1000))), want: rule.Boolean},
 		{name: "conditional", expression: op("if", literal(true), literal("approved"), literal("rejected")), want: rule.String},
 		{name: "context", expression: source("context", "now"), want: rule.DateTime},
@@ -77,6 +78,7 @@ func TestCheckRejectsUnknownAndIncompatibleExpressions(t *testing.T) {
 		{name: "arity", expression: op("not", literal(true), literal(false)), code: rule.CodeArity},
 		{name: "type", expression: op("add", literal("one"), literal(2)), code: rule.CodeType},
 		{name: "ordered null", expression: op("gt", literal(nil), literal(1)), code: rule.CodeType},
+		{name: "ordered nullable branch", expression: op("gt", op("if", literal(true), literal(nil), literal(1)), literal(0)), code: rule.CodeType},
 		{name: "shape", expression: rule.Expression{Op: "upper", Source: "input", Path: "quantity", Args: []rule.Expression{literal("x")}}, code: rule.CodeShape},
 		{name: "missing literal", expression: rule.Expression{Source: "literal"}, code: rule.CodeShape},
 		{name: "literal on input", expression: rule.Expression{Source: "input", Path: "quantity", Literal: json.RawMessage("1")}, code: rule.CodeShape},

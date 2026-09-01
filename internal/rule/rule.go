@@ -42,19 +42,22 @@ const (
 )
 
 type Expression struct {
-	Op      string          `json:"op,omitempty" yaml:"op,omitempty"`
-	Args    []Expression    `json:"args,omitempty" yaml:"args,omitempty"`
-	Source  string          `json:"source,omitempty" yaml:"source,omitempty"`
-	Path    string          `json:"path,omitempty" yaml:"path,omitempty"`
-	Literal json.RawMessage `json:"literal,omitempty" yaml:"literal,omitempty"`
+	Op          string          `json:"op,omitempty" yaml:"op,omitempty"`
+	Args        []Expression    `json:"args,omitempty" yaml:"args,omitempty"`
+	Source      string          `json:"source,omitempty" yaml:"source,omitempty"`
+	Path        string          `json:"path,omitempty" yaml:"path,omitempty"`
+	Literal     json.RawMessage `json:"literal,omitempty" yaml:"literal,omitempty"`
+	emptyOp     bool            `json:"-" yaml:"-"`
+	emptySource bool            `json:"-" yaml:"-"`
+	emptyPath   bool            `json:"-" yaml:"-"`
 }
 
 func (e *Expression) UnmarshalJSON(data []byte) error {
 	var raw struct {
-		Op      string          `json:"op"`
+		Op      json.RawMessage `json:"op"`
 		Args    json.RawMessage `json:"args"`
-		Source  string          `json:"source"`
-		Path    string          `json:"path"`
+		Source  json.RawMessage `json:"source"`
+		Path    json.RawMessage `json:"path"`
 		Literal json.RawMessage `json:"literal"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
@@ -62,7 +65,17 @@ func (e *Expression) UnmarshalJSON(data []byte) error {
 	if err := decoder.Decode(&raw); err != nil {
 		return err
 	}
-	*e = Expression{Op: raw.Op, Source: raw.Source, Path: raw.Path, Literal: raw.Literal}
+	*e = Expression{Literal: raw.Literal}
+	var err error
+	if e.emptyOp, err = decodeStringMember(raw.Op, &e.Op); err != nil {
+		return err
+	}
+	if e.emptySource, err = decodeStringMember(raw.Source, &e.Source); err != nil {
+		return err
+	}
+	if e.emptyPath, err = decodeStringMember(raw.Path, &e.Path); err != nil {
+		return err
+	}
 	if raw.Args == nil {
 		return nil
 	}
@@ -71,6 +84,19 @@ func (e *Expression) UnmarshalJSON(data []byte) error {
 		return json.Unmarshal(raw.Args, &e.Args)
 	}
 	return nil
+}
+
+func decodeStringMember(raw json.RawMessage, target *string) (bool, error) {
+	if raw == nil {
+		return false, nil
+	}
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return true, nil
+	}
+	if err := json.Unmarshal(raw, target); err != nil {
+		return false, err
+	}
+	return *target == "", nil
 }
 
 type TypeEnvironment struct {

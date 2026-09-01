@@ -1248,6 +1248,17 @@ func validateActions(a *appir.App, _ *validationState) []definition.Diagnostic {
 func validateActionRules(a *appir.App, name string, action appir.Action) []definition.Diagnostic {
 	out := []definition.Diagnostic{}
 	derivedInputs := nameSet(keys(action.Derive))
+	requiresIDBeforeRules := action.Operation == "update" || action.Operation == "delete" || action.Operation == "transition"
+	if action.Operation == "transaction" {
+		if item, exists := a.Rules[action.When]; exists && rule.UsesSource(item.Expression, "this") {
+			requiresIDBeforeRules = true
+		}
+		for _, ruleName := range action.Derive {
+			if item, exists := a.Rules[ruleName]; exists && rule.UsesSource(item.Expression, "this") {
+				requiresIDBeforeRules = true
+			}
+		}
+	}
 	if action.Operation == "register_local_user" && (action.When != "" || len(action.Derive) > 0) {
 		out = append(out, ruleConsumerDiagnostic("Action", name, "spec.when", "local registration does not accept Rule consumers"))
 		return out
@@ -1270,6 +1281,10 @@ func validateActionRules(a *appir.App, name string, action appir.Action) []defin
 	}
 	for _, fieldName := range keys(action.Derive) {
 		path := "spec.derive." + fieldName
+		if fieldName == "id" && requiresIDBeforeRules {
+			out = append(out, ruleConsumerDiagnostic("Action", name, path, "record identifier is required before Rule evaluation"))
+			continue
+		}
 		if lifecycle, exists := lifecycleForEntity(a, action.Entity); exists && fieldName == lifecycle.StateField {
 			diagnostic := diagnostic("Action", name, path, "Lifecycle state is owned by "+lifecycle.Name)
 			diagnostic.Code = "BEAN-E2201"

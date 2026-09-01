@@ -23,6 +23,15 @@ func checkStructure(expression Expression) error {
 		if depth > MaxDepth {
 			return ruleError(CodeLimit, path, fmt.Sprintf("rule exceeds depth %d", MaxDepth))
 		}
+		if current.emptyOp {
+			return ruleError(CodeShape, path+".op", "empty or null op member is not canonical")
+		}
+		if current.emptySource {
+			return ruleError(CodeShape, path+".source", "empty or null source member is not canonical")
+		}
+		if current.emptyPath {
+			return ruleError(CodeShape, path+".path", "empty or null path member is not canonical")
+		}
 		if current.Op != "" {
 			if current.Source != "" || current.Path != "" || len(current.Literal) > 0 {
 				return ruleError(CodeShape, path, "operator node cannot also contain a value source")
@@ -142,7 +151,7 @@ func infer(expression Expression, environment TypeEnvironment, path string) (Typ
 		if err := requireArity(expression.Op, len(types), 2, 2, path); err != nil {
 			return "", err
 		}
-		if types[0] == Null || types[1] == Null {
+		if types[0] == Null || types[1] == Null || staticallyNullable(expression.Args[0]) || staticallyNullable(expression.Args[1]) {
 			return "", typeError(path, expression.Op+" does not accept null arguments")
 		}
 		unified, ok := unify(types[0], types[1])
@@ -253,14 +262,36 @@ func literalType(value any, path string) (Type, error) {
 	case float32, float64:
 		return Number, nil
 	case json.Number:
-		if _, err := typed.Int64(); err == nil {
+		if _, integer := integerValue(typed); integer {
 			return Integer, nil
 		}
-		if _, err := typed.Float64(); err == nil {
+		if _, exact := rationalValue(typed); exact {
 			return Number, nil
 		}
+		return "", ruleError(CodeLimit, path+".literal", "numeric literal exceeds exact comparison limit")
 	}
 	return "", typeError(path+".literal", "rule literal has unsupported type")
+}
+
+func staticallyNullable(expression Expression) bool {
+	if expression.Source == "literal" {
+		value, err := decodeLiteral(expression.Literal)
+		return err == nil && value == nil
+	}
+	if expression.Op != "if" || len(expression.Args) != 3 {
+		return false
+	}
+	if expression.Args[0].Source == "literal" {
+		if condition, err := decodeLiteral(expression.Args[0].Literal); err == nil {
+			if selected, ok := condition.(bool); ok {
+				if selected {
+					return staticallyNullable(expression.Args[1])
+				}
+				return staticallyNullable(expression.Args[2])
+			}
+		}
+	}
+	return staticallyNullable(expression.Args[1]) || staticallyNullable(expression.Args[2])
 }
 
 func requireArity(operator string, got, minimum, maximum int, path string) error {

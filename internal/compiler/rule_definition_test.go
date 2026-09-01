@@ -65,6 +65,16 @@ func TestRuleDiagnosticsAreStableAndFailClosed(t *testing.T) {
 		{"missing entity", func(defs []definition.Definition) { defs[1].Spec["entity"] = "missing" }, "Rule", "spec.entity", "BEAN-E2001"},
 		{"unknown operator", func(defs []definition.Definition) { defs[1].Spec["expression"].(map[string]any)["op"] = "execute" }, "Rule", "spec.expression.op", "BEAN-E2351"},
 		{"unknown input", func(defs []definition.Definition) { defs[2].Spec["expression"].(map[string]any)["path"] = "missing" }, "Rule", "spec.expression.path", "BEAN-E2351"},
+		{"empty leaf op", func(defs []definition.Definition) { defs[2].Spec["expression"].(map[string]any)["op"] = "" }, "Rule", "spec.expression.op", "BEAN-E2351"},
+		{"null leaf op", func(defs []definition.Definition) { defs[2].Spec["expression"].(map[string]any)["op"] = nil }, "Rule", "spec.expression.op", "BEAN-E2351"},
+		{"empty operator source", func(defs []definition.Definition) { defs[1].Spec["expression"].(map[string]any)["source"] = "" }, "Rule", "spec.expression.source", "BEAN-E2351"},
+		{"null operator source", func(defs []definition.Definition) { defs[1].Spec["expression"].(map[string]any)["source"] = nil }, "Rule", "spec.expression.source", "BEAN-E2351"},
+		{"empty literal path", func(defs []definition.Definition) {
+			defs[1].Spec["expression"].(map[string]any)["args"].([]any)[1].(map[string]any)["path"] = ""
+		}, "Rule", "spec.expression.args.1.path", "BEAN-E2351"},
+		{"null literal path", func(defs []definition.Definition) {
+			defs[1].Spec["expression"].(map[string]any)["args"].([]any)[1].(map[string]any)["path"] = nil
+		}, "Rule", "spec.expression.args.1.path", "BEAN-E2351"},
 		{"empty leaf args", func(defs []definition.Definition) { defs[2].Spec["expression"].(map[string]any)["args"] = []any{} }, "Rule", "spec.expression", "BEAN-E2351"},
 		{"null leaf args", func(defs []definition.Definition) { defs[2].Spec["expression"].(map[string]any)["args"] = nil }, "Rule", "spec.expression", "BEAN-E2351"},
 		{"result mismatch", func(defs []definition.Definition) { defs[1].Spec["result"] = "string" }, "Rule", "spec.result", "BEAN-E2351"},
@@ -84,6 +94,12 @@ func TestRuleDiagnosticsAreStableAndFailClosed(t *testing.T) {
 		{"derive dependency", func(defs []definition.Definition) {
 			defs[3].Spec["derive"] = map[string]any{"amount": "calculated_total", "total": "calculated_total"}
 		}, "Action", "spec.derive.total", "BEAN-E2351"},
+		{"derived identifier", func(defs []definition.Definition) {
+			defs[2].Spec["result"] = "string"
+			defs[2].Spec["input"] = map[string]any{}
+			defs[2].Spec["expression"] = map[string]any{"source": "literal", "literal": "00000000-0000-4000-8000-000000000001"}
+			defs[3].Spec["derive"] = map[string]any{"id": "calculated_total"}
+		}, "Action", "spec.derive.id", "BEAN-E2351"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
