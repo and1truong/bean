@@ -71,10 +71,16 @@ func TestMaterializeGeneratesPolicyDenialAndInvalidTransitionCases(t *testing.T)
 		{APIVersion: definition.APIVersion, Kind: "Role", Metadata: definition.Metadata{Name: "manager"}, Spec: map[string]any{}},
 		{APIVersion: definition.APIVersion, Kind: "Policy", Metadata: definition.Metadata{Name: "manager_write"}, Spec: map[string]any{"writeRoles": []any{"manager"}}},
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "ticket"}, Spec: map[string]any{
-			"policy": "manager_write", "fields": []any{map[string]any{"name": "status", "type": "enum", "required": true, "options": []any{"open", "closed"}}},
+			"policy": "manager_write", "fields": []any{
+				map[string]any{"name": "status", "type": "enum", "required": true, "options": []any{"open", "closed"}},
+				map[string]any{"name": "note", "type": "string"},
+			},
 		}},
 		{APIVersion: definition.APIVersion, Kind: "Lifecycle", Metadata: definition.Metadata{Name: "ticket_flow"}, Spec: map[string]any{"entity": "ticket", "initial": "open", "transitions": map[string]any{"open": []any{"closed"}}}},
-		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "close_ticket"}, Spec: map[string]any{"entity": "ticket", "operation": "transition", "lifecycle": "ticket_flow", "policy": "manager_write"}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "close_ticket"}, Spec: map[string]any{
+			"entity": "ticket", "operation": "transition", "lifecycle": "ticket_flow", "policy": "manager_write",
+			"input": map[string]any{"note": map[string]any{"type": "string"}},
+		}},
 		{APIVersion: definition.APIVersion, Kind: "TestSuite", Metadata: definition.Metadata{Name: "close_ticket_contract"}, Spec: map[string]any{
 			"target": map[string]any{"kind": "Action", "name": "close_ticket"}, "tests": []any{map[string]any{
 				"name": "closes_ticket", "fixtures": map[string]any{"ticket": []any{map[string]any{"id": ticketID, "status": "open"}}},
@@ -104,6 +110,20 @@ func TestMaterializeGeneratesPolicyDenialAndInvalidTransitionCases(t *testing.T)
 	bundle.Definitions = append(bundle.Definitions, definition.Definition{APIVersion: definition.APIVersion, Kind: "Rule", Metadata: definition.Metadata{Name: "actor_present"}, Spec: map[string]any{
 		"entity": "ticket", "result": "boolean", "expression": map[string]any{"op": "is_not_null", "args": []any{map[string]any{"source": "user", "path": "id"}}},
 	}})
+	bundle.Definitions[2].Spec["validations"] = map[string]any{"actor_present": "actor_present"}
+	materialized, _, diagnostics = generatedtest.Materialize(bundle)
+	if len(diagnostics) != 0 {
+		t.Fatalf("validated diagnostics=%v", diagnostics)
+	}
+	compiled = compiler.Compile("test", 1, materialized.Definitions)
+	if _, exists := compiled.App.TestSuites["generated_policy_close_ticket_contract"]; exists {
+		t.Fatal("Policy-negative case was generated with a confounding Entity validation")
+	}
+	if _, exists := compiled.App.TestSuites["generated_transition_close_ticket_contract"]; exists {
+		t.Fatal("transition-negative case was generated with a confounding Entity validation")
+	}
+
+	delete(bundle.Definitions[2].Spec, "validations")
 	bundle.Definitions[4].Spec["when"] = "actor_present"
 	materialized, _, diagnostics = generatedtest.Materialize(bundle)
 	if len(diagnostics) != 0 {
@@ -115,6 +135,20 @@ func TestMaterializeGeneratesPolicyDenialAndInvalidTransitionCases(t *testing.T)
 	}
 	if _, exists := compiled.App.TestSuites["generated_transition_close_ticket_contract"]; exists {
 		t.Fatal("transition-negative case was generated with a confounding Action guard")
+	}
+
+	delete(bundle.Definitions[4].Spec, "when")
+	bundle.Definitions = append(bundle.Definitions, definition.Definition{APIVersion: definition.APIVersion, Kind: "Rule", Metadata: definition.Metadata{Name: "derived_note"}, Spec: map[string]any{
+		"entity": "ticket", "result": "string", "expression": map[string]any{"source": "literal", "literal": "derived"},
+	}})
+	bundle.Definitions[4].Spec["derive"] = map[string]any{"note": "derived_note"}
+	materialized, _, diagnostics = generatedtest.Materialize(bundle)
+	if len(diagnostics) != 0 {
+		t.Fatalf("derived diagnostics=%v", diagnostics)
+	}
+	compiled = compiler.Compile("test", 1, materialized.Definitions)
+	if _, exists := compiled.App.TestSuites["generated_transition_close_ticket_contract"]; exists {
+		t.Fatal("transition-negative case was generated with an unproven Action derivation")
 	}
 }
 

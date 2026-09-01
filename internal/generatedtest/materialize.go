@@ -317,7 +317,8 @@ func appendGeneratedSuite(bundle *definition.Bundle, origins map[string]Origin, 
 }
 
 func policyDenialCases(app *appir.App, action appir.Action, cases []appir.TestCase) []appir.TestCase {
-	if action.When != "" {
+	validatedMutation := action.Operation != "delete" && len(app.Entities[action.Entity].Validations) > 0
+	if action.When != "" || validatedMutation {
 		return nil
 	}
 	policyDefinition, exists := app.Policies[action.Policy]
@@ -343,7 +344,7 @@ func policyDenialCases(app *appir.App, action appir.Action, cases []appir.TestCa
 }
 
 func invalidTransitionCases(app *appir.App, action appir.Action, cases []appir.TestCase) []appir.TestCase {
-	if action.When != "" {
+	if action.When != "" || len(action.Derive) > 0 {
 		return nil
 	}
 	lifecycle, exists := app.Lifecycles[action.Lifecycle]
