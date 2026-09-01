@@ -117,6 +117,34 @@ func TestSoftDeleteUsesInjectedActionClock(t *testing.T) {
 	}
 }
 
+func TestFailureAuditSurvivesCanceledExecutionContext(t *testing.T) {
+	ctx := context.Background()
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "canceled-audit.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := &release.Store{DB: db, Migrations: db, Kernel: kernel.New(), OpenAPI: openapi.Generate}
+	if err = store.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	app := appir.Empty()
+	app.Entities["note"] = appir.Entity{Name: "note", Fields: []appir.Field{{Name: "title", Type: "string", Required: true}}}
+	app.Actions["note_create"] = appir.Action{
+		Name: "note_create", Entity: "note", Operation: "create",
+		Input: map[string]appir.Field{"title": {Name: "title", Type: "string", Required: true}},
+	}
+	executionCtx, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err = (action.Service{DB: db}).Execute(executionCtx, app, "note_create", map[string]any{"title": "Example"}, admin()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err=%v", err)
+	}
+	rows, err := db.Select(ctx, dbal.Select{Table: "bean_audit", Columns: []string{"action", "success"}, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "action", Value: "note_create"}})
+	if err != nil || len(rows) != 1 || rows[0]["success"] != int64(0) {
+		t.Fatalf("rows=%v err=%v", rows, err)
+	}
+}
+
 func TestLifecycleInitialPolicyAndTransitionBoundary(t *testing.T) {
 	ctx := context.Background()
 	db, err := sqlite.Open(filepath.Join(t.TempDir(), "lifecycle.db"))

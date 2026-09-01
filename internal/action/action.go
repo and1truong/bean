@@ -249,8 +249,10 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 				return replay, nil
 			}
 		}
-		_ = s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
-			return audit.Write(ctx, tx, audit.Entry{RequestID: request.RequestID, UserID: userID(request), TenantID: request.TenantID, Action: name, EntityType: entityType, Success: false, Error: safeError(err)})
+		auditCtx, cancelAudit := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancelAudit()
+		_ = s.DB.Transaction(auditCtx, func(tx dbal.Transaction) error {
+			return audit.Write(auditCtx, tx, audit.Entry{RequestID: request.RequestID, UserID: userID(request), TenantID: request.TenantID, Action: name, EntityType: entityType, Success: false, Error: safeError(err)})
 		})
 		return nil, err
 	}

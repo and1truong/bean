@@ -190,6 +190,31 @@ func TestActionTestSuiteValidatesMutationIdentityAndSystemFields(t *testing.T) {
 	}
 }
 
+func TestTestSuiteRejectsNullFixtureTimestamps(t *testing.T) {
+	definitions := semanticSuiteDefinitions()
+	definitions[2].Spec["tests"].([]any)[0].(map[string]any)["fixtures"] = map[string]any{
+		"order": []any{map[string]any{"id": "00000000-0000-4000-8000-000000000001", "quantity": 1, "created_at": nil}},
+	}
+	assertTestSuiteDiagnostic(t, compiler.Compile("test", 1, definitions).Diagnostics, "spec.tests.0.fixtures.order.0.created_at")
+}
+
+func TestActionTestSuiteInputDiagnosticsAreSorted(t *testing.T) {
+	definitions := actionAssertionSuiteDefinitions()
+	input := definitions[2].Spec["tests"].([]any)[0].(map[string]any)["input"].(map[string]any)
+	input["zeta"] = true
+	input["alpha"] = true
+	paths := []string{}
+	for _, diagnostic := range compiler.Compile("test", 1, definitions).Diagnostics {
+		if strings.HasPrefix(diagnostic.Path, "spec.tests.0.input.") {
+			paths = append(paths, diagnostic.Path)
+		}
+	}
+	want := []string{"spec.tests.0.input.alpha", "spec.tests.0.input.zeta"}
+	if !reflect.DeepEqual(paths, want) {
+		t.Fatalf("paths=%v", paths)
+	}
+}
+
 func actionAssertionSuiteDefinitions() []definition.Definition {
 	const id = "00000000-0000-4000-8000-000000000001"
 	return []definition.Definition{

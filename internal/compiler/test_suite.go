@@ -395,7 +395,7 @@ func validateRuleTestCase(app *appir.App, suite appir.TestSuite, test appir.Test
 		return nil
 	}
 	out := []definition.Diagnostic{}
-	for name := range test.Input {
+	for _, name := range keys(test.Input) {
 		if _, declared := targetRule.Input[name]; !declared {
 			out = append(out, testSuiteDiagnostic(suite.Name, path+".input."+name, "is not declared by target Rule"))
 		}
@@ -440,7 +440,7 @@ func validateActionTestCase(app *appir.App, suite appir.TestSuite, test appir.Te
 	if action.Operation == "register_local_user" {
 		out = append(out, testSuiteDiagnostic(suite.Name, path+".target", "register_local_user is not supported by v0.11 TestSuite cases"))
 	}
-	for name := range test.Input {
+	for _, name := range keys(test.Input) {
 		input, declared := action.Input[name]
 		if !declared {
 			out = append(out, testSuiteDiagnostic(suite.Name, path+".input."+name, "is not declared by target Action"))
@@ -545,7 +545,7 @@ func testFieldDefinition(entity appir.Entity, name string) (appir.Field, bool) {
 	case "tenant_id":
 		return appir.Field{Name: name, Type: "uuid"}, entity.Tenant
 	case "created_at", "updated_at":
-		return appir.Field{Name: name, Type: "datetime"}, true
+		return appir.Field{Name: name, Type: "datetime", Required: true}, true
 	case "deleted_at":
 		return appir.Field{Name: name, Type: "datetime"}, entity.SoftDelete
 	case "version":
