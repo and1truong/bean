@@ -78,6 +78,9 @@ func TestRuleDiagnosticsAreStableAndFailClosed(t *testing.T) {
 		{"empty leaf args", func(defs []definition.Definition) { defs[2].Spec["expression"].(map[string]any)["args"] = []any{} }, "Rule", "spec.expression", "BEAN-E2351"},
 		{"null leaf args", func(defs []definition.Definition) { defs[2].Spec["expression"].(map[string]any)["args"] = nil }, "Rule", "spec.expression", "BEAN-E2351"},
 		{"result mismatch", func(defs []definition.Definition) { defs[1].Spec["result"] = "string" }, "Rule", "spec.result", "BEAN-E2351"},
+		{"null boolean result", func(defs []definition.Definition) {
+			defs[1].Spec["expression"] = map[string]any{"source": "literal", "literal": nil}
+		}, "Rule", "spec.result", "BEAN-E2351"},
 		{"forbidden input", func(defs []definition.Definition) {
 			defs[2].Spec["input"].(map[string]any)["amount"].(map[string]any)["type"] = "password"
 		}, "Rule", "spec.input.amount.type", "BEAN-E2351"},

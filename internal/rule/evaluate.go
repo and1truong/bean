@@ -330,7 +330,34 @@ func finiteDecimal(value *big.Rat) (string, bool) {
 	if precision > 0 {
 		text = strings.TrimRight(strings.TrimRight(text, "0"), ".")
 	}
+	if len(text) > MaxValueBytes {
+		text = scientificDecimal(text)
+	}
 	return text, true
+}
+
+func scientificDecimal(decimal string) string {
+	sign := ""
+	if strings.HasPrefix(decimal, "-") {
+		sign = "-"
+		decimal = decimal[1:]
+	}
+	point := strings.IndexByte(decimal, '.')
+	if point < 0 {
+		point = len(decimal)
+	} else {
+		decimal = decimal[:point] + decimal[point+1:]
+	}
+	first := strings.IndexFunc(decimal, func(r rune) bool { return r != '0' })
+	if first < 0 {
+		return "0"
+	}
+	digits := strings.TrimRight(decimal[first:], "0")
+	mantissa := digits[:1]
+	if len(digits) > 1 {
+		mantissa += "." + digits[1:]
+	}
+	return sign + mantissa + "e" + strconv.Itoa(point-first-1)
 }
 
 func integerValue(value any) (int64, bool) {

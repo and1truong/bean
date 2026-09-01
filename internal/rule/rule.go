@@ -161,7 +161,10 @@ func TypeForField(fieldType string) (Type, bool) {
 }
 
 func ResultCompatible(expected, actual Type) bool {
-	if actual == Null || expected == actual {
+	if actual == Null {
+		return expected != Boolean
+	}
+	if expected == actual {
 		return true
 	}
 	return expected == Number && actual == Integer
