@@ -127,6 +127,185 @@ func TestBoardAndTreePresentationsValidateTypedFieldsAndActions(t *testing.T) {
 	}
 }
 
+func TestDemoThemeMetricTimelineAndSearchContracts(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Theme", Metadata: definition.Metadata{Name: "default"}, Spec: map[string]any{"displayName": "Acme Recruiting", "preset": "professional", "accent": "indigo"}},
+		{APIVersion: definition.APIVersion, Kind: "DemoSeed", Metadata: definition.Metadata{Name: "demo"}, Spec: map[string]any{"entities": map[string]any{"candidate": map[string]any{"count": 12, "profile": "people"}}}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "candidate"}, Spec: map[string]any{"fields": []any{
+			map[string]any{"name": "name", "type": "string", "required": true},
+			map[string]any{"name": "stage", "type": "enum", "options": []any{"applied", "interview"}, "required": true},
+			map[string]any{"name": "applied_at", "type": "datetime", "required": true},
+			map[string]any{"name": "note", "type": "text"},
+		}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "candidate_metrics"}, Spec: map[string]any{"entity": "candidate", "fields": []any{}, "aggregates": []any{map[string]any{"function": "count", "field": "id", "alias": "candidate_count"}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "recent_candidates"}, Spec: map[string]any{"entity": "candidate", "fields": []any{"id", "name", "stage", "applied_at", "note"}}},
+		{APIVersion: definition.APIVersion, Kind: "Block", Metadata: definition.Metadata{Name: "candidate_count"}, Spec: map[string]any{"type": "view", "view": "candidate_metrics", "presentation": map[string]any{"mode": "metric", "metricField": "candidate_count", "metricLabel": "Candidates"}}},
+		{APIVersion: definition.APIVersion, Kind: "Block", Metadata: definition.Metadata{Name: "candidate_timeline"}, Spec: map[string]any{"type": "view", "view": "recent_candidates", "presentation": map[string]any{"mode": "timeline", "titleField": "name", "bodyField": "note", "timeField": "applied_at", "metaFields": []any{"stage"}}}},
+		{APIVersion: definition.APIVersion, Kind: "Block", Metadata: definition.Metadata{Name: "candidate_search"}, Spec: map[string]any{"type": "view", "view": "recent_candidates", "presentation": map[string]any{"mode": "list", "titleField": "name", "searchFields": []any{"name", "note"}}}},
+	}
+	result := compiler.Compile("test", 1, definitions)
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("valid demo presentation diagnostics=%v", result.Diagnostics)
+	}
+	if result.App.Theme == nil || result.App.Theme.DisplayName != "Acme Recruiting" || result.App.Theme.Accent != "indigo" {
+		t.Fatalf("theme=%+v", result.App.Theme)
+	}
+	if result.App.DemoSeed == nil || result.App.DemoSeed.Entities["candidate"].Count != 12 || result.App.DemoSeed.Entities["candidate"].Profile != "people" {
+		t.Fatalf("demo seed=%+v", result.App.DemoSeed)
+	}
+
+	invalidTheme := append([]definition.Definition{}, definitions...)
+	invalidTheme[0].Spec = map[string]any{"preset": "javascript", "accent": "#ff00ff"}
+	invalidTheme = append(invalidTheme, definition.Definition{APIVersion: definition.APIVersion, Kind: "Theme", Metadata: definition.Metadata{Name: "second"}, Spec: map[string]any{"preset": "professional", "accent": "indigo"}})
+	diagnostics := compiler.Compile("test", 1, invalidTheme).Diagnostics
+	for _, path := range []string{"spec.preset", "spec.accent", "metadata.name"} {
+		if !hasDiagnostic(diagnostics, "default", path) && !hasDiagnostic(diagnostics, "second", path) {
+			t.Fatalf("missing Theme diagnostic %s: %v", path, diagnostics)
+		}
+	}
+
+	invalidPresentations := append([]definition.Definition{}, definitions...)
+	invalidPresentations[5].Spec = map[string]any{"type": "view", "view": "candidate_metrics", "presentation": map[string]any{"mode": "metric", "metricField": "missing"}}
+	invalidPresentations[6].Spec = map[string]any{"type": "view", "view": "recent_candidates", "presentation": map[string]any{"mode": "timeline", "titleField": "name", "timeField": "stage"}}
+	invalidPresentations[7].Spec = map[string]any{"type": "view", "view": "recent_candidates", "presentation": map[string]any{"mode": "list", "searchFields": []any{"stage", "missing"}}}
+	diagnostics = compiler.Compile("test", 1, invalidPresentations).Diagnostics
+	for _, target := range [][2]string{{"candidate_count", "spec.presentation.metricField"}, {"candidate_timeline", "spec.presentation.timeField"}, {"candidate_search", "spec.presentation.searchFields.0"}, {"candidate_search", "spec.presentation.searchFields.1"}} {
+		if !hasDiagnostic(diagnostics, target[0], target[1]) {
+			t.Fatalf("missing presentation diagnostic %v: %v", target, diagnostics)
+		}
+	}
+}
+
+func TestDemoSeedValidation(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "candidate"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "name", "type": "string", "required": true}}}},
+		{APIVersion: definition.APIVersion, Kind: "DemoSeed", Metadata: definition.Metadata{Name: "demo"}, Spec: map[string]any{"entities": map[string]any{
+			"candidate": map[string]any{"count": 201, "profile": "fiction"},
+			"missing":   map[string]any{"count": 1},
+		}}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	for _, path := range []string{"spec.entities.candidate.count", "spec.entities.candidate.profile", "spec.entities.missing"} {
+		if !hasDiagnostic(diagnostics, "demo", path) {
+			t.Fatalf("missing DemoSeed diagnostic %s: %v", path, diagnostics)
+		}
+	}
+}
+
+func TestDemoSeedRejectsRequiredRelationCycles(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "left"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "right_id", "type": "relation", "required": true, "relation": map[string]any{"entity": "right"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "right"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "left_id", "type": "relation", "required": true, "relation": map[string]any{"entity": "left"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "DemoSeed", Metadata: definition.Metadata{Name: "demo"}, Spec: map[string]any{"entities": map[string]any{"left": map[string]any{"count": 1}, "right": map[string]any{"count": 1}}}},
+	}
+	if diagnostics := compiler.Compile("test", 1, definitions).Diagnostics; !hasDiagnostic(diagnostics, "demo", "spec.entities") {
+		t.Fatalf("required relation cycle accepted: %v", diagnostics)
+	}
+}
+
+func TestDemoSeedRejectsImpossibleUniqueValues(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "sample"}, Spec: map[string]any{"fields": []any{
+			map[string]any{"name": "enabled", "type": "boolean", "unique": true},
+			map[string]any{"name": "state", "type": "enum", "unique": true, "options": []any{"one", "two"}},
+		}}},
+		{APIVersion: definition.APIVersion, Kind: "DemoSeed", Metadata: definition.Metadata{Name: "demo"}, Spec: map[string]any{"entities": map[string]any{"sample": map[string]any{"count": 3}}}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasDiagnostic(diagnostics, "demo", "spec.entities.sample.count") {
+		t.Fatalf("impossible seed accepted: %v", diagnostics)
+	}
+}
+
+func TestDemoSeedRejectsUnsupportedRequiredRelationTarget(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "account"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "secret", "type": "string", "unique": true, "sensitive": true}}}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "contact"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "account_key", "type": "relation", "required": true, "relation": map[string]any{"entity": "account", "kind": "many-to-one", "targetField": "secret"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "DemoSeed", Metadata: definition.Metadata{Name: "demo"}, Spec: map[string]any{"entities": map[string]any{"account": map[string]any{"count": 1}, "contact": map[string]any{"count": 1}}}},
+	}
+	if diagnostics := compiler.Compile("test", 1, definitions).Diagnostics; !hasDiagnostic(diagnostics, "demo", "spec.entities.contact") {
+		t.Fatalf("unsupported target accepted: %v", diagnostics)
+	}
+}
+
+func TestDemoSeedRejectsRequiredRelationTargetingSystemField(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "account"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "name", "type": "string"}}}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "contact"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "account_version", "type": "relation", "required": true, "relation": map[string]any{"entity": "account", "kind": "many-to-one", "targetField": "version"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "DemoSeed", Metadata: definition.Metadata{Name: "demo"}, Spec: map[string]any{"entities": map[string]any{"account": map[string]any{"count": 1}, "contact": map[string]any{"count": 1}}}},
+	}
+	if diagnostics := compiler.Compile("test", 1, definitions).Diagnostics; !hasDiagnostic(diagnostics, "demo", "spec.entities.contact") {
+		t.Fatalf("system target accepted: %v", diagnostics)
+	}
+}
+
+func TestDemoSeedRejectsRequiredRelationTargetingNonUUIDField(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "account"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "slug", "type": "slug", "unique": true}}}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "contact"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "account_slug", "type": "relation", "required": true, "relation": map[string]any{"entity": "account", "kind": "many-to-one", "targetField": "slug"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "DemoSeed", Metadata: definition.Metadata{Name: "demo"}, Spec: map[string]any{"entities": map[string]any{"account": map[string]any{"count": 1}, "contact": map[string]any{"count": 1}}}},
+	}
+	if diagnostics := compiler.Compile("test", 1, definitions).Diagnostics; !hasDiagnostic(diagnostics, "demo", "spec.entities.contact") {
+		t.Fatalf("non-UUID relation target accepted: %v", diagnostics)
+	}
+}
+
+func TestDemoSeedRejectsOptionalRelationTargetingNonUUIDField(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "account"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "slug", "type": "slug", "unique": true}}}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "contact"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "account_slug", "type": "relation", "relation": map[string]any{"entity": "account", "kind": "many-to-one", "targetField": "slug"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "DemoSeed", Metadata: definition.Metadata{Name: "demo"}, Spec: map[string]any{"entities": map[string]any{"account": map[string]any{"count": 1}, "contact": map[string]any{"count": 1}}}},
+	}
+	if diagnostics := compiler.Compile("test", 1, definitions).Diagnostics; !hasDiagnostic(diagnostics, "demo", "spec.entities.contact") {
+		t.Fatalf("optional non-UUID relation target accepted: %v", diagnostics)
+	}
+}
+
+func TestMetricRejectsGroupedView(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "candidate"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "stage", "type": "enum", "options": []any{"applied", "hired"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "candidate_metrics"}, Spec: map[string]any{"entity": "candidate", "fields": []any{"stage"}, "groupBy": []any{"stage"}, "aggregates": []any{map[string]any{"function": "count", "field": "id", "alias": "candidate_count"}}}},
+		{APIVersion: definition.APIVersion, Kind: "Block", Metadata: definition.Metadata{Name: "candidate_count"}, Spec: map[string]any{"type": "view", "view": "candidate_metrics", "presentation": map[string]any{"mode": "metric", "metricField": "candidate_count"}}},
+	}
+	if diagnostics := compiler.Compile("test", 1, definitions).Diagnostics; !hasDiagnostic(diagnostics, "candidate_count", "spec.presentation.metricField") {
+		t.Fatalf("grouped metric accepted: %v", diagnostics)
+	}
+}
+
+func TestMetricRejectsSelectedRecordFields(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "candidate"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "name", "type": "string"}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "candidate_metrics"}, Spec: map[string]any{"entity": "candidate", "fields": []any{"id"}, "aggregates": []any{map[string]any{"function": "count", "field": "id", "alias": "candidate_count"}}}},
+		{APIVersion: definition.APIVersion, Kind: "Block", Metadata: definition.Metadata{Name: "candidate_count"}, Spec: map[string]any{"type": "view", "view": "candidate_metrics", "presentation": map[string]any{"mode": "metric", "metricField": "candidate_count"}}},
+	}
+	if diagnostics := compiler.Compile("test", 1, definitions).Diagnostics; !hasDiagnostic(diagnostics, "candidate_count", "spec.presentation.metricField") {
+		t.Fatalf("metric View with selected fields accepted: %v", diagnostics)
+	}
+}
+
+func TestTimelineRequiresSelectedTimeField(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "activity"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}, map[string]any{"name": "occurred_at", "type": "datetime"}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "activities"}, Spec: map[string]any{"entity": "activity", "fields": []any{"id", "title"}}},
+		{APIVersion: definition.APIVersion, Kind: "Block", Metadata: definition.Metadata{Name: "timeline"}, Spec: map[string]any{"type": "view", "view": "activities", "presentation": map[string]any{"mode": "timeline", "titleField": "title", "timeField": "occurred_at"}}},
+	}
+	if diagnostics := compiler.Compile("test", 1, definitions).Diagnostics; !hasDiagnostic(diagnostics, "timeline", "spec.presentation.timeField") {
+		t.Fatalf("unselected timeline time field accepted: %v", diagnostics)
+	}
+}
+
+func TestTimelineRejectsRedactedTimeField(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "activity"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}, map[string]any{"name": "occurred_at", "type": "datetime"}}}},
+		{APIVersion: definition.APIVersion, Kind: "Policy", Metadata: definition.Metadata{Name: "activity_policy"}, Spec: map[string]any{"redact": []any{"occurred_at"}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "activities"}, Spec: map[string]any{"entity": "activity", "policy": "activity_policy", "fields": []any{"id", "title", "occurred_at"}}},
+		{APIVersion: definition.APIVersion, Kind: "Block", Metadata: definition.Metadata{Name: "timeline"}, Spec: map[string]any{"type": "view", "view": "activities", "presentation": map[string]any{"mode": "timeline", "titleField": "title", "timeField": "occurred_at"}}},
+	}
+	if diagnostics := compiler.Compile("test", 1, definitions).Diagnostics; !hasDiagnostic(diagnostics, "timeline", "spec.presentation.timeField") {
+		t.Fatalf("redacted timeline time field accepted: %v", diagnostics)
+	}
+}
+
 func TestPresentationRejectsRelatedFileDownloads(t *testing.T) {
 	defs := []definition.Definition{
 		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "attachment"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "file", "type": "file"}}}},

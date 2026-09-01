@@ -1,6 +1,19 @@
 apiVersion: bean/v1alpha1
 name: Issue Tracker
 ---
+kind: Theme
+name: default
+displayName: Northstar Tracker
+preset: minimal
+accent: blue
+---
+kind: DemoSeed
+name: credible_demo
+entities:
+  project: {count: 6, profile: auto}
+  issue: {count: 30, profile: auto}
+  comment: {count: 45, profile: notes}
+---
 kind: Entity
 name: project
 fields:

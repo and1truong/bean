@@ -93,6 +93,12 @@
           },
           "type": "array"
         },
+        "metricField": {
+          "type": "string"
+        },
+        "metricLabel": {
+          "type": "string"
+        },
         "mode": {
           "type": "string"
         },
@@ -110,6 +116,15 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "searchFields": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "timeField": {
+          "type": "string"
         },
         "titleField": {
           "type": "string"

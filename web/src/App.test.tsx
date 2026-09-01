@@ -48,6 +48,40 @@ describe('public rendering',()=>{
     expect(screen.queryByRole('link',{name:'Sign in'})).not.toBeInTheDocument()
   })
 
+  it('applies typed theme and renders metric timeline and declared search',async()=>{
+	const fetchMock=vi.fn(async(input:string|URL|Request)=>{
+	  const path=String(input)
+	  if(path.includes('/api/system/session'))return response({authenticated:false})
+	  if(path.includes('/api/system/manifest'))return response({authNavigation:false,theme:{DisplayName:'Acme Recruiting',Preset:'professional',Accent:'indigo'}})
+	  if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[
+		{component:'ViewBlock',props:{name:'metric',view:'metrics',formattedFields:[],fileFields:[],presentation:{Mode:'metric',MetricField:'candidate_count',MetricLabel:'Candidates'}}},
+		{component:'ViewBlock',props:{name:'timeline',view:'recent',formattedFields:[],fileFields:[],presentation:{Mode:'timeline',TitleField:'name',BodyField:'note',TimeField:'applied_at',MetaFields:['stage']}}},
+		{component:'ViewBlock',props:{name:'search',view:'candidates',formattedFields:[],fileFields:[],presentation:{Mode:'list',TitleField:'name',SearchFields:['name','email']}}},
+	  ]}})
+	  if(path.includes('_block=metric'))return response({data:[{candidate_count:12}],nextCursor:''})
+	  if(path.includes('_block=timeline')&&path.includes('cursor=timeline-next'))return response({data:[{id:'c',name:'Alex Kim',note:'Offer accepted',stage:'hired',applied_at:'2026-09-01T10:00:00Z'}],nextCursor:''})
+	  if(path.includes('_block=timeline'))return response({data:[{id:'a',name:'Jamie Chen',note:'Interview scheduled',stage:'interview',applied_at:'2026-08-31T10:00:00Z'}],nextCursor:'timeline-next'})
+	  if(path.includes('_block=search')&&path.includes('q=Jane'))return response({data:[{id:'b',name:'Jane Doe',email:'jane@example.test'}],nextCursor:''})
+	  if(path.includes('_block=search'))return response({data:[{id:'a',name:'Jamie Chen'}],nextCursor:''})
+	  return response({})
+	})
+	vi.stubGlobal('fetch',fetchMock)
+	renderApp('/')
+	expect(await screen.findByRole('link',{name:'Acme Recruiting'})).toBeInTheDocument()
+	expect(screen.getByTestId('application-shell')).toHaveAttribute('data-preset','professional')
+	expect(screen.getByTestId('application-shell')).toHaveAttribute('data-accent','indigo')
+	expect(await screen.findByText('12')).toBeInTheDocument()
+	expect(screen.getByText('Interview scheduled')).toBeInTheDocument()
+	expect(screen.getByText('Aug 31, 2026')).toBeInTheDocument()
+	fireEvent.click(screen.getAllByRole('button',{name:'Next'})[0])
+	expect(await screen.findByText('Offer accepted')).toBeInTheDocument()
+	expect(fetchMock.mock.calls.some(([input])=>String(input).includes('cursor=timeline-next'))).toBe(true)
+	fireEvent.change(screen.getByRole('searchbox',{name:'Search candidates'}),{target:{value:'Jane'}})
+	fireEvent.submit(screen.getByRole('searchbox',{name:'Search candidates'}).closest('form')!)
+	expect(await screen.findByText('Jane Doe')).toBeInTheDocument()
+	expect(fetchMock.mock.calls.some(([input])=>String(input).includes('q=Jane'))).toBe(true)
+  })
+
   it('renders allowed board movement and an arbitrary-depth task tree',async()=>{
     const fetchMock=vi.fn(async(input:string|URL|Request,init?:RequestInit)=>{
       const path=String(input)

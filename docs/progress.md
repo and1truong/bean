@@ -2,7 +2,21 @@
 
 ## Current
 
-Bean v0.6 agent-readable compiler is complete. The real binary supports the full init/capabilities/schema/validate/inspect/plan/diff/publish/test loop with human output or a versioned `bean.cli/v1alpha1` JSON envelope.
+Bean v0.7 Demo Factory implementation is complete on top of the v0.6 machine contract. Typed Theme/DemoSeed metadata, generic Metric/Timeline/Search presentation, ten inspectable ordinary-definition patterns, deterministic Action-based seeding, checksummed SQLite packaging, and the populated ATS reference slice have executable evidence. CRM and tracker also validate and package with deterministic datasets.
+
+Milestones 0–4 are done. Milestone 5 remains active for the terminal repository gates and honest repeated external-agent p50/p90 prompt benchmark. Prepared-definition/package timings are not substituted for that North Star evidence. Provider-specific agents, MCP, hosted sharing, Lifecycle semantics, rules, generated semantic tests, and extensions remain outside this goal.
+
+## v0.7 implementation evidence
+
+- The ATS has 23 metadata definitions and seed `42` produces 76 coherent records with stable semantic source and dataset checksums.
+- Focused compiler, HTTP, Action, seed, pattern, CLI package, React, ATS browser, and source-independent packaged-binary browser tests pass.
+- The ten patterns compile independently and `pattern inspect` returns their ordinary definitions and declared capabilities.
+- Package verification detects artifact tampering; a failed replacement leaves the prior package manifest untouched.
+- `make check` passes vet/lint/typecheck, 25 React tests, all Go/race/compatibility/black-box contracts, and 14/14 Playwright journeys. `make test-crash`, `make test-postgres`, and `make build` also pass; `bin/bean version` reports `bean 0.7.0-alpha`.
+
+## v0.6 completed state
+
+The real binary supports the full init/capabilities/schema/validate/inspect/plan/diff/publish/test loop with human output or a versioned `bean.cli/v1alpha1` JSON envelope.
 
 Stable diagnostic families, source-relative paths, compiler-derived candidates, credential redaction, canonical generated schemas, normalized inspection, read-only target planning, semantic AppIR diff, exact-source draft replacement, atomic release activation, and isolated SQLite restart smoke tests have focused evidence. Draft 2020-12 validation accepts all nine maintained applications and rejects invalid manifest/definition shapes. The black-box applicant-tracking harness repairs unknown Entity, unknown field, and invalid transition defects without parsing English messages, then publishes and proves a zero-change diff.
 

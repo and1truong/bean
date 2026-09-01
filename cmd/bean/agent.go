@@ -20,8 +20,10 @@ import (
 	"github.com/beanruntime/bean/internal/bootstrap"
 	"github.com/beanruntime/bean/internal/compiler"
 	"github.com/beanruntime/bean/internal/definition"
+	"github.com/beanruntime/bean/internal/demoseed"
 	"github.com/beanruntime/bean/internal/expr"
 	"github.com/beanruntime/bean/internal/migration"
+	"github.com/beanruntime/bean/internal/patterns"
 	"github.com/beanruntime/bean/internal/release"
 )
 
@@ -88,7 +90,97 @@ func runAgentCommand(args []string, stdout, stderr io.Writer) (int, bool) {
 	if len(args) >= 2 && args[0] == "app" && args[1] == "test" {
 		return agentAppTest(args[2:], stdout, stderr), true
 	}
+	if len(args) >= 2 && args[0] == "demo" && args[1] == "seed" {
+		return agentDemoSeed(args[2:], stdout, stderr), true
+	}
+	if len(args) >= 2 && args[0] == "pattern" && args[1] == "inspect" {
+		return agentPatternInspect(args[2:], stdout, stderr), true
+	}
+	if len(args) >= 2 && args[0] == "package" && args[1] == "verify" {
+		return agentPackageVerify(args[2:], stdout, stderr), true
+	}
+	if len(args) >= 1 && args[0] == "package" {
+		return agentPackageBuild(args[1:], stdout, stderr), true
+	}
 	return 0, false
+}
+
+func agentPatternInspect(args []string, stdout, stderr io.Writer) int {
+	args, jsonOutput := removeFlag(args, "--json")
+	if len(args) != 1 {
+		return writeCommandFailure("pattern.inspect", "usage: bean pattern inspect NAME [--json]", exitUsage, jsonOutput, stdout, stderr)
+	}
+	result, err := patterns.Inspect(args[0])
+	if err != nil {
+		return writeDefinitionFailure("pattern.inspect", definition.Diagnostic{Code: "BEAN-E2001", Kind: "Pattern", Name: args[0], Path: "name", Message: err.Error(), Candidates: patterns.Names()}, jsonOutput, stdout, stderr)
+	}
+	if jsonOutput {
+		writeEnvelope(stdout, cliEnvelope{APIVersion: cliAPIVersion, Command: "pattern.inspect", OK: true, Result: result, Diagnostics: []machineDiagnostic{}})
+	} else {
+		writePrettyJSON(stdout, result)
+	}
+	return exitOK
+}
+
+func agentDemoSeed(args []string, stdout, stderr io.Writer) int {
+	args, jsonOutput := removeFlag(args, "--json")
+	flags := flag.NewFlagSet("demo seed", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	filename := flags.String("file", "", "application manifest")
+	database := flags.String("db", "bean.db", "SQLite database")
+	databaseURL := flags.String("database-url", os.Getenv("BEAN_DATABASE_URL"), "database URL")
+	seed := flags.Int64("seed", 1, "deterministic seed")
+	if err := flags.Parse(args); err != nil || flags.NArg() != 0 || *filename == "" {
+		message := "--file is required"
+		if err != nil {
+			message = err.Error()
+		} else if flags.NArg() != 0 {
+			message = "unexpected arguments: " + strings.Join(flags.Args(), " ")
+		}
+		return writeCommandFailure("demo.seed", message, exitUsage, jsonOutput, stdout, stderr)
+	}
+	bundle, diagnostics := validateSource(*filename)
+	if len(diagnostics) > 0 {
+		return writeSourceFailure("demo.seed", *filename, diagnostics, jsonOutput, stdout, stderr)
+	}
+	compiled := compiler.Compile("default", 1, bundle.Definitions)
+	target := databaseTarget(*database, *databaseURL)
+	runtime, err := bootstrap.OpenURL(context.Background(), target, false)
+	if err != nil {
+		return writeRuntimeFailure("demo.seed", err, jsonOutput, stdout, stderr)
+	}
+	defer runtime.DB.Close()
+	active, exists := runtime.Kernel.Active()
+	if !exists {
+		return writeRuntimeFailure("demo.seed", fmt.Errorf("target database has no active application; run bean app publish first"), jsonOutput, stdout, stderr)
+	}
+	if !sameApplicationDefinition(active, compiled.App) {
+		return writeRuntimeFailure("demo.seed", fmt.Errorf("active application does not match --file; publish it before seeding"), jsonOutput, stdout, stderr)
+	}
+	result, err := demoseed.Run(context.Background(), runtime.DB, active, *seed)
+	if err != nil {
+		return writeRuntimeFailure("demo.seed", err, jsonOutput, stdout, stderr)
+	}
+	if jsonOutput {
+		writeEnvelope(stdout, cliEnvelope{APIVersion: cliAPIVersion, Command: "demo.seed", OK: true, Result: result, Diagnostics: []machineDiagnostic{}})
+	} else {
+		fmt.Fprintf(stdout, "seeded %d records (checksum %s)\n", result.Records, result.Checksum)
+	}
+	return exitOK
+}
+
+func sameApplicationDefinition(active, candidate *appir.App) bool {
+	activeCopy, activeErr := active.Clone()
+	candidateCopy, candidateErr := candidate.Clone()
+	if activeErr != nil || candidateErr != nil {
+		return false
+	}
+	for _, app := range []*appir.App{activeCopy, candidateCopy} {
+		app.ReleaseID = ""
+		app.Version = 0
+		app.OpenAPI = nil
+	}
+	return reflect.DeepEqual(activeCopy, candidateCopy)
 }
 
 func agentCapabilities(args []string, stdout, stderr io.Writer) int {
@@ -759,6 +851,14 @@ func inspectedDefinition(app *appir.App, kind, name string) (any, []inspectedRef
 		if app.LocalRegistration != nil {
 			value, exists = *app.LocalRegistration, true
 		}
+	case "Theme":
+		if app.Theme != nil && app.Theme.Name == name {
+			value, exists = *app.Theme, true
+		}
+	case "DemoSeed":
+		if app.DemoSeed != nil && app.DemoSeed.Name == name {
+			value, exists = *app.DemoSeed, true
+		}
 	}
 	if !exists {
 		return nil, nil, false
@@ -801,6 +901,14 @@ func definitionNames(app *appir.App, kind string) []string {
 		appendMap(app.Jobs)
 	case "AdminResource":
 		appendMap(app.AdminResources)
+	case "Theme":
+		if app.Theme != nil {
+			names = append(names, app.Theme.Name)
+		}
+	case "DemoSeed":
+		if app.DemoSeed != nil {
+			names = append(names, app.DemoSeed.Name)
+		}
 	}
 	sort.Strings(names)
 	return names

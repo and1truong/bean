@@ -25,8 +25,24 @@ import (
 )
 
 type Service struct {
-	DB   dbal.Database
-	Auth auth.Service
+	DB       dbal.Database
+	Auth     auth.Service
+	CreateID func(appir.Entity, map[string]any) string
+	Now      func() time.Time
+}
+
+func (s Service) now() time.Time {
+	if s.Now != nil {
+		return s.Now().UTC()
+	}
+	return time.Now().UTC()
+}
+
+func (s Service) createID(entity appir.Entity, input map[string]any) string {
+	if s.CreateID != nil {
+		return s.CreateID(entity, input)
+	}
+	return uid.New()
 }
 
 func (s Service) Execute(ctx context.Context, app *appir.App, name string, input map[string]any, request beanctx.Request) (dbal.Row, error) {
@@ -87,11 +103,27 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 	var result dbal.Row
 	var entityID string
 	changed := []string{}
+	createID := ""
+	if a.Operation == "create" {
+		createID = s.createID(e, input)
+	}
+	generatedIDs := []string{}
+	generatedIDIndex := 0
+	execution := s
+	execution.CreateID = func(entity appir.Entity, input map[string]any) string {
+		if generatedIDIndex == len(generatedIDs) {
+			generatedIDs = append(generatedIDs, s.createID(entity, input))
+		}
+		id := generatedIDs[generatedIDIndex]
+		generatedIDIndex++
+		return id
+	}
 	err := s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
+		generatedIDIndex = 0
 		if request.Values == nil {
 			request.Values = map[string]any{}
 		}
-		request.Values["now"] = time.Now().UTC().Format(time.RFC3339)
+		request.Values["now"] = s.now().Format(time.RFC3339)
 		result = nil
 		entityID = ""
 		changed = nil
@@ -122,7 +154,7 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 		var er error
 		switch a.Operation {
 		case "create":
-			result, er = create(ctx, tx, app, e, input, request)
+			result, er = s.create(ctx, tx, app, e, input, request, createID)
 		case "update":
 			for _, candidate := range app.Actions {
 				if candidate.Entity != a.Entity || candidate.Operation != "transition" {
@@ -142,7 +174,7 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 		case "delete":
 			result, er = remove(ctx, tx, e, input)
 		case "transaction":
-			result, er = steps(ctx, tx, app, a, input, request)
+			result, er = execution.steps(ctx, tx, app, a, input, request)
 		case "register_local_user":
 			result, er = s.Auth.RegisterInTransaction(ctx, tx, fmt.Sprint(input["display_name"]), fmt.Sprint(input["email"]), fmt.Sprint(input["password"]), fmt.Sprint(input["password_confirmation"]), a.DefaultRole)
 		default:
@@ -241,7 +273,7 @@ func scopedIdempotencyKey(key string, request beanctx.Request) string {
 	scope := sha256.Sum256([]byte(principal))
 	return fmt.Sprintf("%x:%s", scope, key)
 }
-func create(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.Entity, input map[string]any, c beanctx.Request) (dbal.Row, error) {
+func (s Service) create(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.Entity, input map[string]any, c beanctx.Request, id string) (dbal.Row, error) {
 	values := map[string]dbal.Value{}
 	for _, f := range e.Fields {
 		v := input[f.Name]
@@ -269,8 +301,11 @@ func create(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.En
 			values[f.Name] = stored
 		}
 	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	values["id"] = uid.New()
+	now := s.now().Format(time.RFC3339Nano)
+	if id == "" {
+		id = s.createID(e, input)
+	}
+	values["id"] = id
 	values["created_at"] = now
 	values["updated_at"] = now
 	values["version"] = 1
@@ -438,7 +473,7 @@ func storeUpload(ctx context.Context, tx dbal.Transaction, value any) (string, e
 	}
 	return id, nil
 }
-func steps(ctx context.Context, tx dbal.Transaction, app *appir.App, a appir.Action, input map[string]any, c beanctx.Request) (dbal.Row, error) {
+func (s Service) steps(ctx context.Context, tx dbal.Transaction, app *appir.App, a appir.Action, input map[string]any, c beanctx.Request) (dbal.Row, error) {
 	var out dbal.Row
 	results := map[string]any{}
 	for _, step := range a.Steps {
@@ -641,7 +676,7 @@ func steps(ctx context.Context, tx dbal.Transaction, app *appir.App, a appir.Act
 			}
 			values := resolveValues(step.Values, input, results, c)
 			delete(values, "entity")
-			row, x := create(ctx, tx, app, entity, values, c)
+			row, x := s.create(ctx, tx, app, entity, values, c, "")
 			if x != nil {
 				return nil, x
 			}

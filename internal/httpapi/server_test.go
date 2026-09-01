@@ -183,6 +183,57 @@ func TestManifestKeepsAuthenticationNavigationForImplicitRequirements(t *testing
 	}
 }
 
+func TestPublicViewSearchIsCompilerDeclaredAndThemeIsExposed(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := bootstrap.Open(ctx, filepath.Join(t.TempDir(), "search.db"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.DB.Close()
+	bundle := definition.Bundle{Name: "search", Definitions: []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Theme", Metadata: definition.Metadata{Name: "default"}, Spec: map[string]any{"displayName": "Search Demo", "preset": "professional", "accent": "indigo"}},
+		{APIVersion: definition.APIVersion, Kind: "Policy", Metadata: definition.Metadata{Name: "public_access"}, Spec: map[string]any{}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "item"}, Spec: map[string]any{"policy": "public_access", "fields": []any{map[string]any{"name": "title", "type": "string", "required": true}, map[string]any{"name": "status", "type": "enum", "options": []any{"open", "closed"}, "required": true}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "items"}, Spec: map[string]any{"entity": "item", "fields": []any{"id", "title", "status"}}},
+		{APIVersion: definition.APIVersion, Kind: "Block", Metadata: definition.Metadata{Name: "items"}, Spec: map[string]any{"type": "view", "view": "items", "presentation": map[string]any{"mode": "list", "titleField": "title", "searchFields": []any{"title"}}}},
+		{APIVersion: definition.APIVersion, Kind: "Panel", Metadata: definition.Metadata{Name: "home"}, Spec: map[string]any{"layout": "single-column", "regions": []any{map[string]any{"name": "main", "blocks": []any{"items"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "home"}, Spec: map[string]any{"route": "/", "panel": "home"}},
+	}}
+	if err = runtime.Store.SaveBundle(ctx, "default", bundle); err != nil {
+		t.Fatal(err)
+	}
+	if _, diagnostics, publishErr := runtime.Store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) > 0 {
+		t.Fatalf("publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	handler := runtime.HTTP.Handler()
+	for _, title := range []string{"Alpha role", "Beta role"} {
+		response := serve(t, handler, http.MethodPost, "/api/actions/item_create", map[string]any{"title": title, "status": "open"}, nil, "")
+		if response.Code != http.StatusOK {
+			t.Fatalf("create status=%d body=%s", response.Code, response.Body.String())
+		}
+	}
+	manifestResponse := serve(t, handler, http.MethodGet, "/api/system/manifest", nil, nil, "")
+	var manifest map[string]any
+	decodeResponse(t, manifestResponse, &manifest)
+	theme := manifest["theme"].(map[string]any)
+	if theme["DisplayName"] != "Search Demo" || theme["Accent"] != "indigo" {
+		t.Fatalf("theme=%#v", theme)
+	}
+
+	search := serve(t, handler, http.MethodGet, "/api/views/items?_page=%2F&_block=items&q=beta", nil, nil, "")
+	var result struct {
+		Data []map[string]any `json:"data"`
+	}
+	decodeResponse(t, search, &result)
+	if len(result.Data) != 1 || result.Data[0]["title"] != "Beta role" {
+		t.Fatalf("search rows=%#v", result.Data)
+	}
+	unbound := serve(t, handler, http.MethodGet, "/api/views/items?q=alpha", nil, nil, "")
+	if unbound.Code != http.StatusBadRequest {
+		t.Fatalf("unbound search status=%d body=%s", unbound.Code, unbound.Body.String())
+	}
+}
+
 func TestAdminResourceAPIRequiresAdminAndUsesCompiledRuntime(t *testing.T) {
 	testAdminResourceAPI(t, filepath.Join(t.TempDir(), "admin.db"))
 }

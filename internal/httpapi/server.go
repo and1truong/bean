@@ -124,7 +124,7 @@ func (s *Server) manifest(w http.ResponseWriter, _ *http.Request) {
 	for _, entity := range a.Entities {
 		authNavigation = authNavigation || entity.Owner || entity.Tenant
 	}
-	write(w, 200, map[string]any{"appId": a.AppID, "releaseId": a.ReleaseID, "version": a.Version, "authNavigation": authNavigation, "entities": a.Entities, "views": a.Views, "actions": a.Actions, "filters": a.Filters, "webforms": a.Webforms, "pages": a.Pages, "localRegistration": a.LocalRegistration})
+	write(w, 200, map[string]any{"appId": a.AppID, "releaseId": a.ReleaseID, "version": a.Version, "authNavigation": authNavigation, "theme": a.Theme, "entities": a.Entities, "views": a.Views, "actions": a.Actions, "filters": a.Filters, "webforms": a.Webforms, "pages": a.Pages, "localRegistration": a.LocalRegistration})
 }
 func (s *Server) adminManifest(w http.ResponseWriter, r *http.Request) {
 	if !s.editor(w, r) {
@@ -295,6 +295,18 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request) {
 		}
 		filters[name] = value
 	}
+	search := r.URL.Query().Get("q")
+	delete(filters, "q")
+	searchFields := []string{}
+	if search != "" {
+		blockName := r.URL.Query().Get("_block")
+		block, exists := a.Blocks[blockName]
+		if !exists || block.Type != "view" || block.View != r.PathValue("name") || len(block.Presentation.SearchFields) == 0 {
+			problem(w, 400, "invalid_query", "Search is not configured for this View block.", requestID(r))
+			return
+		}
+		searchFields = block.Presentation.SearchFields
+	}
 	if blockName := r.URL.Query().Get("_block"); blockName != "" {
 		block := a.Blocks[blockName]
 		if block.Type == "resource-list" {
@@ -310,7 +322,7 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	result, e := s.Views.RunPage(r.Context(), a, r.PathValue("name"), view.Params{Filter: filters, Limit: limit, Offset: offset, Cursor: r.URL.Query().Get("cursor")}, viewContext)
+	result, e := s.Views.RunPage(r.Context(), a, r.PathValue("name"), view.Params{Filter: filters, Search: search, SearchFields: searchFields, Limit: limit, Offset: offset, Cursor: r.URL.Query().Get("cursor")}, viewContext)
 	if e != nil {
 		respondError(w, r, e)
 		return

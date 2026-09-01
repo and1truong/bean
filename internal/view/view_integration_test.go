@@ -23,11 +23,11 @@ func TestCompiledQueryPlanAndOpaqueCursor(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer db.Close()
-	if e = db.ExecuteMigration(ctx, []string{`CREATE TABLE category (id TEXT PRIMARY KEY, name TEXT NOT NULL)`, `CREATE TABLE book (id TEXT PRIMARY KEY, title TEXT NOT NULL, price INTEGER NOT NULL, category_id TEXT NOT NULL)`}); e != nil {
+	if e = db.ExecuteMigration(ctx, []string{`CREATE TABLE category (id TEXT PRIMARY KEY, name TEXT NOT NULL, title TEXT NOT NULL)`, `CREATE TABLE book (id TEXT PRIMARY KEY, title TEXT NOT NULL, price INTEGER NOT NULL, category_id TEXT NOT NULL)`}); e != nil {
 		t.Fatal(e)
 	}
 	for _, insert := range []dbal.Insert{
-		{Table: "category", Values: map[string]dbal.Value{"id": "c1", "name": "Technical"}},
+		{Table: "category", Values: map[string]dbal.Value{"id": "c1", "name": "Technical", "title": "Reference"}},
 		{Table: "book", Values: map[string]dbal.Value{"id": "b1", "title": "Alpha", "price": 2, "category_id": "c1"}},
 		{Table: "book", Values: map[string]dbal.Value{"id": "b2", "title": "Beta", "price": 3, "category_id": "c1"}},
 	} {
@@ -37,7 +37,7 @@ func TestCompiledQueryPlanAndOpaqueCursor(t *testing.T) {
 	}
 	app := appir.Empty()
 	app.Entities["book"] = appir.Entity{Name: "book", Fields: []appir.Field{{Name: "title", Type: "string"}, {Name: "price", Type: "integer"}, {Name: "category_id", Type: "relation"}}}
-	app.Entities["category"] = appir.Entity{Name: "category", Fields: []appir.Field{{Name: "name", Type: "string"}}}
+	app.Entities["category"] = appir.Entity{Name: "category", Fields: []appir.Field{{Name: "name", Type: "string"}, {Name: "title", Type: "string"}}}
 	app.Views["totals"] = appir.View{Name: "totals", Entity: "book", Fields: []string{"category.name"}, Relationships: []appir.ViewRelationship{{Name: "category", Entity: "category", Type: "inner", LocalField: "category_id", TargetField: "id"}}, GroupBy: []string{"category.name"}, Aggregates: []appir.Aggregate{{Function: "sum", Field: "book.price", Alias: "total"}}, Sort: []appir.Sort{{Field: "category.name"}}, DefaultLimit: 10, MaxLimit: 10}
 	service := view.Service{DB: db}
 	rows, e := service.Run(ctx, app, "totals", view.Params{}, beanctx.Request{})
@@ -48,6 +48,10 @@ func TestCompiledQueryPlanAndOpaqueCursor(t *testing.T) {
 	detail, e := service.RunPage(ctx, app, "book_detail", view.Params{RecordID: "b2"}, beanctx.Request{})
 	if e != nil || len(detail.Rows) != 1 || detail.Rows[0]["id"] != "b2" {
 		t.Fatalf("joined record lookup=%v err=%v", detail, e)
+	}
+	detail, e = service.RunPage(ctx, app, "book_detail", view.Params{Search: "bet", SearchFields: []string{"title"}}, beanctx.Request{})
+	if e != nil || len(detail.Rows) != 1 || detail.Rows[0]["id"] != "b2" {
+		t.Fatalf("joined base-field search=%v err=%v", detail, e)
 	}
 	app.Views["books"] = appir.View{Name: "books", Entity: "book", Fields: []string{"id", "title"}, Sort: []appir.Sort{{Field: "title"}}, DefaultLimit: 1, MaxLimit: 2}
 	first, e := service.RunPage(ctx, app, "books", view.Params{}, beanctx.Request{})

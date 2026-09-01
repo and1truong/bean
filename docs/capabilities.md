@@ -1,6 +1,6 @@
-# Bean v0.6 capability matrix
+# Bean v0.7 capability matrix
 
-`complete` means the v0.6 compiler/runtime pair has direct executable evidence. Bean remains alpha software and the limits below are part of the contract.
+`complete` means the v0.7 compiler/runtime pair has direct executable evidence. Bean remains alpha software and the limits below are part of the contract.
 
 | Area | Capability | Status | Direct evidence |
 | --- | --- | --- | --- |
@@ -15,6 +15,10 @@
 | Bound blocks | Compiler-checked immutable Page/Block values for Views, Webforms, and scoped AdminResource lists | complete | binding/filter diagnostics, tamper tests, React tests, blog browser journey |
 | Content rendering | Generic list/detail links, named content Filters, safe Markdown, metadata fields, legacy rich text, empty states, cursor controls | complete | Filter/View/React XSS tests and blog browser journey |
 | Operational presentation | Compiler-validated enum boards and expandable self-relation trees | complete | compiler/React contracts and Asana Lite browser journey |
+| Demo presentation | Typed themes plus compiler-validated Metric, Timeline, and declared public View Search | complete | schema/compiler/HTTP/React contracts and ATS browser journey |
+| Demo fixtures | Typed relation-aware deterministic generation through Actions with View-based replay verification | complete | scalar/relation/cycle/replay/refusal tests and ATS package evidence |
+| Application patterns | Ten inspectable, byte-stable ordinary-definition bundles | complete | independent catalog compilation and CLI inspection tests |
+| Local package | Staged SQLite package with executable, populated database, versioned manifest, checksums, verification, and source-independent startup | complete | CLI tamper/failure-atomicity tests and packaged-binary browser journey |
 | Small file attachments | 5 MiB multipart `file` fields, transactional metadata/content, policy-checked download, replacement/deletion cleanup | complete | field/Action/HTTP/React contracts and Asana Lite browser journey |
 | UI system | Source-owned shadcn primitives, shared Bean tokens, accessible confirmations, responsive Shell/Public/Admin/System/Studio surfaces | complete | frontend lint/unit/build, `ui.spec.ts`, and full Playwright gate |
 | Actions | Typed I/O, full declared step set, rollback, concurrency, audit, job/outbox intent | complete | Action integration and race tests |
@@ -32,14 +36,16 @@
 | Qualification | contract, fuzz-smoke, compatibility, race, black-box, crash, PostgreSQL and Playwright | complete | terminal make targets |
 | Blog vertical slice | Draft/publish, category/tag relations, signup/login, comments, moderation, RSS | complete | `make test-blog` and PostgreSQL browser parity |
 | Asana Lite vertical slice | Anonymous local projects, root-task board, arbitrary-depth tree, route-bound subtasks, and multiple attachments | complete | `asana.spec.ts` browser journey |
+| Applicant tracker vertical slice | Jobs, candidates, notes, activities, pipeline transitions, detail, search, metric, timeline, theme, and generated data | complete | `ats.spec.ts` and `package.spec.ts` browser journeys |
 
 ## Explicit limits
 
 - One Bean process and one active application per database are qualified. Clustering, multi-process writers, replicas, HA, and failover are not.
 - Migrations are additive. Destructive schema changes, data transformations, and automated rollback are rejected or deferred.
 - Outbox delivery is at-least-once. A crash after delivery but before acknowledgement can duplicate an effect.
-- v0.6 retains the v0.5 crash qualification assumption of a functioning filesystem or PostgreSQL service. Corruption, host loss, backup/restore, and point-in-time recovery are outside scope.
+- v0.7 retains the v0.5 crash qualification assumption of a functioning filesystem or PostgreSQL service. Corruption, host loss, backup/restore, and point-in-time recovery are outside scope.
 - The visual builder covers the core operational definition path; non-core page composition kinds use advanced JSON in this slice.
 - Tree presentation is bounded by the View maximum of 200 rows. File fields are bounded small attachments stored as base64 metadata content; external object storage, resumable transfer, scanning, and media processing are outside this slice.
 - SQLite/PostgreSQL parity is contract and workflow parity, not identical query plans or operational characteristics.
+- `bean package` deliberately targets local SQLite only. It does not create containers, installers, hosted previews, signatures, or a distribution channel.
 - External security review, load envelopes, SLOs, supply-chain signing, and production release certification remain future work.

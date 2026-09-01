@@ -22,9 +22,10 @@ import (
 	"github.com/beanruntime/bean/internal/compiler"
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/definition"
+	"github.com/beanruntime/bean/internal/demoseed"
 )
 
-const version = "0.6.0-alpha"
+const version = "0.7.0-alpha"
 
 func main() {
 	os.Exit(execute(os.Args[1:], os.Stdout, os.Stderr))
@@ -69,7 +70,7 @@ func run(args []string) error {
 	}
 }
 func usage() error {
-	return fmt.Errorf("usage: bean {init|serve|validate|publish|migrate|capabilities|schema|app init|app validate|app inspect|app plan|app diff|app publish|app test|app import|app export|user create|demo|version}")
+	return fmt.Errorf("usage: bean {init|serve|validate|publish|migrate|capabilities|schema|app init|app validate|app inspect|app plan|app diff|app publish|app test|app import|app export|user create|demo|demo seed|pattern inspect|package|package verify|version}")
 }
 func userCommand(args []string) error {
 	if len(args) == 0 || args[0] != "create" {
@@ -430,11 +431,15 @@ func demoCommand(args []string) error {
 		admin := beanctx.Request{User: &beanctx.User{ID: "demo-admin", Email: "admin@example.test", Roles: []string{"administrator"}}, RequestID: "demo-seed"}
 		engine := action.Service{DB: r.DB}
 		app, _ := r.Kernel.Active()
-		for entity, rows := range bundle.Seed {
-			for _, row := range rows {
-				_, e = engine.Execute(context.Background(), app, entity+"_create", row, admin)
-				if e != nil {
-					break
+		if app.DemoSeed != nil {
+			_, e = demoseed.Run(context.Background(), r.DB, app, 1)
+		} else {
+			for entity, rows := range bundle.Seed {
+				for _, row := range rows {
+					_, e = engine.Execute(context.Background(), app, entity+"_create", row, admin)
+					if e != nil {
+						break
+					}
 				}
 			}
 		}

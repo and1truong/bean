@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-var Kinds = map[string]bool{"Entity": true, "View": true, "Action": true, "Webform": true, "Policy": true, "Filter": true, "Block": true, "Panel": true, "Page": true, "Role": true, "Menu": true, "Job": true, "AdminResource": true, "LocalRegistration": true}
+var Kinds = map[string]bool{"Entity": true, "View": true, "Action": true, "Webform": true, "Policy": true, "Filter": true, "Block": true, "Panel": true, "Page": true, "Role": true, "Menu": true, "Job": true, "AdminResource": true, "LocalRegistration": true, "Theme": true, "DemoSeed": true}
 var machineName = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 type Metadata struct {
@@ -100,6 +100,8 @@ func DiagnosticCode(d Diagnostic) string {
 		return "BEAN-E2601"
 	case kind == "release" || strings.Contains(path, "migration") || strings.Contains(message, "migration"):
 		return "BEAN-E2701"
+	case kind == "theme" || kind == "demoseed":
+		return "BEAN-E2801"
 	case strings.Contains(path, "field") || strings.Contains(message, "field"):
 		return "BEAN-E2101"
 	case strings.Contains(message, "yaml") || strings.Contains(message, "mapping") || strings.Contains(message, "manifest") || strings.Contains(message, "resource") || strings.Contains(message, "file path"):

@@ -1,101 +1,113 @@
-# Goal: Bean v0.6 agent-readable compiler (completed)
+# Goal: Bean v0.7 Demo Factory
 
-Turn Bean's compiler and release lifecycle into a stable machine-facing contract that coding agents can use without parsing human terminal output or inspecting Bean source code.
+Turn the v0.6 machine-facing compiler loop into a fast path from ordinary application intent to a populated, presentable, portable local demo without adding an LLM or application-specific runtime code.
 
 ## Primary outcome
 
-A tool-agnostic client can initialize an application workspace, discover Bean's vocabulary, validate and repair definitions, inspect compiled meaning, preview changes, publish, and run lifecycle smoke tests using versioned JSON responses only.
+A coding agent can compose ordinary Bean definitions for a maintained prompt, validate and publish them through the v0.6 contract, populate coherent demo data deterministically, and produce a self-contained local package that opens as a credible working product rather than an empty CRUD shell.
 
 ```text
-definitions -> validate -> inspect -> plan -> diff -> publish -> test
-                     ^                                  |
-                     +-------- structured repair -------+
+prompt
+  -> agent
+  -> ordinary Bean definitions + inspectable patterns
+  -> validate / plan / publish
+  -> deterministic seed
+  -> themed working demo
+  -> portable package
 ```
 
-## Command contract
+Bean remains deterministic and provider-neutral. The benchmark records the external agent and model as inputs; Bean does not call or embed either one.
 
-The supported v0.6 loop is:
+## Demo vocabulary
+
+v0.7 qualifies the deliberately bounded application vocabulary from the roadmap:
+
+- Entity and Relation for business structure
+- List, Detail, Form, Board, and Tree for operational interaction
+- Dashboard, Metric, and Timeline for overview and activity
+- Search for navigation within declared View fields
+- Action for mutation and enum transitions for workflows
+- Attachment for bounded local files
+
+Dashboard remains composition of ordinary Page, Panel, and Block definitions. Metric and Timeline are compiler-validated View presentations, not separate query or storage systems. Search remains a View read and cannot bypass View or Policy constraints.
+
+## Typed demo metadata
+
+Theme and seed configuration are typed, schema-visible, inspectable Bean definitions.
+
+- One application Theme selects a display name, a maintained preset, and an accent token. It does not accept CSS, JavaScript, arbitrary class names, URLs, or file paths.
+- Demo seed metadata declares an explicit count per Entity and an optional maintained data profile. It cannot contain executable generators or bypass Actions.
+- The same source and seed value produce the same generated field values, relation choices, and insertion order.
+- Generated records are created through compiled create Actions. Reads used for verification go through Views.
+- Required relations are dependency-ordered. Cyclic required relations are rejected with a stable diagnostic rather than partially populated.
+- Generated values satisfy field types, requiredness, enum options, uniqueness, and declared bounds. Sensitive/password/file fields are never synthesized.
+- Seeding is safe by default: a non-empty target is rejected unless it already contains the exact idempotent generated dataset.
+
+The supported command is:
 
 ```bash
-bean app init
-bean capabilities
-bean schema
-bean app validate
-bean app inspect
-bean app plan
-bean app diff
-bean app publish
-bean app test
+bean demo seed --file ./app.yaml --db ./demo.db --seed 42 --json
 ```
 
-Every command supports `--json`. Human output remains useful, but machine clients never need it.
+## Inspectable patterns
 
-- `app init` creates the smallest valid source workspace, not a product template.
-- `capabilities` describes supported definition kinds, field types, Action operations, presentations, limits, and optional runtime capabilities.
-- `schema` emits or locates canonical JSON Schemas for the bundle and each definition kind.
-- `app validate` performs source loading, schema validation, compilation, and reference validation without database mutation.
-- `app inspect` returns normalized compiled meaning and resolved references for the application or one named definition.
-- `app plan` is side-effect-free and reports validation plus the migration/release plan against an optional target database.
-- `app diff` reports semantic definition and AppIR changes between the candidate and active release, ignoring source formatting.
-- `app publish` validates, plans, applies additive migration, and atomically activates the exact candidate while reporting its checksum and release identity.
-- `app test` runs compile, migration, publication, and startup smoke contracts in an isolated SQLite database. Semantic/generated business tests remain a later roadmap phase.
+Ship a maintained catalog for CRUD resource, workflow resource, approval workflow, parent/child resource, many-to-many tagging, ownership, assignment, comments, activity history, and dashboard composition.
 
-## Machine interface
+Patterns are valid, ordinary Bean definition bundles. `bean pattern inspect` returns their source definitions and required capabilities; it does not install hidden runtime behavior, introduce another DSL, or skip normal schema/compiler validation. Agents may copy, rename, and compose the definitions using the same v0.6 validate/inspect/diff loop.
 
-- JSON responses use one documented, versioned envelope with command identity, success state, result, and diagnostics.
-- JSON stdout contains no logs or human prose. Logs go to stderr and are disabled or structured explicitly.
-- Collections and suggestions have deterministic ordering; equivalent input and state produce equivalent semantic output.
-- Exit statuses distinguish success, definition/validation refusal, command usage, and runtime failure.
-- Every public diagnostic has a stable code such as `BEAN-E1001`, a canonical source-relative path, a human message, and source location when available.
-- Diagnostics include the offending value only when it is safe and include deterministic candidate suggestions only when the compiler can derive them.
-- Stable codes and structured fields follow an explicit compatibility policy; message wording is not an API.
-- Sensitive definition inputs, secrets, passwords, file bytes, and database credentials never appear in diagnostics, inspection, plans, diffs, or test output.
+## Portable package
 
-## Schema and introspection contract
+The supported delivery command is:
 
-- Publish canonical schemas for the application manifest/bundle and every supported definition kind.
-- Generate schemas and capability descriptions from the same typed vocabulary or verify them against it so documentation cannot silently drift from compilation.
-- Represent cross-definition references and compiler-only semantic constraints through inspection/capabilities when JSON Schema cannot express them.
-- Include schema/API version and Bean compatibility information in machine responses.
-- Keep source-mode commands useful without a database; require a database only for comparisons or activation that depend on persisted state.
+```bash
+bean package --file ./app.yaml --output ./dist/acme-demo --seed 42 --json
+```
+
+For v0.7, a package is a directory containing the Bean executable, an activated SQLite database with deterministic demo data, and a machine-readable manifest with checksums, Bean version, source checksum, release identity, and start command. Packaging is local and reproducible; it does not download dependencies, create a container, or publish a URL.
+
+The packaged executable and database must start without the original source tree. Package creation uses a temporary staging directory and only replaces the destination after all validation, publication, seeding, checksum, and restart checks pass.
 
 ## Acceptance scenario
 
-1. A black-box client creates a minimal workspace with `bean app init --json`.
-2. It discovers the vocabulary through `bean capabilities --json` and `bean schema --json`.
-3. It submits an intentionally invalid applicant-tracking definition.
-4. It repairs unknown references, invalid field use, and invalid Action transitions using only diagnostic codes, paths, candidates, schemas, and inspection.
-5. `app validate`, `app plan`, and `app diff` succeed without mutating the target database.
-6. `app publish` activates the candidate through the existing migration and immutable AppIR lifecycle.
-7. `app test` proves the candidate compiles, migrates, publishes, and starts in isolation.
-8. Repeating read-only commands against unchanged source/state produces the same normalized payload.
+The primary benchmark prompt is a lightweight applicant tracking system with jobs, candidates, interview stages, notes, a kanban pipeline, candidate detail, search, dashboard metrics, and activity timeline.
+
+1. The agent discovers capabilities and relevant patterns.
+2. It produces only ordinary Bean definitions plus typed Theme and DemoSeed definitions.
+3. The v0.6 JSON loop validates, repairs, plans, and publishes the candidate.
+4. `bean demo seed` creates coherent jobs, candidates, notes, and activities deterministically through Actions.
+5. The application opens with meaningful records, working pipeline transitions, search, candidate detail, dashboard metrics, timeline, and the declared theme.
+6. `bean package` creates a portable local directory and its restart smoke test passes.
+7. Repeating the run with the same inputs produces the same semantic definitions and seed dataset checksums.
+
+CRM and issue-tracker prompts provide two independent secondary cases for pattern reuse and presentation coverage.
 
 ## Measurable acceptance criteria
 
-- Every command in the supported loop has human and JSON black-box tests.
-- A JSON-only harness completes the loop without regular expressions over prose.
-- Every emitted compiler/loader diagnostic belongs to a tested stable code family; unknown/unclassified errors fail the contract suite.
-- Canonical schemas accept every maintained example and reject representative unknown fields and invalid shapes before compilation.
-- Inspect output resolves Entity, relation, View, Action, Policy, Webform, Page, and presentation references used by maintained examples.
-- Plan and diff are proven side-effect-free by database state checks.
-- JSON output is parseable on success and failure and contains no mixed log lines.
-- Existing definitions, human CLI workflows, source locations, AppIR compatibility, SQLite/PostgreSQL behavior, and atomic activation remain green.
-- A recorded repair benchmark publishes the invalid acceptance fixture without Bean source inspection or human definition edits.
+- Theme, DemoSeed, Metric, Timeline, and Search contracts are represented in canonical schemas, capabilities, inspection, semantic diff, and compiler diagnostics.
+- All maintained examples continue to compile; the applicant-tracking reference application contains no application-specific core branch.
+- Every catalog pattern compiles independently and its returned definitions are byte-stable and visible to `app inspect` after composition.
+- Deterministic seed tests cover all supported scalar types, uniqueness, optional and required relations, stable ordering, idempotent replay, unsafe-target refusal, and unsupported cycles/sensitive/file inputs.
+- SQLite and PostgreSQL retain compile/runtime parity; v0.7 packaging itself intentionally targets SQLite only.
+- Package tests verify atomic destination replacement, checksums, no dependency on the source directory, activated release loading, populated View reads, and executable startup.
+- A recorded benchmark report includes prompt, agent/model/tool versions, budgets, elapsed time, validation attempts, human interventions, behavior score, presentation score, and package checksum.
+- Maintained benchmark runs meet p50 under five minutes, p90 under ten minutes, zero human edits after the prompt, and the complete declared behavior rubric. Results are not compared across changed models, prompts, budgets, or cache state without disclosure.
+- `make check`, `make test-crash`, `make test-postgres`, and `make build` pass.
 
 ## Explicit non-goals
 
-- Embedding an LLM, prompt UI, or provider-specific agent logic in Bean
-- MCP or another network agent protocol; v0.6 first establishes the transport-neutral service and CLI contract
-- New CRM, calendar, chat, realtime, OAuth, storage, or infrastructure surfaces
-- Application patterns, generated realistic seed data, themes, or hosted sharing
-- New lifecycle/ownership semantic primitives
-- Generated semantic, policy, transition, or browser tests beyond lifecycle smoke checks
-- Arbitrary code, JavaScript, SQL, React, plugin, or extension escape hatches
-- Destructive migrations or broader production-readiness claims
+- Embedding an LLM, agent loop, provider SDK, MCP server, or AI chat UI
+- `bean share`, hosting, preview URLs, domains, cloud databases, or Bean Cloud
+- First-class Lifecycle semantics; v0.7 workflows continue to compose enum fields, Actions, and transitions
+- Deterministic rule expressions, generated semantic tests, or typed external extensions
+- Arbitrary CSS, JavaScript, templates, SQL, scripts, or executable seed hooks
+- Realtime, calendar, chat, email, OAuth expansion, Redis, object-storage infrastructure, containers, or Kubernetes
+- A general package registry or post-v1.0 package ecosystem
 
 ## Terminal gates
 
 ```bash
 make check
+make test-crash
+make test-postgres
 make build
 ```
