@@ -1,6 +1,6 @@
 # Bean Agent Protocol
 
-Bean v0.8 introduced one provider-neutral `bean.agent/v1alpha1` dispatcher. v0.9 retains that contract and exposes Lifecycle capabilities, schema, inspection, diff, and runtime behavior through the same operations. CLI and MCP change only framing; operation names, input schemas, plane authorization, compiler diagnostics, runtime results, and errors originate from the same service.
+Bean v0.8 introduced one provider-neutral `bean.agent/v1alpha1` dispatcher. v0.9 retains that contract and exposes Lifecycle capabilities, schema, inspection, diff, and runtime behavior through the same operations. CLI and MCP change only framing; each operation's metadata and handler are sealed together, and operation names, input schemas, plane authorization, compiler diagnostics, runtime results, and errors originate from the same service.
 
 ## Operations
 
@@ -33,7 +33,6 @@ The local CLI defaults to all planes and supports `--allow-plane` for a constrai
 | `BEAN-P1002` | operation plane is not granted |
 | `BEAN-P1003` | malformed or unknown operation input |
 | `BEAN-P3001` | redacted target/runtime failure |
-| `BEAN-P5001` | registered operation has no implementation |
 
 Definition and migration failures retain their existing `BEAN-E*` diagnostics.
 

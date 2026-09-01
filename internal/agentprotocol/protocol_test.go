@@ -88,13 +88,31 @@ func TestRegistryDefinesStableProviderNeutralOperations(t *testing.T) {
 	}
 }
 
-func TestAuthorizationFiltersDiscoveryAndRunsBeforeHandler(t *testing.T) {
+func TestOperationConstructionIsSealedAndComplete(t *testing.T) {
+	if _, err := NewWithHandlers(map[string]Handler{"missing": func(context.Context, json.RawMessage, Principal) Outcome { return success(nil) }}); err == nil {
+		t.Fatal("unknown handler override was accepted")
+	}
+	if _, err := NewWithHandlers(map[string]Handler{"bean.definition.schema": nil}); err == nil {
+		t.Fatal("nil handler override was accepted")
+	}
 	service := New()
+	operations := service.Operations(Principal{Planes: AllPlanes()})
+	operations[0].InputSchema["changed"] = true
+	fresh := service.Operations(Principal{Planes: AllPlanes()})
+	if fresh[0].InputSchema["changed"] != nil {
+		t.Fatal("operation metadata exposed mutable registry state")
+	}
+}
+
+func TestAuthorizationFiltersDiscoveryAndRunsBeforeHandler(t *testing.T) {
 	called := false
-	service.Register("bean.release.publish", func(context.Context, json.RawMessage, Principal) Outcome {
+	service, err := NewWithHandlers(map[string]Handler{"bean.release.publish": func(context.Context, json.RawMessage, Principal) Outcome {
 		called = true
 		return success(map[string]any{"published": true})
-	})
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	principal := Principal{Planes: map[Plane]bool{DefinitionPlane: true}}
 	for _, operation := range service.Operations(principal) {
 		if operation.Plane != DefinitionPlane {

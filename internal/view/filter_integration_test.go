@@ -3,6 +3,7 @@ package view_test
 import (
 	"context"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -38,6 +39,17 @@ func TestLegacyRichTextIsSanitizedOnRead(t *testing.T) {
 	body := rows[0]["body"].(string)
 	if body != "<p>Safe</p>" {
 		t.Fatalf("legacy rich text was not sanitized: %q", body)
+	}
+	var transactionRows []dbal.Row
+	if err = database.Transaction(ctx, func(transaction dbal.Transaction) error {
+		result, readErr := view.ReadPage(ctx, transaction, app, "public", view.ReadOptions{Params: view.Params{Limit: 10}}, beanctx.Request{})
+		transactionRows = result.Rows
+		return readErr
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(transactionRows, rows) {
+		t.Fatalf("database rows=%v transaction rows=%v", rows, transactionRows)
 	}
 }
 

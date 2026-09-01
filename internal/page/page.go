@@ -9,29 +9,15 @@ import (
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/panel"
 	"github.com/beanruntime/bean/internal/render"
+	"github.com/beanruntime/bean/internal/valuesource"
 )
 
 func ResolveContext(p appir.Page, route, query map[string]string, c beanctx.Request) (map[string]any, error) {
 	out := map[string]any{}
 	for key, binding := range p.Context {
-		var value any
-		switch binding.Source {
-		case "route":
-			value = route[binding.Name]
-		case "query":
-			value = query[binding.Name]
-		case "tenant":
-			value = c.TenantID
-		case "user":
-			if c.User != nil {
-				if binding.Name == "id" {
-					value = c.User.ID
-				} else if binding.Name == "email" {
-					value = c.User.Email
-				}
-			}
-		default:
-			return nil, fmt.Errorf("unsupported context source")
+		value, resolveErr := valuesource.Resolve(valuesource.Page, binding.Source, binding.Name, valuesource.Environment{Request: c, Route: route, Query: query})
+		if resolveErr != nil {
+			return nil, fmt.Errorf("resolve page context %s: %w", key, resolveErr)
 		}
 		if binding.Required && (value == nil || value == "") {
 			return nil, fmt.Errorf("required page context %s is missing", key)

@@ -308,7 +308,7 @@ func transactionLifecycleInputs(app *appir.App, actionDefinition appir.Action, l
 	}
 	transition := &actionDefinition.Steps[0]
 	specification, registered := actionstep.Lookup(transition.Op)
-	if !registered || !specification.Transition || !specification.Effects.MutatesEntity || specification.Effects.EmitsEvent || specification.Effects.SchedulesJob || transactionStepEntity(actionDefinition, *transition) != lifecycle.Entity {
+	if !registered || !specification.Transition || !specification.Effects.MutatesEntity || specification.Effects.EmitsEvent || specification.Effects.SchedulesJob || actionstep.EntityName(actionDefinition, *transition) != lifecycle.Entity {
 		return "", "", false
 	}
 	entityField := false
@@ -370,21 +370,6 @@ func transactionLifecycleInputs(app *appir.App, actionDefinition appir.Action, l
 		}
 	}
 	return id.Path, stateInput, true
-}
-
-func transactionStepEntity(actionDefinition appir.Action, step appir.Step) string {
-	entity := step.Entity
-	if entity == "" {
-		entity = actionDefinition.Entity
-	}
-	if entity == actionDefinition.Entity {
-		for _, assignment := range step.Values {
-			if assignment.Field == "entity" && assignment.Value.Source == "literal" {
-				_ = json.Unmarshal(assignment.Value.Literal, &entity)
-			}
-		}
-	}
-	return entity
 }
 
 func inspectTarget(ctx context.Context, database dbal.Database, app *appir.App, records []Record, request beanctx.Request, seed int64) (bool, bool, error) {

@@ -7,19 +7,9 @@ import (
 	"strings"
 
 	"github.com/beanruntime/bean/internal/appir"
-	"github.com/beanruntime/bean/internal/compiler"
 	"github.com/beanruntime/bean/internal/expr"
+	"github.com/beanruntime/bean/internal/valuesource"
 )
-
-type InspectedReference = compiler.DefinitionReference
-
-func InspectedDefinition(app *appir.App, kind, name string) (any, []InspectedReference, bool) {
-	return compiler.InspectDefinition(app, kind, name)
-}
-
-func DefinitionNames(app *appir.App, kind string) []string {
-	return compiler.CompiledDefinitionNames(app, kind)
-}
 
 type SemanticChange struct {
 	Operation string `json:"operation"`
@@ -58,7 +48,7 @@ func RedactedApp(source *appir.App) *appir.App {
 			redactExpression(item.Steps[stepIndex].Condition)
 			for valueIndex := range item.Steps[stepIndex].Values {
 				value := &item.Steps[stepIndex].Values[valueIndex].Value
-				if value.Source == "literal" {
+				if valuesource.IsLiteral(value.Source) {
 					value.Literal = json.RawMessage(`"[REDACTED]"`)
 				}
 			}
@@ -81,7 +71,7 @@ func redactExpression(expression *expr.Expr) {
 		return
 	}
 	for _, value := range []*expr.Value{expression.Left, expression.Right} {
-		if value != nil && value.Source == "literal" {
+		if value != nil && valuesource.IsLiteral(value.Source) {
 			value.Literal = "[REDACTED]"
 		}
 	}

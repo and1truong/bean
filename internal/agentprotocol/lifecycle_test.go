@@ -18,11 +18,11 @@ func TestLifecycleInspectionReferencesAndSemanticDiff(t *testing.T) {
 	if len(compiled.Diagnostics) != 0 {
 		t.Fatalf("diagnostics=%v", compiled.Diagnostics)
 	}
-	value, references, exists := agentprotocol.InspectedDefinition(compiled.App, "Lifecycle", "order_fulfillment")
+	value, references, exists := compiler.InspectDefinition(compiled.App, "Lifecycle", "order_fulfillment")
 	if !exists || value == nil || len(references) != 1 || references[0].Kind != "Entity" || references[0].Name != "order" {
 		t.Fatalf("value=%+v references=%+v", value, references)
 	}
-	_, actionReferences, exists := agentprotocol.InspectedDefinition(compiled.App, "Action", "advance_order")
+	_, actionReferences, exists := compiler.InspectDefinition(compiled.App, "Action", "advance_order")
 	if !exists || !hasReference(actionReferences, "lifecycle", "Lifecycle", "order_fulfillment") {
 		t.Fatalf("action references=%+v", actionReferences)
 	}
@@ -39,7 +39,7 @@ func TestLifecycleInspectionReferencesAndSemanticDiff(t *testing.T) {
 	}
 }
 
-func hasReference(references []agentprotocol.InspectedReference, path, kind, name string) bool {
+func hasReference(references []compiler.DefinitionReference, path, kind, name string) bool {
 	for _, reference := range references {
 		if reference.Path == path && reference.Kind == kind && reference.Name == name {
 			return true

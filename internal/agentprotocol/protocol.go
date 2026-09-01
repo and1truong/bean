@@ -4,14 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/definition"
+	"github.com/beanruntime/bean/internal/registry"
 )
 
-const APIVersion = "bean.agent/v1alpha1"
+const (
+	APIVersion    = "bean.agent/v1alpha1"
+	CLIAPIVersion = "bean.cli/v1alpha1"
+)
 
 type Plane string
 
@@ -71,48 +74,78 @@ type Outcome struct {
 
 type Handler func(context.Context, json.RawMessage, Principal) Outcome
 
+type operationEntry struct {
+	Operation Operation
+	Handler   Handler
+}
+
 type Service struct {
-	operations []Operation
-	handlers   map[string]Handler
+	operations registry.Registry[operationEntry]
 }
 
 func New() *Service {
-	service := &Service{handlers: map[string]Handler{}}
-	for _, operation := range operationDefinitions() {
-		service.operations = append(service.operations, operation)
+	service, err := NewWithHandlers(nil)
+	if err != nil {
+		panic(err)
 	}
-	sort.Slice(service.operations, func(i, j int) bool { return service.operations[i].Name < service.operations[j].Name })
-	service.registerHandlers()
 	return service
 }
 
-func (s *Service) Register(name string, handler Handler) {
-	s.handlers[name] = handler
+// NewWithHandlers creates a sealed dispatcher with optional handler overrides.
+// It is the explicit constructor seam used by transport contract tests.
+func NewWithHandlers(overrides map[string]Handler) (*Service, error) {
+	service := &Service{}
+	definitions := service.operationDefinitions()
+	known := map[string]bool{}
+	for _, item := range definitions {
+		known[item.Operation.Name] = true
+	}
+	for name, handler := range overrides {
+		if !known[name] {
+			return nil, fmt.Errorf("unknown Agent Protocol operation override %q", name)
+		}
+		if handler == nil {
+			return nil, fmt.Errorf("Agent Protocol operation %q has no handler", name)
+		}
+	}
+	entries := make([]registry.Entry[operationEntry], 0, len(definitions))
+	for _, item := range definitions {
+		if handler := overrides[item.Operation.Name]; handler != nil {
+			item.Handler = handler
+		}
+		if item.Operation.Name == "" || item.Operation.Plane == "" || item.Handler == nil {
+			return nil, fmt.Errorf("Agent Protocol operation is incomplete")
+		}
+		entries = append(entries, registry.Entry[operationEntry]{Name: item.Operation.Name, Value: item})
+	}
+	registered, err := registry.New(cloneOperationEntry, entries...)
+	if err != nil {
+		return nil, err
+	}
+	service.operations = registered
+	return service, nil
 }
 
 func (s *Service) Operations(principal Principal) []Operation {
 	out := []Operation{}
-	for _, operation := range s.operations {
-		if principal.Allows(operation.Plane) {
-			out = append(out, operation)
+	for _, name := range s.operations.Names() {
+		entry, _ := s.operations.Lookup(name)
+		if principal.Allows(entry.Operation.Plane) {
+			out = append(out, entry.Operation)
 		}
 	}
 	return out
 }
 
 func (s *Service) Call(ctx context.Context, name string, arguments json.RawMessage, principal Principal) Outcome {
-	operation, exists := s.operation(name)
+	entry, exists := s.operations.Lookup(name)
 	if !exists {
 		return failure(name, "BEAN-P1001", "unknown Agent Protocol operation")
 	}
-	if !principal.Allows(operation.Plane) {
-		return failure(name, "BEAN-P1002", "Agent Protocol plane "+string(operation.Plane)+" is not allowed")
+	if !principal.Allows(entry.Operation.Plane) {
+		return failure(name, "BEAN-P1002", "Agent Protocol plane "+string(entry.Operation.Plane)+" is not allowed")
 	}
-	handler := s.handlers[name]
-	if handler == nil {
-		return failure(name, "BEAN-P5001", "Agent Protocol operation is not implemented")
-	}
-	outcome := handler(ctx, arguments, principal)
+	outcome := entry.Handler(ctx, arguments, principal)
 	outcome.APIVersion = APIVersion
 	outcome.Operation = name
 	if outcome.Diagnostics == nil {
@@ -121,12 +154,19 @@ func (s *Service) Call(ctx context.Context, name string, arguments json.RawMessa
 	return outcome
 }
 
-func (s *Service) operation(name string) (Operation, bool) {
-	index := sort.Search(len(s.operations), func(i int) bool { return s.operations[i].Name >= name })
-	if index == len(s.operations) || s.operations[index].Name != name {
-		return Operation{}, false
+func cloneOperationEntry(entry operationEntry) operationEntry {
+	entry.Operation.InputSchema = cloneSchema(entry.Operation.InputSchema)
+	return entry
+}
+
+func cloneSchema(source map[string]any) map[string]any {
+	if source == nil {
+		return nil
 	}
-	return s.operations[index], true
+	encoded, _ := json.Marshal(source)
+	var cloned map[string]any
+	_ = json.Unmarshal(encoded, &cloned)
+	return cloned
 }
 
 func success(result any) Outcome {
@@ -150,7 +190,11 @@ func objectSchema(properties map[string]any, required ...string) map[string]any 
 	return schema
 }
 
-func operationDefinitions() []Operation {
+func operation(metadata Operation, handler Handler) operationEntry {
+	return operationEntry{Operation: metadata, Handler: handler}
+}
+
+func (s *Service) operationDefinitions() []operationEntry {
 	file := map[string]any{"type": "string", "minLength": 1, "description": "Path to a Bean application manifest"}
 	target := map[string]any{"type": "string", "minLength": 1, "description": "SQLite path or PostgreSQL/SQLite database URL"}
 	stringValue := func(description string) map[string]any {
@@ -171,16 +215,16 @@ func operationDefinitions() []Operation {
 			"cursor": map[string]any{"type": "string"},
 		},
 	}
-	return []Operation{
-		{Name: "bean.definition.capabilities", Title: "Bean capabilities", Description: "Inspect Bean's compiler-owned vocabulary and protocol capabilities.", Plane: DefinitionPlane, InputSchema: objectSchema(map[string]any{})},
-		{Name: "bean.definition.schema", Title: "Bean schema", Description: "Get the canonical manifest schema or one definition-kind schema.", Plane: DefinitionPlane, InputSchema: objectSchema(map[string]any{"kind": map[string]any{"type": "string"}})},
-		{Name: "bean.definition.validate", Title: "Validate Bean application", Description: "Load and compile Bean application source without database mutation.", Plane: DefinitionPlane, InputSchema: objectSchema(map[string]any{"file": file}, "file")},
-		{Name: "bean.definition.inspect", Title: "Inspect Bean application", Description: "Inspect redacted AppIR or one named definition and its references.", Plane: DefinitionPlane, InputSchema: objectSchema(map[string]any{"file": file, "kind": map[string]any{"type": "string"}, "name": map[string]any{"type": "string"}}, "file")},
-		{Name: "bean.release.plan", Title: "Plan Bean release", Description: "Preview deterministic additive migrations without mutating the target.", Plane: ReleasePlane, InputSchema: objectSchema(map[string]any{"file": file, "target": target}, "file")},
-		{Name: "bean.release.diff", Title: "Diff Bean release", Description: "Compare candidate semantics with the active target release.", Plane: ReleasePlane, InputSchema: objectSchema(map[string]any{"file": file, "target": target}, "file")},
-		{Name: "bean.release.publish", Title: "Publish Bean release", Description: "Compile, migrate, persist, and atomically activate a candidate release.", Plane: ReleasePlane, InputSchema: objectSchema(map[string]any{"file": file, "target": target}, "file", "target")},
-		{Name: "bean.release.test", Title: "Test Bean release", Description: "Run isolated compile, migration, publication, and restart smoke checks.", Plane: ReleasePlane, InputSchema: objectSchema(map[string]any{"file": file}, "file")},
-		{Name: "bean.application.query", Title: "Query Bean View", Description: "Read active application data through one compiled View.", Plane: ApplicationPlane, InputSchema: objectSchema(map[string]any{"target": target, "view": stringValue("Compiled View name"), "params": viewParams}, "target", "view")},
-		{Name: "bean.application.execute", Title: "Execute Bean Action", Description: "Mutate active application data through one compiled Action.", Plane: ApplicationPlane, InputSchema: objectSchema(map[string]any{"target": target, "action": stringValue("Compiled Action name"), "input": map[string]any{"type": "object"}}, "target", "action", "input")},
+	return []operationEntry{
+		operation(Operation{Name: "bean.definition.capabilities", Title: "Bean capabilities", Description: "Inspect Bean's compiler-owned vocabulary and protocol capabilities.", Plane: DefinitionPlane, InputSchema: objectSchema(map[string]any{})}, s.capabilities),
+		operation(Operation{Name: "bean.definition.schema", Title: "Bean schema", Description: "Get the canonical manifest schema or one definition-kind schema.", Plane: DefinitionPlane, InputSchema: objectSchema(map[string]any{"kind": map[string]any{"type": "string"}})}, s.schema),
+		operation(Operation{Name: "bean.definition.validate", Title: "Validate Bean application", Description: "Load and compile Bean application source without database mutation.", Plane: DefinitionPlane, InputSchema: objectSchema(map[string]any{"file": file}, "file")}, s.validate),
+		operation(Operation{Name: "bean.definition.inspect", Title: "Inspect Bean application", Description: "Inspect redacted AppIR or one named definition and its references.", Plane: DefinitionPlane, InputSchema: objectSchema(map[string]any{"file": file, "kind": map[string]any{"type": "string"}, "name": map[string]any{"type": "string"}}, "file")}, s.inspect),
+		operation(Operation{Name: "bean.release.plan", Title: "Plan Bean release", Description: "Preview deterministic additive migrations without mutating the target.", Plane: ReleasePlane, InputSchema: objectSchema(map[string]any{"file": file, "target": target}, "file")}, s.plan),
+		operation(Operation{Name: "bean.release.diff", Title: "Diff Bean release", Description: "Compare candidate semantics with the active target release.", Plane: ReleasePlane, InputSchema: objectSchema(map[string]any{"file": file, "target": target}, "file")}, s.diff),
+		operation(Operation{Name: "bean.release.publish", Title: "Publish Bean release", Description: "Compile, migrate, persist, and atomically activate a candidate release.", Plane: ReleasePlane, InputSchema: objectSchema(map[string]any{"file": file, "target": target}, "file", "target")}, s.publish),
+		operation(Operation{Name: "bean.release.test", Title: "Test Bean release", Description: "Run isolated compile, migration, publication, and restart smoke checks.", Plane: ReleasePlane, InputSchema: objectSchema(map[string]any{"file": file}, "file")}, s.test),
+		operation(Operation{Name: "bean.application.query", Title: "Query Bean View", Description: "Read active application data through one compiled View.", Plane: ApplicationPlane, InputSchema: objectSchema(map[string]any{"target": target, "view": stringValue("Compiled View name"), "params": viewParams}, "target", "view")}, s.query),
+		operation(Operation{Name: "bean.application.execute", Title: "Execute Bean Action", Description: "Mutate active application data through one compiled Action.", Plane: ApplicationPlane, InputSchema: objectSchema(map[string]any{"target": target, "action": stringValue("Compiled Action name"), "input": map[string]any{"type": "object"}}, "target", "action", "input")}, s.execute),
 	}
 }

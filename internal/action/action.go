@@ -7,10 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/beanruntime/bean/internal/actionstep"
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/audit"
 	"github.com/beanruntime/bean/internal/auth"
@@ -19,6 +19,7 @@ import (
 	"github.com/beanruntime/bean/internal/field"
 	"github.com/beanruntime/bean/internal/policy"
 	"github.com/beanruntime/bean/internal/uid"
+	"github.com/beanruntime/bean/internal/valuesource"
 )
 
 type Service struct {
@@ -511,7 +512,7 @@ func noOverlap(ctx context.Context, tx dbal.Transaction, entity string, cfg, inp
 	}
 	return nil
 }
-func decrement(ctx context.Context, tx dbal.Transaction, app *appir.App, entity appir.Entity, request beanctx.Request, cfg, input map[string]any) error {
+func decrement(ctx context.Context, tx dbal.Transaction, entity appir.Entity, cfg, input map[string]any, authorized func(dbal.Row) bool) error {
 	fieldName := stringCfg(cfg, "field", "inventory")
 	idInput := stringCfg(cfg, "id_input", "id")
 	amountInput := stringCfg(cfg, "amount_input", "amount")
@@ -523,7 +524,7 @@ func decrement(ctx context.Context, tx dbal.Transaction, app *appir.App, entity 
 		return &dbal.Error{Code: dbal.NotFound, Message: "record not found"}
 	}
 	hydrate(rows[0], entity)
-	if entity.Policy != "" && !authorize(app, entity.Policy, true, request, recordMap(rows[0])) {
+	if !authorized(rows[0]) {
 		return &dbal.Error{Code: dbal.NotFound, Message: "record not found"}
 	}
 	amount := toInt(input[amountInput])
@@ -536,12 +537,16 @@ func decrement(ctx context.Context, tx dbal.Transaction, app *appir.App, entity 
 	_, e = tx.Update(ctx, dbal.Update{Table: entity.Name, Values: map[string]dbal.Value{fieldName: current - amount, "version": version + 1, "updated_at": time.Now().UTC().Format(time.RFC3339Nano)}, Where: where, ExpectedRows: 1})
 	return e
 }
-func resolveValues(values []appir.Assignment, input map[string]any, results map[string]any, c beanctx.Request) map[string]any {
+func resolveValues(values []appir.Assignment, input map[string]any, results map[string]any, c beanctx.Request) (map[string]any, error) {
 	out := map[string]any{}
 	for _, assignment := range values {
-		out[assignment.Field] = resolveValue(assignment.Value, input, results, c)
+		value, err := resolveValue(assignment.Value, input, results, c)
+		if err != nil {
+			return nil, fmt.Errorf("resolve Action value %s: %w", assignment.Field, err)
+		}
+		out[assignment.Field] = value
 	}
-	return out
+	return out, nil
 }
 
 func hydrate(row dbal.Row, entity appir.Entity) {
@@ -551,58 +556,19 @@ func hydrate(row dbal.Row, entity appir.Entity) {
 		}
 	}
 }
-func resolveValue(binding appir.ValueBinding, input map[string]any, results map[string]any, c beanctx.Request) any {
-	switch binding.Source {
-	case "literal":
-		var value any
-		_ = json.Unmarshal(binding.Literal, &value)
-		return value
-	case "input":
-		return input[binding.Path]
-	case "record":
-		return c.Entity[binding.Path]
-	case "result":
-		parts := strings.Split(binding.Path, ".")
-		if len(parts) > 0 {
-			v := results[parts[0]]
-			for _, p := range parts[1:] {
-				switch x := v.(type) {
-				case dbal.Row:
-					v = x[p]
-				case map[string]any:
-					v = x[p]
-				case []dbal.Row:
-					i, e := strconv.Atoi(p)
-					if e != nil || i < 0 || i >= len(x) {
-						return nil
-					}
-					v = x[i]
-				default:
-					return nil
-				}
-			}
-			return v
-		}
-	case "context":
-		return c.Values[binding.Path]
-	case "now":
-		return c.Values["now"]
-	case "tenant":
-		return c.TenantID
-	case "user":
-		if c.User != nil {
-			if binding.Path == "id" {
-				return c.User.ID
-			}
-			if binding.Path == "email" {
-				return c.User.Email
-			}
-			if binding.Path == "display_name" {
-				return c.User.DisplayName
-			}
+func resolveValue(binding appir.ValueBinding, input map[string]any, results map[string]any, c beanctx.Request) (any, error) {
+	var literal any
+	if valuesource.IsLiteral(binding.Source) {
+		if err := json.Unmarshal(binding.Literal, &literal); err != nil {
+			return nil, fmt.Errorf("invalid literal: %w", err)
 		}
 	}
-	return nil
+	return valuesource.Resolve(valuesource.Action, binding.Source, binding.Path, valuesource.Environment{
+		Request: c,
+		Literal: literal,
+		Input:   input,
+		Results: results,
+	})
 }
 func bindingInput(input map[string]any, results map[string]any) map[string]any {
 	out := map[string]any{}
@@ -631,17 +597,7 @@ func bindingInput(input map[string]any, results map[string]any) map[string]any {
 	return out
 }
 func stepEntity(app *appir.App, a appir.Action, s appir.Step) (appir.Entity, error) {
-	name := s.Entity
-	if name == "" {
-		name = a.Entity
-	}
-	if name == a.Entity {
-		for _, assignment := range s.Values {
-			if assignment.Field == "entity" && assignment.Value.Source == "literal" {
-				_ = json.Unmarshal(assignment.Value.Literal, &name)
-			}
-		}
-	}
+	name := actionstep.EntityName(a, s)
 	entity, ok := app.Entities[name]
 	if !ok {
 		return entity, &dbal.Error{Code: dbal.InvalidQuery, Message: "Action step references unknown Entity " + name}
@@ -707,36 +663,17 @@ func trustedRelationKey(entity string, id any) string {
 }
 
 func canReadRecord(app *appir.App, target appir.Entity, c beanctx.Request, row dbal.Row) bool {
+	return canAccessRecord(app, target, false, c, row)
+}
+
+func canAccessRecord(app *appir.App, target appir.Entity, write bool, c beanctx.Request, row dbal.Row) bool {
 	if target.Tenant && (c.TenantID == "" || fmt.Sprint(row["tenant_id"]) != c.TenantID) {
 		return false
 	}
 	if target.Owner && target.Policy == "" && (c.User == nil || fmt.Sprint(row["owner_id"]) != c.User.ID) {
 		return false
 	}
-	return target.Policy == "" || authorize(app, target.Policy, false, c, recordMap(row))
-}
-
-func qualifyViewField(name, entity string, joined bool) string {
-	if joined && !strings.Contains(name, ".") {
-		return entity + "." + name
-	}
-	return name
-}
-
-func qualifyViewFields(names []string, entity string, joined bool) []string {
-	qualified := make([]string, len(names))
-	for i, name := range names {
-		qualified[i] = qualifyViewField(name, entity, joined)
-	}
-	return qualified
-}
-
-func qualifyActionPredicate(predicate dbal.Predicate, entity string, joined bool) dbal.Predicate {
-	predicate.Column = qualifyViewField(predicate.Column, entity, joined)
-	for index := range predicate.Children {
-		predicate.Children[index] = qualifyActionPredicate(predicate.Children[index], entity, joined)
-	}
-	return predicate
+	return target.Policy == "" || authorize(app, target.Policy, write, c, recordMap(row))
 }
 
 func authorize(app *appir.App, name string, write bool, c beanctx.Request, row map[string]any) bool {

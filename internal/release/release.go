@@ -265,7 +265,7 @@ func (s *Store) Publish(ctx context.Context, appID string) (Published, []definit
 	if err != nil {
 		var migrationError *MigrationPlanError
 		if errors.As(err, &migrationError) {
-			return Published{}, []definition.Diagnostic{{Kind: "Release", Name: appID, Path: "migration", Message: err.Error()}}, nil
+			return Published{}, []definition.Diagnostic{definition.NewDiagnostic(definition.RuleMigration, "Release", appID, "migration", err.Error())}, nil
 		}
 		return Published{}, nil, err
 	}

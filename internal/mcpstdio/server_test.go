@@ -112,13 +112,17 @@ func TestAuthorizationHidesUnavailableTools(t *testing.T) {
 }
 
 func TestEachPlaneIsIndependentlyAuthorized(t *testing.T) {
-	service := agentprotocol.New()
 	all := agentprotocol.Principal{Planes: agentprotocol.AllPlanes()}
-	for _, item := range service.Operations(all) {
+	overrides := map[string]agentprotocol.Handler{}
+	for _, item := range agentprotocol.New().Operations(all) {
 		operation := item
-		service.Register(operation.Name, func(context.Context, json.RawMessage, agentprotocol.Principal) agentprotocol.Outcome {
+		overrides[operation.Name] = func(context.Context, json.RawMessage, agentprotocol.Principal) agentprotocol.Outcome {
 			return agentprotocol.Outcome{OK: true, Result: operation.Name}
-		})
+		}
+	}
+	service, err := agentprotocol.NewWithHandlers(overrides)
+	if err != nil {
+		t.Fatal(err)
 	}
 	representatives := map[agentprotocol.Plane]string{
 		agentprotocol.DefinitionPlane:  "bean.definition.capabilities",

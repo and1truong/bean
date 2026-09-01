@@ -1,6 +1,11 @@
 package actionstep
 
-import "github.com/beanruntime/bean/internal/registry"
+import (
+	"encoding/json"
+
+	"github.com/beanruntime/bean/internal/appir"
+	"github.com/beanruntime/bean/internal/registry"
+)
 
 type Effects struct {
 	ReadsEntity   bool
@@ -57,4 +62,19 @@ func Lookup(name string) (Specification, bool) {
 
 func Names() []string {
 	return specifications.Names()
+}
+
+// EntityName resolves the canonical target Entity, including the maintained
+// legacy literal assignment. Explicit Step.Entity always wins.
+func EntityName(action appir.Action, step appir.Step) string {
+	if step.Entity != "" {
+		return step.Entity
+	}
+	name := action.Entity
+	for _, assignment := range step.Values {
+		if assignment.Field == "entity" && assignment.Value.Source == "literal" {
+			_ = json.Unmarshal(assignment.Value.Literal, &name)
+		}
+	}
+	return name
 }

@@ -6,10 +6,12 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/beanruntime/bean/internal/actionop"
 	"github.com/beanruntime/bean/internal/actionstep"
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/block"
 	"github.com/beanruntime/bean/internal/definition"
+	"github.com/beanruntime/bean/internal/field"
 )
 
 const JSONSchemaVersion = "https://json-schema.org/draft/2020-12/schema"
@@ -46,22 +48,38 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 		CLIAPIVersion:           cliAPIVersion,
 		AgentProtocolAPIVersion: agentProtocolAPIVersion,
 		AppIRFormat:             appir.CurrentFormat,
-		DefinitionKinds:         definitionKinds.Names(),
+		DefinitionKinds:         definitionKindRegistry().Names(),
 		SemanticPrimitives:      []string{"Lifecycle"},
-		FieldTypes:              []string{"boolean", "date", "datetime", "decimal", "email", "enum", "file", "integer", "json", "money", "password", "relation", "richtext", "slug", "string", "text", "url", "uuid"},
-		ActionOperations:        []string{"create", "delete", "register_local_user", "transaction", "transition", "update"},
+		FieldTypes:              field.Types(),
+		ActionOperations:        actionop.Names(),
 		ActionSteps:             actionstep.Names(),
 		BlockTypes:              block.Names(),
-		Presentations:           []string{"board", "detail", "list", "metric", "timeline", "tree"},
-		DisplaySerializers:      []string{"csv", "json", "rss"},
-		PanelLayouts:            []string{"grid", "main-sidebar", "sidebar-main", "single-column", "two-column"},
+		Presentations:           presentationNames(),
+		DisplaySerializers:      displaySerializerNames(),
+		PanelLayouts:            panelLayoutNames(),
 		DatabaseBackends:        []string{"postgresql", "sqlite"},
 		MaxViewLimit:            200,
-		MaxFileBytes:            5 << 20,
-		ThemePresets:            []string{"minimal", "professional", "warm"},
-		ThemeAccents:            []string{"amber", "blue", "emerald", "indigo", "rose", "slate", "violet"},
-		DemoSeedProfiles:        []string{"activities", "auto", "companies", "jobs", "notes", "people"},
+		MaxFileBytes:            field.MaxFileBytes,
+		ThemePresets:            themePresetNames(),
+		ThemeAccents:            themeAccentNames(),
+		DemoSeedProfiles:        demoSeedProfileNames(),
 	}
+}
+
+func presentationNames() []string {
+	return []string{"board", "detail", "list", "metric", "timeline", "tree"}
+}
+func displaySerializerNames() []string { return []string{"csv", "json", "rss"} }
+func panelLayoutNames() []string       { return keys(panelLayouts()) }
+func panelLayouts() map[string]map[string]bool {
+	return map[string]map[string]bool{"single-column": {"main": true}, "two-column": {"left": true, "right": true}, "sidebar-main": {"sidebar": true, "main": true}, "main-sidebar": {"main": true, "sidebar": true}, "grid": {"main": true}}
+}
+func themePresetNames() []string { return []string{"minimal", "professional", "warm"} }
+func themeAccentNames() []string {
+	return []string{"amber", "blue", "emerald", "indigo", "rose", "slate", "violet"}
+}
+func demoSeedProfileNames() []string {
+	return []string{"activities", "auto", "companies", "jobs", "notes", "people"}
 }
 
 func ManifestSchema() map[string]any {
@@ -81,10 +99,10 @@ func ManifestSchema() map[string]any {
 }
 
 func DefinitionSchemas() map[string]map[string]any {
-	kinds := definitionKinds.Names()
+	kinds := definitionKindRegistry().Names()
 	out := make(map[string]map[string]any, len(kinds))
 	for _, kind := range kinds {
-		registered, _ := definitionKinds.Lookup(kind)
+		registered, _ := definitionKindRegistry().Lookup(kind)
 		out[kind] = definitionSchema(kind, registered.Specification)
 	}
 	return out

@@ -2,6 +2,7 @@ import {createContext,FormEvent,useContext,useRef,useState} from 'react'
 import {Link,Route,Routes,useLocation,useNavigate} from 'react-router-dom'
 import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query'
 import {api,APIError,FormElement,Manifest,Node,Session,ViewPresentation} from './api'
+import {callAction,encodeInput} from './action-client'
 import {Admin,ResourceListBlock} from './Admin'
 import {Studio} from './Studio'
 import {ErrorAlert,Field,LoadingState,Page,PageHeader,SectionCard,StatusAlert} from '@/components/bean'
@@ -47,14 +48,38 @@ function Shell({children}:{children:React.ReactNode}){
   return <div className="min-h-screen bg-background" data-testid="application-shell" data-preset={theme?.Preset||'professional'} data-accent={theme?.Accent||'emerald'}><header className="border-b bg-primary text-primary-foreground"><div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"><Link className="text-lg font-semibold tracking-tight" to="/" aria-disabled={logout.isPending} onClick={stopNavigation}>{theme?.DisplayName||'Bean'}</Link><nav className="flex flex-wrap items-center gap-1" aria-label="Primary navigation">{editor&&<Button variant="ghost" disabled={logout.isPending} asChild><Link to="/admin" aria-disabled={logout.isPending} onClick={stopNavigation}>Admin</Link></Button>}{administrator&&<Button variant="ghost" disabled={logout.isPending} asChild><Link to="/studio" aria-disabled={logout.isPending} onClick={stopNavigation}>Studio</Link></Button>}{session.data?.authenticated?<Button variant="ghost" onClick={()=>{logoutStarted.current=true;logout.mutate()}} disabled={logout.isPending}>Sign out</Button>:manifest.data?.authNavigation!==false?<>{manifest.data?.localRegistration?.Route&&<Button variant="ghost" asChild><Link to={manifest.data.localRegistration.Route}>Sign up</Link></Button>}<Button variant="secondary" asChild><Link to={'/login?next='+encodeURIComponent(loc.pathname)}>Sign in</Link></Button></>:null}</nav></div></header>{children}</div>
 }
 
+type RenderProps={
+  Page:{title?:string;description?:string;protected?:boolean}
+  Panel:{layout?:string}
+  Region:{name?:string}
+  TextBlock:{text?:string}
+  ViewBlock:{name?:string;view?:string;presentation?:ViewPresentation;formattedFields?:string[];fileFields?:string[]}
+  EntityBlock:{name?:string;entity?:string;presentation?:ViewPresentation;formattedFields?:string[];fileFields?:string[]}
+  ResourceListBlock:{name?:string;resource?:string;view?:string;filters?:string[];defaultFilters?:Record<string,any>}
+  WebformBlock:{name?:string;webform?:string;form?:Manifest['webforms'][string]}
+  ActionBlock:{action?:string}
+  MenuBlock:{items?:Array<{Route:string;Label:string}>}
+}
+type RenderComponent=keyof RenderProps
+type NodeRenderer<K extends RenderComponent>=(props:RenderProps[K],children?:Node[])=>React.ReactNode
+const nodeRenderers:{[K in RenderComponent]:NodeRenderer<K>}={
+  Page:(props,children)=><StructuralNode component="Page" title={props.title} children={children}/>,
+  Panel:(_props,children)=><StructuralNode component="Panel" children={children}/>,
+  Region:(_props,children)=><StructuralNode component="Region" children={children}/>,
+  TextBlock:props=><p>{props.text}</p>,
+  ViewBlock:props=><ViewBlock name={props.view||''} block={props.name||''} presentation={props.presentation||{}} formattedFields={props.formattedFields||[]} fileFields={props.fileFields||[]}/>,
+  EntityBlock:props=><ViewBlock name={(props.entity||'')+'_list'} block={props.name||''} presentation={props.presentation||{}} formattedFields={props.formattedFields||[]} fileFields={props.fileFields||[]}/>,
+  ResourceListBlock:props=><ResourceListBlock resource={props.resource||''} view={props.view||''} block={props.name||''} filters={props.filters} defaultFilters={props.defaultFilters}/>,
+  WebformBlock:props=><WebformBlock name={props.webform||''} block={props.name||''} renderedForm={props.form}/>,
+  ActionBlock:props=><ActionBlock name={props.action||''}/>,
+  MenuBlock:props=><MenuBlock items={props.items||[]}/>,
+}
+function isRenderComponent(value:string):value is RenderComponent{return Object.hasOwn(nodeRenderers,value)}
+function renderKnownNode(component:RenderComponent,props:Record<string,any>,children?:Node[]){const renderer=nodeRenderers[component] as NodeRenderer<RenderComponent>;return renderer(props,children)}
+function StructuralNode({component,title,children}:{component:'Page'|'Panel'|'Region';title?:string;children?:Node[]}){return <section className="space-y-4" data-component={component}>{title&&<h2 className="font-heading text-2xl font-semibold">{title}</h2>}{children?.map((child,index)=><Renderer key={index} node={child}/>)}</section>}
 function Renderer({node}:{node:Node}){
-  if(node.component==='TextBlock')return <p>{node.props?.text}</p>
-  if(node.component==='ViewBlock'||node.component==='EntityBlock')return <ViewBlock name={node.props?.view||node.props?.entity+'_list'} block={node.props?.name} presentation={node.props?.presentation||{}} formattedFields={node.props?.formattedFields||[]} fileFields={node.props?.fileFields||[]}/>
-  if(node.component==='ResourceListBlock')return <ResourceListBlock resource={node.props?.resource} view={node.props?.view} block={node.props?.name} filters={node.props?.filters} defaultFilters={node.props?.defaultFilters}/>
-  if(node.component==='WebformBlock')return <WebformBlock name={node.props?.webform} block={node.props?.name} renderedForm={node.props?.form}/>
-  if(node.component==='ActionBlock')return <ActionBlock name={node.props?.action}/>
-  if(node.component==='MenuBlock')return <MenuBlock items={node.props?.items||[]}/>
-  return <section className="space-y-4" data-component={node.component}><h2 className="font-heading text-2xl font-semibold">{node.props?.title}</h2>{node.children?.map((child,index)=><Renderer key={index} node={child}/>)}</section>
+  if(!isRenderComponent(node.component))return <section role="alert" data-component={node.component}>Unsupported render component: {node.component}</section>
+  return renderKnownNode(node.component,node.props||{},node.children)
 }
 
 type ViewBlockProps={name:string;block:string;presentation:ViewPresentation;formattedFields:string[];fileFields:string[]}
@@ -91,7 +116,7 @@ function viewLink(template:string,row:Row){return template.replace(/:([a-zA-Z0-9
 
 function BoardView({rows,presentation}:{rows:Row[];presentation:ViewPresentation}){
   const queryClient=useQueryClient();const manifest=useQuery({queryKey:['manifest'],queryFn:()=>api<Manifest>('/api/system/manifest')})
-  const move=useMutation({mutationFn:({id,status}:{id:string;status:string})=>api('/api/actions/'+presentation.MoveAction,{method:'POST',body:JSON.stringify({id,[presentation.GroupField||'status']:status})}),onSuccess:()=>void queryClient.invalidateQueries({queryKey:['public-view']})})
+  const move=useMutation({mutationFn:({id,status}:{id:string;status:string})=>callAction(presentation.MoveAction||'',{id,[presentation.GroupField||'status']:status}),onSuccess:()=>void queryClient.invalidateQueries({queryKey:['public-view']})})
   const columns=presentation.Columns||[];const group=presentation.GroupField||'status';const title=presentation.TitleField||'title';const order=presentation.OrderField;const action=manifest.data?.actions?.[presentation.MoveAction||''];const transitions=action?.Transitions??(action?.Lifecycle?manifest.data?.lifecycles?.[action.Lifecycle]?.Transitions:undefined)??{}
   return <div className="overflow-x-auto"><div className="grid min-w-[48rem] gap-4" style={{gridTemplateColumns:`repeat(${columns.length}, minmax(15rem, 1fr))`}}>{columns.map(column=><section className="rounded-xl bg-muted/60 p-3" key={column}><h3 className="mb-3 font-semibold">{humanize(column)}</h3><div className="space-y-3">{rows.filter(row=>row[group]===column).sort((a,b)=>order?Number(a[order]??0)-Number(b[order]??0):0).map(row=>{const current=String(row[group]);const allowed=new Set([current,...(transitions[current]||[])]);const targets=columns.filter(value=>allowed.has(value));return <Card key={row.id}><CardHeader><CardTitle>{presentation.LinkRoute?<Link className="hover:underline" to={viewLink(presentation.LinkRoute,row)}>{row[title]}</Link>:row[title]}</CardTitle>{presentation.MetaFields?.length?<CardDescription>{presentation.MetaFields.map(field=>String(row[field]??'')).filter(Boolean).join(' · ')}</CardDescription>:null}</CardHeader><CardContent className="space-y-3"><p>{String(row[presentation.BodyField||'description']??'')}</p><Field id={'move-'+row.id} label="Status"><NativeSelect id={'move-'+row.id} aria-label={'Status for '+row[title]} value={current} disabled={move.isPending||targets.length===1} onChange={event=>move.mutate({id:String(row.id),status:event.target.value})}>{targets.map(value=><NativeSelectOption key={value} value={value}>{humanize(value)}</NativeSelectOption>)}</NativeSelect></Field></CardContent></Card>})}{!rows.some(row=>row[group]===column)&&<p className="text-sm text-muted-foreground">No tasks</p>}</div></section>)}</div>{move.error&&<ErrorAlert error={move.error}/>}</div>
 }
@@ -126,17 +151,31 @@ function WebformBlockPage({name,block,renderedForm,path}:WebformBlockProps&{path
 }
 
 function formBody(form:Manifest['webforms'][string]|undefined,values:Row):BodyInit{
-  const hasFile=(form?.Elements||[]).some(element=>element.Type==='file')
-  if(!hasFile)return JSON.stringify(values)
-  const body=new FormData();for(const[name,value]of Object.entries(values)){if(value instanceof File)body.append(name,value);else if(value!==undefined&&value!==null)body.append(name,typeof value==='string'?value:JSON.stringify(value))}return body
+  return encodeInput(values,(form?.Elements||[]).some(element=>element.Type==='file'))
 }
 
-function evaluate(expression:import('./api').Expression|undefined|null,values:Row):boolean{
-  if(!expression)return true;const args=expression.Args||[]
-  if(expression.Op==='and')return args.every(item=>evaluate(item,values));if(expression.Op==='or')return args.some(item=>evaluate(item,values));if(expression.Op==='not')return !evaluate(args[0],values)
-  const resolve=(value:typeof expression.Left)=>value?.Source==='input'?values[value.Name||'']:value?.Source==='literal'?value.Literal:undefined
-  const left=resolve(expression.Left),right=resolve(expression.Right)
-  if(expression.Op==='eq')return left===right;if(expression.Op==='ne')return left!==right;if(expression.Op==='is_null')return left==null;if(expression.Op==='is_not_null')return left!=null;return false
+export function evaluate(expression:import('./api').Expression|undefined|null,values:Row):boolean{
+  if(!expression)return true
+  const args=expression.Args||[]
+  if(expression.Op==='and')return args.every(item=>evaluate(item,values))
+  if(expression.Op==='or')return args.some(item=>evaluate(item,values))
+  if(expression.Op==='not'){if(args.length!==1)throw new Error('not requires one argument');return !evaluate(args[0],values)}
+  const resolve=(value:typeof expression.Left)=>{if(!value)throw new Error('expression value is missing');if(value.Source==='input')return values[value.Name||''];if(value.Source==='literal')return value.Literal;throw new Error('unsupported client value source '+value.Source)}
+  const left=resolve(expression.Left)
+  if(expression.Op==='is_null')return left==null
+  if(expression.Op==='is_not_null')return left!=null
+  const right=resolve(expression.Right)
+  if(expression.Op==='eq')return left===right
+  if(expression.Op==='ne')return left!==right
+  if(expression.Op==='gt'||expression.Op==='gte'||expression.Op==='lt'||expression.Op==='lte'){
+    if(typeof left!=='number'||typeof right!=='number')throw new Error('comparison requires numbers')
+    if(expression.Op==='gt')return left>right;if(expression.Op==='gte')return left>=right;if(expression.Op==='lt')return left<right;return left<=right
+  }
+  if(expression.Op==='in'||expression.Op==='not_in'){if(!Array.isArray(right))throw new Error(expression.Op+' requires a list');const included=right.some(value=>Object.is(value,left));return expression.Op==='in'?included:!included}
+  if(expression.Op==='contains')return String(left).includes(String(right))
+  if(expression.Op==='starts_with')return String(left).startsWith(String(right))
+  if(expression.Op==='ends_with')return String(left).endsWith(String(right))
+  throw new Error('unsupported client expression operator '+expression.Op)
 }
 
 function FormField({element,value,error,onChange}:{element:FormElement;value:any;error?:string;onChange:(value:any)=>void}){
@@ -150,7 +189,7 @@ function FormField({element,value,error,onChange}:{element:FormElement;value:any
   return <Field id={id} label={label} error={error}><Input id={id} type={type} required={element.Required} value={value??''} onChange={event=>onChange(element.Type==='number'||element.Type==='integer'?Number(event.target.value):event.target.value)}/></Field>
 }
 
-function ActionBlock({name}:{name:string}){const mutation=useMutation({mutationFn:()=>api('/api/actions/'+name,{method:'POST',body:'{}'})});return <div className="space-y-3"><Button onClick={()=>mutation.mutate()} disabled={mutation.isPending}>{humanize(name)}</Button>{mutation.error&&<ErrorAlert error={mutation.error}/>}</div>}
+function ActionBlock({name}:{name:string}){const mutation=useMutation({mutationFn:()=>callAction(name,{})});return <div className="space-y-3"><Button onClick={()=>mutation.mutate()} disabled={mutation.isPending}>{humanize(name)}</Button>{mutation.error&&<ErrorAlert error={mutation.error}/>}</div>}
 function MenuBlock({items}:{items:Array<{Route:string;Label:string}>}){return <nav className="flex flex-wrap gap-2" aria-label="Page navigation">{items.map(item=><Button key={item.Route} variant="outline" asChild><Link to={item.Route}>{item.Label}</Link></Button>)}</nav>}
 function Pagination({previousDisabled,nextDisabled,previous,next}:{previousDisabled:boolean;nextDisabled:boolean;previous:()=>void;next:()=>void}){return <nav className="flex justify-end gap-2" aria-label="Pagination"><Button variant="outline" disabled={previousDisabled} onClick={previous}>Previous</Button><Button variant="outline" disabled={nextDisabled} onClick={next}>Next</Button></nav>}
 function humanize(value:string){return value.replaceAll('_',' ').replace(/^./,letter=>letter.toUpperCase())}

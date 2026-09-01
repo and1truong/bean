@@ -89,14 +89,18 @@ func TestGenericAgentCallChecksPlaneBeforeInputWork(t *testing.T) {
 }
 
 func TestCLIAndMCPExposeIdenticalSharedResultsForEveryOperation(t *testing.T) {
-	service := agentprotocol.New()
 	principal := agentprotocol.Principal{Planes: agentprotocol.AllPlanes()}
-	operations := service.Operations(principal)
+	operations := agentprotocol.New().Operations(principal)
+	overrides := map[string]agentprotocol.Handler{}
 	for _, item := range operations {
 		operation := item
-		service.Register(operation.Name, func(context.Context, json.RawMessage, agentprotocol.Principal) agentprotocol.Outcome {
+		overrides[operation.Name] = func(context.Context, json.RawMessage, agentprotocol.Principal) agentprotocol.Outcome {
 			return agentprotocol.Outcome{OK: true, Result: map[string]any{"operation": operation.Name, "plane": operation.Plane}, Diagnostics: nil}
-		})
+		}
+	}
+	service, err := agentprotocol.NewWithHandlers(overrides)
+	if err != nil {
+		t.Fatal(err)
 	}
 	directory := t.TempDir()
 	inputFile := filepath.Join(directory, "request.json")
@@ -205,12 +209,16 @@ lifecycle: order_payment
 }
 
 func TestGenericCLIAuthorizesEveryPlaneIndependently(t *testing.T) {
-	service := agentprotocol.New()
-	for _, item := range service.Operations(agentprotocol.Principal{Planes: agentprotocol.AllPlanes()}) {
+	overrides := map[string]agentprotocol.Handler{}
+	for _, item := range agentprotocol.New().Operations(agentprotocol.Principal{Planes: agentprotocol.AllPlanes()}) {
 		operation := item
-		service.Register(operation.Name, func(context.Context, json.RawMessage, agentprotocol.Principal) agentprotocol.Outcome {
+		overrides[operation.Name] = func(context.Context, json.RawMessage, agentprotocol.Principal) agentprotocol.Outcome {
 			return agentprotocol.Outcome{OK: true, Result: operation.Name}
-		})
+		}
+	}
+	service, err := agentprotocol.NewWithHandlers(overrides)
+	if err != nil {
+		t.Fatal(err)
 	}
 	directory := t.TempDir()
 	inputFile := filepath.Join(directory, "request.json")
@@ -853,7 +861,7 @@ func TestInspectionAndDiffRedactActionLiterals(t *testing.T) {
 	inspectable := agentprotocol.RedactedApp(application)
 	inspections := make([][]byte, 0, 4)
 	for _, target := range [][2]string{{"Action", "call_service"}, {"View", "private"}, {"Policy", "private"}, {"Webform", "private"}} {
-		definition, _, exists := agentprotocol.InspectedDefinition(inspectable, target[0], target[1])
+		definition, _, exists := compiler.InspectDefinition(inspectable, target[0], target[1])
 		if !exists {
 			t.Fatalf("redacted %s is not inspectable", target[0])
 		}
@@ -891,13 +899,13 @@ func TestInspectionResolvesEveryMaintainedDefinitionReference(t *testing.T) {
 			t.Fatalf("%s diagnostics=%v", application, compiled.Diagnostics)
 		}
 		for _, source := range bundle.Definitions {
-			definition, references, exists := agentprotocol.InspectedDefinition(compiled.App, source.Kind, source.Metadata.Name)
+			definition, references, exists := compiler.InspectDefinition(compiled.App, source.Kind, source.Metadata.Name)
 			if !exists || definition == nil {
 				t.Errorf("%s: cannot inspect %s/%s", application, source.Kind, source.Metadata.Name)
 				continue
 			}
 			for _, reference := range references {
-				if _, _, targetExists := agentprotocol.InspectedDefinition(compiled.App, reference.Kind, reference.Name); !targetExists {
+				if _, _, targetExists := compiler.InspectDefinition(compiled.App, reference.Kind, reference.Name); !targetExists {
 					t.Errorf("%s: %s/%s %s does not resolve %s/%s", application, source.Kind, source.Metadata.Name, reference.Path, reference.Kind, reference.Name)
 				}
 			}
@@ -926,14 +934,14 @@ func TestInspectionExposesCoreReferenceFamilies(t *testing.T) {
 		{"Block", "project_board", "presentation.moveAction", "Action", "move_task"},
 		{"Page", "project", "panel", "Panel", "project_panel"},
 	} {
-		_, references, exists := agentprotocol.InspectedDefinition(compiled.App, expected.kind, expected.name)
+		_, references, exists := compiler.InspectDefinition(compiled.App, expected.kind, expected.name)
 		if !exists || !hasInspectedReference(references, expected.path, expected.targetKind, expected.targetName) {
 			t.Errorf("%s/%s missing %s -> %s/%s: %#v", expected.kind, expected.name, expected.path, expected.targetKind, expected.targetName, references)
 		}
 	}
 }
 
-func hasInspectedReference(references []agentprotocol.InspectedReference, path, kind, name string) bool {
+func hasInspectedReference(references []compiler.DefinitionReference, path, kind, name string) bool {
 	for _, reference := range references {
 		if reference.Path == path && reference.Kind == kind && reference.Name == name {
 			return true

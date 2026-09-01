@@ -74,7 +74,7 @@ Presentation remains a separately reported score so a technically correct but un
 
 ## Current engineering goal
 
-Before v0.10 feature work, Bean is performing a behavior-preserving internal refactor around sealed capability registries. The work centralizes repeated Definition-kind, Action-step, and Block-type extension seams while retaining explicit control flow for closed algebras and security-sensitive orchestration. It does not add a public plugin SDK or change the roadmap's application capabilities.
+The structural-diagnostics and unified-execution-seams goal is complete. View reads, Action-step obligations, value sources, client rendering/writes, Definition kinds, and Agent Protocol operations now have one structural owner each while explicit control flow remains for closed algebras and compiler phases. The work added no public plugin SDK or roadmap application capability; Bean is ready for the planned v0.10 feature work.
 
 ## Roadmap
 

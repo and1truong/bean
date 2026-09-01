@@ -26,7 +26,7 @@ import (
 	"github.com/beanruntime/bean/internal/patterns"
 )
 
-const cliAPIVersion = "bean.cli/v1alpha1"
+const cliAPIVersion = agentprotocol.CLIAPIVersion
 
 const (
 	exitOK = iota
@@ -678,9 +678,8 @@ func machineDiagnostics(diagnostics []definition.Diagnostic, sourceRoot string) 
 	out := make([]machineDiagnostic, len(diagnostics))
 	for index, diagnostic := range diagnostics {
 		path := diagnostic.Path
-		const unknownField = `json: unknown field "`
-		if path == "spec" && strings.HasPrefix(diagnostic.Message, unknownField) {
-			path += "." + strings.TrimSuffix(strings.TrimPrefix(diagnostic.Message, unknownField), `"`)
+		if path == "spec" && diagnostic.Facts != nil && diagnostic.Facts.UnknownField != "" {
+			path += "." + diagnostic.Facts.UnknownField
 		}
 		item := machineDiagnostic{Code: diagnostic.Code, Kind: diagnostic.Kind, Name: diagnostic.Name, Path: path, Value: diagnostic.Value, Message: diagnostic.Message, Candidates: diagnostic.Candidates}
 		if diagnostic.Source.Path != "" {

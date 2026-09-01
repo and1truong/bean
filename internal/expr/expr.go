@@ -7,6 +7,7 @@ import (
 
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/dbal"
+	"github.com/beanruntime/bean/internal/valuesource"
 )
 
 type Value struct {
@@ -123,31 +124,11 @@ func resolve(v *Value, c beanctx.Request, in map[string]any) (any, error) {
 	if v == nil {
 		return nil, fmt.Errorf("missing value")
 	}
-	switch v.Source {
-	case "literal":
-		return v.Literal, nil
-	case "input":
-		return in[v.Name], nil
-	case "record":
-		return c.Entity[v.Name], nil
-	case "user":
-		if c.User == nil {
-			return nil, nil
-		}
-		if v.Name == "id" {
-			return c.User.ID, nil
-		}
-		if v.Name == "email" {
-			return c.User.Email, nil
-		}
-	case "tenant":
-		return c.TenantID, nil
-	case "route":
-		return c.RouteParams[v.Name], nil
-	case "context":
-		return c.Values[v.Name], nil
+	value, err := valuesource.Resolve(valuesource.Expression, v.Source, v.Name, valuesource.Environment{Request: c, Literal: v.Literal, Input: in})
+	if err != nil {
+		return nil, fmt.Errorf("invalid value source %q: %w", v.Source, err)
 	}
-	return nil, fmt.Errorf("invalid value source %q", v.Source)
+	return value, nil
 }
 func compare(a, b any, op string) (bool, error) {
 	af, aok := number(a)

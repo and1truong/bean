@@ -19,7 +19,10 @@ type DefinitionReference struct {
 
 type definitionKind struct {
 	Specification       reflect.Type
+	Storage             reflect.Type
 	Compile             func(*appir.App, definition.Definition) []definition.Diagnostic
+	Normalize           func(*appir.App)
+	Validate            func(*appir.App, *validationState) []definition.Diagnostic
 	Lookup              func(*appir.App, string) (any, bool)
 	Names               func(*appir.App) []string
 	References          func(*appir.App, string) []DefinitionReference
@@ -28,6 +31,8 @@ type definitionKind struct {
 }
 
 var definitionKinds = newDefinitionKinds()
+
+func definitionKindRegistry() registry.Registry[definitionKind] { return definitionKinds }
 
 func newDefinitionKinds() registry.Registry[definitionKind] {
 	entity := mappedDefinitionKind(appir.Entity{}, func(app *appir.App) map[string]appir.Entity { return app.Entities }, normalizeEntity)
@@ -86,36 +91,69 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 	admin := mappedDefinitionKind(appir.AdminResource{}, func(app *appir.App) map[string]appir.AdminResource { return app.AdminResources }, nameValue[appir.AdminResource](func(value *appir.AdminResource, name string) { value.Name = name }))
 	admin.References = adminResourceReferences
 	admin.FieldEntity = func(app *appir.App, name string) string { return app.AdminResources[name].Entity }
+	localRegistration := localRegistrationDefinitionKind()
+	theme := themeDefinitionKind()
+	demoSeed := demoSeedDefinitionKind()
+
+	action.Normalize = normalizeActions
+	admin.Normalize = normalizeAdminResources
+	block.Normalize = normalizeResourceListBlocks
+	localRegistration.Normalize = noDefinitionNormalization
+	theme.Normalize = noDefinitionNormalization
+	demoSeed.Normalize = noDefinitionNormalization
+
+	entity.Validate = validateEntities
+	view.Validate = validateViews
+	action.Validate = validateActions
+	lifecycle.Validate = validateLifecycles
+	policy.Validate = validatePolicies
+	filter.Validate = validateFilters
+	webform.Validate = validateWebforms
+	block.Validate = validateBlocks
+	panel.Validate = validatePanels
+	pageKind.Validate = validatePages
+	role.Validate = noDefinitionValidation
+	menu.Validate = validateMenus
+	job.Validate = validateJobs
+	admin.Validate = validateAdminResources
+	localRegistration.Validate = validateLocalRegistration
+	theme.Validate = validateTheme
+	demoSeed.Validate = validateDemoSeed
 
 	return registry.Must(
 		registry.Identity[definitionKind],
 		registry.Entry[definitionKind]{Name: "Action", Value: action},
 		registry.Entry[definitionKind]{Name: "AdminResource", Value: admin},
 		registry.Entry[definitionKind]{Name: "Block", Value: block},
-		registry.Entry[definitionKind]{Name: "DemoSeed", Value: demoSeedDefinitionKind()},
+		registry.Entry[definitionKind]{Name: "DemoSeed", Value: demoSeed},
 		registry.Entry[definitionKind]{Name: "Entity", Value: entity},
 		registry.Entry[definitionKind]{Name: "Filter", Value: filter},
 		registry.Entry[definitionKind]{Name: "Job", Value: job},
 		registry.Entry[definitionKind]{Name: "Lifecycle", Value: lifecycle},
-		registry.Entry[definitionKind]{Name: "LocalRegistration", Value: localRegistrationDefinitionKind()},
+		registry.Entry[definitionKind]{Name: "LocalRegistration", Value: localRegistration},
 		registry.Entry[definitionKind]{Name: "Menu", Value: menu},
 		registry.Entry[definitionKind]{Name: "Page", Value: pageKind},
 		registry.Entry[definitionKind]{Name: "Panel", Value: panel},
 		registry.Entry[definitionKind]{Name: "Policy", Value: policy},
 		registry.Entry[definitionKind]{Name: "Role", Value: role},
-		registry.Entry[definitionKind]{Name: "Theme", Value: themeDefinitionKind()},
+		registry.Entry[definitionKind]{Name: "Theme", Value: theme},
 		registry.Entry[definitionKind]{Name: "View", Value: view},
 		registry.Entry[definitionKind]{Name: "Webform", Value: webform},
 	)
 }
 
+func noDefinitionNormalization(*appir.App)                                        {}
+func noDefinitionValidation(*appir.App, *validationState) []definition.Diagnostic { return nil }
+
 func mappedDefinitionKind[T any](specification T, collection func(*appir.App) map[string]T, normalize func(string, *T)) definitionKind {
 	return definitionKind{
 		Specification: reflect.TypeOf(specification),
+		Storage:       reflect.TypeOf(specification),
+		Normalize:     noDefinitionNormalization,
 		Compile: func(app *appir.App, source definition.Definition) []definition.Diagnostic {
 			var value T
 			if err := definition.DecodeSpec(source.Spec, &value); err != nil {
-				return []definition.Diagnostic{diag(source, "spec", err.Error())}
+				return []definition.Diagnostic{diagError(source, "spec", err)}
 			}
 			normalize(source.Metadata.Name, &value)
 			collection(app)[source.Metadata.Name] = value
@@ -182,10 +220,12 @@ func normalizeView(name string, value *appir.View) {
 func actionDefinitionKind() definitionKind {
 	return definitionKind{
 		Specification: reflect.TypeOf(actionSource{}),
+		Storage:       reflect.TypeOf(appir.Action{}),
+		Normalize:     noDefinitionNormalization,
 		Compile: func(app *appir.App, source definition.Definition) []definition.Diagnostic {
 			var raw actionSource
 			if err := definition.DecodeSpec(source.Spec, &raw); err != nil {
-				return []definition.Diagnostic{diag(source, "spec", err.Error())}
+				return []definition.Diagnostic{diagError(source, "spec", err)}
 			}
 			value := appir.Action{Name: source.Metadata.Name, Entity: raw.Entity, Operation: raw.Operation, Policy: raw.Policy, Lifecycle: raw.Lifecycle, StateField: raw.StateField, DefaultRole: raw.DefaultRole, Confirm: raw.Confirm, Input: raw.Input, Output: raw.Output, Transitions: raw.Transitions}
 			for inputName, input := range value.Input {
@@ -226,13 +266,15 @@ func actionDefinitionKind() definitionKind {
 func localRegistrationDefinitionKind() definitionKind {
 	return definitionKind{
 		Specification: reflect.TypeOf(appir.LocalRegistration{}),
+		Storage:       reflect.TypeOf(appir.LocalRegistration{}),
+		Normalize:     noDefinitionNormalization,
 		Compile: func(app *appir.App, source definition.Definition) []definition.Diagnostic {
 			var value appir.LocalRegistration
 			if err := definition.DecodeSpec(source.Spec, &value); err != nil {
-				return []definition.Diagnostic{diag(source, "spec", err.Error())}
+				return []definition.Diagnostic{diagError(source, "spec", err)}
 			}
 			if app.LocalRegistration != nil {
-				return []definition.Diagnostic{diag(source, "metadata.name", "only one local registration definition is allowed")}
+				return []definition.Diagnostic{diagWithRule(source, definition.RuleDuplicate, "metadata.name", "only one local registration definition is allowed")}
 			}
 			app.LocalRegistration = &value
 			return nil
@@ -256,14 +298,16 @@ func localRegistrationDefinitionKind() definitionKind {
 func themeDefinitionKind() definitionKind {
 	return definitionKind{
 		Specification: reflect.TypeOf(appir.Theme{}),
+		Storage:       reflect.TypeOf(appir.Theme{}),
+		Normalize:     noDefinitionNormalization,
 		Compile: func(app *appir.App, source definition.Definition) []definition.Diagnostic {
 			var value appir.Theme
 			if err := definition.DecodeSpec(source.Spec, &value); err != nil {
-				return []definition.Diagnostic{diag(source, "spec", err.Error())}
+				return []definition.Diagnostic{diagError(source, "spec", err)}
 			}
 			value.Name = source.Metadata.Name
 			if app.Theme != nil {
-				return []definition.Diagnostic{diag(source, "metadata.name", "only one Theme definition is allowed")}
+				return []definition.Diagnostic{diagWithRule(source, definition.RuleDuplicate, "metadata.name", "only one Theme definition is allowed")}
 			}
 			if value.DisplayName == "" {
 				value.DisplayName = "Bean"
@@ -295,14 +339,16 @@ func themeDefinitionKind() definitionKind {
 func demoSeedDefinitionKind() definitionKind {
 	return definitionKind{
 		Specification: reflect.TypeOf(appir.DemoSeed{}),
+		Storage:       reflect.TypeOf(appir.DemoSeed{}),
+		Normalize:     noDefinitionNormalization,
 		Compile: func(app *appir.App, source definition.Definition) []definition.Diagnostic {
 			var value appir.DemoSeed
 			if err := definition.DecodeSpec(source.Spec, &value); err != nil {
-				return []definition.Diagnostic{diag(source, "spec", err.Error())}
+				return []definition.Diagnostic{diagError(source, "spec", err)}
 			}
 			value.Name = source.Metadata.Name
 			if app.DemoSeed != nil {
-				return []definition.Diagnostic{diag(source, "metadata.name", "only one DemoSeed definition is allowed")}
+				return []definition.Diagnostic{diagWithRule(source, definition.RuleDuplicate, "metadata.name", "only one DemoSeed definition is allowed")}
 			}
 			app.DemoSeed = &value
 			return nil
@@ -323,11 +369,11 @@ func demoSeedDefinitionKind() definitionKind {
 }
 
 func DefinitionKindNames() []string {
-	return definitionKinds.Names()
+	return definitionKindRegistry().Names()
 }
 
 func InspectDefinition(app *appir.App, kind, name string) (any, []DefinitionReference, bool) {
-	registered, exists := definitionKinds.Lookup(kind)
+	registered, exists := definitionKindRegistry().Lookup(kind)
 	if !exists {
 		return nil, nil, false
 	}
@@ -343,7 +389,7 @@ func InspectDefinition(app *appir.App, kind, name string) (any, []DefinitionRefe
 }
 
 func CompiledDefinitionNames(app *appir.App, kind string) []string {
-	registered, exists := definitionKinds.Lookup(kind)
+	registered, exists := definitionKindRegistry().Lookup(kind)
 	if !exists {
 		return []string{}
 	}

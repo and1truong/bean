@@ -10,6 +10,7 @@ import (
 	"github.com/beanruntime/bean/internal/field"
 	"github.com/beanruntime/bean/internal/policy"
 	"github.com/beanruntime/bean/internal/render"
+	"github.com/beanruntime/bean/internal/valuesource"
 )
 
 func Node(a *appir.App, b appir.Block, ctx map[string]any, c beanctx.Request) (render.Node, bool, error) {
@@ -22,15 +23,10 @@ func Node(a *appir.App, b appir.Block, ctx map[string]any, c beanctx.Request) (r
 		binding, exists := b.Bindings[name]
 		var value any
 		if exists {
-			switch binding.Source {
-			case "context":
-				value = ctx[binding.Name]
-			case "tenant":
-				value = c.TenantID
-			case "user":
-				if c.User != nil && binding.Name == "id" {
-					value = c.User.ID
-				}
+			var resolveErr error
+			value, resolveErr = valuesource.Resolve(valuesource.Block, binding.Source, binding.Name, valuesource.Environment{Request: c, Context: ctx})
+			if resolveErr != nil {
+				return render.Node{}, false, fmt.Errorf("resolve Block input %s: %w", name, resolveErr)
 			}
 		}
 		if definition.Required && (value == nil || value == "") {
