@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/beanruntime/bean/internal/actionstep"
 	"github.com/beanruntime/bean/internal/appir"
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/definition"
@@ -674,7 +675,6 @@ func validate(a *appir.App) []definition.Diagnostic {
 		}
 	}
 	allowedActions := map[string]bool{"create": true, "update": true, "delete": true, "transition": true, "transaction": true, "register_local_user": true}
-	allowedSteps := map[string]bool{"load": true, "query": true, "assert": true, "assert_no_overlap": true, "create": true, "update": true, "conditional_update": true, "decrement": true, "delete": true, "transition": true, "emit": true, "schedule": true, "return": true}
 	allowedRelations := map[string]bool{"one-to-one": true, "one-to-many": true, "many-to-one": true, "many-to-many": true}
 	for name, entity := range a.Entities {
 		if entity.Policy != "" {
@@ -899,7 +899,8 @@ func validate(a *appir.App) []definition.Diagnostic {
 		results := map[string]bool{}
 		for i, step := range action.Steps {
 			path := fmt.Sprintf("spec.steps.%d", i)
-			if !allowedSteps[step.Op] {
+			stepSpecification, registered := actionstep.Lookup(step.Op)
+			if !registered {
 				out = append(out, diagnostic("Action", name, path+".op", "has no runtime executor"))
 				continue
 			}
@@ -935,13 +936,13 @@ func validate(a *appir.App) []definition.Diagnostic {
 					entity = action.Entity
 				}
 			}
-			if usesEntity(step.Op) {
+			if stepSpecification.UsesEntity {
 				if _, ok := a.Entities[entity]; !ok {
 					out = append(out, diagnostic("Action", name, path+".entity", "references missing Entity "+entity))
 				}
 			}
-			if target, ok := a.Entities[entity]; ok {
-				allowedValues := stepValueFields(step.Op, target, action)
+			if target, ok := a.Entities[entity]; ok && !stepSpecification.AnyValues {
+				allowedValues := stepValueFields(stepSpecification, target, action)
 				for _, assignment := range step.Values {
 					if !allowedValues[assignment.Field] {
 						out = append(out, diagnostic("Action", name, path+".values."+assignment.Field, "is not used by the "+step.Op+" executor"))
@@ -949,12 +950,12 @@ func validate(a *appir.App) []definition.Diagnostic {
 				}
 			}
 			if targetLifecycle, exists := lifecycleForEntity(a, entity); exists {
-				if step.Op == "transition" && action.Lifecycle != targetLifecycle.Name {
+				if stepSpecification.Transition && action.Lifecycle != targetLifecycle.Name {
 					diagnostic := diagnostic("Action", name, path+".op", "transition step must use Lifecycle "+targetLifecycle.Name)
 					diagnostic.Code = "BEAN-E2201"
 					out = append(out, diagnostic)
 				}
-				if step.Op == "update" || step.Op == "conditional_update" {
+				if stepSpecification.ProtectLifecycleState {
 					if hasAssignment(step, targetLifecycle.StateField) {
 						diagnostic := diagnostic("Action", name, path+".values."+targetLifecycle.StateField, "Lifecycle state requires a transition step")
 						diagnostic.Code = "BEAN-E2201"
@@ -962,15 +963,15 @@ func validate(a *appir.App) []definition.Diagnostic {
 					}
 				}
 			}
-			if step.Op == "query" && step.View != "" {
+			if stepSpecification.RequiresView && step.View != "" {
 				if _, ok := a.Views[step.View]; !ok {
 					out = append(out, diagnostic("Action", name, path+".view", "references missing View "+step.View))
 				}
 			}
-			if step.Op == "query" && step.View == "" {
+			if stepSpecification.RequiresView && step.View == "" {
 				out = append(out, diagnostic("Action", name, path+".view", "is required so reads use a compiled View"))
 			}
-			if (step.Op == "assert" || step.Op == "conditional_update") && step.Condition == nil {
+			if stepSpecification.RequiresCondition && step.Condition == nil {
 				out = append(out, diagnostic("Action", name, path+".condition", "is required"))
 			}
 			if step.Condition != nil {
@@ -983,18 +984,18 @@ func validate(a *appir.App) []definition.Diagnostic {
 					out = append(out, diagnostic("Action", name, path+".where", er.Error()))
 				}
 			}
-			if (step.Op == "load" || step.Op == "update" || step.Op == "conditional_update" || step.Op == "delete" || step.Op == "transition") && !hasAssignment(step, "id") {
+			if stepSpecification.RequiresID && !hasAssignment(step, "id") {
 				out = append(out, diagnostic("Action", name, path+".values.id", "is required"))
 			}
-			if step.Op == "schedule" {
+			if stepSpecification.RequiresJob {
 				if _, ok := a.Jobs[step.Job]; !ok {
 					out = append(out, diagnostic("Action", name, path+".job", "references missing Job "+step.Job))
 				}
 			}
-			if step.Op == "emit" && step.Event == "" {
+			if stepSpecification.RequiresEvent && step.Event == "" {
 				out = append(out, diagnostic("Action", name, path+".event", "is required"))
 			}
-			if step.Op == "return" {
+			if stepSpecification.OutputValues {
 				for _, assignment := range step.Values {
 					if _, declared := action.Output[assignment.Field]; !declared {
 						out = append(out, diagnostic("Action", name, path+".values."+assignment.Field, "is not declared in the Action output schema"))
@@ -1549,48 +1550,17 @@ func viewFieldType(name string, base appir.Entity, relationships map[string]appi
 	return "", false
 }
 
-func usesEntity(op string) bool {
-	return map[string]bool{"load": true, "query": true, "assert_no_overlap": true, "create": true, "update": true, "conditional_update": true, "decrement": true, "delete": true, "transition": true}[op]
-}
-
-func stepValueFields(op string, entity appir.Entity, action appir.Action) map[string]bool {
+func stepValueFields(specification actionstep.Specification, entity appir.Entity, action appir.Action) map[string]bool {
 	fields := map[string]bool{}
-	switch op {
-	case "create", "update", "conditional_update", "transition":
-		fields["entity"] = true
-		if op != "create" {
-			fields["id"] = true
-			fields["message"] = true
-		}
+	for _, name := range specification.AllowedValues {
+		fields[name] = true
+	}
+	if specification.EntityFields {
 		for _, field := range entity.Fields {
 			fields[field.Name] = true
 		}
-	case "load", "delete":
-		fields["entity"] = true
-		fields["id"] = true
-	case "assert":
-		fields["message"] = true
-	case "assert_no_overlap":
-		for _, field := range []string{"match", "start", "end", "message"} {
-			fields[field] = true
-		}
-	case "decrement":
-		for _, field := range []string{"entity", "field", "id_input", "amount_input", "message"} {
-			fields[field] = true
-		}
-	case "emit", "schedule":
-		for _, assignment := range action.Output {
-			fields[assignment.Name] = true
-		}
-		// Event and job payloads are explicit JSON objects and may use arbitrary keys.
-		for _, step := range action.Steps {
-			if step.Op == op {
-				for _, assignment := range step.Values {
-					fields[assignment.Field] = true
-				}
-			}
-		}
-	case "return":
+	}
+	if specification.OutputValues {
 		for name := range action.Output {
 			fields[name] = true
 		}

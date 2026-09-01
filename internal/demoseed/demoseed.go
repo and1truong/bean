@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/beanruntime/bean/internal/action"
+	"github.com/beanruntime/bean/internal/actionstep"
 	"github.com/beanruntime/bean/internal/appir"
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/dbal"
@@ -305,19 +306,9 @@ func transactionLifecycleInputs(app *appir.App, actionDefinition appir.Action, l
 	if len(actionDefinition.Steps) != 1 {
 		return "", "", false
 	}
-	var transition *appir.Step
-	for index := range actionDefinition.Steps {
-		step := &actionDefinition.Steps[index]
-		entity := transactionStepEntity(actionDefinition, *step)
-		if step.Op != "transition" || entity != lifecycle.Entity {
-			continue
-		}
-		if transition != nil {
-			return "", "", false
-		}
-		transition = step
-	}
-	if transition == nil {
+	transition := &actionDefinition.Steps[0]
+	specification, registered := actionstep.Lookup(transition.Op)
+	if !registered || !specification.Transition || !specification.Effects.MutatesEntity || specification.Effects.EmitsEvent || specification.Effects.SchedulesJob || transactionStepEntity(actionDefinition, *transition) != lifecycle.Entity {
 		return "", "", false
 	}
 	entityField := false

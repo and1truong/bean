@@ -6,6 +6,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/beanruntime/bean/internal/actionstep"
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/definition"
 )
@@ -48,7 +49,7 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 		SemanticPrimitives:      []string{"Lifecycle"},
 		FieldTypes:              []string{"boolean", "date", "datetime", "decimal", "email", "enum", "file", "integer", "json", "money", "password", "relation", "richtext", "slug", "string", "text", "url", "uuid"},
 		ActionOperations:        []string{"create", "delete", "register_local_user", "transaction", "transition", "update"},
-		ActionSteps:             []string{"assert", "assert_no_overlap", "conditional_update", "create", "decrement", "delete", "emit", "load", "query", "return", "schedule", "transition", "update"},
+		ActionSteps:             actionstep.Names(),
 		BlockTypes:              []string{"action", "entity", "menu", "resource-list", "text", "view", "webform"},
 		Presentations:           []string{"board", "detail", "list", "metric", "timeline", "tree"},
 		DisplaySerializers:      []string{"csv", "json", "rss"},
