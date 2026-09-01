@@ -282,7 +282,7 @@ func lifecycleTransitionMove(app *appir.App, lifecycle appir.Lifecycle, recordID
 			continue
 		}
 		if actionDefinition.Operation == "transaction" {
-			idInput, stateInput, compatible := transactionLifecycleInputs(actionDefinition, lifecycle, recordID, target)
+			idInput, stateInput, compatible := transactionLifecycleInputs(app, actionDefinition, lifecycle, recordID, target)
 			if compatible {
 				return lifecycleMove{Action: name, State: target, IDInput: idInput, StateInput: stateInput}, true
 			}
@@ -301,7 +301,7 @@ func lifecycleTransitionMove(app *appir.App, lifecycle appir.Lifecycle, recordID
 	return lifecycleMove{}, false
 }
 
-func transactionLifecycleInputs(actionDefinition appir.Action, lifecycle appir.Lifecycle, recordID, target string) (string, string, bool) {
+func transactionLifecycleInputs(app *appir.App, actionDefinition appir.Action, lifecycle appir.Lifecycle, recordID, target string) (string, string, bool) {
 	if len(actionDefinition.Steps) != 1 {
 		return "", "", false
 	}
@@ -323,6 +323,13 @@ func transactionLifecycleInputs(actionDefinition appir.Action, lifecycle appir.L
 	for _, assignment := range transition.Values {
 		if assignment.Field != "id" && assignment.Field != lifecycle.StateField && assignment.Field != "entity" {
 			return "", "", false
+		}
+		if assignment.Field == "entity" {
+			for _, field := range app.Entities[lifecycle.Entity].Fields {
+				if field.Name == "entity" {
+					return "", "", false
+				}
+			}
 		}
 	}
 	bindings := map[string]appir.ValueBinding{}

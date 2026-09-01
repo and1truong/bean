@@ -187,10 +187,17 @@ func TestLifecyclePlanningRejectsUnsafeTransactionActions(t *testing.T) {
 			action.Steps[0].Values = append(action.Steps[0].Values, appir.Assignment{Field: "entity", Value: appir.ValueBinding{Source: "literal", Literal: []byte(`"other"`)}})
 			return action
 		}(),
+		"entity field assignment": func() appir.Action {
+			action := base
+			action.Steps = append([]appir.Step{}, base.Steps...)
+			action.Steps[0].Values = append(action.Steps[0].Values, appir.Assignment{Field: "entity", Value: appir.ValueBinding{Source: "literal", Literal: []byte(`"item"`)}})
+			return action
+		}(),
 	}
 	for name, actionDefinition := range tests {
 		t.Run(name, func(t *testing.T) {
 			app := appir.Empty()
+			app.Entities["item"] = appir.Entity{Name: "item", Fields: []appir.Field{{Name: "entity", Type: "string"}}}
 			app.Lifecycles["flow"] = lifecycle
 			app.Actions["finish_item"] = actionDefinition
 			_, err := planLifecycleMoves(app, []Record{{Entity: "item", ID: "00000000-0000-4000-8000-000000000001", Values: map[string]any{"status": "done"}}})
