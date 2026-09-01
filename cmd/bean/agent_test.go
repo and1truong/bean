@@ -8,15 +8,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/beanruntime/bean/examples"
+	"github.com/beanruntime/bean/internal/agentprotocol"
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/bootstrap"
 	"github.com/beanruntime/bean/internal/compiler"
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/expr"
+	"github.com/beanruntime/bean/internal/mcpstdio"
 )
 
 type testEnvelope struct {
@@ -35,6 +38,139 @@ type testEnvelope struct {
 			Column int    `json:"column"`
 		} `json:"source"`
 	} `json:"diagnostics"`
+}
+
+func TestGenericAgentCallUsesSharedProtocolResult(t *testing.T) {
+	directory := t.TempDir()
+	manifest := filepath.Join(directory, "app.yaml")
+	request := filepath.Join(directory, "request.json")
+	if err := os.WriteFile(manifest, []byte("apiVersion: bean/v1alpha1\nname: Generic Agent Call\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	encoded, _ := json.Marshal(map[string]any{"file": manifest})
+	if err := os.WriteFile(request, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	exit := execute([]string{"agent", "call", "bean.definition.validate", "--input", request, "--json"}, &stdout, &stderr)
+	if exit != exitOK || stderr.Len() != 0 {
+		t.Fatalf("exit=%d stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+	var envelope testEnvelope
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	result := envelope.Result.(map[string]any)
+	if !envelope.OK || envelope.Command != "agent.call" || result["name"] != "Generic Agent Call" {
+		t.Fatalf("envelope=%+v", envelope)
+	}
+}
+
+func TestGenericAgentCallChecksPlaneBeforeInputWork(t *testing.T) {
+	directory := t.TempDir()
+	request := filepath.Join(directory, "request.json")
+	missing := filepath.Join(directory, "secret-missing.yaml")
+	encoded, _ := json.Marshal(map[string]any{"file": missing})
+	if err := os.WriteFile(request, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	exit := execute([]string{"agent", "call", "bean.definition.validate", "--allow-plane", "release", "--input", request, "--json"}, &stdout, &stderr)
+	if exit != exitUsage || stderr.Len() != 0 || strings.Contains(stdout.String(), missing) {
+		t.Fatalf("exit=%d stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+	var envelope testEnvelope
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.OK || len(envelope.Diagnostics) != 1 || envelope.Diagnostics[0].Code != "BEAN-P1002" {
+		t.Fatalf("envelope=%+v", envelope)
+	}
+}
+
+func TestCLIAndMCPExposeIdenticalSharedResultsForEveryOperation(t *testing.T) {
+	service := agentprotocol.New()
+	principal := agentprotocol.Principal{Planes: agentprotocol.AllPlanes()}
+	operations := service.Operations(principal)
+	for _, item := range operations {
+		operation := item
+		service.Register(operation.Name, func(context.Context, json.RawMessage, agentprotocol.Principal) agentprotocol.Outcome {
+			return agentprotocol.Outcome{OK: true, Result: map[string]any{"operation": operation.Name, "plane": operation.Plane}, Diagnostics: nil}
+		})
+	}
+	directory := t.TempDir()
+	inputFile := filepath.Join(directory, "request.json")
+	if err := os.WriteFile(inputFile, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for index, operation := range operations {
+		var cliOut, cliErr bytes.Buffer
+		if exit := agentCallService(service, []string{operation.Name, "--input", inputFile, "--json"}, &cliOut, &cliErr); exit != exitOK {
+			t.Fatalf("%s CLI exit=%d stdout=%s stderr=%s", operation.Name, exit, cliOut.String(), cliErr.String())
+		}
+		var cli testEnvelope
+		if err := json.Unmarshal(cliOut.Bytes(), &cli); err != nil {
+			t.Fatal(err)
+		}
+
+		request, _ := json.Marshal(map[string]any{
+			"jsonrpc": "2.0", "id": index + 1, "method": "tools/call",
+			"params": map[string]any{
+				"name": operation.Name, "arguments": map[string]any{},
+				"_meta": map[string]any{"io.modelcontextprotocol/protocolVersion": mcpstdio.ProtocolVersion, "io.modelcontextprotocol/clientCapabilities": map[string]any{}},
+			},
+		})
+		var mcpOut bytes.Buffer
+		server := mcpstdio.New(mcpstdio.Config{Service: service, Principal: principal})
+		if err := server.Serve(context.Background(), bytes.NewReader(append(request, '\n')), &mcpOut); err != nil {
+			t.Fatal(err)
+		}
+		var mcp map[string]any
+		if err := json.Unmarshal(mcpOut.Bytes(), &mcp); err != nil {
+			t.Fatal(err)
+		}
+		structured := mcp["result"].(map[string]any)["structuredContent"]
+		if !reflect.DeepEqual(cli.Result, structured) {
+			t.Fatalf("%s CLI=%v MCP=%v", operation.Name, cli.Result, structured)
+		}
+	}
+}
+
+func TestGenericCLIAuthorizesEveryPlaneIndependently(t *testing.T) {
+	service := agentprotocol.New()
+	for _, item := range service.Operations(agentprotocol.Principal{Planes: agentprotocol.AllPlanes()}) {
+		operation := item
+		service.Register(operation.Name, func(context.Context, json.RawMessage, agentprotocol.Principal) agentprotocol.Outcome {
+			return agentprotocol.Outcome{OK: true, Result: operation.Name}
+		})
+	}
+	directory := t.TempDir()
+	inputFile := filepath.Join(directory, "request.json")
+	if err := os.WriteFile(inputFile, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	representatives := map[agentprotocol.Plane]string{
+		agentprotocol.DefinitionPlane:  "bean.definition.capabilities",
+		agentprotocol.ReleasePlane:     "bean.release.plan",
+		agentprotocol.ApplicationPlane: "bean.application.query",
+	}
+	for plane, allowed := range representatives {
+		var stdout, stderr bytes.Buffer
+		exit := agentCallService(service, []string{allowed, "--allow-plane", string(plane), "--input", inputFile, "--json"}, &stdout, &stderr)
+		if exit != exitOK {
+			t.Fatalf("plane=%s allowed=%s exit=%d stdout=%s stderr=%s", plane, allowed, exit, stdout.String(), stderr.String())
+		}
+		denied := representatives[agentprotocol.DefinitionPlane]
+		if plane == agentprotocol.DefinitionPlane {
+			denied = representatives[agentprotocol.ReleasePlane]
+		}
+		stdout.Reset()
+		stderr.Reset()
+		exit = agentCallService(service, []string{denied, "--allow-plane", string(plane), "--input", inputFile, "--json"}, &stdout, &stderr)
+		if exit != exitUsage || !strings.Contains(stdout.String(), "BEAN-P1002") {
+			t.Fatalf("plane=%s denied=%s exit=%d stdout=%s stderr=%s", plane, denied, exit, stdout.String(), stderr.String())
+		}
+	}
 }
 
 func TestAgentValidateJSONUsesStableEnvelopeAndDiagnostic(t *testing.T) {
@@ -646,10 +782,10 @@ func TestInspectionAndDiffRedactActionLiterals(t *testing.T) {
 		RequiredWhen: literalExpression("form-required-secret"),
 		Children:     []appir.FormElement{{Name: "child", Visible: literalExpression("form-child-secret")}},
 	}}}
-	inspectable := redactedApp(application)
+	inspectable := agentprotocol.RedactedApp(application)
 	inspections := make([][]byte, 0, 4)
 	for _, target := range [][2]string{{"Action", "call_service"}, {"View", "private"}, {"Policy", "private"}, {"Webform", "private"}} {
-		definition, _, exists := inspectedDefinition(inspectable, target[0], target[1])
+		definition, _, exists := agentprotocol.InspectedDefinition(inspectable, target[0], target[1])
 		if !exists {
 			t.Fatalf("redacted %s is not inspectable", target[0])
 		}
@@ -660,7 +796,7 @@ func TestInspectionAndDiffRedactActionLiterals(t *testing.T) {
 		inspections = append(inspections, inspection)
 	}
 	inspection := bytes.Join(inspections, nil)
-	diff, err := json.Marshal(semanticDiff(appir.Empty(), application))
+	diff, err := json.Marshal(agentprotocol.SemanticDiff(appir.Empty(), application))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -687,13 +823,13 @@ func TestInspectionResolvesEveryMaintainedDefinitionReference(t *testing.T) {
 			t.Fatalf("%s diagnostics=%v", application, compiled.Diagnostics)
 		}
 		for _, source := range bundle.Definitions {
-			definition, references, exists := inspectedDefinition(compiled.App, source.Kind, source.Metadata.Name)
+			definition, references, exists := agentprotocol.InspectedDefinition(compiled.App, source.Kind, source.Metadata.Name)
 			if !exists || definition == nil {
 				t.Errorf("%s: cannot inspect %s/%s", application, source.Kind, source.Metadata.Name)
 				continue
 			}
 			for _, reference := range references {
-				if _, _, targetExists := inspectedDefinition(compiled.App, reference.Kind, reference.Name); !targetExists {
+				if _, _, targetExists := agentprotocol.InspectedDefinition(compiled.App, reference.Kind, reference.Name); !targetExists {
 					t.Errorf("%s: %s/%s %s does not resolve %s/%s", application, source.Kind, source.Metadata.Name, reference.Path, reference.Kind, reference.Name)
 				}
 			}
@@ -722,14 +858,14 @@ func TestInspectionExposesCoreReferenceFamilies(t *testing.T) {
 		{"Block", "project_board", "presentation.moveAction", "Action", "move_task"},
 		{"Page", "project", "panel", "Panel", "project_panel"},
 	} {
-		_, references, exists := inspectedDefinition(compiled.App, expected.kind, expected.name)
+		_, references, exists := agentprotocol.InspectedDefinition(compiled.App, expected.kind, expected.name)
 		if !exists || !hasInspectedReference(references, expected.path, expected.targetKind, expected.targetName) {
 			t.Errorf("%s/%s missing %s -> %s/%s: %#v", expected.kind, expected.name, expected.path, expected.targetKind, expected.targetName, references)
 		}
 	}
 }
 
-func hasInspectedReference(references []inspectedReference, path, kind, name string) bool {
+func hasInspectedReference(references []agentprotocol.InspectedReference, path, kind, name string) bool {
 	for _, reference := range references {
 		if reference.Path == path && reference.Kind == kind && reference.Name == name {
 			return true

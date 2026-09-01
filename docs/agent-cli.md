@@ -2,7 +2,17 @@
 
 Bean v0.6 exposes the compiler and release lifecycle as a provider-neutral command contract. An agent does not need to inspect Bean source or parse human prose.
 
-v0.7 retains that contract and adds deterministic Demo Factory commands:
+v0.8 retains that contract and adds a generic one-to-one adapter over the shared `bean.agent/v1alpha1` dispatcher:
+
+```bash
+bean agent call bean.definition.validate --input request.json --json
+bean agent call bean.release.publish --input request.json --json
+bean agent call bean.application.query --input request.json --json
+```
+
+The successful CLI `result` is identical to MCP `structuredContent`. Existing commands delegate to the same handlers and remain the preferred human-facing aliases. See [Agent Protocol](agent-protocol.md) for the ten operations, planes, and MCP transport.
+
+v0.7 Demo Factory commands remain available:
 
 ```bash
 bean pattern inspect workflow_resource --json

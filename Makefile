@@ -36,7 +36,7 @@ test-compatibility:
 	go test ./internal/appir ./internal/release -run 'Compatibility|Format'
 
 test-blackbox: build
-	@test "$$($(CURDIR)/bin/bean version)" = "bean 0.7.0-alpha"
+	@test "$$($(CURDIR)/bin/bean version)" = "bean 0.8.0-alpha"
 	BEAN_BINARY=$(CURDIR)/bin/bean go test ./internal/agenttest -count=1
 
 test-crash: build
@@ -52,7 +52,8 @@ test-postgres: build
 	for attempt in $$(seq 1 30); do docker exec bean-postgres-test pg_isready -U postgres -d bean >/dev/null 2>&1 && break; sleep 1; done; \
 	docker exec bean-postgres-test createdb -U postgres bean_blog; \
 	docker exec bean-postgres-test createdb -U postgres bean_blog_e2e; \
-	BEAN_TEST_POSTGRES_URL=postgres://postgres:bean@127.0.0.1:55432/bean?sslmode=disable BEAN_TEST_BLOG_POSTGRES_URL=postgres://postgres:bean@127.0.0.1:55432/bean_blog?sslmode=disable go test ./internal/dbal/postgres ./internal/httpapi -count=1; \
+	docker exec bean-postgres-test createdb -U postgres bean_agent; \
+	BEAN_TEST_POSTGRES_URL=postgres://postgres:bean@127.0.0.1:55432/bean?sslmode=disable BEAN_TEST_BLOG_POSTGRES_URL=postgres://postgres:bean@127.0.0.1:55432/bean_blog?sslmode=disable BEAN_TEST_AGENT_POSTGRES_URL=postgres://postgres:bean@127.0.0.1:55432/bean_agent?sslmode=disable go test ./internal/dbal/postgres ./internal/httpapi ./internal/agentprotocol -count=1; \
 	cd e2e && BEAN_E2E_DATABASE_URL=postgres://postgres:bean@127.0.0.1:55432/bean_blog_e2e?sslmode=disable bunx playwright test blog.spec.ts
 
 test-e2e: build

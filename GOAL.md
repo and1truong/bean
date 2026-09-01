@@ -1,107 +1,125 @@
-# Goal: Bean v0.7 Demo Factory
+# Goal: Bean v0.8 Agent Protocol
 
-Turn the v0.6 machine-facing compiler loop into a fast path from ordinary application intent to a populated, presentable, portable local demo without adding an LLM or application-specific runtime code.
+Turn the v0.6 machine-readable CLI contract and v0.7 Demo Factory into one provider-neutral protocol that CLI and MCP clients use without embedding an LLM or duplicating Bean application logic.
 
 ## Primary outcome
 
-A coding agent can compose ordinary Bean definitions for a maintained prompt, validate and publish them through the v0.6 contract, populate coherent demo data deterministically, and produce a self-contained local package that opens as a credible working product rather than an empty CRUD shell.
+Codex, Claude Code, Cursor, OpenCode, Pi, and custom clients can discover and invoke the same deterministic Bean operations through either the reference CLI transport or a standards-compliant MCP stdio adapter.
 
 ```text
-prompt
-  -> agent
-  -> ordinary Bean definitions + inspectable patterns
-  -> validate / plan / publish
-  -> deterministic seed
-  -> themed working demo
-  -> portable package
+agent provider
+  -> CLI or MCP transport
+  -> shared Agent Protocol dispatcher
+     -> Definition Plane
+     -> Release Plane
+     -> Application Plane
+  -> existing compiler / release / View / Action services
 ```
 
-Bean remains deterministic and provider-neutral. The benchmark records the external agent and model as inputs; Bean does not call or embed either one.
+The protocol is versioned as `bean.agent/v1alpha1`. Transports may change framing, but operation names, input schemas, authorization decisions, structured results, diagnostics, and errors come from the shared dispatcher.
 
-## Demo vocabulary
+## Protocol operations
 
-v0.7 qualifies the deliberately bounded application vocabulary from the roadmap:
+| Plane | Operation | Contract |
+| --- | --- | --- |
+| Definition | `bean.definition.capabilities` | Return compiler-owned vocabulary and protocol capabilities |
+| Definition | `bean.definition.schema` | Return canonical manifest or per-kind JSON Schema |
+| Definition | `bean.definition.validate` | Load and compile application source without database mutation |
+| Definition | `bean.definition.inspect` | Return redacted AppIR or one definition plus references |
+| Release | `bean.release.plan` | Produce a side-effect-free migration preview against a target |
+| Release | `bean.release.diff` | Produce a semantic diff against the active release |
+| Release | `bean.release.publish` | Compile, migrate, persist, and atomically activate a candidate |
+| Release | `bean.release.test` | Run the isolated compile/migration/publish/restart smoke contract |
+| Application | `bean.application.query` | Read only through a compiled View |
+| Application | `bean.application.execute` | Write only through a compiled Action |
 
-- Entity and Relation for business structure
-- List, Detail, Form, Board, and Tree for operational interaction
-- Dashboard, Metric, and Timeline for overview and activity
-- Search for navigation within declared View fields
-- Action for mutation and enum transitions for workflows
-- Attachment for bounded local files
+Definition and Release source inputs use normal Bean application files. MCP is a local coding-agent adapter, not a source-upload or remote hosting API.
 
-Dashboard remains composition of ordinary Page, Panel, and Block definitions. Metric and Timeline are compiler-validated View presentations, not separate query or storage systems. Search remains a View read and cannot bypass View or Policy constraints.
+## Shared dispatcher
 
-## Typed demo metadata
+The dispatcher owns:
 
-Theme and seed configuration are typed, schema-visible, inspectable Bean definitions.
+- the operation registry, plane assignment, descriptions, and JSON input schemas
+- deterministic input decoding and structured output
+- stable protocol errors and compiler diagnostics
+- authorization before opening a database or performing work
+- credential redaction and deterministic ordering
+- delegation to existing compiler, release, View, and Action services
 
-- One application Theme selects a display name, a maintained preset, and an accent token. It does not accept CSS, JavaScript, arbitrary class names, URLs, or file paths.
-- Demo seed metadata declares an explicit count per Entity and an optional maintained data profile. It cannot contain executable generators or bypass Actions.
-- The same source and seed value produce the same generated field values, relation choices, and insertion order.
-- Generated records are created through compiled create Actions. Reads used for verification go through Views.
-- Required relations are dependency-ordered. Cyclic required relations are rejected with a stable diagnostic rather than partially populated.
-- Generated values satisfy field types, requiredness, enum options, uniqueness, and declared bounds. Sensitive/password/file fields are never synthesized.
-- Seeding is safe by default: a non-empty target is rejected unless it already contains the exact idempotent generated dataset.
+It does not own YAML grammar, migration execution, policy evaluation, SQL, or runtime mutation logic. Those remain in their existing packages.
 
-The supported command is:
+## CLI reference transport
+
+Existing v0.6 commands remain compatible and delegate to the shared operations. Add a one-to-one machine entry point for contract testing and custom clients:
 
 ```bash
-bean demo seed --file ./app.yaml --db ./demo.db --seed 42 --json
+bean agent call bean.definition.validate --input request.json --json
+bean agent call bean.release.publish --input request.json --json
+bean agent call bean.application.query --input request.json --json
 ```
 
-## Inspectable patterns
+The CLI envelope remains `bean.cli/v1alpha1`; its `result` is the same structured protocol result returned through MCP. Human output remains a presentation concern of the CLI adapter.
 
-Ship a maintained catalog for CRUD resource, workflow resource, approval workflow, parent/child resource, many-to-many tagging, ownership, assignment, comments, activity history, and dashboard composition.
+## MCP adapter
 
-Patterns are valid, ordinary Bean definition bundles. `bean pattern inspect` returns their source definitions and required capabilities; it does not install hidden runtime behavior, introduce another DSL, or skip normal schema/compiler validation. Agents may copy, rename, and compose the definitions using the same v0.6 validate/inspect/diff loop.
-
-## Portable package
-
-The supported delivery command is:
+The supported v0.8 MCP transport is stdio:
 
 ```bash
-bean package --file ./app.yaml --output ./dist/acme-demo --seed 42 --json
+bean mcp serve --allow-plane definition,release,application
 ```
 
-For v0.7, a package is a directory containing the Bean executable, an activated SQLite database with deterministic demo data, and a machine-readable manifest with checksums, Bean version, source checksum, release identity, and start command. Packaging is local and reproducible; it does not download dependencies, create a container, or publish a URL.
+It emits only newline-delimited UTF-8 JSON-RPC messages on stdout and may log only to stderr. It supports the current MCP `2026-07-28` stateless request metadata model plus initialization-based compatibility for maintained clients, deterministic `tools/list`, and `tools/call`. Tool results include both structured content and equivalent JSON text.
 
-The packaged executable and database must start without the original source tree. Package creation uses a temporary staging directory and only replaces the destination after all validation, publication, seeding, checksum, and restart checks pass.
+Streamable HTTP, remote OAuth, subscriptions, prompts, resources, sampling, and elicitation are outside v0.8.
 
-## Acceptance scenario
+## Authorization contract
 
-The primary benchmark prompt is a lightweight applicant tracking system with jobs, candidates, interview stages, notes, a kanban pipeline, candidate detail, search, dashboard metrics, and activity timeline.
+Plane access is process configuration, not model-controlled tool input.
 
-1. The agent discovers capabilities and relevant patterns.
-2. It produces only ordinary Bean definitions plus typed Theme and DemoSeed definitions.
-3. The v0.6 JSON loop validates, repairs, plans, and publishes the candidate.
-4. `bean demo seed` creates coherent jobs, candidates, notes, and activities deterministically through Actions.
-5. The application opens with meaningful records, working pipeline transitions, search, candidate detail, dashboard metrics, timeline, and the declared theme.
-6. `bean package` creates a portable local directory and its restart smoke test passes.
-7. Repeating the run with the same inputs produces the same semantic definitions and seed dataset checksums.
+- `definition` grants compiler vocabulary, schema, validation, and inspection only.
+- `release` grants plan, diff, publish, and isolated test; `publish` remains a Release operation and never becomes an Action.
+- `application` grants discovery of Application tools, but every query still passes through a View and every mutation through an Action.
+- Missing plane access fails before source loading, target opening, or application execution.
+- MCP `tools/list` exposes only operations allowed to that server process.
+- The host supplies the runtime user, roles, and tenant context; tool arguments cannot self-assign roles or plane grants.
 
-CRM and issue-tracker prompts provide two independent secondary cases for pattern reuse and presentation coverage.
+CLI and MCP tests independently prove each allow/deny boundary. Application tests also prove Entity/table names cannot substitute for Views and arbitrary writes cannot substitute for Actions.
+
+## Agent guidance
+
+Ship:
+
+```text
+agents/
+  AGENTS.md
+  bean.skill.md
+  examples/
+```
+
+The guidance is provider-neutral and recommends: discover capabilities, inspect relevant definitions, model the smallest domain, validate and repair, preview plan/diff, publish, smoke-test, then improve presentation. Examples cover CLI and MCP configuration without provider-specific runtime branches.
 
 ## Measurable acceptance criteria
 
-- Theme, DemoSeed, Metric, Timeline, and Search contracts are represented in canonical schemas, capabilities, inspection, semantic diff, and compiler diagnostics.
-- All maintained examples continue to compile; the applicant-tracking reference application contains no application-specific core branch.
-- Every catalog pattern compiles independently and its returned definitions are byte-stable and visible to `app inspect` after composition.
-- Deterministic seed tests cover all supported scalar types, uniqueness, optional and required relations, stable ordering, idempotent replay, unsafe-target refusal, and unsupported cycles/sensitive/file inputs.
-- SQLite and PostgreSQL retain compile/runtime parity; v0.7 packaging itself intentionally targets SQLite only.
-- Package tests verify atomic destination replacement, checksums, no dependency on the source directory, activated release loading, populated View reads, and executable startup.
-- A recorded benchmark report includes prompt, agent/model/tool versions, budgets, elapsed time, validation attempts, human interventions, behavior score, presentation score, and package checksum.
-- Maintained benchmark runs meet p50 under five minutes, p90 under ten minutes, zero human edits after the prompt, and the complete declared behavior rubric. Results are not compared across changed models, prompts, budgets, or cache state without disclosure.
+- The shared registry contains exactly the ten named operations with stable plane assignments and deterministic schemas.
+- Existing v0.6 CLI commands and the generic `agent call` path execute shared handlers rather than parallel compiler/release implementations.
+- MCP stdio passes official JSON-RPC framing, discovery, tool listing, tool call, malformed-request, unknown-tool, EOF, and stdout-cleanliness tests.
+- The same protocol fixture produces semantically identical CLI and MCP structured results for every operation.
+- Definition, Release, and Application plane authorization are independently denied and allowed in both transports.
+- Release planning remains side-effect-free; publication preserves the immutable AppIR and atomic activation lifecycle.
+- Application Plane query/execute tests preserve Policy behavior, View-only reads, Action-only writes, owner/tenant context, and backend parity.
+- Tool input cannot select raw tables, arbitrary mutations, SQL, roles, tenants, or grants.
+- Agent guidance is complete enough to configure at least one generic stdio MCP client without Bean knowing the provider identity.
+- All maintained examples compile and existing v0.6/v0.7 machine contracts remain compatible.
 - `make check`, `make test-crash`, `make test-postgres`, and `make build` pass.
 
 ## Explicit non-goals
 
-- Embedding an LLM, agent loop, provider SDK, MCP server, or AI chat UI
-- `bean share`, hosting, preview URLs, domains, cloud databases, or Bean Cloud
-- First-class Lifecycle semantics; v0.7 workflows continue to compose enum fields, Actions, and transitions
-- Deterministic rule expressions, generated semantic tests, or typed external extensions
-- Arbitrary CSS, JavaScript, templates, SQL, scripts, or executable seed hooks
-- Realtime, calendar, chat, email, OAuth expansion, Redis, object-storage infrastructure, containers, or Kubernetes
-- A general package registry or post-v1.0 package ecosystem
+- Embedding an LLM, provider SDK, autonomous loop, chat UI, or prompt orchestration
+- MCP Streamable HTTP, hosted MCP, OAuth, API keys, remote identity, or rate-limit infrastructure
+- Raw SQL, table CRUD, filesystem tools, shell execution, or arbitrary code tools
+- Bean Cloud, preview URLs, sharing, domains, or remote deployment
+- Lifecycle semantics, deterministic rules, generated semantic tests, or typed extensions
+- Realtime, functions, messaging, Redis, object-storage implementation, containers, or Kubernetes
 
 ## Terminal gates
 
