@@ -18,6 +18,10 @@ var slug = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
 const MaxFileBytes = 5 << 20
 
+func Types() []string {
+	return []string{"boolean", "date", "datetime", "decimal", "email", "enum", "file", "integer", "json", "money", "password", "relation", "richtext", "slug", "string", "text", "url", "uuid"}
+}
+
 type Upload struct {
 	Name        string
 	ContentType string

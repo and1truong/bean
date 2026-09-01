@@ -25,8 +25,6 @@ import (
 	"github.com/beanruntime/bean/internal/view"
 )
 
-const cliAPIVersion = "bean.cli/v1alpha1"
-
 type schemaInput struct {
 	Kind string `json:"kind"`
 }
@@ -68,24 +66,11 @@ type smokeCheck struct {
 	Status string `json:"status"`
 }
 
-func (s *Service) registerHandlers() {
-	s.Register("bean.definition.capabilities", s.capabilities)
-	s.Register("bean.definition.schema", s.schema)
-	s.Register("bean.definition.validate", s.validate)
-	s.Register("bean.definition.inspect", s.inspect)
-	s.Register("bean.release.plan", s.plan)
-	s.Register("bean.release.diff", s.diff)
-	s.Register("bean.release.publish", s.publish)
-	s.Register("bean.release.test", s.test)
-	s.Register("bean.application.query", s.query)
-	s.Register("bean.application.execute", s.execute)
-}
-
 func (s *Service) capabilities(_ context.Context, raw json.RawMessage, _ Principal) Outcome {
 	if err := decodeInput(raw, &struct{}{}); err != nil {
 		return invalidInput(err)
 	}
-	result := compiler.ProtocolCapabilities(cliAPIVersion, APIVersion)
+	result := compiler.ProtocolCapabilities(CLIAPIVersion, APIVersion)
 	return success(result)
 }
 
@@ -146,9 +131,9 @@ func (s *Service) inspect(_ context.Context, raw json.RawMessage, _ Principal) O
 		result["application"] = normalizedJSON(inspectable)
 		return success(result)
 	}
-	value, references, exists := InspectedDefinition(inspectable, input.Kind, input.Name)
+	value, references, exists := compiler.InspectDefinition(inspectable, input.Kind, input.Name)
 	if !exists {
-		return diagnosticFailure(definition.Diagnostic{Code: "BEAN-E2001", Kind: input.Kind, Name: input.Name, Path: "definition", Message: "definition does not exist", Candidates: DefinitionNames(inspectable, input.Kind)})
+		return diagnosticFailure(definition.Diagnostic{Code: "BEAN-E2001", Kind: input.Kind, Name: input.Name, Path: "definition", Message: "definition does not exist", Candidates: compiler.CompiledDefinitionNames(inspectable, input.Kind)})
 	}
 	result["kind"], result["name"] = input.Kind, input.Name
 	result["definition"] = normalizedJSON(value)

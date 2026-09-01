@@ -535,6 +535,88 @@ func TestEveryTransactionStepHasRuntimeSemantics(t *testing.T) {
 	}
 }
 
+func TestTransactionStepsAuthorizeResolvedEntities(t *testing.T) {
+	ctx := context.Background()
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "transaction-step-policy.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	k := kernel.New()
+	store := &release.Store{DB: db, Migrations: db, Kernel: k, OpenAPI: openapi.Generate}
+	if err = store.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Policy", Metadata: definition.Metadata{Name: "requesters"}, Spec: map[string]any{"writeRoles": []any{"member"}}},
+		{APIVersion: definition.APIVersion, Kind: "Policy", Metadata: definition.Metadata{Name: "stock_managers"}, Spec: map[string]any{"writeRoles": []any{"stock_manager"}}},
+		{APIVersion: definition.APIVersion, Kind: "Policy", Metadata: definition.Metadata{Name: "slot_readers"}, Spec: map[string]any{"readRoles": []any{"slot_reader"}}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "stock"}, Spec: map[string]any{"policy": "stock_managers", "fields": []any{
+			map[string]any{"name": "inventory", "type": "integer", "required": true},
+		}}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "availability"}, Spec: map[string]any{"policy": "slot_readers", "fields": []any{
+			map[string]any{"name": "key", "type": "string", "required": true},
+			map[string]any{"name": "start_at", "type": "datetime", "required": true},
+			map[string]any{"name": "end_at", "type": "datetime", "required": true},
+		}}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "receipt"}, Spec: map[string]any{"fields": []any{
+			map[string]any{"name": "label", "type": "string", "required": true},
+		}}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "checkout"}, Spec: map[string]any{
+			"entity": "receipt", "operation": "transaction", "policy": "requesters",
+			"input": map[string]any{"stock_id": map[string]any{"type": "uuid", "required": true}, "amount": map[string]any{"type": "integer", "required": true}},
+			"steps": []any{
+				map[string]any{"op": "decrement", "entity": "stock", "values": map[string]any{"field": "inventory", "id_input": "stock_id", "amount_input": "amount"}},
+				map[string]any{"op": "create", "values": map[string]any{"label": "checkout"}},
+			},
+		}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "request_slot"}, Spec: map[string]any{
+			"entity": "receipt", "operation": "transaction", "policy": "requesters",
+			"input": map[string]any{"key": map[string]any{"type": "string", "required": true}, "start_at": map[string]any{"type": "datetime", "required": true}, "end_at": map[string]any{"type": "datetime", "required": true}},
+			"steps": []any{
+				map[string]any{"op": "assert_no_overlap", "entity": "availability", "values": map[string]any{"match": "key", "start": "start_at", "end": "end_at"}},
+				map[string]any{"op": "create", "values": map[string]any{"label": "$input.key"}},
+			},
+		}},
+	}
+	if err = store.SaveBundle(ctx, "default", definition.Bundle{Name: "transaction step policies", Definitions: definitions}); err != nil {
+		t.Fatal(err)
+	}
+	if _, diagnostics, publishErr := store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) != 0 {
+		t.Fatalf("publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	app, _ := k.Active()
+	engine := action.Service{DB: db}
+	stock, err := engine.Execute(ctx, app, "stock_create", map[string]any{"inventory": 2}, admin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = engine.Execute(ctx, app, "availability_create", map[string]any{"key": "room-a", "start_at": "2026-01-01T10:00:00Z", "end_at": "2026-01-01T11:00:00Z"}, admin()); err != nil {
+		t.Fatal(err)
+	}
+	member := beanctx.Request{User: &beanctx.User{ID: "00000000-0000-4000-8000-000000000002", Roles: []string{"member"}}, RequestID: "member"}
+	if _, err = engine.Execute(ctx, app, "checkout", map[string]any{"stock_id": stock["id"], "amount": 1}, member); !dbal.IsCode(err, dbal.NotFound) {
+		t.Fatalf("unprivileged decrement err=%v", err)
+	}
+	rows, err := db.Select(ctx, dbal.Select{Table: "stock", Columns: []string{"inventory"}, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: stock["id"]}, Limit: 1})
+	if err != nil || len(rows) != 1 || rows[0]["inventory"] != int64(2) {
+		t.Fatalf("unprivileged decrement mutated stock: rows=%v err=%v", rows, err)
+	}
+	stockManager := member
+	stockManager.User = &beanctx.User{ID: "00000000-0000-4000-8000-000000000003", Roles: []string{"member", "stock_manager"}}
+	if _, err = engine.Execute(ctx, app, "checkout", map[string]any{"stock_id": stock["id"], "amount": 1}, stockManager); err != nil {
+		t.Fatalf("authorized decrement err=%v", err)
+	}
+	if _, err = engine.Execute(ctx, app, "request_slot", map[string]any{"key": "room-b", "start_at": "2026-01-01T12:00:00Z", "end_at": "2026-01-01T13:00:00Z"}, member); !dbal.IsCode(err, dbal.NotFound) {
+		t.Fatalf("unprivileged overlap assertion err=%v", err)
+	}
+	slotReader := member
+	slotReader.User = &beanctx.User{ID: "00000000-0000-4000-8000-000000000004", Roles: []string{"member", "slot_reader"}}
+	if _, err = engine.Execute(ctx, app, "request_slot", map[string]any{"key": "room-a", "start_at": "2026-01-01T10:30:00Z", "end_at": "2026-01-01T11:30:00Z"}, slotReader); !dbal.IsCode(err, dbal.Conflict) {
+		t.Fatalf("overlap against step Entity err=%v", err)
+	}
+}
+
 func TestTransactionRollbackAndIdempotentReplay(t *testing.T) {
 	db, app := runtime(t, "commerce")
 	defer db.Close()

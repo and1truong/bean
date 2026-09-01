@@ -2,10 +2,33 @@ import {act,fireEvent,render,screen,waitFor} from '@testing-library/react'
 import {afterEach,describe,it,expect,vi} from 'vitest'
 import {MemoryRouter,useNavigate,type NavigateFunction} from 'react-router-dom'
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query'
-import App from './App'
+import App,{evaluate} from './App'
 describe('App',()=>{it('renders login',()=>{render(<QueryClientProvider client={new QueryClient()}><MemoryRouter initialEntries={['/login']}><App/></MemoryRouter></QueryClientProvider>);expect(screen.getByRole('heading',{name:'Sign in'})).toBeInTheDocument()})})
 
+describe('client expressions',()=>{
+  it('implements list membership and fails loudly for unknown operators',()=>{
+    expect(evaluate({Op:'in',Left:{Source:'input',Name:'status'},Right:{Source:'literal',Literal:['draft','ready']}},{status:'ready'})).toBe(true)
+    expect(evaluate({Op:'not_in',Left:{Source:'input',Name:'status'},Right:{Source:'literal',Literal:['draft']}},{status:'ready'})).toBe(true)
+    const adult:import('./api').Expression={Op:'gte',Left:{Source:'input',Name:'age'},Right:{Source:'literal',Literal:18}}
+    expect(evaluate(adult,{})).toBe(false)
+    expect(evaluate(adult,{age:21})).toBe(true)
+    expect(()=>evaluate({...adult,Right:{Source:'literal',Literal:'18'}},{})).toThrow('comparison requires numbers')
+    expect(()=>evaluate({Op:'future',Left:{Source:'literal',Literal:true},Right:{Source:'literal',Literal:true}},{})).toThrow('unsupported client expression operator')
+  })
+})
+
 describe('public rendering',()=>{
+  it('renders an explicit error for an unknown server component',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'FutureBlock',props:{}}})
+      return response({})
+    }))
+    renderApp('/future')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Unsupported render component: FutureBlock')
+  })
+
   it('renders sanitized rich text and hides privileged navigation',async()=>{
     vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
       const path=String(input)

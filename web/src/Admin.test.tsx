@@ -28,6 +28,14 @@ describe('Admin',()=>{
     expect(screen.getByTestId('field-status')).toHaveValue('draft')
   })
 
+  it('surfaces server field errors on Admin inputs',async()=>{
+    vi.spyOn(globalThis,'fetch').mockImplementation(async input=>{const url=String(input);if(url.includes('/api/actions/article_create'))return new Response(JSON.stringify({error:{message:'invalid input',fields:{title:'must be unique'}}}),{status:400,headers:{'Content-Type':'application/json'}});return new Response(JSON.stringify(manifest),{status:200,headers:{'Content-Type':'application/json'}})})
+    show('/article/new')
+    fireEvent.change(await screen.findByTestId('field-title'),{target:{value:'Duplicate'}})
+    fireEvent.click(screen.getByTestId('create-article'))
+    expect(await screen.findByText('must be unique')).toHaveAttribute('role','alert')
+  })
+
   it('uses the AdminResource View for current file downloads',async()=>{
     vi.spyOn(globalThis,'fetch').mockImplementation(async input=>{const url=String(input);if(url.includes('/api/admin/resources/article/a1'))return new Response(JSON.stringify({data:{id:'a1',title:'Bean ships',status:'draft',file:'blob-1'}}),{status:200});return new Response(JSON.stringify(manifest),{status:200})})
     show('/article/a1')

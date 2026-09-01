@@ -2,6 +2,16 @@
 
 ## Current
 
+The structural-contract and unified-execution-seam goal is complete. All milestones 0–9 are done without adding a public plugin platform or application-specific core behavior.
+
+Diagnostics now receive codes and non-serialized recovery facts structurally, with no production control flow that parses diagnostic or Go standard-library prose. Database and transactional reads share the View-owned engine, including Policy fallback, filtering, deterministic ordering, limit clamping, sanitization, redaction, and relation hydration. Action steps share one entity resolver and enforce declared read/write effects before handlers execute. A context-specific value-source owner now serves expressions, Actions, Blocks, Pages, compiler validation, and inspection and fails closed for unsupported sources.
+
+The client has typed Page/Panel/Region/Block dispatch, explicit unknown-component and expression-operator failures, and one Action encoder/caller for JSON, multipart, Webform adaptation, and deterministic batches; Admin and ActionRunner expose field errors. Definition-kind entries now own compilation, explicit-phase normalization and per-kind validation, inspection, schema type, and AppIR storage metadata; completeness is checked against an independent AppIR storage contract. Agent Protocol metadata and handlers are sealed together, test overrides use construction, and the unreachable not-implemented state is removed. Confirmed zero-caller `internal/entity` and `internal/user` pass-through packages were deleted.
+
+Qualification passes: `make check` including Go race tests, 30 frontend tests, black-box contracts, and 14/14 Playwright journeys; `make test-crash`; `make test-postgres` including the PostgreSQL blog journey; and `make build`. The definition -> validation -> migration -> immutable AppIR -> atomic activation lifecycle, View-read/Action-write boundary, backend confinement, maintained examples, and public envelopes remain intact.
+
+## v0.9 completed state
+
 Bean v0.9 Semantic Application Model is complete on top of merge commit `c51705d`. The scoped first slice adds exactly one first-class primitive, `Lifecycle`, derived from the maintained ATS candidate pipeline and commerce order flow. Milestones 0–5 are done.
 
 Lifecycle owns one Entity enum state field, its initial state, and a reachable canonical transition graph. The compiler validates Action bindings and optional Policy-specific graph subsets with stable `BEAN-E2202`/`BEAN-E2201` diagnostics; immutable AppIR, capabilities, canonical schema, named inspection, references, and semantic diff expose the same model through the shared CLI/MCP Agent Protocol. Create Actions inject the initial state, generic and transaction updates cannot change it, and only a Lifecycle-bound transition path can follow the graph after existing Policy checks.

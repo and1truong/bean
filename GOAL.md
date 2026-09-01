@@ -1,69 +1,96 @@
-# Goal: Bean v0.9 Semantic Application Model
+# Goal: Structural Contracts and Unified Execution Seams
 
-Add one evidence-driven first-class semantic primitive: `Lifecycle`. Bean must understand an application's state machine structurally instead of requiring every agent and Action to repeat an untyped transition map.
+Status: complete
+
+Deepen Bean's machine-facing and security-sensitive modules so that diagnostics, reads, Action-step effects, value sources, rendering, writes, Definition kinds, and Agent Protocol operations each have one structural owner. Remove prose parsing, duplicated policy/read implementations, silent fallbacks, and mutable name-matched registration while preserving the definition -> validation -> migration -> immutable AppIR -> atomic activation lifecycle.
 
 ## Primary outcome
 
-An agent can declare lifecycle intent once and Bean can validate, compile, inspect, diff, authorize, and enforce it deterministically:
+A caller crosses one narrow interface for each cross-cutting concept:
 
 ```text
-Lifecycle definition
-  -> compiler validation
-  -> immutable AppIR
-  -> Action transition boundary
-  -> Policy-aware runtime enforcement
-  -> inspectable Agent Protocol result
+validation rule -> coded Diagnostic + structured facts -> recovery/candidates
+compiled View -> one read engine -> database or transaction adapter
+Action step -> declared effects -> enforced read/write obligations -> handler
+value source -> context-specific resolver/validator -> fail-closed result
+render node -> typed client dispatcher -> explicit unknown-node failure
+client write -> one encoder/caller -> shared field-error envelope
+Definition kind -> compile/normalize/validate/inspect/schema ownership
+Agent operation -> sealed metadata + handler -> authorized dispatch
 ```
 
-The maintained applicant-tracking candidate pipeline and commerce order flow are the two unrelated reference applications for this primitive. Both remain metadata-only and use the same generic compiler/runtime path.
-
-## Scope
-
-`Lifecycle` owns the canonical state field and allowed transition graph for one Entity. Milestone 0 freezes the smallest source shape and Action binding that can represent both reference flows, including cases where different Actions or Policies expose different subsets of the lifecycle.
-
-The implementation must provide:
-
-- canonical JSON Schema and compiler capabilities for `Lifecycle`
-- stable diagnostics for missing Entity/field references, non-enum state fields, unknown states, invalid edges, and incompatible Action bindings
-- immutable AppIR representation with deterministic ordering and compatibility handling
-- semantic inspect and diff output through the v0.8 Agent Protocol
-- runtime transition enforcement only through Actions, with existing Policy, owner, and tenant context preserved
-- SQLite and PostgreSQL parity
-- positive and negative contract evidence from at least two unrelated maintained applications
-
-Lifecycle does not create a second mutation path. Views remain the read boundary; Actions remain the write boundary. The transition graph is semantic application metadata, while authorization remains Policy metadata.
+The result remains a modular monolith. This goal creates neither a plugin platform nor application-specific behavior.
 
 ## Architecture constraints
 
-- Preserve definition -> validation -> migration -> immutable AppIR -> atomic activation.
-- Keep application-specific states and transitions under `examples/`; core packages stay generic.
-- Keep SQL and SQLite dependencies within their existing DBAL and migration boundaries.
-- Do not duplicate lifecycle rules across compiler, CLI, MCP, and runtime adapters; all transports consume the same compiled semantics.
-- Publication of an invalid or incompatible lifecycle must fail before activation.
-- Lifecycle changes appear in semantic diff without exposing secrets or storage details.
-- Existing Action transition definitions remain compatible for the declared v0.9 compatibility window; any normalization or migration path must be deterministic and tested.
+- Diagnostics keep their public JSON shape, stable codes, wording, paths, candidates, locations, and ordering; internal structured facts are not serialized.
+- Human diagnostic wording and Go standard-library error strings are never machine control flow.
+- Views remain the only read primitive and Actions remain the only write primitive, including reads performed inside Action transactions.
+- The shared View engine accepts only a minimal read adapter and typed expressions/bindings; callers cannot inject SQL or bypass Policy.
+- Action-step effects describe enforceable obligations. Handlers cannot bypass the obligation seam with unrestricted read/write access.
+- Closed value-source contexts retain explicit allowlists; sharing vocabulary must not make a source valid in an unrelated context. Unknown sources fail closed.
+- TypeScript render dispatch includes structural Page/Panel/Region nodes and every server-emitted Block component. Unknown nodes and unsupported expression operators fail loudly.
+- Definition normalization keeps explicit dependency phases; registry iteration order never becomes a hidden semantic dependency.
+- Registries are immutable after explicit construction. No package `init`, mutable global registration, or runtime name matching.
+- SQL and backend-specific behavior remain confined to `internal/dbal/sqlite`, `internal/dbal/postgres`, and `internal/migration`.
+- Public definitions, AppIR, diagnostics, CLI/MCP envelopes, HTTP behavior, maintained examples, and activation semantics remain compatible except for explicit fixes to demonstrated policy, sanitization, or silent-failure bugs.
 
-## Measurable acceptance criteria
+## Milestones and evidence
 
-- Exactly one new semantic primitive, `Lifecycle`, is added in v0.9.
-- ATS candidate and commerce order definitions use the primitive without core application-name branches.
-- Both applications compile, publish, restart, and enforce every allowed and denied transition on SQLite and PostgreSQL where the existing gate applies.
-- Compiler tests reject invalid Entity, state-field, state, edge, and Action/lifecycle combinations with stable structured diagnostics.
-- AppIR compatibility tests cover the new format and the supported legacy Action transition representation.
-- `bean capabilities`, canonical schemas, definition inspection, semantic diff, CLI, and MCP expose the same Lifecycle semantics through shared v0.8 contracts.
-- Runtime tests prove Policy checks occur before mutation and direct Entity/table mutation cannot bypass the lifecycle Action.
-- Existing examples and v0.6-v0.8 machine contracts remain compatible.
-- `make check`, `make test-crash`, `make test-postgres`, and `make build` pass.
-- The pull request is clean under a fresh Codex review of its latest commit and all actionable threads are resolved.
+1. **Structural diagnostics**
+   - Every emitted diagnostic receives its public code from its validation rule or a rule-specific constructor.
+   - Missing references, missing fields, and unknown fields carry non-serialized structured facts.
+   - Recovery suppression, source location, and candidate enrichment consume facts rather than message text.
+   - A wording-mutation test proves machine behavior is unchanged when prose changes.
+
+2. **One View read engine**
+   - `RunPage` and Action `query` steps use one View-owned plan/materialization implementation through database and transaction read adapters.
+   - Policy predicates, owner/tenant fallback, soft deletion, joins, aggregates, ordering, limits, decoding, to-many hydration, content filtering, rich-text sanitization, and redaction have one implementation.
+   - Focused adapter-equivalence tests cover policy, rich text, deterministic ordering, limit clamping, and relations.
+
+3. **Enforced Action-step effects**
+   - One step-entity resolver is shared by compiler, runtime, and DemoSeed.
+   - Declared read/mutation effects select mandatory authorization/predicate obligations.
+   - Registry-wide tests prove every entity-reading/mutating handler crosses the required seam.
+
+4. **One value-source catalog**
+   - One module owns source names, literal sensitivity, and context-specific validation/resolution.
+   - Compiler, expression, Action, Block, Page, and inspection consume that owner.
+   - Unsupported sources return errors; registry-parity tests cover every context.
+
+5. **Typed client rendering and expressions**
+   - A typed render-node dispatcher owns Page, Panel, Region, and all Block component props.
+   - Unknown server components render an explicit tested error.
+   - Client expression evaluation implements the compiler-advertised closed operator set or rejects unsupported operators explicitly.
+
+6. **One client write path**
+   - Shared encoding and Action calling cover Admin save/delete, ActionRunner, board movement, ActionBlock, and Webform's write adapter.
+   - Admin and ActionRunner inputs surface server field errors.
+   - Focused tests cover JSON/multipart encoding and deterministic batch failure aggregation.
+
+7. **Complete Definition-kind ownership**
+   - The mutable `definition.Kinds` oracle is removed.
+   - Registry entries own per-kind normalization and validation hooks; cross-kind phases remain explicit.
+   - Completeness evidence compares registry-owned definition collections with the independently declared AppIR storage contract, not another registry-derived list.
+
+8. **Sealed Agent Protocol operations and derived capabilities**
+   - One immutable operation entry owns metadata and handler; construction rejects incomplete entries.
+   - `Service.Register` and the reachable `BEAN-P5001` state disappear; tests use an explicit constructor seam.
+   - Capability lists derive from their closed-algebra owners without introducing registries solely for name listing.
+
+9. **Deletion cleanup and qualification**
+   - Remove confirmed zero-caller/pass-through modules and exact helper/constant duplicates where deletion improves locality.
+   - Do not centralize representation-specific helpers merely to reduce line count.
+   - Documentation and progress records match the implementation.
 
 ## Explicit non-goals
 
-- Ownership, auditability, soft deletion, terminal-state immutability, or a general invariant framework
-- Deterministic rule expressions, generated semantic tests, or typed extensions
-- Arbitrary scripts, embedded JavaScript, raw SQL, or another mutation API
-- New MCP transports, provider SDKs, embedded LLMs, or agent orchestration
-- Destructive migration support or production-envelope qualification
-- Application-specific workflow code or a new visual workflow designer
+- Public extension SDK, dynamic registration, code loading, or dependency-injection container
+- New Definition kinds, Action operations/steps, Block types, presentations, field types, or application features
+- A universal resolver that makes every value source legal in every context
+- Raw SQL, raw Entity reads, or writes outside Actions
+- Replacing explicit cross-kind compiler phases with registry ordering
+- Application-specific branches in core Go or React code
 
 ## Terminal gates
 

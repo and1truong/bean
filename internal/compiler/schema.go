@@ -3,12 +3,15 @@ package compiler
 import (
 	"encoding/json"
 	"reflect"
-	"sort"
 	"strings"
 	"unicode"
 
+	"github.com/beanruntime/bean/internal/actionop"
+	"github.com/beanruntime/bean/internal/actionstep"
 	"github.com/beanruntime/bean/internal/appir"
+	"github.com/beanruntime/bean/internal/block"
 	"github.com/beanruntime/bean/internal/definition"
+	"github.com/beanruntime/bean/internal/field"
 )
 
 const JSONSchemaVersion = "https://json-schema.org/draft/2020-12/schema"
@@ -40,32 +43,43 @@ func AgentCapabilities(cliAPIVersion string) Capabilities {
 }
 
 func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabilities {
-	kinds := make([]string, 0, len(definition.Kinds))
-	for kind := range definition.Kinds {
-		kinds = append(kinds, kind)
-	}
-	sort.Strings(kinds)
 	return Capabilities{
 		DefinitionAPIVersion:    definition.APIVersion,
 		CLIAPIVersion:           cliAPIVersion,
 		AgentProtocolAPIVersion: agentProtocolAPIVersion,
 		AppIRFormat:             appir.CurrentFormat,
-		DefinitionKinds:         kinds,
+		DefinitionKinds:         definitionKindRegistry().Names(),
 		SemanticPrimitives:      []string{"Lifecycle"},
-		FieldTypes:              []string{"boolean", "date", "datetime", "decimal", "email", "enum", "file", "integer", "json", "money", "password", "relation", "richtext", "slug", "string", "text", "url", "uuid"},
-		ActionOperations:        []string{"create", "delete", "register_local_user", "transaction", "transition", "update"},
-		ActionSteps:             []string{"assert", "assert_no_overlap", "conditional_update", "create", "decrement", "delete", "emit", "load", "query", "return", "schedule", "transition", "update"},
-		BlockTypes:              []string{"action", "entity", "menu", "resource-list", "text", "view", "webform"},
-		Presentations:           []string{"board", "detail", "list", "metric", "timeline", "tree"},
-		DisplaySerializers:      []string{"csv", "json", "rss"},
-		PanelLayouts:            []string{"grid", "main-sidebar", "sidebar-main", "single-column", "two-column"},
+		FieldTypes:              field.Types(),
+		ActionOperations:        actionop.Names(),
+		ActionSteps:             actionstep.Names(),
+		BlockTypes:              block.Names(),
+		Presentations:           presentationNames(),
+		DisplaySerializers:      displaySerializerNames(),
+		PanelLayouts:            panelLayoutNames(),
 		DatabaseBackends:        []string{"postgresql", "sqlite"},
 		MaxViewLimit:            200,
-		MaxFileBytes:            5 << 20,
-		ThemePresets:            []string{"minimal", "professional", "warm"},
-		ThemeAccents:            []string{"amber", "blue", "emerald", "indigo", "rose", "slate", "violet"},
-		DemoSeedProfiles:        []string{"activities", "auto", "companies", "jobs", "notes", "people"},
+		MaxFileBytes:            field.MaxFileBytes,
+		ThemePresets:            themePresetNames(),
+		ThemeAccents:            themeAccentNames(),
+		DemoSeedProfiles:        demoSeedProfileNames(),
 	}
+}
+
+func presentationNames() []string {
+	return []string{"board", "detail", "list", "metric", "timeline", "tree"}
+}
+func displaySerializerNames() []string { return []string{"csv", "json", "rss"} }
+func panelLayoutNames() []string       { return keys(panelLayouts()) }
+func panelLayouts() map[string]map[string]bool {
+	return map[string]map[string]bool{"single-column": {"main": true}, "two-column": {"left": true, "right": true}, "sidebar-main": {"sidebar": true, "main": true}, "main-sidebar": {"main": true, "sidebar": true}, "grid": {"main": true}}
+}
+func themePresetNames() []string { return []string{"minimal", "professional", "warm"} }
+func themeAccentNames() []string {
+	return []string{"amber", "blue", "emerald", "indigo", "rose", "slate", "violet"}
+}
+func demoSeedProfileNames() []string {
+	return []string{"activities", "auto", "companies", "jobs", "notes", "people"}
 }
 
 func ManifestSchema() map[string]any {
@@ -85,15 +99,11 @@ func ManifestSchema() map[string]any {
 }
 
 func DefinitionSchemas() map[string]map[string]any {
-	types := specificationTypes()
-	kinds := make([]string, 0, len(types))
-	for kind := range types {
-		kinds = append(kinds, kind)
-	}
-	sort.Strings(kinds)
+	kinds := definitionKindRegistry().Names()
 	out := make(map[string]map[string]any, len(kinds))
 	for _, kind := range kinds {
-		out[kind] = definitionSchema(kind, types[kind])
+		registered, _ := definitionKindRegistry().Lookup(kind)
+		out[kind] = definitionSchema(kind, registered.Specification)
 	}
 	return out
 }
@@ -101,28 +111,6 @@ func DefinitionSchemas() map[string]map[string]any {
 func SchemaProperties(schema map[string]any) (map[string]any, bool) {
 	properties, ok := schema["properties"].(map[string]any)
 	return properties, ok
-}
-
-func specificationTypes() map[string]reflect.Type {
-	return map[string]reflect.Type{
-		"Action":            reflect.TypeOf(actionSource{}),
-		"AdminResource":     reflect.TypeOf(appir.AdminResource{}),
-		"Block":             reflect.TypeOf(appir.Block{}),
-		"Entity":            reflect.TypeOf(appir.Entity{}),
-		"Filter":            reflect.TypeOf(appir.Filter{}),
-		"Job":               reflect.TypeOf(appir.Job{}),
-		"Lifecycle":         reflect.TypeOf(appir.Lifecycle{}),
-		"LocalRegistration": reflect.TypeOf(appir.LocalRegistration{}),
-		"Menu":              reflect.TypeOf(appir.Menu{}),
-		"Page":              reflect.TypeOf(appir.Page{}),
-		"Panel":             reflect.TypeOf(appir.Panel{}),
-		"Policy":            reflect.TypeOf(appir.Policy{}),
-		"Role":              reflect.TypeOf(appir.Role{}),
-		"Theme":             reflect.TypeOf(appir.Theme{}),
-		"DemoSeed":          reflect.TypeOf(appir.DemoSeed{}),
-		"View":              reflect.TypeOf(appir.View{}),
-		"Webform":           reflect.TypeOf(appir.Webform{}),
-	}
 }
 
 func definitionSchema(kind string, specification reflect.Type) map[string]any {

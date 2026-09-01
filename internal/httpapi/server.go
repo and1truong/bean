@@ -300,18 +300,20 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request) {
 	searchFields := []string{}
 	if search != "" {
 		blockName := r.URL.Query().Get("_block")
-		block, exists := a.Blocks[blockName]
-		if !exists || block.Type != "view" || block.View != r.PathValue("name") || len(block.Presentation.SearchFields) == 0 {
+		blockDefinition, exists := a.Blocks[blockName]
+		specification, registered := block.Lookup(blockDefinition.Type)
+		if !exists || !registered || specification.InputTarget != block.ViewInputTarget || blockDefinition.View != r.PathValue("name") || len(blockDefinition.Presentation.SearchFields) == 0 {
 			problem(w, 400, "invalid_query", "Search is not configured for this View block.", requestID(r))
 			return
 		}
-		searchFields = block.Presentation.SearchFields
+		searchFields = blockDefinition.Presentation.SearchFields
 	}
 	if blockName := r.URL.Query().Get("_block"); blockName != "" {
-		block := a.Blocks[blockName]
-		if block.Type == "resource-list" {
-			allowed := stringSet(block.Filters)
-			for name := range block.Bindings {
+		blockDefinition := a.Blocks[blockName]
+		specification, registered := block.Lookup(blockDefinition.Type)
+		if registered && specification.InputTarget == block.ResourceInputTarget {
+			allowed := stringSet(blockDefinition.Filters)
+			for name := range blockDefinition.Bindings {
 				allowed[name] = true
 			}
 			for name := range filters {

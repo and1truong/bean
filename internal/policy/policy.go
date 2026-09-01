@@ -7,6 +7,15 @@ import (
 	"github.com/beanruntime/bean/internal/expr"
 )
 
+// EffectiveViewPolicyName returns the policy a View read enforces. An explicit
+// View policy takes precedence over the Entity's default read policy.
+func EffectiveViewPolicyName(view appir.View, entity appir.Entity) string {
+	if view.Policy != "" {
+		return view.Policy
+	}
+	return entity.Policy
+}
+
 func Can(p appir.Policy, write bool, c beanctx.Request, record map[string]any) bool {
 	if p.Authenticated && c.User == nil {
 		return false

@@ -20,6 +20,18 @@ import (
 )
 
 type Service struct{ DB dbal.Database }
+
+type Reader interface {
+	Select(context.Context, dbal.Select) ([]dbal.Row, error)
+}
+
+type ReadOptions struct {
+	Params
+	ExpressionValues   map[string]any
+	ExtraPredicate     *expr.Expr
+	ApplyExposedFilter bool
+}
+
 type Params struct {
 	Filter        map[string]any
 	ExactFilters  map[string]any
@@ -46,6 +58,11 @@ func (s Service) Run(ctx context.Context, app *appir.App, name string, params Pa
 }
 
 func (s Service) RunPage(ctx context.Context, app *appir.App, name string, params Params, c beanctx.Request) (Result, error) {
+	return ReadPage(ctx, s.DB, app, name, ReadOptions{Params: params, ExpressionValues: params.Filter, ApplyExposedFilter: true}, c)
+}
+
+func ReadPage(ctx context.Context, reader Reader, app *appir.App, name string, options ReadOptions, c beanctx.Request) (Result, error) {
+	params := options.Params
 	v, ok := app.Views[name]
 	if !ok {
 		return Result{}, &dbal.Error{Code: dbal.NotFound, Message: "View not found"}
@@ -57,33 +74,42 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 	predicates := []dbal.Predicate{}
 	joined := len(v.Relationships) > 0
 	if v.Filter != nil {
-		p, er := expr.PredicateContext(*v.Filter, params.Filter, c)
+		p, er := expr.PredicateContext(*v.Filter, options.ExpressionValues, c)
 		if er != nil {
 			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: er.Error()}
 		}
 		predicates = append(predicates, qualifyPredicateColumns(p, v.Entity, joined))
 	}
 	if v.ContextFilter != nil {
-		p, er := expr.PredicateContext(*v.ContextFilter, params.Filter, c)
+		p, er := expr.PredicateContext(*v.ContextFilter, options.ExpressionValues, c)
 		if er != nil {
 			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: er.Error()}
 		}
 		predicates = append(predicates, qualifyPredicateColumns(p, v.Entity, joined))
 	}
-	for name, definition := range v.ExposedFilters {
-		value, supplied := params.Filter[name]
-		if !supplied || value == "" {
-			continue
-		}
-		value = coerce(value, definition.Type)
-		if er := field.Validate(definition, value); er != nil {
+	if options.ExtraPredicate != nil {
+		p, er := expr.PredicateContext(*options.ExtraPredicate, options.ExpressionValues, c)
+		if er != nil {
 			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: er.Error()}
 		}
-		column := definition.Name
-		if column == "" {
-			column = name
+		predicates = append(predicates, qualifyPredicateColumns(p, v.Entity, joined))
+	}
+	if options.ApplyExposedFilter {
+		for name, definition := range v.ExposedFilters {
+			value, supplied := params.Filter[name]
+			if !supplied || value == "" {
+				continue
+			}
+			value = coerce(value, definition.Type)
+			if er := field.Validate(definition, value); er != nil {
+				return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: er.Error()}
+			}
+			column := definition.Name
+			if column == "" {
+				column = name
+			}
+			predicates = append(predicates, dbal.Predicate{Op: dbal.OpEQ, Column: qualify(column, v.Entity, joined), Value: value})
 		}
-		predicates = append(predicates, dbal.Predicate{Op: dbal.OpEQ, Column: qualify(column, v.Entity, joined), Value: value})
 	}
 	available := map[string]bool{}
 	for _, name := range v.Fields {
@@ -122,8 +148,9 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 		}
 	}
 	var redact []string
-	if v.Policy != "" {
-		p, ok := app.Policies[v.Policy]
+	policyName := policy.EffectiveViewPolicyName(v, e)
+	if policyName != "" {
+		p, ok := app.Policies[policyName]
 		if !ok {
 			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "View policy not found"}
 		}
@@ -136,13 +163,13 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 		}
 		redact = p.Redact
 	}
-	if v.Policy == "" && e.Owner {
+	if policyName == "" && e.Owner {
 		if c.User == nil {
 			return Result{}, &dbal.Error{Code: dbal.NotFound, Message: "View not found"}
 		}
 		predicates = append(predicates, dbal.Predicate{Op: dbal.OpEQ, Column: "owner_id", Value: c.User.ID})
 	}
-	if v.Policy == "" && e.Tenant {
+	if policyName == "" && e.Tenant {
 		if c.TenantID == "" {
 			return Result{}, &dbal.Error{Code: dbal.NotFound, Message: "View not found"}
 		}
@@ -254,7 +281,7 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 			}
 		}
 	}
-	rows, er := s.DB.Select(ctx, dbal.Select{Table: v.Entity, Columns: columns, Joins: joins, Where: where, GroupBy: qualifyAll(v.GroupBy, v.Entity, joined), Aggregates: aggregates, OrderBy: orders, Limit: limit + 1, Offset: offset})
+	rows, er := reader.Select(ctx, dbal.Select{Table: v.Entity, Columns: columns, Joins: joins, Where: where, GroupBy: qualifyAll(v.GroupBy, v.Entity, joined), Aggregates: aggregates, OrderBy: orders, Limit: limit + 1, Offset: offset})
 	if er != nil {
 		return Result{}, er
 	}
@@ -306,7 +333,7 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 				row[definition.Name] = decoded
 			}
 		}
-		if er = loadToMany(ctx, s.DB, e, v.Fields, row); er != nil {
+		if er = loadToMany(ctx, reader, e, v.Fields, row); er != nil {
 			return Result{}, er
 		}
 		policy.Redact(row, redact)

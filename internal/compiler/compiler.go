@@ -2,12 +2,16 @@ package compiler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/beanruntime/bean/internal/actionop"
+	"github.com/beanruntime/bean/internal/actionstep"
 	"github.com/beanruntime/bean/internal/appir"
+	blockcap "github.com/beanruntime/bean/internal/block"
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/expr"
@@ -15,6 +19,7 @@ import (
 	"github.com/beanruntime/bean/internal/migration"
 	"github.com/beanruntime/bean/internal/page"
 	"github.com/beanruntime/bean/internal/policy"
+	"github.com/beanruntime/bean/internal/valuesource"
 )
 
 type Result struct {
@@ -62,232 +67,25 @@ func compile(appID string, version int, defs []definition.Definition, validateGr
 		r.Diagnostics = append(r.Diagnostics, definition.ValidateEnvelope(d)...)
 		key := d.Kind + "/" + d.Metadata.Name
 		if seen[key] {
-			r.Diagnostics = append(r.Diagnostics, diag(d, "metadata.name", "duplicate machine name"))
+			r.Diagnostics = append(r.Diagnostics, duplicateDiagnostic(d.Kind, d.Metadata.Name, "metadata.name", "duplicate machine name"))
 			continue
 		}
 		seen[key] = true
-		switch d.Kind {
-		case "Entity":
-			var x appir.Entity
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			for i := range x.Fields {
-				if x.Fields[i].Type != "relation" {
-					continue
-				}
-				if x.Fields[i].Relation == nil {
-					target := strings.TrimSuffix(x.Fields[i].Name, "_id")
-					x.Fields[i].Relation = &appir.Relation{Entity: target, Kind: "many-to-one", TargetField: "id"}
-				}
-				if x.Fields[i].Relation.Kind == "" {
-					x.Fields[i].Relation.Kind = "many-to-one"
-				}
-				if x.Fields[i].Relation.TargetField == "" {
-					x.Fields[i].Relation.TargetField = "id"
-				}
-			}
-			if x.Label == "" {
-				x.Label = x.Name
-			}
-			a.Entities[x.Name] = x
-		case "View":
-			var x appir.View
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			for i := range x.Relationships {
-				if x.Relationships[i].Type == "" {
-					x.Relationships[i].Type = "inner"
-				}
-			}
-			if x.DefaultLimit == 0 {
-				x.DefaultLimit = 50
-			}
-			if x.MaxLimit == 0 {
-				x.MaxLimit = 200
-			}
-			a.Views[x.Name] = x
-		case "Action":
-			var source actionSource
-			if e := definition.DecodeSpec(d.Spec, &source); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x := appir.Action{Name: d.Metadata.Name, Entity: source.Entity, Operation: source.Operation, Policy: source.Policy, Lifecycle: source.Lifecycle, StateField: source.StateField, DefaultRole: source.DefaultRole, Confirm: source.Confirm, Input: source.Input, Output: source.Output, Transitions: source.Transitions}
-			for inputName, input := range x.Input {
-				if input.Name == "" {
-					input.Name = inputName
-					x.Input[inputName] = input
-				}
-			}
-			for outputName, output := range x.Output {
-				if output.Name == "" {
-					output.Name = outputName
-					x.Output[outputName] = output
-				}
-			}
-			for _, step := range source.Steps {
-				compiled := appir.Step{Op: step.Op, Result: step.Result, Entity: step.Entity, View: step.View, StateField: step.StateField, Where: step.Where, Condition: step.Condition, Event: step.Event, Job: step.Job}
-				keys := make([]string, 0, len(step.Values))
-				for key := range step.Values {
-					keys = append(keys, key)
-				}
-				sort.Strings(keys)
-				for _, key := range keys {
-					compiled.Values = append(compiled.Values, appir.Assignment{Field: key, Value: compileBinding(step.Values[key])})
-				}
-				x.Steps = append(x.Steps, compiled)
-			}
-			a.Actions[x.Name] = x
-		case "Lifecycle":
-			var x appir.Lifecycle
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			if x.StateField == "" {
-				x.StateField = "status"
-			}
-			a.Lifecycles[x.Name] = x
-		case "Policy":
-			var x appir.Policy
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			a.Policies[x.Name] = x
-		case "Filter":
-			var x appir.Filter
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			a.Filters[x.Name] = x
-		case "Webform":
-			var x appir.Webform
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			a.Webforms[x.Name] = x
-		case "Block":
-			var x appir.Block
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			a.Blocks[x.Name] = x
-		case "Panel":
-			var x appir.Panel
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			a.Panels[x.Name] = x
-		case "Page":
-			var x appir.Page
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			a.Pages[x.Name] = x
-		case "Role":
-			var x appir.Role
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			a.Roles[x.Name] = x
-		case "Menu":
-			var x appir.Menu
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			a.Menus[x.Name] = x
-		case "Job":
-			var x appir.Job
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			a.Jobs[x.Name] = x
-		case "AdminResource":
-			var x appir.AdminResource
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			a.AdminResources[x.Name] = x
-		case "LocalRegistration":
-			var x appir.LocalRegistration
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			if a.LocalRegistration != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "metadata.name", "only one local registration definition is allowed"))
-				continue
-			}
-			a.LocalRegistration = &x
-		case "Theme":
-			var x appir.Theme
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			if a.Theme != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "metadata.name", "only one Theme definition is allowed"))
-				continue
-			}
-			if x.DisplayName == "" {
-				x.DisplayName = "Bean"
-			}
-			if x.Preset == "" {
-				x.Preset = "professional"
-			}
-			if x.Accent == "" {
-				x.Accent = "emerald"
-			}
-			a.Theme = &x
-		case "DemoSeed":
-			var x appir.DemoSeed
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			if a.DemoSeed != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "metadata.name", "only one DemoSeed definition is allowed"))
-				continue
-			}
-			a.DemoSeed = &x
+		registered, exists := definitionKindRegistry().Lookup(d.Kind)
+		if !exists {
+			r.Diagnostics = append(r.Diagnostics, definition.NewDiagnostic(definition.RuleUnsupportedKind, d.Kind, d.Metadata.Name, "kind", "unsupported definition kind"))
+			continue
 		}
+		r.Diagnostics = append(r.Diagnostics, registered.Compile(a, d)...)
 	}
 	unavailable := unavailableDefinitions(r.Diagnostics)
 	for name, entity := range a.Entities {
 		generate(a, name, entity)
 	}
-	normalizeActions(a)
-	normalizeAdminResources(a)
-	normalizeResourceListBlocks(a)
+	for _, kind := range []string{"Action", "AdminResource", "Block"} {
+		registered, _ := definitionKindRegistry().Lookup(kind)
+		registered.Normalize(a)
+	}
 	validationDiagnostics := suppressUnavailableDependencies(validate(a), unavailable)
 	if !validateGraph {
 		validationDiagnostics = suppressMissingDependencies(validationDiagnostics)
@@ -328,10 +126,11 @@ func enrichDiagnosticCandidates(app *appir.App, diagnostics []definition.Diagnos
 		if len(diagnostics[index].Candidates) > 0 {
 			continue
 		}
-		message := diagnostics[index].Message
-		const unknownFieldPrefix = `json: unknown field "`
-		if strings.HasPrefix(message, unknownFieldPrefix) {
-			unknown := strings.TrimSuffix(strings.TrimPrefix(message, unknownFieldPrefix), `"`)
+		facts := diagnostics[index].Facts
+		if facts == nil {
+			continue
+		}
+		if facts.UnknownField != "" {
 			if properties, ok := SchemaProperties(DefinitionSchemas()[diagnostics[index].Kind]); ok {
 				names := make([]string, 0, len(properties))
 				for name := range properties {
@@ -339,30 +138,17 @@ func enrichDiagnosticCandidates(app *appir.App, diagnostics []definition.Diagnos
 						names = append(names, name)
 					}
 				}
-				diagnostics[index].Candidates = closest(unknown, names)
+				diagnostics[index].Candidates = closest(facts.UnknownField, names)
 			}
 		}
-		for prefix, names := range map[string][]string{
-			"references missing Entity ":    keys(app.Entities),
-			"references missing Lifecycle ": keys(app.Lifecycles),
-			"references missing View ":      keys(app.Views),
-			"references missing Action ":    keys(app.Actions),
-			"references missing Policy ":    keys(app.Policies),
-			"references missing Role ":      keys(app.Roles),
-			"references missing Filter ":    keys(app.Filters),
-			"references missing Block ":     keys(app.Blocks),
-			"references missing Panel ":     keys(app.Panels),
-			"references missing Menu ":      keys(app.Menus),
-			"references missing Job ":       keys(app.Jobs),
-		} {
-			if strings.HasPrefix(message, prefix) {
-				diagnostics[index].Candidates = closest(strings.TrimPrefix(message, prefix), names)
-				break
+		if facts.MissingReference != nil {
+			registered, exists := definitionKindRegistry().Lookup(facts.MissingReference.Kind)
+			if exists && registered.ReferenceCandidates {
+				diagnostics[index].Candidates = closest(facts.MissingReference.Name, registered.Names(app))
 			}
 		}
-		if len(diagnostics[index].Candidates) == 0 && strings.Contains(message, "missing field ") {
-			wanted := message[strings.LastIndex(message, "missing field ")+len("missing field "):]
-			diagnostics[index].Candidates = closest(wanted, fieldsForDiagnostic(app, diagnostics[index]))
+		if len(diagnostics[index].Candidates) == 0 && facts.MissingField != "" {
+			diagnostics[index].Candidates = closest(facts.MissingField, fieldsForDiagnostic(app, diagnostics[index]))
 		}
 	}
 }
@@ -378,20 +164,14 @@ func keys[T any](values map[string]T) []string {
 
 func fieldsForDiagnostic(app *appir.App, diagnostic definition.Diagnostic) []string {
 	entityName := ""
-	switch diagnostic.Kind {
-	case "View":
-		entityName = app.Views[diagnostic.Name].Entity
-	case "Action":
-		entityName = app.Actions[diagnostic.Name].Entity
-	case "Lifecycle":
-		entityName = app.Lifecycles[diagnostic.Name].Entity
-	case "AdminResource":
-		entityName = app.AdminResources[diagnostic.Name].Entity
-	case "Block":
-		entityName = app.Views[app.Blocks[diagnostic.Name].View].Entity
-	case "Entity":
-		entityName = diagnostic.Name
+	registered, exists := definitionKindRegistry().Lookup(diagnostic.Kind)
+	if exists && registered.FieldEntity != nil {
+		entityName = registered.FieldEntity(app, diagnostic.Name)
 	}
+	return fieldsForEntity(app, entityName)
+}
+
+func fieldsForEntity(app *appir.App, entityName string) []string {
 	names := []string{"created_at", "id", "updated_at", "version"}
 	if entity, ok := app.Entities[entityName]; ok {
 		for _, field := range entity.Fields {
@@ -446,7 +226,19 @@ func editDistance(left, right string) int {
 	return previous[len(previous)-1]
 }
 func diag(d definition.Definition, path, msg string) definition.Diagnostic {
-	return definition.Diagnostic{Kind: d.Kind, Name: d.Metadata.Name, Path: path, Message: msg}
+	return definition.NewDiagnostic(diagnosticRule(d.Kind, path), d.Kind, d.Metadata.Name, path, msg)
+}
+
+func diagWithRule(d definition.Definition, rule definition.DiagnosticRule, path, msg string) definition.Diagnostic {
+	return definition.NewDiagnostic(rule, d.Kind, d.Metadata.Name, path, msg)
+}
+
+func diagError(d definition.Definition, path string, err error) definition.Diagnostic {
+	var unknown *definition.UnknownFieldError
+	if errors.As(err, &unknown) {
+		return definition.UnknownFieldDiagnostic(d.Kind, d.Metadata.Name, path, unknown.Field)
+	}
+	return diag(d, path, err.Error())
 }
 
 func unavailableDefinitions(diagnostics []definition.Diagnostic) map[string]bool {
@@ -462,7 +254,8 @@ func unavailableDefinitions(diagnostics []definition.Diagnostic) map[string]bool
 func suppressUnavailableDependencies(diagnostics []definition.Diagnostic, unavailable map[string]bool) []definition.Diagnostic {
 	out := make([]definition.Diagnostic, 0, len(diagnostics))
 	for _, diagnostic := range diagnostics {
-		if target, ok := missingDependency(diagnostic.Message); !ok || !unavailable[target] {
+		target, missing := missingDependency(diagnostic)
+		if !missing || !unavailable[target] {
 			out = append(out, diagnostic)
 		}
 	}
@@ -472,23 +265,19 @@ func suppressUnavailableDependencies(diagnostics []definition.Diagnostic, unavai
 func suppressMissingDependencies(diagnostics []definition.Diagnostic) []definition.Diagnostic {
 	out := make([]definition.Diagnostic, 0, len(diagnostics))
 	for _, diagnostic := range diagnostics {
-		if _, missing := missingDependency(diagnostic.Message); !missing {
+		if _, missing := missingDependency(diagnostic); !missing {
 			out = append(out, diagnostic)
 		}
 	}
 	return out
 }
 
-func missingDependency(message string) (string, bool) {
-	const prefix = "references missing "
-	if !strings.HasPrefix(message, prefix) {
+func missingDependency(diagnostic definition.Diagnostic) (string, bool) {
+	if diagnostic.Facts == nil || diagnostic.Facts.MissingReference == nil {
 		return "", false
 	}
-	parts := strings.SplitN(strings.TrimPrefix(message, prefix), " ", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", false
-	}
-	return parts[0] + "/" + parts[1], true
+	reference := diagnostic.Facts.MissingReference
+	return reference.Kind + "/" + reference.Name, true
 }
 
 func compileBinding(value any) appir.ValueBinding {
@@ -640,32 +429,130 @@ func assignment(step appir.Step, name string) (appir.ValueBinding, bool) {
 	return appir.ValueBinding{}, false
 }
 func diagnostic(kind, name, path, message string) definition.Diagnostic {
-	return definition.Diagnostic{Kind: kind, Name: name, Path: path, Message: message}
+	return definition.NewDiagnostic(diagnosticRule(kind, path), kind, name, path, message)
 }
-func lifecycleDiagnostic(name, path, message string) definition.Diagnostic {
-	diagnostic := diagnostic("Lifecycle", name, path, message)
-	diagnostic.Code = "BEAN-E2202"
+
+func diagnosticRule(kind, path string) definition.DiagnosticRule {
+	switch {
+	case kind == "Action":
+		return definition.RuleAction
+	case kind == "Lifecycle":
+		return definition.RuleLifecycle
+	case kind == "Policy" || strings.Contains(path, "policy"):
+		return definition.RulePolicy
+	case kind == "Block" && strings.Contains(path, "presentation"):
+		return definition.RulePresentation
+	case strings.Contains(path, "binding"):
+		return definition.RuleBinding
+	case kind == "Page" && strings.Contains(path, "route"):
+		return definition.RuleRoute
+	case kind == "Release" || strings.Contains(path, "migration"):
+		return definition.RuleMigration
+	case kind == "Theme" || kind == "DemoSeed":
+		return definition.RuleFixture
+	case strings.Contains(strings.ToLower(path), "field"):
+		return definition.RuleMissingField
+	default:
+		return definition.RuleGeneral
+	}
+}
+
+func requiredDiagnostic(kind, name, path, message string) definition.Diagnostic {
+	return definition.NewDiagnostic(definition.RuleRequired, kind, name, path, message)
+}
+
+func duplicateDiagnostic(kind, name, path, message string) definition.Diagnostic {
+	return definition.NewDiagnostic(definition.RuleDuplicate, kind, name, path, message)
+}
+
+func invalidReferenceDiagnostic(kind, name, path, message string) definition.Diagnostic {
+	return definition.NewDiagnostic(definition.RuleInvalidReference, kind, name, path, message)
+}
+
+type validationError struct {
+	rule    definition.DiagnosticRule
+	message string
+}
+
+func (e *validationError) Error() string { return e.message }
+
+func requiredValidationError(message string) error {
+	return &validationError{rule: definition.RuleRequired, message: message}
+}
+
+func validationDiagnostic(kind, name, path string, err error) definition.Diagnostic {
+	var classified *validationError
+	if errors.As(err, &classified) {
+		return definition.NewDiagnostic(classified.rule, kind, name, path, err.Error())
+	}
+	return diagnostic(kind, name, path, err.Error())
+}
+
+func missingReferenceDiagnostic(kind, name, path, targetKind, targetName string) definition.Diagnostic {
+	return definition.MissingReferenceDiagnostic(kind, name, path, targetKind, targetName)
+}
+
+func missingFieldDiagnostic(kind, name, path, fieldName string, target bool) definition.Diagnostic {
+	return definition.MissingFieldDiagnostic(kind, name, path, fieldName, target)
+}
+
+func withMissingReference(diagnostic definition.Diagnostic, targetKind, targetName string) definition.Diagnostic {
+	if diagnostic.Facts == nil {
+		diagnostic.Facts = &definition.DiagnosticFacts{Rule: definition.RuleMissingReference}
+	}
+	diagnostic.Facts.MissingReference = &definition.DiagnosticReference{Kind: targetKind, Name: targetName}
 	return diagnostic
 }
+
+func withMissingField(diagnostic definition.Diagnostic, fieldName string) definition.Diagnostic {
+	if diagnostic.Facts == nil {
+		diagnostic.Facts = &definition.DiagnosticFacts{Rule: definition.RuleMissingField}
+	}
+	diagnostic.Facts.MissingField = fieldName
+	return diagnostic
+}
+
+func lifecycleDiagnostic(name, path, message string) definition.Diagnostic {
+	return definition.NewDiagnostic(definition.RuleLifecycle, "Lifecycle", name, path, message)
+}
+
+type validationState struct {
+	routes map[string]string
+}
+
 func validate(a *appir.App) []definition.Diagnostic {
+	state := &validationState{routes: map[string]string{}}
 	out := []definition.Diagnostic{}
-	routes := map[string]string{}
+	for _, kind := range []string{"Theme", "DemoSeed", "Filter", "View", "Entity", "Lifecycle", "Action", "Webform", "Policy", "Block", "LocalRegistration", "Panel", "Page", "Job", "Menu", "AdminResource", "Role"} {
+		registered, _ := definitionKindRegistry().Lookup(kind)
+		out = append(out, registered.Validate(a, state)...)
+	}
+	return out
+}
+
+func validateTheme(a *appir.App, _ *validationState) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
 	if a.Theme != nil {
-		if !map[string]bool{"minimal": true, "professional": true, "warm": true}[a.Theme.Preset] {
+		if !nameSet(themePresetNames())[a.Theme.Preset] {
 			out = append(out, diagnostic("Theme", a.Theme.Name, "spec.preset", "has no registered theme preset"))
 		}
-		if !map[string]bool{"amber": true, "blue": true, "emerald": true, "indigo": true, "rose": true, "slate": true, "violet": true}[a.Theme.Accent] {
+		if !nameSet(themeAccentNames())[a.Theme.Accent] {
 			out = append(out, diagnostic("Theme", a.Theme.Name, "spec.accent", "has no registered theme accent"))
 		}
 	}
+	return out
+}
+
+func validateDemoSeed(a *appir.App, _ *validationState) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
 	if a.DemoSeed != nil {
 		total := 0
-		profiles := map[string]bool{"activities": true, "auto": true, "companies": true, "jobs": true, "notes": true, "people": true}
+		profiles := nameSet(demoSeedProfileNames())
 		for entityName, seed := range a.DemoSeed.Entities {
 			path := "spec.entities." + entityName
 			entity, exists := a.Entities[entityName]
 			if !exists {
-				out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path, "references missing Entity "+entityName))
+				out = append(out, missingReferenceDiagnostic("DemoSeed", a.DemoSeed.Name, path, "Entity", entityName))
 				continue
 			}
 			if seed.Count < 1 || seed.Count > 200 {
@@ -687,7 +574,7 @@ func validate(a *appir.App) []definition.Diagnostic {
 				if field.Relation != nil {
 					_, seeded := a.DemoSeed.Entities[field.Relation.Entity]
 					if field.Required && !seeded {
-						out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path, "requires seeded relation Entity "+field.Relation.Entity))
+						out = append(out, requiredDiagnostic("DemoSeed", a.DemoSeed.Name, path, "requires seeded relation Entity "+field.Relation.Entity))
 					} else if seeded && field.Relation.TargetField != "id" {
 						targetEntity := a.Entities[field.Relation.Entity]
 						target, exists := entityFieldDefinition(targetEntity, field.Relation.TargetField)
@@ -710,7 +597,7 @@ func validate(a *appir.App) []definition.Diagnostic {
 			total += seed.Count
 		}
 		if len(a.DemoSeed.Entities) == 0 {
-			out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, "spec.entities", "requires at least one seeded Entity"))
+			out = append(out, requiredDiagnostic("DemoSeed", a.DemoSeed.Name, "spec.entities", "requires at least one seeded Entity"))
 		}
 		if total > 1000 {
 			out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, "spec.entities", "cannot generate more than 1000 records"))
@@ -719,9 +606,14 @@ func validate(a *appir.App) []definition.Diagnostic {
 			out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, "spec.entities", "required seeded relations contain a cycle"))
 		}
 	}
+	return out
+}
+
+func validateFilters(a *appir.App, _ *validationState) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
 	for name, filterDefinition := range a.Filters {
 		if len(filterDefinition.Steps) == 0 {
-			out = append(out, diagnostic("Filter", name, "spec.steps", "requires at least one filter step"))
+			out = append(out, requiredDiagnostic("Filter", name, "spec.steps", "requires at least one filter step"))
 		}
 		for i, step := range filterDefinition.Steps {
 			if step.Type != "markdown" {
@@ -729,10 +621,16 @@ func validate(a *appir.App) []definition.Diagnostic {
 			}
 		}
 	}
+	return out
+}
+
+func validateViews(a *appir.App, state *validationState) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
+	routes := state.routes
 	for name, v := range a.Views {
 		e, ok := a.Entities[v.Entity]
 		if !ok {
-			out = append(out, diagnostic("View", name, "spec.entity", "references missing Entity "+v.Entity))
+			out = append(out, missingReferenceDiagnostic("View", name, "spec.entity", "Entity", v.Entity))
 			continue
 		}
 		fields := fieldSet(e)
@@ -750,7 +648,7 @@ func validate(a *appir.App) []definition.Diagnostic {
 					}
 				}
 				if relation == nil {
-					out = append(out, diagnostic("View", name, path+".relationField", "references a field without relation storage"))
+					out = append(out, invalidReferenceDiagnostic("View", name, path+".relationField", "references a field without relation storage"))
 					continue
 				}
 				relationship.Entity = relation.Entity
@@ -760,22 +658,22 @@ func validate(a *appir.App) []definition.Diagnostic {
 				a.Views[name] = v
 			}
 			if relationship.Name == "" {
-				out = append(out, diagnostic("View", name, path+".name", "is required"))
+				out = append(out, requiredDiagnostic("View", name, path+".name", "is required"))
 			}
 			if relationships[relationship.Name].Name != "" {
-				out = append(out, diagnostic("View", name, path+".name", "duplicates another relationship"))
+				out = append(out, duplicateDiagnostic("View", name, path+".name", "duplicates another relationship"))
 			}
 			relationships[relationship.Name] = relationship
 			target, exists := a.Entities[relationship.Entity]
 			if !exists {
-				out = append(out, diagnostic("View", name, path+".entity", "references missing Entity "+relationship.Entity))
+				out = append(out, missingReferenceDiagnostic("View", name, path+".entity", "Entity", relationship.Entity))
 				continue
 			}
 			if !fields[relationship.LocalField] {
-				out = append(out, diagnostic("View", name, path+".localField", "references missing field "+relationship.LocalField))
+				out = append(out, missingFieldDiagnostic("View", name, path+".localField", relationship.LocalField, false))
 			}
 			if !fieldSet(target)[relationship.TargetField] {
-				out = append(out, diagnostic("View", name, path+".targetField", "references missing target field "+relationship.TargetField))
+				out = append(out, missingFieldDiagnostic("View", name, path+".targetField", relationship.TargetField, true))
 			}
 			if relationship.Type != "inner" && relationship.Type != "left" {
 				out = append(out, diagnostic("View", name, path+".type", "must be inner or left"))
@@ -783,7 +681,7 @@ func validate(a *appir.App) []definition.Diagnostic {
 		}
 		for _, f := range v.Fields {
 			if !validViewField(f, fields, relationships, a) {
-				out = append(out, diagnostic("View", name, "spec.fields", "references missing field "+f))
+				out = append(out, missingFieldDiagnostic("View", name, "spec.fields", f, false))
 			}
 		}
 		selected := map[string]bool{}
@@ -793,7 +691,7 @@ func validate(a *appir.App) []definition.Diagnostic {
 		for fieldName, filterName := range v.FieldFilters {
 			path := "spec.fieldFilters." + fieldName
 			if !selected[fieldName] {
-				out = append(out, diagnostic("View", name, path, "must reference a selected View field"))
+				out = append(out, invalidReferenceDiagnostic("View", name, path, "must reference a selected View field"))
 				continue
 			}
 			fieldType, exists := viewFieldType(fieldName, e, relationships, a)
@@ -801,15 +699,15 @@ func validate(a *appir.App) []definition.Diagnostic {
 				out = append(out, diagnostic("View", name, path, "can only filter textual fields"))
 			}
 			if _, exists = a.Filters[filterName]; !exists {
-				out = append(out, diagnostic("View", name, path, "references missing Filter "+filterName))
+				out = append(out, missingReferenceDiagnostic("View", name, path, "Filter", filterName))
 			}
 		}
 		if len(v.GroupBy) == 0 && len(v.Aggregates) == 0 && !selected["id"] {
-			out = append(out, diagnostic("View", name, "spec.fields", "must include id for deterministic cursor pagination"))
+			out = append(out, requiredDiagnostic("View", name, "spec.fields", "must include id for deterministic cursor pagination"))
 		}
 		for _, group := range v.GroupBy {
 			if !validViewField(group, fields, relationships, a) {
-				out = append(out, diagnostic("View", name, "spec.groupBy", "references missing field "+group))
+				out = append(out, missingFieldDiagnostic("View", name, "spec.groupBy", group, false))
 			}
 		}
 		aliases := map[string]bool{}
@@ -819,7 +717,7 @@ func validate(a *appir.App) []definition.Diagnostic {
 				out = append(out, diagnostic("View", name, path+".function", "has no query-plan implementation"))
 			}
 			if !validViewField(aggregate.Field, fields, relationships, a) {
-				out = append(out, diagnostic("View", name, path+".field", "references missing field "+aggregate.Field))
+				out = append(out, missingFieldDiagnostic("View", name, path+".field", aggregate.Field, false))
 			}
 			if aggregate.Alias == "" || aliases[aggregate.Alias] {
 				out = append(out, diagnostic("View", name, path+".alias", "must be a unique machine name"))
@@ -828,7 +726,7 @@ func validate(a *appir.App) []definition.Diagnostic {
 		}
 		for i, order := range v.Sort {
 			if !validViewField(order.Field, fields, relationships, a) && !aliases[order.Field] {
-				out = append(out, diagnostic("View", name, fmt.Sprintf("spec.sort.%d.field", i), "references missing field "+order.Field))
+				out = append(out, missingFieldDiagnostic("View", name, fmt.Sprintf("spec.sort.%d.field", i), order.Field, false))
 			} else if !selected[order.Field] && !aliases[order.Field] {
 				out = append(out, diagnostic("View", name, fmt.Sprintf("spec.sort.%d.field", i), "must be selected so cursor state is stable"))
 			}
@@ -845,67 +743,67 @@ func validate(a *appir.App) []definition.Diagnostic {
 				fieldName = key
 			}
 			if !validViewField(fieldName, fields, relationships, a) {
-				out = append(out, diagnostic("View", name, "spec.exposedFilters."+key, "references missing field "+fieldName))
+				out = append(out, missingFieldDiagnostic("View", name, "spec.exposedFilters."+key, fieldName, false))
 			}
 		}
 		for path, expression := range map[string]*expr.Expr{"spec.filter": v.Filter, "spec.contextFilter": v.ContextFilter} {
 			if expression != nil {
 				if er := validateExpr(*expression, true); er != nil {
-					out = append(out, diagnostic("View", name, path, er.Error()))
+					out = append(out, validationDiagnostic("View", name, path, er))
 				}
 			}
 		}
 		if v.DefaultLimit < 1 || v.MaxLimit < 1 || v.MaxLimit > 200 || v.DefaultLimit > v.MaxLimit {
 			out = append(out, diagnostic("View", name, "spec.maxLimit", "must be between the default and 200"))
 		}
-		if v.Policy != "" {
-			definition, exists := a.Policies[v.Policy]
-			if !exists {
-				out = append(out, diagnostic("View", name, "spec.policy", "references missing Policy "+v.Policy))
-			} else {
-				redacted := map[string]bool{}
-				for _, field := range definition.Redact {
-					redacted[field] = true
+		policyName := policy.EffectiveViewPolicyName(v, e)
+		policyDefinition, policyExists := a.Policies[policyName]
+		if v.Policy != "" && !policyExists {
+			out = append(out, missingReferenceDiagnostic("View", name, "spec.policy", "Policy", v.Policy))
+		}
+		if policyName != "" && policyExists {
+			redacted := nameSet(policyDefinition.Redact)
+			for i, order := range v.Sort {
+				if redacted[order.Field] {
+					out = append(out, diagnostic("View", name, fmt.Sprintf("spec.sort.%d.field", i), "redacted fields cannot control ordering"))
 				}
-				for i, order := range v.Sort {
-					if redacted[order.Field] {
-						out = append(out, diagnostic("View", name, fmt.Sprintf("spec.sort.%d.field", i), "redacted fields cannot control ordering"))
-					}
+			}
+			for key, exposed := range v.ExposedFilters {
+				if redacted[exposed.Name] || exposed.Name == "" && redacted[key] {
+					out = append(out, diagnostic("View", name, "spec.exposedFilters."+key, "redacted fields cannot be exposed as filters"))
 				}
-				for key, exposed := range v.ExposedFilters {
-					if redacted[exposed.Name] || exposed.Name == "" && redacted[key] {
-						out = append(out, diagnostic("View", name, "spec.exposedFilters."+key, "redacted fields cannot be exposed as filters"))
-					}
-				}
-				for _, expression := range []*expr.Expr{v.Filter, v.ContextFilter} {
-					for _, field := range recordFields(expression) {
-						if redacted[field] {
-							out = append(out, diagnostic("View", name, "spec.filter", "redacted fields cannot control filtering"))
-						}
+			}
+			for _, expression := range []*expr.Expr{v.Filter, v.ContextFilter} {
+				for _, field := range recordFields(expression) {
+					if redacted[field] {
+						out = append(out, diagnostic("View", name, "spec.filter", "redacted fields cannot control filtering"))
 					}
 				}
 			}
 		}
 		for displayName, display := range v.Displays {
-			if !map[string]bool{"json": true, "csv": true, "rss": true}[display.Type] {
+			if !nameSet(displaySerializerNames())[display.Type] {
 				out = append(out, diagnostic("View", name, "spec.displays."+displayName+".type", "has no serializer"))
 			}
 			if display.Route == "" {
 				continue
 			}
 			if old := routes[display.Route]; old != "" {
-				out = append(out, diagnostic("View", name, "spec.displays."+displayName+".route", "duplicates route used by "+old))
+				out = append(out, duplicateDiagnostic("View", name, "spec.displays."+displayName+".route", "duplicates route used by "+old))
 			}
 			routes[display.Route] = "View/" + name
 		}
 	}
-	allowedActions := map[string]bool{"create": true, "update": true, "delete": true, "transition": true, "transaction": true, "register_local_user": true}
-	allowedSteps := map[string]bool{"load": true, "query": true, "assert": true, "assert_no_overlap": true, "create": true, "update": true, "conditional_update": true, "decrement": true, "delete": true, "transition": true, "emit": true, "schedule": true, "return": true}
+	return out
+}
+
+func validateEntities(a *appir.App, _ *validationState) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
 	allowedRelations := map[string]bool{"one-to-one": true, "one-to-many": true, "many-to-one": true, "many-to-many": true}
 	for name, entity := range a.Entities {
 		if entity.Policy != "" {
 			if _, ok := a.Policies[entity.Policy]; !ok {
-				out = append(out, diagnostic("Entity", name, "spec.policy", "references missing Policy "+entity.Policy))
+				out = append(out, missingReferenceDiagnostic("Entity", name, "spec.policy", "Policy", entity.Policy))
 			}
 		}
 		for i, field := range entity.Fields {
@@ -921,21 +819,26 @@ func validate(a *appir.App) []definition.Diagnostic {
 				continue
 			}
 			if _, ok := a.Entities[field.Relation.Entity]; !ok {
-				out = append(out, diagnostic("Entity", name, fmt.Sprintf("spec.fields.%d.relation.entity", i), "references missing Entity "+field.Relation.Entity))
+				out = append(out, missingReferenceDiagnostic("Entity", name, fmt.Sprintf("spec.fields.%d.relation.entity", i), "Entity", field.Relation.Entity))
 			}
 			if field.Relation.TargetField == "" {
-				out = append(out, diagnostic("Entity", name, fmt.Sprintf("spec.fields.%d.relation.targetField", i), "is required"))
+				out = append(out, requiredDiagnostic("Entity", name, fmt.Sprintf("spec.fields.%d.relation.targetField", i), "is required"))
 			} else if target, ok := a.Entities[field.Relation.Entity]; ok && !fieldSet(target)[field.Relation.TargetField] {
-				out = append(out, diagnostic("Entity", name, fmt.Sprintf("spec.fields.%d.relation.targetField", i), "references missing target field "+field.Relation.TargetField))
+				out = append(out, missingFieldDiagnostic("Entity", name, fmt.Sprintf("spec.fields.%d.relation.targetField", i), field.Relation.TargetField, true))
 			}
 		}
 	}
+	return out
+}
+
+func validateLifecycles(a *appir.App, _ *validationState) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
 	lifecycleEntities := map[string]string{}
 	for _, name := range keys(a.Lifecycles) {
 		lifecycle := a.Lifecycles[name]
 		entity, entityExists := a.Entities[lifecycle.Entity]
 		if !entityExists {
-			out = append(out, lifecycleDiagnostic(name, "spec.entity", "references missing Entity "+lifecycle.Entity))
+			out = append(out, withMissingReference(lifecycleDiagnostic(name, "spec.entity", "references missing Entity "+lifecycle.Entity), "Entity", lifecycle.Entity))
 			continue
 		}
 		if existing := lifecycleEntities[lifecycle.Entity]; existing != "" {
@@ -945,8 +848,8 @@ func validate(a *appir.App) []definition.Diagnostic {
 		}
 		state, stateExists := entityFieldDefinition(entity, lifecycle.StateField)
 		if !stateExists {
-			diagnostic := lifecycleDiagnostic(name, "spec.stateField", "references missing field "+lifecycle.StateField)
-			diagnostic.Candidates = closest(lifecycle.StateField, fieldsForDiagnostic(a, diagnostic))
+			diagnostic := withMissingField(lifecycleDiagnostic(name, "spec.stateField", "references missing field "+lifecycle.StateField), lifecycle.StateField)
+			diagnostic.Candidates = closest(lifecycle.StateField, fieldsForEntity(a, lifecycle.Entity))
 			out = append(out, diagnostic)
 			continue
 		}
@@ -1006,19 +909,24 @@ func validate(a *appir.App) []definition.Diagnostic {
 			}
 		}
 	}
+	return out
+}
+
+func validateActions(a *appir.App, _ *validationState) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
 	for name, action := range a.Actions {
 		if action.Operation == "register_local_user" {
 			if action.DefaultRole == "" {
-				out = append(out, diagnostic("Action", name, "spec.defaultRole", "is required"))
+				out = append(out, requiredDiagnostic("Action", name, "spec.defaultRole", "is required"))
 			} else if _, ok := a.Roles[action.DefaultRole]; !ok {
-				out = append(out, diagnostic("Action", name, "spec.defaultRole", "references missing Role "+action.DefaultRole))
+				out = append(out, missingReferenceDiagnostic("Action", name, "spec.defaultRole", "Role", action.DefaultRole))
 			} else if action.DefaultRole == "editor" || action.DefaultRole == "administrator" {
 				out = append(out, diagnostic("Action", name, "spec.defaultRole", "cannot grant a privileged administration role"))
 			}
 		} else if _, ok := a.Entities[action.Entity]; !ok {
-			out = append(out, diagnostic("Action", name, "spec.entity", "references missing Entity "+action.Entity))
+			out = append(out, missingReferenceDiagnostic("Action", name, "spec.entity", "Entity", action.Entity))
 		}
-		if !allowedActions[action.Operation] {
+		if !actionop.Valid(action.Operation) {
 			out = append(out, diagnostic("Action", name, "spec.operation", "invalid Action operation"))
 		}
 		lifecycle, lifecycleExists := a.Lifecycles[action.Lifecycle]
@@ -1030,7 +938,7 @@ func validate(a *appir.App) []definition.Diagnostic {
 		}
 		if action.Lifecycle != "" {
 			if !lifecycleExists {
-				diagnostic := diagnostic("Action", name, "spec.lifecycle", "references missing Lifecycle "+action.Lifecycle)
+				diagnostic := withMissingReference(diagnostic("Action", name, "spec.lifecycle", "references missing Lifecycle "+action.Lifecycle), "Lifecycle", action.Lifecycle)
 				diagnostic.Code = "BEAN-E2201"
 				out = append(out, diagnostic)
 			} else {
@@ -1045,7 +953,7 @@ func validate(a *appir.App) []definition.Diagnostic {
 					out = append(out, diagnostic)
 				}
 				if action.Operation != "transition" && action.Operation != "transaction" {
-					diagnostic := diagnostic("Action", name, "spec.lifecycle", "Lifecycle requires a transition or transaction Action")
+					diagnostic := requiredDiagnostic("Action", name, "spec.lifecycle", "Lifecycle requires a transition or transaction Action")
 					diagnostic.Code = "BEAN-E2201"
 					out = append(out, diagnostic)
 				}
@@ -1059,9 +967,9 @@ func validate(a *appir.App) []definition.Diagnostic {
 			entity, entityExists := a.Entities[action.Entity]
 			state, stateExists := entityFieldDefinition(entity, stateField)
 			if entityExists && !stateExists {
-				d := diagnostic("Action", name, "spec.stateField", "references missing field "+stateField)
+				d := withMissingField(diagnostic("Action", name, "spec.stateField", "references missing field "+stateField), stateField)
 				d.Code = "BEAN-E2201"
-				d.Candidates = closest(stateField, fieldsForDiagnostic(a, d))
+				d.Candidates = closest(stateField, fieldsForEntity(a, action.Entity))
 				out = append(out, d)
 			} else if stateExists && state.Type != "enum" {
 				d := diagnostic("Action", name, "spec.stateField", "transition state field must be an enum")
@@ -1094,7 +1002,7 @@ func validate(a *appir.App) []definition.Diagnostic {
 		}
 		if action.Policy != "" {
 			if _, ok := a.Policies[action.Policy]; !ok {
-				out = append(out, diagnostic("Action", name, "spec.policy", "references missing Policy "+action.Policy))
+				out = append(out, missingReferenceDiagnostic("Action", name, "spec.policy", "Policy", action.Policy))
 			}
 		}
 		for inputName, input := range action.Input {
@@ -1102,7 +1010,7 @@ func validate(a *appir.App) []definition.Diagnostic {
 				out = append(out, diagnostic("Action", name, "spec.input."+inputName+".name", "must match its input key"))
 			}
 			if input.Type == "" {
-				out = append(out, diagnostic("Action", name, "spec.input."+inputName+".type", "is required"))
+				out = append(out, requiredDiagnostic("Action", name, "spec.input."+inputName+".type", "is required"))
 			}
 		}
 		for outputName, output := range action.Output {
@@ -1110,14 +1018,14 @@ func validate(a *appir.App) []definition.Diagnostic {
 				out = append(out, diagnostic("Action", name, "spec.output."+outputName, "sensitive fields cannot be Action outputs"))
 			}
 			if output.Name != outputName || output.Type == "" {
-				out = append(out, diagnostic("Action", name, "spec.output."+outputName, "requires a matching name and type"))
+				out = append(out, requiredDiagnostic("Action", name, "spec.output."+outputName, "requires a matching name and type"))
 			}
 		}
 		if action.Operation == "transaction" && len(action.Input) == 0 {
-			out = append(out, diagnostic("Action", name, "spec.input", "transaction Action requires a typed input schema"))
+			out = append(out, requiredDiagnostic("Action", name, "spec.input", "transaction Action requires a typed input schema"))
 		}
 		if action.Operation == "transaction" && len(action.Steps) == 0 {
-			out = append(out, diagnostic("Action", name, "spec.steps", "transaction requires at least one step"))
+			out = append(out, requiredDiagnostic("Action", name, "spec.steps", "transaction requires at least one step"))
 		}
 		if action.Operation != "transaction" && len(action.Steps) > 0 {
 			out = append(out, diagnostic("Action", name, "spec.steps", "steps are only valid for transaction Actions"))
@@ -1125,26 +1033,27 @@ func validate(a *appir.App) []definition.Diagnostic {
 		results := map[string]bool{}
 		for i, step := range action.Steps {
 			path := fmt.Sprintf("spec.steps.%d", i)
-			if !allowedSteps[step.Op] {
+			stepSpecification, registered := actionstep.Lookup(step.Op)
+			if !registered {
 				out = append(out, diagnostic("Action", name, path+".op", "has no runtime executor"))
 				continue
 			}
 			if step.Result != "" {
 				if results[step.Result] {
-					out = append(out, diagnostic("Action", name, path+".result", "duplicates a previous step result"))
+					out = append(out, duplicateDiagnostic("Action", name, path+".result", "duplicates a previous step result"))
 				}
 			}
 			for _, assignment := range step.Values {
 				switch assignment.Value.Source {
-				case "literal", "context", "tenant", "user", "record", "now":
-				case "input":
+				case valuesource.Literal, valuesource.Request, valuesource.Tenant, valuesource.User, valuesource.Record, valuesource.Now:
+				case valuesource.Input:
 					if _, ok := action.Input[assignment.Value.Path]; !ok {
-						out = append(out, diagnostic("Action", name, path+".values."+assignment.Field, "references undeclared input "+assignment.Value.Path))
+						out = append(out, invalidReferenceDiagnostic("Action", name, path+".values."+assignment.Field, "references undeclared input "+assignment.Value.Path))
 					}
-				case "result":
+				case valuesource.Result:
 					root := strings.Split(assignment.Value.Path, ".")[0]
 					if !results[root] {
-						out = append(out, diagnostic("Action", name, path+".values."+assignment.Field, "references unavailable step result "+root))
+						out = append(out, invalidReferenceDiagnostic("Action", name, path+".values."+assignment.Field, "references unavailable step result "+root))
 					}
 				default:
 					out = append(out, diagnostic("Action", name, path+".values."+assignment.Field, "has unsupported binding "+assignment.Value.Path))
@@ -1153,21 +1062,14 @@ func validate(a *appir.App) []definition.Diagnostic {
 			if step.Result != "" {
 				results[step.Result] = true
 			}
-			entity := step.Entity
-			if entity == "" {
-				if legacy, ok := assignment(step, "entity"); ok && legacy.Source == "literal" {
-					_ = json.Unmarshal(legacy.Literal, &entity)
-				} else {
-					entity = action.Entity
-				}
-			}
-			if usesEntity(step.Op) {
+			entity := actionstep.EntityName(action, step)
+			if stepSpecification.UsesEntity {
 				if _, ok := a.Entities[entity]; !ok {
-					out = append(out, diagnostic("Action", name, path+".entity", "references missing Entity "+entity))
+					out = append(out, missingReferenceDiagnostic("Action", name, path+".entity", "Entity", entity))
 				}
 			}
-			if target, ok := a.Entities[entity]; ok {
-				allowedValues := stepValueFields(step.Op, target, action)
+			if target, ok := a.Entities[entity]; ok && !stepSpecification.AnyValues {
+				allowedValues := stepValueFields(stepSpecification, target, action)
 				for _, assignment := range step.Values {
 					if !allowedValues[assignment.Field] {
 						out = append(out, diagnostic("Action", name, path+".values."+assignment.Field, "is not used by the "+step.Op+" executor"))
@@ -1175,52 +1077,52 @@ func validate(a *appir.App) []definition.Diagnostic {
 				}
 			}
 			if targetLifecycle, exists := lifecycleForEntity(a, entity); exists {
-				if step.Op == "transition" && action.Lifecycle != targetLifecycle.Name {
+				if stepSpecification.Transition && action.Lifecycle != targetLifecycle.Name {
 					diagnostic := diagnostic("Action", name, path+".op", "transition step must use Lifecycle "+targetLifecycle.Name)
 					diagnostic.Code = "BEAN-E2201"
 					out = append(out, diagnostic)
 				}
-				if step.Op == "update" || step.Op == "conditional_update" {
+				if stepSpecification.ProtectLifecycleState {
 					if hasAssignment(step, targetLifecycle.StateField) {
-						diagnostic := diagnostic("Action", name, path+".values."+targetLifecycle.StateField, "Lifecycle state requires a transition step")
+						diagnostic := requiredDiagnostic("Action", name, path+".values."+targetLifecycle.StateField, "Lifecycle state requires a transition step")
 						diagnostic.Code = "BEAN-E2201"
 						out = append(out, diagnostic)
 					}
 				}
 			}
-			if step.Op == "query" && step.View != "" {
+			if stepSpecification.RequiresView && step.View != "" {
 				if _, ok := a.Views[step.View]; !ok {
-					out = append(out, diagnostic("Action", name, path+".view", "references missing View "+step.View))
+					out = append(out, missingReferenceDiagnostic("Action", name, path+".view", "View", step.View))
 				}
 			}
-			if step.Op == "query" && step.View == "" {
-				out = append(out, diagnostic("Action", name, path+".view", "is required so reads use a compiled View"))
+			if stepSpecification.RequiresView && step.View == "" {
+				out = append(out, requiredDiagnostic("Action", name, path+".view", "is required so reads use a compiled View"))
 			}
-			if (step.Op == "assert" || step.Op == "conditional_update") && step.Condition == nil {
-				out = append(out, diagnostic("Action", name, path+".condition", "is required"))
+			if stepSpecification.RequiresCondition && step.Condition == nil {
+				out = append(out, requiredDiagnostic("Action", name, path+".condition", "is required"))
 			}
 			if step.Condition != nil {
 				if er := validateExpr(*step.Condition, false); er != nil {
-					out = append(out, diagnostic("Action", name, path+".condition", er.Error()))
+					out = append(out, validationDiagnostic("Action", name, path+".condition", er))
 				}
 			}
 			if step.Where != nil {
 				if er := validateExpr(*step.Where, true); er != nil {
-					out = append(out, diagnostic("Action", name, path+".where", er.Error()))
+					out = append(out, validationDiagnostic("Action", name, path+".where", er))
 				}
 			}
-			if (step.Op == "load" || step.Op == "update" || step.Op == "conditional_update" || step.Op == "delete" || step.Op == "transition") && !hasAssignment(step, "id") {
-				out = append(out, diagnostic("Action", name, path+".values.id", "is required"))
+			if stepSpecification.RequiresID && !hasAssignment(step, "id") {
+				out = append(out, requiredDiagnostic("Action", name, path+".values.id", "is required"))
 			}
-			if step.Op == "schedule" {
+			if stepSpecification.RequiresJob {
 				if _, ok := a.Jobs[step.Job]; !ok {
-					out = append(out, diagnostic("Action", name, path+".job", "references missing Job "+step.Job))
+					out = append(out, missingReferenceDiagnostic("Action", name, path+".job", "Job", step.Job))
 				}
 			}
-			if step.Op == "emit" && step.Event == "" {
-				out = append(out, diagnostic("Action", name, path+".event", "is required"))
+			if stepSpecification.RequiresEvent && step.Event == "" {
+				out = append(out, requiredDiagnostic("Action", name, path+".event", "is required"))
 			}
-			if step.Op == "return" {
+			if stepSpecification.OutputValues {
 				for _, assignment := range step.Values {
 					if _, declared := action.Output[assignment.Field]; !declared {
 						out = append(out, diagnostic("Action", name, path+".values."+assignment.Field, "is not declared in the Action output schema"))
@@ -1229,15 +1131,20 @@ func validate(a *appir.App) []definition.Diagnostic {
 			}
 		}
 	}
+	return out
+}
+
+func validateWebforms(a *appir.App, _ *validationState) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
 	for name, form := range a.Webforms {
 		action, ok := a.Actions[form.Action]
 		if !ok {
-			out = append(out, diagnostic("Webform", name, "spec.action", "references missing Action "+form.Action))
+			out = append(out, missingReferenceDiagnostic("Webform", name, "spec.action", "Action", form.Action))
 		} else {
 			for i, element := range form.Elements {
 				input, exists := action.Input[element.Name]
 				if !exists {
-					out = append(out, diagnostic("Webform", name, fmt.Sprintf("spec.elements.%d.name", i), "has no matching Action input"))
+					out = append(out, invalidReferenceDiagnostic("Webform", name, fmt.Sprintf("spec.elements.%d.name", i), "has no matching Action input"))
 				} else if !compatibleFormType(element.Type, input.Type) {
 					out = append(out, diagnostic("Webform", name, fmt.Sprintf("spec.elements.%d.type", i), "does not match Action input type "+input.Type))
 				}
@@ -1245,21 +1152,32 @@ func validate(a *appir.App) []definition.Diagnostic {
 		}
 		out = append(out, validateForm(name, form)...)
 	}
+	return out
+}
+
+func validatePolicies(a *appir.App, _ *validationState) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
 	for name, policy := range a.Policies {
 		if policy.Condition != nil {
 			if er := validateExpr(*policy.Condition, true); er != nil {
-				out = append(out, diagnostic("Policy", name, "spec.condition", er.Error()))
+				out = append(out, validationDiagnostic("Policy", name, "spec.condition", er))
 			}
 		}
 	}
+	return out
+}
+
+func validateBlocks(a *appir.App, _ *validationState) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
 	for name, block := range a.Blocks {
-		if !map[string]bool{"text": true, "view": true, "entity": true, "webform": true, "action": true, "menu": true, "resource-list": true}[block.Type] {
+		blockSpecification, registered := blockcap.Lookup(block.Type)
+		if !registered {
 			out = append(out, diagnostic("Block", name, "spec.type", "has no registered renderer"))
 		}
-		if block.Type == "resource-list" && block.Resource == "" {
-			out = append(out, diagnostic("Block", name, "spec.resource", "is required"))
+		if blockSpecification.RequiresResource && block.Resource == "" {
+			out = append(out, requiredDiagnostic("Block", name, "spec.resource", "is required"))
 		}
-		if block.Type == "resource-list" && (block.Policy == "" || !editorOnlyReadPolicy(a.Policies[block.Policy])) {
+		if blockSpecification.RequiresEditorReadPolicy && (block.Policy == "" || !editorOnlyReadPolicy(a.Policies[block.Policy])) {
 			out = append(out, diagnostic("Block", name, "spec.policy", "resource-list Block must be restricted to editor and administrator roles"))
 		}
 		refs := []struct{ kind, value string }{{"view", block.View}, {"entity", block.Entity}, {"webform", block.Webform}, {"action", block.Action}, {"resource", block.Resource}}
@@ -1281,20 +1199,20 @@ func validate(a *appir.App) []definition.Diagnostic {
 				_, ok = a.AdminResources[ref.value]
 			}
 			if !ok {
-				out = append(out, diagnostic("Block", name, "spec."+ref.kind, "invalid Block input reference "+ref.value))
+				out = append(out, invalidReferenceDiagnostic("Block", name, "spec."+ref.kind, "invalid Block input reference "+ref.value))
 			}
 		}
-		if block.Type == "view" && block.View != "" {
+		if blockSpecification.SupportsPresentation && block.View != "" {
 			out = append(out, validatePresentation(name, block, a)...)
 		}
 		if block.Menu != "" {
 			if _, ok := a.Menus[block.Menu]; !ok {
-				out = append(out, diagnostic("Block", name, "spec.menu", "references missing Menu "+block.Menu))
+				out = append(out, missingReferenceDiagnostic("Block", name, "spec.menu", "Menu", block.Menu))
 			}
 		}
 		if block.Policy != "" {
 			if _, ok := a.Policies[block.Policy]; !ok {
-				out = append(out, diagnostic("Block", name, "spec.policy", "references missing Policy "+block.Policy))
+				out = append(out, missingReferenceDiagnostic("Block", name, "spec.policy", "Policy", block.Policy))
 			}
 		}
 		for inputName, input := range block.Inputs {
@@ -1303,33 +1221,39 @@ func validate(a *appir.App) []definition.Diagnostic {
 				out = append(out, diagnostic("Block", name, "spec.bindings."+inputName, "required input has no typed mapping"))
 			}
 			if mapped {
-				if !map[string]bool{"context": true, "user": true, "tenant": true}[binding.Source] {
+				if !valuesource.Allows(valuesource.Block, binding.Source) {
 					out = append(out, diagnostic("Block", name, "spec.bindings."+inputName+".source", "has no typed resolver"))
 				}
 				if binding.Source != "tenant" && binding.Name == "" {
-					out = append(out, diagnostic("Block", name, "spec.bindings."+inputName+".name", "is required"))
+					out = append(out, requiredDiagnostic("Block", name, "spec.bindings."+inputName+".name", "is required"))
 				}
 			}
 		}
 		for inputName := range block.Bindings {
 			if _, exists := block.Inputs[inputName]; !exists {
-				out = append(out, diagnostic("Block", name, "spec.bindings."+inputName, "references an undeclared input"))
+				out = append(out, invalidReferenceDiagnostic("Block", name, "spec.bindings."+inputName, "references an undeclared input"))
 			}
 		}
 		var target map[string]appir.Field
-		if block.Type == "view" && block.View != "" {
-			target = a.Views[block.View].ExposedFilters
-		}
-		if block.Type == "webform" && block.Webform != "" {
-			formDefinition := a.Webforms[block.Webform]
-			target = a.Actions[formDefinition.Action].Input
-			for _, element := range formDefinition.Elements {
-				if _, bound := block.Bindings[element.Name]; bound {
-					out = append(out, diagnostic("Block", name, "spec.bindings."+element.Name, "cannot bind a field also rendered by the Webform"))
+		switch blockSpecification.InputTarget {
+		case blockcap.ViewInputTarget:
+			if block.View != "" {
+				target = a.Views[block.View].ExposedFilters
+			}
+		case blockcap.WebformInputTarget:
+			if block.Webform != "" {
+				formDefinition := a.Webforms[block.Webform]
+				target = a.Actions[formDefinition.Action].Input
+				for _, element := range formDefinition.Elements {
+					if _, bound := block.Bindings[element.Name]; bound {
+						out = append(out, diagnostic("Block", name, "spec.bindings."+element.Name, "cannot bind a field also rendered by the Webform"))
+					}
 				}
 			}
-		}
-		if block.Type == "resource-list" && block.Resource != "" {
+		case blockcap.ResourceInputTarget:
+			if block.Resource == "" {
+				break
+			}
 			resource := a.AdminResources[block.Resource]
 			target = a.Views[resource.View].ExposedFilters
 			resourceFilters := nameSet(resource.List.Filters)
@@ -1342,13 +1266,13 @@ func validate(a *appir.App) []definition.Diagnostic {
 					out = append(out, diagnostic("Block", name, fmt.Sprintf("spec.filters.%d", i), "is not configured by AdminResource "+block.Resource))
 				}
 				if _, exposed := target[filterName]; !exposed {
-					out = append(out, diagnostic("Block", name, fmt.Sprintf("spec.filters.%d", i), "has no matching View exposed filter"))
+					out = append(out, invalidReferenceDiagnostic("Block", name, fmt.Sprintf("spec.filters.%d", i), "has no matching View exposed filter"))
 				}
 			}
 			for filterName, value := range block.DefaultFilters {
 				definition, exposed := target[filterName]
 				if !interactive[filterName] {
-					out = append(out, diagnostic("Block", name, "spec.defaultFilters."+filterName, "must reference an interactive filter"))
+					out = append(out, invalidReferenceDiagnostic("Block", name, "spec.defaultFilters."+filterName, "must reference an interactive filter"))
 				} else if exposed {
 					definition.Name = filterName
 					if err := field.Validate(definition, value); err != nil {
@@ -1361,17 +1285,22 @@ func validate(a *appir.App) []definition.Diagnostic {
 			for inputName, input := range block.Inputs {
 				expected, exists := target[inputName]
 				if !exists {
-					out = append(out, diagnostic("Block", name, "spec.inputs."+inputName, "has no matching target input"))
+					out = append(out, invalidReferenceDiagnostic("Block", name, "spec.inputs."+inputName, "has no matching target input"))
 				} else if input.Type != expected.Type {
 					out = append(out, diagnostic("Block", name, "spec.inputs."+inputName+".type", "does not match target input type "+expected.Type))
 				}
 			}
 		}
 	}
+	return out
+}
+
+func validateLocalRegistration(a *appir.App, _ *validationState) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
 	if a.LocalRegistration != nil {
 		action, ok := a.Actions[a.LocalRegistration.Action]
 		if !ok || action.Operation != "register_local_user" {
-			out = append(out, diagnostic("LocalRegistration", "local", "spec.action", "must reference a register_local_user Action"))
+			out = append(out, invalidReferenceDiagnostic("LocalRegistration", "local", "spec.action", "must reference a register_local_user Action"))
 		}
 		if route := a.LocalRegistration.Route; route != "" {
 			if !strings.HasPrefix(route, "/") || strings.Contains(route, ":") {
@@ -1381,7 +1310,12 @@ func validate(a *appir.App) []definition.Diagnostic {
 			}
 		}
 	}
-	layouts := map[string]map[string]bool{"single-column": {"main": true}, "two-column": {"left": true, "right": true}, "sidebar-main": {"sidebar": true, "main": true}, "main-sidebar": {"main": true, "sidebar": true}, "grid": {"main": true}}
+	return out
+}
+
+func validatePanels(a *appir.App, _ *validationState) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
+	layouts := panelLayouts()
 	for name, panel := range a.Panels {
 		regions, ok := layouts[panel.Layout]
 		if !ok {
@@ -1394,16 +1328,22 @@ func validate(a *appir.App) []definition.Diagnostic {
 			}
 			for _, block := range region.Blocks {
 				if _, ok := a.Blocks[block]; !ok {
-					out = append(out, diagnostic("Panel", name, "spec.regions."+region.Name, "references missing Block "+block))
+					out = append(out, missingReferenceDiagnostic("Panel", name, "spec.regions."+region.Name, "Block", block))
 				}
 			}
 		}
 		if panel.Policy != "" {
 			if _, ok := a.Policies[panel.Policy]; !ok {
-				out = append(out, diagnostic("Panel", name, "spec.policy", "references missing Policy "+panel.Policy))
+				out = append(out, missingReferenceDiagnostic("Panel", name, "spec.policy", "Policy", panel.Policy))
 			}
 		}
 	}
+	return out
+}
+
+func validatePages(a *appir.App, state *validationState) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
+	routes := state.routes
 	for name, page := range a.Pages {
 		if !strings.HasPrefix(page.Route, "/") {
 			out = append(out, diagnostic("Page", name, "spec.route", "must start with /"))
@@ -1413,45 +1353,60 @@ func validate(a *appir.App) []definition.Diagnostic {
 		}
 		routes[page.Route] = "Page/" + name
 		if _, ok := a.Panels[page.Panel]; !ok {
-			out = append(out, diagnostic("Page", name, "spec.panel", "references missing Panel "+page.Panel))
+			out = append(out, missingReferenceDiagnostic("Page", name, "spec.panel", "Panel", page.Panel))
 		}
 		if page.Policy != "" {
 			if _, ok := a.Policies[page.Policy]; !ok {
-				out = append(out, diagnostic("Page", name, "spec.policy", "references missing Policy "+page.Policy))
+				out = append(out, missingReferenceDiagnostic("Page", name, "spec.policy", "Policy", page.Policy))
 			}
 		}
 		for key, binding := range page.Context {
-			if !map[string]bool{"route": true, "query": true, "user": true, "tenant": true}[binding.Source] {
+			if !valuesource.Allows(valuesource.Page, binding.Source) {
 				out = append(out, diagnostic("Page", name, "spec.context."+key+".source", "has no typed resolver"))
 			}
 			if binding.Source != "tenant" && binding.Name == "" {
-				out = append(out, diagnostic("Page", name, "spec.context."+key+".name", "is required"))
+				out = append(out, requiredDiagnostic("Page", name, "spec.context."+key+".name", "is required"))
 			}
 		}
 	}
+	return out
+}
+
+func validateJobs(a *appir.App, _ *validationState) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
 	for name, job := range a.Jobs {
 		if _, ok := a.Actions[job.Action]; !ok {
-			out = append(out, diagnostic("Job", name, "spec.action", "references missing Action "+job.Action))
+			out = append(out, missingReferenceDiagnostic("Job", name, "spec.action", "Action", job.Action))
 		}
 	}
+	return out
+}
+
+func validateMenus(a *appir.App, _ *validationState) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
 	for name, menu := range a.Menus {
 		for i, item := range menu.Items {
 			if item.Policy != "" {
 				if _, ok := a.Policies[item.Policy]; !ok {
-					out = append(out, diagnostic("Menu", name, fmt.Sprintf("spec.items.%d.policy", i), "references missing Policy "+item.Policy))
+					out = append(out, missingReferenceDiagnostic("Menu", name, fmt.Sprintf("spec.items.%d.policy", i), "Policy", item.Policy))
 				}
 			}
 		}
 	}
+	return out
+}
+
+func validateAdminResources(a *appir.App, _ *validationState) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
 	for name, resource := range a.AdminResources {
 		entity, ok := a.Entities[resource.Entity]
 		if !ok {
-			out = append(out, diagnostic("AdminResource", name, "spec.entity", "references missing Entity "+resource.Entity))
+			out = append(out, missingReferenceDiagnostic("AdminResource", name, "spec.entity", "Entity", resource.Entity))
 			continue
 		}
 		viewDefinition, ok := a.Views[resource.View]
 		if !ok || viewDefinition.Entity != resource.Entity {
-			out = append(out, diagnostic("AdminResource", name, "spec.view", "must reference a View for Entity "+resource.Entity))
+			out = append(out, invalidReferenceDiagnostic("AdminResource", name, "spec.view", "must reference a View for Entity "+resource.Entity))
 			continue
 		}
 		fields := fieldSet(entity)
@@ -1462,7 +1417,7 @@ func validate(a *appir.App) []definition.Diagnostic {
 		checkFields := func(path string, names []string, requireSelected bool) {
 			for _, field := range names {
 				if !fields[field] {
-					out = append(out, diagnostic("AdminResource", name, path, "references missing field "+field))
+					out = append(out, missingFieldDiagnostic("AdminResource", name, path, field, false))
 				} else if requireSelected && !selected[field] {
 					out = append(out, diagnostic("AdminResource", name, path, "field "+field+" is not selected by View "+resource.View))
 				}
@@ -1483,13 +1438,13 @@ func validate(a *appir.App) []definition.Diagnostic {
 		for path, actionName := range map[string]string{"spec.createAction": resource.CreateAction, "spec.updateAction": resource.UpdateAction, "spec.deleteAction": resource.DeleteAction} {
 			action, exists := a.Actions[actionName]
 			if !exists || action.Entity != resource.Entity {
-				out = append(out, diagnostic("AdminResource", name, path, "must reference an Action for Entity "+resource.Entity))
+				out = append(out, invalidReferenceDiagnostic("AdminResource", name, path, "must reference an Action for Entity "+resource.Entity))
 			}
 		}
 		for _, actionName := range resource.Actions {
 			action, exists := a.Actions[actionName]
 			if !exists || action.Entity != resource.Entity {
-				out = append(out, diagnostic("AdminResource", name, "spec.actions", "must reference Actions for Entity "+resource.Entity))
+				out = append(out, invalidReferenceDiagnostic("AdminResource", name, "spec.actions", "must reference Actions for Entity "+resource.Entity))
 			}
 		}
 	}
@@ -1550,7 +1505,7 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 		return nil
 	}
 	out := []definition.Diagnostic{}
-	if !map[string]bool{"list": true, "detail": true, "board": true, "tree": true, "metric": true, "timeline": true}[presentation.Mode] {
+	if !nameSet(presentationNames())[presentation.Mode] {
 		return []definition.Diagnostic{diagnostic("Block", name, "spec.presentation.mode", "has no registered presentation renderer")}
 	}
 	viewDefinition := a.Views[block.View]
@@ -1574,7 +1529,8 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 		}
 		return appir.Field{}, false
 	}
-	redacted := nameSet(a.Policies[viewDefinition.Policy].Redact)
+	policyName := policy.EffectiveViewPolicyName(viewDefinition, entity)
+	redacted := nameSet(a.Policies[policyName].Redact)
 	if presentation.Mode == "board" || presentation.Mode == "tree" {
 		for _, sortDefinition := range viewDefinition.Sort {
 			if aggregates[sortDefinition.Field] {
@@ -1600,7 +1556,7 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 		if !selected[fieldName] {
 			out = append(out, diagnostic("Block", name, "spec.presentation.linkRoute", "field "+fieldName+" must be selected by View "+block.View))
 		} else if redacted[fieldName] {
-			out = append(out, diagnostic("Block", name, "spec.presentation.linkRoute", "field "+fieldName+" must not be redacted by View policy "+viewDefinition.Policy))
+			out = append(out, diagnostic("Block", name, "spec.presentation.linkRoute", "field "+fieldName+" must not be redacted by View policy "+policyName))
 		}
 	}
 	for path, fieldName := range map[string]string{"titleField": presentation.TitleField, "bodyField": presentation.BodyField, "groupField": presentation.GroupField, "orderField": presentation.OrderField, "parentField": presentation.ParentField} {
@@ -1608,7 +1564,7 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 			out = append(out, diagnostic("Block", name, "spec.presentation."+path, "must be selected by View "+block.View))
 		}
 		if (presentation.Mode == "board" || presentation.Mode == "tree" || presentation.Mode == "timeline") && fieldName != "" && redacted[fieldName] && path != "bodyField" {
-			out = append(out, diagnostic("Block", name, "spec.presentation."+path, "must not be redacted by View policy "+viewDefinition.Policy))
+			out = append(out, diagnostic("Block", name, "spec.presentation."+path, "must not be redacted by View policy "+policyName))
 		}
 	}
 	searchable := map[string]bool{"email": true, "richtext": true, "slug": true, "string": true, "text": true, "url": true}
@@ -1618,20 +1574,20 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 		if !selected[fieldName] {
 			out = append(out, diagnostic("Block", name, path, "must be selected by View "+block.View))
 		} else if !exists || !searchable[field.Type] {
-			out = append(out, diagnostic("Block", name, path, "must reference a searchable text field"))
+			out = append(out, invalidReferenceDiagnostic("Block", name, path, "must reference a searchable text field"))
 		} else if redacted[fieldName] {
-			out = append(out, diagnostic("Block", name, path, "must not be redacted by View policy "+viewDefinition.Policy))
+			out = append(out, diagnostic("Block", name, path, "must not be redacted by View policy "+policyName))
 		}
 	}
 	if presentation.Mode == "metric" {
 		if presentation.MetricField == "" || !aggregates[presentation.MetricField] {
-			out = append(out, diagnostic("Block", name, "spec.presentation.metricField", "metric requires a selected aggregate alias"))
+			out = append(out, requiredDiagnostic("Block", name, "spec.presentation.metricField", "metric requires a selected aggregate alias"))
 		}
 		if len(viewDefinition.GroupBy) > 0 {
-			out = append(out, diagnostic("Block", name, "spec.presentation.metricField", "metric requires an ungrouped View"))
+			out = append(out, requiredDiagnostic("Block", name, "spec.presentation.metricField", "metric requires an ungrouped View"))
 		}
 		if len(viewDefinition.Fields) > 0 {
-			out = append(out, diagnostic("Block", name, "spec.presentation.metricField", "metric requires an aggregate-only View"))
+			out = append(out, requiredDiagnostic("Block", name, "spec.presentation.metricField", "metric requires an aggregate-only View"))
 		}
 		if len(presentation.SearchFields) > 0 {
 			out = append(out, diagnostic("Block", name, "spec.presentation.searchFields", "metric does not support search"))
@@ -1639,25 +1595,25 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 	}
 	if presentation.Mode == "timeline" {
 		if presentation.TitleField == "" {
-			out = append(out, diagnostic("Block", name, "spec.presentation.titleField", "timeline requires a selected title field"))
+			out = append(out, requiredDiagnostic("Block", name, "spec.presentation.titleField", "timeline requires a selected title field"))
 		}
 		field, exists := fieldDefinition(presentation.TimeField)
 		if presentation.TimeField == "" || !selected[presentation.TimeField] || !exists || field.Type != "date" && field.Type != "datetime" {
-			out = append(out, diagnostic("Block", name, "spec.presentation.timeField", "timeline requires a selected date or datetime field"))
+			out = append(out, requiredDiagnostic("Block", name, "spec.presentation.timeField", "timeline requires a selected date or datetime field"))
 		} else if redacted[presentation.TimeField] {
-			out = append(out, diagnostic("Block", name, "spec.presentation.timeField", "must not be redacted by View policy "+viewDefinition.Policy))
+			out = append(out, diagnostic("Block", name, "spec.presentation.timeField", "must not be redacted by View policy "+policyName))
 		}
 	}
 	if presentation.Mode == "board" {
 		if presentation.TitleField == "" {
-			out = append(out, diagnostic("Block", name, "spec.presentation.titleField", "board requires a selected title field"))
+			out = append(out, requiredDiagnostic("Block", name, "spec.presentation.titleField", "board requires a selected title field"))
 		}
 		group, exists := fieldDefinition(presentation.GroupField)
 		if presentation.GroupField == "" || !exists || group.Type != "enum" {
-			out = append(out, diagnostic("Block", name, "spec.presentation.groupField", "board requires a selected enum field"))
+			out = append(out, requiredDiagnostic("Block", name, "spec.presentation.groupField", "board requires a selected enum field"))
 		}
 		if len(presentation.Columns) == 0 {
-			out = append(out, diagnostic("Block", name, "spec.presentation.columns", "board requires at least one column"))
+			out = append(out, requiredDiagnostic("Block", name, "spec.presentation.columns", "board requires at least one column"))
 		}
 		allowedColumns := nameSet(group.Options)
 		for i, column := range presentation.Columns {
@@ -1668,7 +1624,7 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 		action, exists := a.Actions[presentation.MoveAction]
 		stateField := actionStateField(a, action)
 		if presentation.MoveAction == "" || !exists || action.Entity != viewDefinition.Entity || action.Operation != "transition" || stateField != presentation.GroupField {
-			out = append(out, diagnostic("Block", name, "spec.presentation.moveAction", "must reference a transition Action for the board entity and group field"))
+			out = append(out, invalidReferenceDiagnostic("Block", name, "spec.presentation.moveAction", "must reference a transition Action for the board entity and group field"))
 		} else {
 			for inputName, inputDefinition := range action.Input {
 				if inputDefinition.Required && inputName != "id" && inputName != presentation.GroupField {
@@ -1686,10 +1642,10 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 	if presentation.Mode == "tree" {
 		parent, exists := fieldDefinition(presentation.ParentField)
 		if presentation.ParentField == "" || !exists || parent.Type != "relation" || parent.Relation == nil || parent.Relation.Entity != viewDefinition.Entity || parent.Relation.Kind != "many-to-one" {
-			out = append(out, diagnostic("Block", name, "spec.presentation.parentField", "tree requires a selected many-to-one self relation"))
+			out = append(out, requiredDiagnostic("Block", name, "spec.presentation.parentField", "tree requires a selected many-to-one self relation"))
 		}
 		if presentation.TitleField == "" {
-			out = append(out, diagnostic("Block", name, "spec.presentation.titleField", "tree requires a selected title field"))
+			out = append(out, requiredDiagnostic("Block", name, "spec.presentation.titleField", "tree requires a selected title field"))
 		}
 		if presentation.OrderField != "" {
 			order, exists := fieldDefinition(presentation.OrderField)
@@ -1775,48 +1731,17 @@ func viewFieldType(name string, base appir.Entity, relationships map[string]appi
 	return "", false
 }
 
-func usesEntity(op string) bool {
-	return map[string]bool{"load": true, "query": true, "assert_no_overlap": true, "create": true, "update": true, "conditional_update": true, "decrement": true, "delete": true, "transition": true}[op]
-}
-
-func stepValueFields(op string, entity appir.Entity, action appir.Action) map[string]bool {
+func stepValueFields(specification actionstep.Specification, entity appir.Entity, action appir.Action) map[string]bool {
 	fields := map[string]bool{}
-	switch op {
-	case "create", "update", "conditional_update", "transition":
-		fields["entity"] = true
-		if op != "create" {
-			fields["id"] = true
-			fields["message"] = true
-		}
+	for _, name := range specification.AllowedValues {
+		fields[name] = true
+	}
+	if specification.EntityFields {
 		for _, field := range entity.Fields {
 			fields[field.Name] = true
 		}
-	case "load", "delete":
-		fields["entity"] = true
-		fields["id"] = true
-	case "assert":
-		fields["message"] = true
-	case "assert_no_overlap":
-		for _, field := range []string{"match", "start", "end", "message"} {
-			fields[field] = true
-		}
-	case "decrement":
-		for _, field := range []string{"entity", "field", "id_input", "amount_input", "message"} {
-			fields[field] = true
-		}
-	case "emit", "schedule":
-		for _, assignment := range action.Output {
-			fields[assignment.Name] = true
-		}
-		// Event and job payloads are explicit JSON objects and may use arbitrary keys.
-		for _, step := range action.Steps {
-			if step.Op == op {
-				for _, assignment := range step.Values {
-					fields[assignment.Field] = true
-				}
-			}
-		}
-	case "return":
+	}
+	if specification.OutputValues {
 		for name := range action.Output {
 			fields[name] = true
 		}
@@ -1828,10 +1753,10 @@ func validateExpr(expression expr.Expr, database bool) error {
 	logical := map[string]int{"and": -1, "or": -1, "not": 1}
 	if arity, ok := logical[expression.Op]; ok {
 		if arity == -1 && len(expression.Args) == 0 {
-			return fmt.Errorf("%s requires arguments", expression.Op)
+			return requiredValidationError(fmt.Sprintf("%s requires arguments", expression.Op))
 		}
 		if arity >= 0 && len(expression.Args) != arity {
-			return fmt.Errorf("%s requires %d argument", expression.Op, arity)
+			return requiredValidationError(fmt.Sprintf("%s requires %d argument", expression.Op, arity))
 		}
 		for _, child := range expression.Args {
 			if e := validateExpr(child, database); e != nil {
@@ -1844,13 +1769,12 @@ func validateExpr(expression expr.Expr, database bool) error {
 		return fmt.Errorf("unsupported expression operator %q", expression.Op)
 	}
 	if expression.Left == nil {
-		return fmt.Errorf("left value is required")
+		return requiredValidationError("left value is required")
 	}
 	if expression.Op != "is_null" && expression.Op != "is_not_null" && expression.Right == nil {
-		return fmt.Errorf("right value is required")
+		return requiredValidationError("right value is required")
 	}
-	allowedSources := map[string]bool{"literal": true, "input": true, "record": true, "user": true, "tenant": true, "route": true, "context": true}
-	if !allowedSources[expression.Left.Source] || expression.Right != nil && !allowedSources[expression.Right.Source] {
+	if !valuesource.Allows(valuesource.Expression, expression.Left.Source) || expression.Right != nil && !valuesource.Allows(valuesource.Expression, expression.Right.Source) {
 		return fmt.Errorf("expression has an unsupported value source")
 	}
 	if database && expression.Left.Source != "record" {
@@ -1909,7 +1833,8 @@ func validateRegistrationPage(a *appir.App, route, actionName string) string {
 		for _, blockName := range region.Blocks {
 			blockDefinition := a.Blocks[blockName]
 			formDefinition := a.Webforms[blockDefinition.Webform]
-			if blockDefinition.Type != "webform" || formDefinition.Action != actionName {
+			specification, registered := blockcap.Lookup(blockDefinition.Type)
+			if !registered || specification.InputTarget != blockcap.WebformInputTarget || formDefinition.Action != actionName {
 				continue
 			}
 			found = true
@@ -1950,9 +1875,9 @@ func validateForm(name string, form appir.Webform) []definition.Diagnostic {
 		for i, element := range elements {
 			p := fmt.Sprintf("%s.%d", path, i)
 			if element.Name == "" {
-				out = append(out, diagnostic("Webform", name, p+".name", "is required"))
+				out = append(out, requiredDiagnostic("Webform", name, p+".name", "is required"))
 			} else if seen[element.Name] {
-				out = append(out, diagnostic("Webform", name, p+".name", "duplicates another element"))
+				out = append(out, duplicateDiagnostic("Webform", name, p+".name", "duplicates another element"))
 			}
 			seen[element.Name] = true
 			if !allowed[element.Type] {
@@ -1963,7 +1888,7 @@ func validateForm(name string, form appir.Webform) []definition.Diagnostic {
 			}
 			if element.Type == "group" {
 				if len(element.Children) == 0 {
-					out = append(out, diagnostic("Webform", name, p+".children", "repeating group requires children"))
+					out = append(out, requiredDiagnostic("Webform", name, p+".children", "repeating group requires children"))
 				}
 				walk(element.Children, p+".children", true)
 			} else if len(element.Children) > 0 {
@@ -1972,7 +1897,7 @@ func validateForm(name string, form appir.Webform) []definition.Diagnostic {
 			for conditionPath, condition := range map[string]*expr.Expr{"visible": element.Visible, "requiredWhen": element.RequiredWhen} {
 				if condition != nil {
 					if er := validateExpr(*condition, false); er != nil {
-						out = append(out, diagnostic("Webform", name, p+"."+conditionPath, er.Error()))
+						out = append(out, validationDiagnostic("Webform", name, p+"."+conditionPath, er))
 					}
 				}
 			}
@@ -1984,14 +1909,14 @@ func validateForm(name string, form appir.Webform) []definition.Diagnostic {
 		for _, element := range step {
 			stepUse[element]++
 			if !seen[element] {
-				out = append(out, diagnostic("Webform", name, fmt.Sprintf("spec.steps.%d", i), "references missing element "+element))
+				out = append(out, missingReferenceDiagnostic("Webform", name, fmt.Sprintf("spec.steps.%d", i), "element", element))
 			}
 		}
 	}
 	if len(form.Steps) > 0 {
 		for _, element := range form.Elements {
 			if stepUse[element.Name] != 1 {
-				out = append(out, diagnostic("Webform", name, "spec.steps", "must include element "+element.Name+" exactly once"))
+				out = append(out, requiredDiagnostic("Webform", name, "spec.steps", "must include element "+element.Name+" exactly once"))
 			}
 		}
 	}
@@ -2150,7 +2075,8 @@ func normalizeAdminResources(a *appir.App) {
 
 func normalizeResourceListBlocks(a *appir.App) {
 	for name, block := range a.Blocks {
-		if block.Type != "resource-list" {
+		specification, registered := blockcap.Lookup(block.Type)
+		if !registered || !specification.DerivesViewFromResource {
 			continue
 		}
 		if resource, ok := a.AdminResources[block.Resource]; ok {

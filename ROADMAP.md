@@ -72,6 +72,10 @@ Presentation remains a separately reported score so a technically correct but un
 - Bean integrates with infrastructure through adapters instead of rebuilding infrastructure products.
 - A phase starts only when its predecessor's exit criteria are met. Version labels express dependency order, not calendar commitments.
 
+## Current engineering goal
+
+The structural-diagnostics and unified-execution-seams goal is complete. View reads, Action-step obligations, value sources, client rendering/writes, Definition kinds, and Agent Protocol operations now have one structural owner each while explicit control flow remains for closed algebras and compiler phases. The work added no public plugin SDK or roadmap application capability; Bean is ready for the planned v0.10 feature work.
+
 ## Roadmap
 
 | Phase | Target | Outcome | Status |

@@ -25,6 +25,30 @@ type manifest struct {
 
 type Diagnostics []Diagnostic
 
+func locatedDiagnostic(rule DiagnosticRule, source Position, path, message string) Diagnostic {
+	diagnostic := NewDiagnostic(rule, "", "", path, message)
+	diagnostic.Source = source
+	return diagnostic
+}
+
+func relatedDiagnostic(rule DiagnosticRule, source Position, related *Position, path, message string) Diagnostic {
+	diagnostic := locatedDiagnostic(rule, source, path, message)
+	diagnostic.Related = related
+	return diagnostic
+}
+
+func definitionSourceDiagnostic(rule DiagnosticRule, source Position, kind, name, path, message string) Diagnostic {
+	diagnostic := NewDiagnostic(rule, kind, name, path, message)
+	diagnostic.Source = source
+	return diagnostic
+}
+
+func relatedDefinitionDiagnostic(rule DiagnosticRule, source Position, related *Position, kind, name, path, message string) Diagnostic {
+	diagnostic := definitionSourceDiagnostic(rule, source, kind, name, path, message)
+	diagnostic.Related = related
+	return diagnostic
+}
+
 func (d Diagnostics) Error() string {
 	lines := make([]string, len(d))
 	for i := range d {
@@ -76,16 +100,16 @@ func enrichManifestCandidates(diagnostics []Diagnostic) {
 func decodeSource(reader io.Reader, sourcePath string) (Bundle, []Diagnostic) {
 	data, err := io.ReadAll(reader)
 	if err != nil {
-		return Bundle{}, []Diagnostic{{Source: Position{Path: sourcePath, Line: 1, Column: 1}, Message: err.Error()}}
+		return Bundle{}, []Diagnostic{locatedDiagnostic(RuleSource, Position{Path: sourcePath, Line: 1, Column: 1}, "", err.Error())}
 	}
 	documents, diagnostics := decodeYAML(data, sourcePath)
 	if len(documents) == 0 {
-		return Bundle{}, append(diagnostics, Diagnostic{Source: Position{Path: sourcePath, Line: 1, Column: 1}, Message: "application manifest is empty"})
+		return Bundle{}, append(diagnostics, locatedDiagnostic(RuleSource, Position{Path: sourcePath, Line: 1, Column: 1}, "", "application manifest is empty"))
 	}
 	root, rootDiagnostics, _ := decodeManifest(documents[0], sourcePath)
 	diagnostics = append(diagnostics, rootDiagnostics...)
 	if len(root.Resources) > 0 {
-		diagnostics = append(diagnostics, Diagnostic{Source: mappingKeyPosition(sourcePath, documentRoot(documents[0]), "resources"), Path: "resources", Message: "resources require loading from a file"})
+		diagnostics = append(diagnostics, locatedDiagnostic(RuleRequired, mappingKeyPosition(sourcePath, documentRoot(documents[0]), "resources"), "resources", "resources require loading from a file"))
 	}
 	definitions, definitionDiagnostics := decodeDefinitions(documents[1:], root.APIVersion, sourcePath)
 	diagnostics = append(diagnostics, definitionDiagnostics...)
@@ -95,16 +119,16 @@ func decodeSource(reader io.Reader, sourcePath string) (Bundle, []Diagnostic) {
 
 func loadFS(filesystem fs.FS, manifestPath string) (Bundle, []Diagnostic, bool) {
 	if !fs.ValidPath(manifestPath) || manifestPath == "." {
-		return Bundle{}, []Diagnostic{{Source: Position{Path: manifestPath, Line: 1, Column: 1}, Message: "manifest path must be a relative file path"}}, false
+		return Bundle{}, []Diagnostic{locatedDiagnostic(RuleSource, Position{Path: manifestPath, Line: 1, Column: 1}, "", "manifest path must be a relative file path")}, false
 	}
 	data, err := fs.ReadFile(filesystem, manifestPath)
 	if err != nil {
-		return Bundle{}, []Diagnostic{{Source: Position{Path: manifestPath, Line: 1, Column: 1}, Message: err.Error()}}, false
+		return Bundle{}, []Diagnostic{locatedDiagnostic(RuleSource, Position{Path: manifestPath, Line: 1, Column: 1}, "", err.Error())}, false
 	}
 	documents, diagnostics := decodeYAML(data, manifestPath)
 	complete := len(diagnostics) == 0
 	if len(documents) == 0 {
-		return Bundle{}, append(diagnostics, Diagnostic{Source: Position{Path: manifestPath, Line: 1, Column: 1}, Message: "application manifest is empty"}), false
+		return Bundle{}, append(diagnostics, locatedDiagnostic(RuleSource, Position{Path: manifestPath, Line: 1, Column: 1}, "", "application manifest is empty")), false
 	}
 	root, rootDiagnostics, manifestComplete := decodeManifest(documents[0], manifestPath)
 	diagnostics = append(diagnostics, rootDiagnostics...)
@@ -125,19 +149,19 @@ func loadFS(filesystem fs.FS, manifestPath string) (Bundle, []Diagnostic, bool) 
 			position.Column = resourceNodes[i].Column
 		}
 		if !fs.ValidPath(resource) || resource == "." || strings.HasPrefix(resource, "/") {
-			diagnostics = append(diagnostics, Diagnostic{Source: position, Message: fmt.Sprintf("resource %q must be a relative path without '..'", resource)})
+			diagnostics = append(diagnostics, locatedDiagnostic(RuleSource, position, "", fmt.Sprintf("resource %q must be a relative path without '..'", resource)))
 			complete = false
 			continue
 		}
 		resourcePath := path.Join(base, resource)
 		if first, exists := seenResources[resourcePath]; exists {
-			diagnostics = append(diagnostics, Diagnostic{Source: position, Related: &first, Message: fmt.Sprintf("resource %q is listed more than once", resource)})
+			diagnostics = append(diagnostics, relatedDiagnostic(RuleDuplicate, position, &first, "", fmt.Sprintf("resource %q is listed more than once", resource)))
 			continue
 		}
 		seenResources[resourcePath] = position
 		resourceData, readErr := fs.ReadFile(filesystem, resourcePath)
 		if readErr != nil {
-			diagnostics = append(diagnostics, Diagnostic{Source: position, Message: fmt.Sprintf("resource %q: %v", resource, readErr)})
+			diagnostics = append(diagnostics, locatedDiagnostic(RuleSource, position, "", fmt.Sprintf("resource %q: %v", resource, readErr)))
 			complete = false
 			continue
 		}
@@ -157,14 +181,14 @@ func decodeManifest(document *yaml.Node, sourcePath string) (manifest, []Diagnos
 	position := nodePosition(sourcePath, document)
 	root := documentRoot(document)
 	if root == nil || root.Kind != yaml.MappingNode {
-		return manifest{}, []Diagnostic{{Source: position, Message: "application manifest must be a mapping"}}, false
+		return manifest{}, []Diagnostic{locatedDiagnostic(RuleSource, position, "", "application manifest must be a mapping")}, false
 	}
 	diagnostics := duplicateKeyDiagnostics(root, sourcePath, "")
 	allowed := map[string]bool{"apiVersion": true, "name": true, "resources": true}
 	for i := 0; i+1 < len(root.Content); i += 2 {
 		key := root.Content[i]
 		if !allowed[key.Value] {
-			diagnostics = append(diagnostics, Diagnostic{Source: nodePosition(sourcePath, key), Path: key.Value, Message: "unknown manifest field"})
+			diagnostics = append(diagnostics, locatedDiagnostic(RuleUnknownField, nodePosition(sourcePath, key), key.Value, "unknown manifest field"))
 		}
 	}
 	var result manifest
@@ -173,12 +197,12 @@ func decodeManifest(document *yaml.Node, sourcePath string) (manifest, []Diagnos
 		return result, diagnostics, false
 	}
 	if result.APIVersion == "" {
-		diagnostics = append(diagnostics, Diagnostic{Source: position, Path: "apiVersion", Message: "is required"})
+		diagnostics = append(diagnostics, locatedDiagnostic(RuleRequired, position, "apiVersion", "is required"))
 	} else if result.APIVersion != APIVersion {
-		diagnostics = append(diagnostics, Diagnostic{Source: mappingKeyPosition(sourcePath, root, "apiVersion"), Path: "apiVersion", Message: "must be " + APIVersion})
+		diagnostics = append(diagnostics, locatedDiagnostic(RuleVersion, mappingKeyPosition(sourcePath, root, "apiVersion"), "apiVersion", "must be "+APIVersion))
 	}
 	if strings.TrimSpace(result.Name) == "" {
-		diagnostics = append(diagnostics, Diagnostic{Source: position, Path: "name", Message: "is required"})
+		diagnostics = append(diagnostics, locatedDiagnostic(RuleRequired, position, "name", "is required"))
 	}
 	return result, diagnostics, true
 }
@@ -193,7 +217,7 @@ func decodeDefinitions(documents []*yaml.Node, apiVersion, sourcePath string) ([
 		}
 		position := nodePosition(sourcePath, root)
 		if root.Kind != yaml.MappingNode {
-			diagnostics = append(diagnostics, Diagnostic{Source: position, Message: "definition must be a mapping"})
+			diagnostics = append(diagnostics, locatedDiagnostic(RuleSource, position, "", "definition must be a mapping"))
 			continue
 		}
 		diagnostics = append(diagnostics, duplicateKeyDiagnostics(root, sourcePath, "")...)
@@ -213,7 +237,7 @@ func decodeDefinitions(documents []*yaml.Node, apiVersion, sourcePath string) ([
 			default:
 				var decoded any
 				if err := value.Decode(&decoded); err != nil {
-					diagnostics = append(diagnostics, Diagnostic{Source: nodePosition(sourcePath, value), Kind: definition.Kind, Name: definition.Metadata.Name, Path: key.Value, Message: err.Error()})
+					diagnostics = append(diagnostics, definitionSourceDiagnostic(RuleSource, nodePosition(sourcePath, value), definition.Kind, definition.Metadata.Name, key.Value, err.Error()))
 					continue
 				}
 				definition.Spec[key.Value] = decoded
@@ -221,10 +245,10 @@ func decodeDefinitions(documents []*yaml.Node, apiVersion, sourcePath string) ([
 			}
 		}
 		if definition.Kind == "" {
-			diagnostics = append(diagnostics, Diagnostic{Source: position, Name: definition.Metadata.Name, Path: "kind", Message: "is required"})
+			diagnostics = append(diagnostics, definitionSourceDiagnostic(RuleRequired, position, "", definition.Metadata.Name, "kind", "is required"))
 		}
 		if definition.Metadata.Name == "" {
-			diagnostics = append(diagnostics, Diagnostic{Source: position, Kind: definition.Kind, Path: "name", Message: "is required"})
+			diagnostics = append(diagnostics, definitionSourceDiagnostic(RuleRequired, position, definition.Kind, "", "name", "is required"))
 		}
 		definitions = append(definitions, definition)
 	}
@@ -256,7 +280,7 @@ func yamlDiagnostic(sourcePath string, err error) Diagnostic {
 	if len(match) == 2 {
 		line, _ = strconv.Atoi(match[1])
 	}
-	return Diagnostic{Source: Position{Path: sourcePath, Line: line, Column: 1}, Message: err.Error()}
+	return locatedDiagnostic(RuleSource, Position{Path: sourcePath, Line: line, Column: 1}, "", err.Error())
 }
 
 func duplicateKeyDiagnostics(node *yaml.Node, sourcePath, currentPath string) []Diagnostic {
@@ -272,7 +296,7 @@ func duplicateKeyDiagnostics(node *yaml.Node, sourcePath, currentPath string) []
 			}
 			position := nodePosition(sourcePath, key)
 			if first, exists := seen[key.Value]; exists {
-				diagnostics = append(diagnostics, Diagnostic{Source: position, Related: &first, Path: keyPath, Message: "duplicate field"})
+				diagnostics = append(diagnostics, relatedDiagnostic(RuleDuplicate, position, &first, keyPath, "duplicate field"))
 			} else {
 				seen[key.Value] = position
 			}
@@ -292,7 +316,7 @@ func duplicateDefinitionDiagnostics(definitions []Definition) []Diagnostic {
 	for _, definition := range definitions {
 		key := definition.Kind + "/" + definition.Metadata.Name
 		if first, exists := seen[key]; exists {
-			diagnostics = append(diagnostics, Diagnostic{Kind: definition.Kind, Name: definition.Metadata.Name, Path: "name", Source: definition.Source.Position, Related: &first, Message: "duplicate definition"})
+			diagnostics = append(diagnostics, relatedDefinitionDiagnostic(RuleDuplicate, definition.Source.Position, &first, definition.Kind, definition.Metadata.Name, "name", "duplicate definition"))
 			continue
 		}
 		seen[key] = definition.Source.Position
