@@ -280,14 +280,19 @@ func assertCase(ctx context.Context, database dbal.Database, app *appir.App, sui
 	out := []definition.Diagnostic{}
 	base := "tests." + test.Name + ".expect"
 	actualCode := errorCode(executionErr)
+	resultPresent := len(bytes.TrimSpace(test.Expect.Result)) > 0
 	if test.Expect.Error != "" {
 		if actualCode != test.Expect.Error {
 			out = append(out, assertionDiagnostic(suite.Name, base+".error", test.Expect.Error, actualCode))
 		}
+	} else if resultPresent {
+		if executionErr != nil {
+			out = append(out, assertionDiagnostic(suite.Name, base+".result", decodeExpected(test.Expect.Result), actualCode))
+		} else if expected := decodeExpected(test.Expect.Result); !matchesExpected(expected, result) {
+			out = append(out, assertionDiagnostic(suite.Name, base+".result", expected, result))
+		}
 	} else if executionErr != nil {
-		out = append(out, assertionDiagnostic(suite.Name, base+".result", decodeExpected(test.Expect.Result), actualCode))
-	} else if expected := decodeExpected(test.Expect.Result); !matchesExpected(expected, result) {
-		out = append(out, assertionDiagnostic(suite.Name, base+".result", expected, result))
+		out = append(out, assertionDiagnostic(suite.Name, base, "successful execution", actualCode))
 	}
 	if test.Expect.NoChanges {
 		after, err := entitySnapshot(ctx, database, app)

@@ -201,7 +201,7 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 		case "transition":
 			result, er = update(ctx, tx, app, e, input, a, request, now, true)
 		case "delete":
-			result, er = remove(ctx, tx, e, input)
+			result, er = remove(ctx, tx, e, input, now)
 		case "transaction":
 			result, er = execution.steps(ctx, tx, app, a, input, request)
 		case "register_local_user":
@@ -494,10 +494,9 @@ func update(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.En
 	}
 	return row, nil
 }
-func remove(ctx context.Context, tx dbal.Transaction, e appir.Entity, input map[string]any) (dbal.Row, error) {
+func remove(ctx context.Context, tx dbal.Transaction, e appir.Entity, input map[string]any, now string) (dbal.Row, error) {
 	id := fmt.Sprint(input["id"])
 	if e.SoftDelete {
-		now := time.Now().UTC().Format(time.RFC3339Nano)
 		_, er := tx.Update(ctx, dbal.Update{Table: e.Name, Values: map[string]dbal.Value{"deleted_at": now}, Where: dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id}, ExpectedRows: 1})
 		return dbal.Row{"id": id}, er
 	}

@@ -106,6 +106,38 @@ func TestTestSuiteCompilerBounds(t *testing.T) {
 	})
 }
 
+func TestActionTestSuiteRequiresOneAssertionButNotAResult(t *testing.T) {
+	definitions := actionAssertionSuiteDefinitions()
+	if result := compiler.Compile("test", 1, definitions); len(result.Diagnostics) != 0 {
+		t.Fatalf("side-effect-only assertion diagnostics=%v", result.Diagnostics)
+	}
+
+	definitions = actionAssertionSuiteDefinitions()
+	definitions[2].Spec["tests"].([]any)[0].(map[string]any)["expect"] = map[string]any{}
+	assertTestSuiteDiagnostic(t, compiler.Compile("test", 1, definitions).Diagnostics, "spec.tests.0.expect")
+
+	definitions = actionAssertionSuiteDefinitions()
+	expect := definitions[2].Spec["tests"].([]any)[0].(map[string]any)["expect"].(map[string]any)
+	expect["result"] = map[string]any{"id": "00000000-0000-4000-8000-000000000001"}
+	expect["error"] = "conflict"
+	assertTestSuiteDiagnostic(t, compiler.Compile("test", 1, definitions).Diagnostics, "spec.tests.0.expect")
+}
+
+func actionAssertionSuiteDefinitions() []definition.Definition {
+	const id = "00000000-0000-4000-8000-000000000001"
+	return []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "item"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "name", "type": "string", "required": true}}}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "item_update"}, Spec: map[string]any{"entity": "item", "operation": "update"}},
+		{APIVersion: definition.APIVersion, Kind: "TestSuite", Metadata: definition.Metadata{Name: "item_update_contract"}, Spec: map[string]any{
+			"target": map[string]any{"kind": "Action", "name": "item_update"},
+			"tests": []any{map[string]any{
+				"name": "asserts_only_change", "context": map[string]any{"time": "2026-09-01T10:00:00Z"}, "input": map[string]any{"id": id, "name": "changed"},
+				"expect": map[string]any{"changes": []any{map[string]any{"entity": "item", "id": id, "values": map[string]any{"name": "changed"}}}},
+			}},
+		}},
+	}
+}
+
 func assertTestSuiteDiagnostic(t *testing.T, diagnostics []definition.Diagnostic, path string) {
 	t.Helper()
 	for _, diagnostic := range diagnostics {

@@ -55,7 +55,7 @@ func TestActionSuitesUseProductionPolicyMutationEventAuditAndIsolation(t *testin
 	if err != nil || len(diagnostics) != 0 {
 		t.Fatalf("results=%+v diagnostics=%v err=%v", results, diagnostics, err)
 	}
-	if len(results) != 1 || results[0].Status != "passed" || len(results[0].Cases) != 3 {
+	if len(results) != 1 || results[0].Status != "passed" || len(results[0].Cases) != 4 {
 		t.Fatalf("results=%+v", results)
 	}
 }
@@ -209,6 +209,10 @@ func actionSuiteDefinitions() []definition.Definition {
 			"tests": []any{
 				actionCase("closes_again_in_fresh_state", "manager", map[string]any{"result": map[string]any{"id": ticketID, "status": "closed"}, "changes": []any{map[string]any{"entity": "ticket", "id": ticketID, "values": map[string]any{"status": "closed", "version": 2}}}, "events": []any{map[string]any{"topic": "ticket.closed", "payload": map[string]any{"ticket_id": ticketID}}}, "audit": []any{map[string]any{"action": "ticket_close", "actorId": actorID, "entity": "ticket", "entityId": ticketID, "success": success}}}),
 				actionCase("manager_closes_ticket", "manager", map[string]any{"result": map[string]any{"id": ticketID, "status": "closed"}, "changes": []any{map[string]any{"entity": "ticket", "id": ticketID, "values": map[string]any{"status": "closed", "version": 2}}}, "events": []any{map[string]any{"topic": "ticket.closed", "payload": map[string]any{"ticket_id": ticketID}}}, "audit": []any{map[string]any{"action": "ticket_close", "actorId": actorID, "entity": "ticket", "entityId": ticketID, "success": success}}}),
+				actionCase("side_effect_assertions_need_no_result", "manager", map[string]any{
+					"changes": []any{map[string]any{"entity": "ticket", "id": ticketID, "values": map[string]any{"status": "closed"}}},
+					"events":  []any{map[string]any{"topic": "ticket.closed", "payload": map[string]any{"ticket_id": ticketID}}},
+				}),
 				actionCase("viewer_is_denied", "viewer", map[string]any{"error": "conflict", "noChanges": true, "noEvents": true}),
 			},
 		}},

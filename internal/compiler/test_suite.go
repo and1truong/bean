@@ -142,8 +142,16 @@ func validateTestCase(app *appir.App, suite appir.TestSuite, test appir.TestCase
 		out = append(out, testSuiteDiagnostic(suite.Name, path+".fixtures", fmt.Sprintf("exceeds %d fixture records", testsuite.MaxFixtures)))
 	}
 	resultPresent := len(bytes.TrimSpace(test.Expect.Result)) > 0
-	if resultPresent == (test.Expect.Error != "") {
-		out = append(out, testSuiteDiagnostic(suite.Name, path+".expect", "must specify exactly one of result or error"))
+	if suite.Target.Kind == "Rule" && resultPresent == (test.Expect.Error != "") {
+		out = append(out, testSuiteDiagnostic(suite.Name, path+".expect", "Rule cases must specify exactly one of result or error"))
+	}
+	if suite.Target.Kind == "Action" {
+		if resultPresent && test.Expect.Error != "" {
+			out = append(out, testSuiteDiagnostic(suite.Name, path+".expect", "Action cases cannot combine result and error"))
+		}
+		if !resultPresent && test.Expect.Error == "" && len(test.Expect.Changes) == 0 && len(test.Expect.Events) == 0 && len(test.Expect.Audit) == 0 && !test.Expect.NoChanges && !test.Expect.NoEvents {
+			out = append(out, testSuiteDiagnostic(suite.Name, path+".expect", "Action cases must specify at least one assertion"))
+		}
 	}
 	if test.Expect.Error != "" && !nameSet(testsuite.ErrorCodes)[test.Expect.Error] {
 		out = append(out, testSuiteDiagnostic(suite.Name, path+".expect.error", "is not a stable semantic test error code"))
@@ -304,7 +312,7 @@ func validateRuleTestCase(app *appir.App, suite appir.TestSuite, test appir.Test
 			out = append(out, testSuiteDiagnostic(suite.Name, path+".expect.result", "does not match target Rule result type"))
 		}
 	}
-	if len(test.Expect.Changes) > 0 || len(test.Expect.Events) > 0 || len(test.Expect.Audit) > 0 {
+	if len(test.Expect.Changes) > 0 || len(test.Expect.Events) > 0 || len(test.Expect.Audit) > 0 || test.Expect.NoChanges || test.Expect.NoEvents {
 		out = append(out, testSuiteDiagnostic(suite.Name, path+".expect", "Rule cases cannot assert Action side effects"))
 	}
 	return out
