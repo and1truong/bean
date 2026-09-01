@@ -450,6 +450,10 @@ func validateActionTestCase(app *appir.App, suite appir.TestSuite, test appir.Te
 			out = append(out, testSuiteDiagnostic(suite.Name, path+".input."+name, "derived Action input is server-owned"))
 			continue
 		}
+		if input.Type == "file" && test.Input[name] != nil {
+			out = append(out, testSuiteDiagnostic(suite.Name, path+".input."+name, "file Action inputs are not representable in TestSuite metadata"))
+			continue
+		}
 		if err := field.Validate(input, test.Input[name]); err != nil {
 			out = append(out, testSuiteDiagnostic(suite.Name, path+".input."+name, err.Error()))
 		}
