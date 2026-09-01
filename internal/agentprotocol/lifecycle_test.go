@@ -1,11 +1,15 @@
 package agentprotocol_test
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/beanruntime/bean/internal/agentprotocol"
+	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/compiler"
 	"github.com/beanruntime/bean/internal/definition"
+	"github.com/beanruntime/bean/internal/rule"
 )
 
 func TestLifecycleInspectionReferencesAndSemanticDiff(t *testing.T) {
@@ -36,6 +40,41 @@ func TestLifecycleInspectionReferencesAndSemanticDiff(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("changes=%+v", changes)
+	}
+}
+
+func TestRuleInspectionReferencesRedactionAndSemanticDiff(t *testing.T) {
+	app := compiler.Compile("test", 1, ruleProtocolDefinitions(t)).App
+	value, references, exists := compiler.InspectDefinition(app, "Rule", "minimum_total")
+	if !exists || value == nil || !hasReference(references, "entity", "Entity", "invoice") {
+		t.Fatalf("value=%+v references=%+v", value, references)
+	}
+	_, actionReferences, exists := compiler.InspectDefinition(app, "Action", "update_invoice")
+	if !exists || !hasReference(actionReferences, "when", "Rule", "minimum_total") {
+		t.Fatalf("action references=%+v", actionReferences)
+	}
+	redacted, _ := json.Marshal(agentprotocol.RedactedApp(app))
+	if strings.Contains(string(redacted), "1234567") || !strings.Contains(string(redacted), "REDACTED") {
+		t.Fatalf("redacted=%s", redacted)
+	}
+	candidate, _ := app.Clone()
+	candidate.Rules["minimum_total"] = appir.Rule{Name: "minimum_total", Entity: "invoice", Result: rule.Boolean, Expression: rule.Expression{Source: "literal", Literal: json.RawMessage("false")}}
+	changes := agentprotocol.SemanticDiff(app, candidate)
+	found := false
+	for _, change := range changes {
+		found = found || strings.HasPrefix(change.Path, "rules.minimum_total.expression")
+	}
+	if !found {
+		t.Fatalf("changes=%+v", changes)
+	}
+}
+
+func ruleProtocolDefinitions(t *testing.T) []definition.Definition {
+	t.Helper()
+	return []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "invoice"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "total", "type": "money"}}}},
+		{APIVersion: definition.APIVersion, Kind: "Rule", Metadata: definition.Metadata{Name: "minimum_total"}, Spec: map[string]any{"entity": "invoice", "result": "boolean", "expression": map[string]any{"op": "gt", "args": []any{map[string]any{"source": "this", "path": "total"}, map[string]any{"source": "literal", "literal": 1234567}}}}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "update_invoice"}, Spec: map[string]any{"entity": "invoice", "operation": "update", "when": "minimum_total"}},
 	}
 }
 

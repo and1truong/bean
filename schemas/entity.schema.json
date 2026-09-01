@@ -104,6 +104,12 @@
         "type": "array"
       },
       "type": "array"
+    },
+    "validations": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
     }
   },
   "required": [

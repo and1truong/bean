@@ -28,7 +28,10 @@ metadata:
   name: order_subtotal
 spec:
   entity: order
-  result: money
+  result: number
+  input:
+    quantity: {type: integer}
+    unit_price: {type: money}
   expression:
     op: multiply
     args:
@@ -37,7 +40,8 @@ spec:
 ```
 
 - `entity` is optional; when present it types `this.<field>` and restricts consumers to that Entity.
-- `result` is required and uses Bean field types. Sensitive, file, relation, password, and arbitrary executable results are forbidden.
+- `input` declares the Bean scalar field types available through `input.<field>`; sensitive, file, relation, password, and arbitrary executable inputs are forbidden.
+- `result` is required and uses the closed Rule types `boolean`, `integer`, `number`, `string`, `date`, `datetime`, or `strings`. Consumers check compatibility with their Bean field type; for example, `money` accepts `number`.
 - An expression node is either a leaf (`source` plus `path`, or `literal`) or a known operator with ordered `args`; mixed/unknown node shapes fail compilation.
 - AppIR stores the canonical AST, not source formatting, so inspect and semantic diff are deterministic.
 

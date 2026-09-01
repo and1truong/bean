@@ -19,6 +19,7 @@ import (
 	"github.com/beanruntime/bean/internal/migration"
 	"github.com/beanruntime/bean/internal/page"
 	"github.com/beanruntime/bean/internal/policy"
+	"github.com/beanruntime/bean/internal/rule"
 	"github.com/beanruntime/bean/internal/valuesource"
 )
 
@@ -35,6 +36,8 @@ type actionSource struct {
 	Output                                map[string]appir.Field
 	Steps                                 []stepSource
 	Transitions                           map[string][]string
+	When                                  string
+	Derive                                map[string]string
 }
 type stepSource struct {
 	Op, Result, Entity, View, StateField, Event, Job string
@@ -523,7 +526,7 @@ type validationState struct {
 func validate(a *appir.App) []definition.Diagnostic {
 	state := &validationState{routes: map[string]string{}}
 	out := []definition.Diagnostic{}
-	for _, kind := range []string{"Theme", "DemoSeed", "Filter", "View", "Entity", "Lifecycle", "Action", "Webform", "Policy", "Block", "LocalRegistration", "Panel", "Page", "Job", "Menu", "AdminResource", "Role"} {
+	for _, kind := range []string{"Theme", "DemoSeed", "Filter", "View", "Entity", "Lifecycle", "Rule", "Action", "Webform", "Policy", "Block", "LocalRegistration", "Panel", "Page", "Job", "Menu", "AdminResource", "Role"} {
 		registered, _ := definitionKindRegistry().Lookup(kind)
 		out = append(out, registered.Validate(a, state)...)
 	}
@@ -801,6 +804,23 @@ func validateEntities(a *appir.App, _ *validationState) []definition.Diagnostic 
 	out := []definition.Diagnostic{}
 	allowedRelations := map[string]bool{"one-to-one": true, "one-to-many": true, "many-to-one": true, "many-to-many": true}
 	for name, entity := range a.Entities {
+		for _, validationName := range keys(entity.Validations) {
+			path := "spec.validations." + validationName
+			item, exists := a.Rules[entity.Validations[validationName]]
+			if !exists {
+				out = append(out, missingReferenceDiagnostic("Entity", name, path, "Rule", entity.Validations[validationName]))
+				continue
+			}
+			if item.Entity != name {
+				out = append(out, ruleConsumerDiagnostic("Entity", name, path, "validation Rule entity does not match Entity"))
+			}
+			if item.Result != rule.Boolean {
+				out = append(out, ruleConsumerDiagnostic("Entity", name, path, "validation Rule must return boolean"))
+			}
+			if len(item.Input) > 0 {
+				out = append(out, ruleConsumerDiagnostic("Entity", name, path, "validation Rule cannot declare Action inputs"))
+			}
+		}
 		if entity.Policy != "" {
 			if _, ok := a.Policies[entity.Policy]; !ok {
 				out = append(out, missingReferenceDiagnostic("Entity", name, "spec.policy", "Policy", entity.Policy))
@@ -912,9 +932,100 @@ func validateLifecycles(a *appir.App, _ *validationState) []definition.Diagnosti
 	return out
 }
 
+func validateRules(a *appir.App, _ *validationState) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
+	for _, name := range keys(a.Rules) {
+		item := a.Rules[name]
+		if item.Entity != "" {
+			if _, exists := a.Entities[item.Entity]; !exists {
+				out = append(out, missingReferenceDiagnostic("Rule", name, "spec.entity", "Entity", item.Entity))
+				continue
+			}
+		}
+		if !validRuleType(item.Result) {
+			out = append(out, ruleDefinitionDiagnostic(name, "spec.result", "result must be a supported Rule type"))
+			continue
+		}
+		inputTypes := map[string]rule.Type{}
+		for _, inputName := range keys(item.Input) {
+			input := item.Input[inputName]
+			path := "spec.input." + inputName
+			if input.Name != inputName {
+				out = append(out, ruleDefinitionDiagnostic(name, path+".name", "must match its input key"))
+			}
+			inputType, supported := rule.TypeForField(input.Type)
+			if !supported || input.Sensitive {
+				out = append(out, ruleDefinitionDiagnostic(name, path+".type", "Rule inputs must use a non-sensitive scalar field type"))
+				continue
+			}
+			inputTypes[inputName] = inputType
+		}
+		thisTypes := map[string]rule.Type{}
+		if entity, exists := a.Entities[item.Entity]; exists {
+			thisTypes = ruleTypesForEntity(entity)
+		}
+		inferred, err := rule.Check(item.Expression, rule.TypeEnvironment{This: thisTypes, Input: inputTypes})
+		if err != nil {
+			var expressionError *rule.Error
+			path := "spec.expression"
+			if errors.As(err, &expressionError) {
+				path = "spec." + expressionError.Path
+			}
+			out = append(out, ruleDefinitionDiagnostic(name, path, err.Error()))
+			continue
+		}
+		if !rule.ResultCompatible(item.Result, inferred) {
+			out = append(out, ruleDefinitionDiagnostic(name, "spec.result", fmt.Sprintf("declares %s but expression returns %s", item.Result, inferred)))
+		}
+	}
+	return out
+}
+
+func validRuleType(value rule.Type) bool {
+	for _, candidate := range []rule.Type{rule.Boolean, rule.Integer, rule.Number, rule.String, rule.Date, rule.DateTime, rule.Strings} {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+func ruleTypesForEntity(entity appir.Entity) map[string]rule.Type {
+	out := map[string]rule.Type{
+		"id": rule.String, "created_at": rule.DateTime, "updated_at": rule.DateTime, "version": rule.Integer,
+	}
+	for _, field := range entity.Fields {
+		if field.Sensitive {
+			continue
+		}
+		if fieldType, supported := rule.TypeForField(field.Type); supported {
+			out[field.Name] = fieldType
+		}
+	}
+	if entity.Owner {
+		out["owner_id"] = rule.String
+	}
+	if entity.Tenant {
+		out["tenant_id"] = rule.String
+	}
+	if entity.SoftDelete {
+		out["deleted_at"] = rule.DateTime
+	}
+	return out
+}
+
+func ruleDefinitionDiagnostic(name, path, message string) definition.Diagnostic {
+	return definition.NewDiagnostic(definition.RuleExpression, "Rule", name, path, message)
+}
+
+func ruleConsumerDiagnostic(kind, name, path, message string) definition.Diagnostic {
+	return definition.NewDiagnostic(definition.RuleExpression, kind, name, path, message)
+}
+
 func validateActions(a *appir.App, _ *validationState) []definition.Diagnostic {
 	out := []definition.Diagnostic{}
 	for name, action := range a.Actions {
+		out = append(out, validateActionRules(a, name, action)...)
 		if action.Operation == "register_local_user" {
 			if action.DefaultRole == "" {
 				out = append(out, requiredDiagnostic("Action", name, "spec.defaultRole", "is required"))
@@ -1129,6 +1240,60 @@ func validateActions(a *appir.App, _ *validationState) []definition.Diagnostic {
 					}
 				}
 			}
+		}
+	}
+	return out
+}
+
+func validateActionRules(a *appir.App, name string, action appir.Action) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
+	if action.When != "" {
+		item, exists := a.Rules[action.When]
+		if !exists {
+			out = append(out, missingReferenceDiagnostic("Action", name, "spec.when", "Rule", action.When))
+		} else {
+			out = append(out, validateActionRuleBinding(name, "spec.when", action, item)...)
+			if item.Result != rule.Boolean {
+				out = append(out, ruleConsumerDiagnostic("Action", name, "spec.when", "Action guard Rule must return boolean"))
+			}
+		}
+	}
+	for _, fieldName := range keys(action.Derive) {
+		path := "spec.derive." + fieldName
+		item, exists := a.Rules[action.Derive[fieldName]]
+		if !exists {
+			out = append(out, missingReferenceDiagnostic("Action", name, path, "Rule", action.Derive[fieldName]))
+			continue
+		}
+		out = append(out, validateActionRuleBinding(name, path, action, item)...)
+		field, exists := action.Input[fieldName]
+		if !exists {
+			out = append(out, missingFieldDiagnostic("Action", name, path, fieldName, false))
+			continue
+		}
+		targetType, supported := rule.TypeForField(field.Type)
+		if !supported || !rule.ResultCompatible(targetType, item.Result) {
+			out = append(out, ruleConsumerDiagnostic("Action", name, path, "derived Rule result is incompatible with the Action input"))
+		}
+	}
+	return out
+}
+
+func validateActionRuleBinding(actionName, path string, action appir.Action, item appir.Rule) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
+	if item.Entity != "" && item.Entity != action.Entity {
+		out = append(out, ruleConsumerDiagnostic("Action", actionName, path, "Rule entity does not match Action entity"))
+	}
+	for _, inputName := range keys(item.Input) {
+		actionInput, exists := action.Input[inputName]
+		if !exists {
+			out = append(out, missingFieldDiagnostic("Action", actionName, path, inputName, false))
+			continue
+		}
+		expected, expectedOK := rule.TypeForField(item.Input[inputName].Type)
+		actual, actualOK := rule.TypeForField(actionInput.Type)
+		if !expectedOK || !actualOK || !rule.ResultCompatible(expected, actual) || !rule.ResultCompatible(actual, expected) {
+			out = append(out, ruleConsumerDiagnostic("Action", actionName, path, "Rule input "+inputName+" is incompatible with the Action input"))
 		}
 	}
 	return out

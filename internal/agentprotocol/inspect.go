@@ -1,13 +1,16 @@
 package agentprotocol
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"sort"
 	"strings"
 
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/expr"
+	"github.com/beanruntime/bean/internal/rule"
 	"github.com/beanruntime/bean/internal/valuesource"
 )
 
@@ -55,6 +58,10 @@ func RedactedApp(source *appir.App) *appir.App {
 		}
 		redacted.Actions[name] = item
 	}
+	for name, item := range redacted.Rules {
+		redactRuleExpression(&item.Expression)
+		redacted.Rules[name] = item
+	}
 	for name, item := range redacted.Policies {
 		redactExpression(item.Condition)
 		redacted.Policies[name] = item
@@ -64,6 +71,16 @@ func RedactedApp(source *appir.App) *appir.App {
 		redacted.Webforms[name] = item
 	}
 	return redacted
+}
+
+func redactRuleExpression(expression *rule.Expression) {
+	if expression.Source == "literal" {
+		digest := sha256.Sum256(expression.Literal)
+		expression.Literal = json.RawMessage(fmt.Sprintf(`"[REDACTED sha256:%x]"`, digest[:8]))
+	}
+	for index := range expression.Args {
+		redactRuleExpression(&expression.Args[index])
+	}
 }
 
 func redactExpression(expression *expr.Expr) {

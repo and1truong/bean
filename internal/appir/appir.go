@@ -5,11 +5,13 @@ import (
 	"fmt"
 
 	"github.com/beanruntime/bean/internal/expr"
+	"github.com/beanruntime/bean/internal/rule"
 )
 
 const (
-	LegacyFormat  = "bean/appir/v1"
-	CurrentFormat = "bean/appir/v2"
+	LegacyFormat    = "bean/appir/v1"
+	LifecycleFormat = "bean/appir/v2"
+	CurrentFormat   = "bean/appir/v3"
 )
 
 type Field struct {
@@ -25,6 +27,7 @@ type Entity struct {
 	Fields                    []Field
 	Owner, Tenant, SoftDelete bool
 	Indexes, Unique           [][]string
+	Validations               map[string]string
 }
 type Display struct{ Type, Route string }
 type FilterStep struct{ Type string }
@@ -65,6 +68,14 @@ type Action struct {
 	Output                          map[string]Field
 	Steps                           []Step
 	Transitions                     map[string][]string
+	When                            string
+	Derive                          map[string]string
+}
+type Rule struct {
+	Name, Entity string
+	Result       rule.Type
+	Input        map[string]Field
+	Expression   rule.Expression
 }
 type Lifecycle struct {
 	Name, Entity, StateField, Initial string
@@ -191,6 +202,7 @@ type App struct {
 	Views             map[string]View
 	Actions           map[string]Action
 	Lifecycles        map[string]Lifecycle
+	Rules             map[string]Rule
 	Policies          map[string]Policy
 	Webforms          map[string]Webform
 	Blocks            map[string]Block
@@ -208,10 +220,10 @@ type App struct {
 }
 
 func Empty() *App {
-	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
+	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Rules: map[string]Rule{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
 }
 func (a *App) ValidateFormat() error {
-	if a.FormatVersion != LegacyFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != LegacyFormat && a.FormatVersion != LifecycleFormat && a.FormatVersion != CurrentFormat {
 		return fmt.Errorf("unsupported AppIR format %q", a.FormatVersion)
 	}
 	if a.FormatVersion == LegacyFormat {
@@ -221,6 +233,21 @@ func (a *App) ValidateFormat() error {
 		for _, action := range a.Actions {
 			if action.Lifecycle != "" {
 				return fmt.Errorf("AppIR format %q cannot contain Lifecycle-bound Actions", a.FormatVersion)
+			}
+		}
+	}
+	if a.FormatVersion != CurrentFormat {
+		if len(a.Rules) > 0 {
+			return fmt.Errorf("AppIR format %q cannot contain Rule definitions", a.FormatVersion)
+		}
+		for _, entity := range a.Entities {
+			if len(entity.Validations) > 0 {
+				return fmt.Errorf("AppIR format %q cannot contain Rule-bound Entity validations", a.FormatVersion)
+			}
+		}
+		for _, action := range a.Actions {
+			if action.When != "" || len(action.Derive) > 0 {
+				return fmt.Errorf("AppIR format %q cannot contain Rule-bound Actions", a.FormatVersion)
 			}
 		}
 	}

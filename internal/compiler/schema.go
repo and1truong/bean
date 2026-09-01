@@ -12,6 +12,7 @@ import (
 	"github.com/beanruntime/bean/internal/block"
 	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/field"
+	"github.com/beanruntime/bean/internal/rule"
 )
 
 const JSONSchemaVersion = "https://json-schema.org/draft/2020-12/schema"
@@ -36,6 +37,12 @@ type Capabilities struct {
 	ThemePresets            []string `json:"themePresets"`
 	ThemeAccents            []string `json:"themeAccents"`
 	DemoSeedProfiles        []string `json:"demoSeedProfiles"`
+	RuleOperators           []string `json:"ruleOperators"`
+	RuleSources             []string `json:"ruleSources"`
+	MaxRuleNodes            int      `json:"maxRuleNodes"`
+	MaxRuleDepth            int      `json:"maxRuleDepth"`
+	MaxRuleLiteralBytes     int      `json:"maxRuleLiteralBytes"`
+	MaxRuleValueBytes       int      `json:"maxRuleValueBytes"`
 }
 
 func AgentCapabilities(cliAPIVersion string) Capabilities {
@@ -49,7 +56,7 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 		AgentProtocolAPIVersion: agentProtocolAPIVersion,
 		AppIRFormat:             appir.CurrentFormat,
 		DefinitionKinds:         definitionKindRegistry().Names(),
-		SemanticPrimitives:      []string{"Lifecycle"},
+		SemanticPrimitives:      []string{"Lifecycle", "Rule"},
 		FieldTypes:              field.Types(),
 		ActionOperations:        actionop.Names(),
 		ActionSteps:             actionstep.Names(),
@@ -63,6 +70,12 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 		ThemePresets:            themePresetNames(),
 		ThemeAccents:            themeAccentNames(),
 		DemoSeedProfiles:        demoSeedProfileNames(),
+		RuleOperators:           rule.Operators(),
+		RuleSources:             rule.Sources(),
+		MaxRuleNodes:            rule.MaxNodes,
+		MaxRuleDepth:            rule.MaxDepth,
+		MaxRuleLiteralBytes:     rule.MaxLiteralBytes,
+		MaxRuleValueBytes:       rule.MaxValueBytes,
 	}
 }
 
@@ -135,6 +148,19 @@ func definitionSchema(kind string, specification reflect.Type) map[string]any {
 	}
 	if len(builder.definitions) > 0 {
 		document["$defs"] = builder.definitions
+	}
+	if kind == "Rule" {
+		properties["result"] = map[string]any{"type": "string", "enum": []string{string(rule.Boolean), string(rule.Date), string(rule.DateTime), string(rule.Integer), string(rule.Number), string(rule.String), string(rule.Strings)}}
+		document["required"] = []string{"kind", "name", "result", "expression"}
+		for name, raw := range builder.definitions {
+			if !strings.HasSuffix(name, "internal_rule_Expression") {
+				continue
+			}
+			expression := raw.(map[string]any)
+			expressionProperties := expression["properties"].(map[string]any)
+			expressionProperties["op"] = map[string]any{"type": "string", "enum": rule.Operators()}
+			expressionProperties["source"] = map[string]any{"type": "string", "enum": rule.Sources()}
+		}
 	}
 	return document
 }

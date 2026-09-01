@@ -6,8 +6,8 @@ Status values: `pending`, `active`, `done`. A milestone is `done` only when its 
 | --- | --- | --- | --- |
 | 0 | Freeze named Rule AST, sources/operators, consumers, bounds, examples, and compatibility | root goal plus compiler/runtime fixture plan | done |
 | 1 | Typed bounded deterministic Rule core | type/eval/replay/operator/source/resource-limit tests | done |
-| 2 | Rule Definition, AppIR, schema, capabilities, inspect, references, diff, and compatibility | compiler/schema/Agent Protocol/AppIR tests | active |
-| 3 | Action guards, simultaneous derived inputs, and Entity invariants | Policy/order/rollback/idempotency/context tests | pending |
+| 2 | Rule Definition, AppIR, schema, capabilities, inspect, references, diff, and compatibility | compiler/schema/Agent Protocol/AppIR tests | done |
+| 3 | Action guards, simultaneous derived inputs, and Entity invariants | Policy/order/rollback/idempotency/context tests | active |
 | 4 | Three metadata-only reference slices and backend/restart parity | source journeys plus SQLite/PostgreSQL/crash tests | pending |
 | 5 | Documentation, v0.10 version cut, terminal gates, CI, clean review, and merge | all gates, CI, Codex review, merged PR | pending |
 

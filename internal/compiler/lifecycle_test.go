@@ -37,7 +37,7 @@ func TestLifecycleCompilesCanonicalSemanticModel(t *testing.T) {
 	if !containsString(capabilities.DefinitionKinds, "Lifecycle") {
 		t.Fatalf("definition kinds=%v", capabilities.DefinitionKinds)
 	}
-	if !reflect.DeepEqual(capabilities.SemanticPrimitives, []string{"Lifecycle"}) {
+	if !reflect.DeepEqual(capabilities.SemanticPrimitives, []string{"Lifecycle", "Rule"}) {
 		t.Fatalf("semantic primitives=%v", capabilities.SemanticPrimitives)
 	}
 	if compiler.DefinitionSchemas()["Lifecycle"] == nil {

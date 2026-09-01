@@ -1,0 +1,154 @@
+{
+  "$defs": {
+    "github_com_beanruntime_bean_internal_appir_Field": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "relation": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_Relation"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "sensitive": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": "string"
+        },
+        "unique": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_Relation": {
+      "additionalProperties": false,
+      "properties": {
+        "entity": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "targetField": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_rule_Expression": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "items": {
+            "$ref": "#/$defs/github_com_beanruntime_bean_internal_rule_Expression"
+          },
+          "type": "array"
+        },
+        "literal": {},
+        "op": {
+          "enum": [
+            "add",
+            "and",
+            "concat",
+            "divide",
+            "eq",
+            "gt",
+            "gte",
+            "if",
+            "is_not_null",
+            "is_null",
+            "lower",
+            "lt",
+            "lte",
+            "multiply",
+            "ne",
+            "not",
+            "or",
+            "subtract",
+            "trim",
+            "upper"
+          ],
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "context",
+            "input",
+            "literal",
+            "tenant",
+            "this",
+            "user"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$id": "https://bean.build/schemas/rule.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "bean/v1alpha1"
+    },
+    "entity": {
+      "type": "string"
+    },
+    "expression": {
+      "$ref": "#/$defs/github_com_beanruntime_bean_internal_rule_Expression"
+    },
+    "input": {
+      "additionalProperties": {
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_Field"
+      },
+      "type": "object"
+    },
+    "kind": {
+      "const": "Rule"
+    },
+    "name": {
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "result": {
+      "enum": [
+        "boolean",
+        "date",
+        "datetime",
+        "integer",
+        "number",
+        "string",
+        "strings"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "name",
+    "result",
+    "expression"
+  ],
+  "title": "Bean Rule definition",
+  "type": "object"
+}
