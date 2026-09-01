@@ -107,7 +107,7 @@ func TestLifecyclePlanningUsesOnlyExecutableActionEdges(t *testing.T) {
 	}
 	app.Actions["enter_dead_end"] = appir.Action{Name: "enter_dead_end", Entity: "item", Operation: "transition", Lifecycle: "flow", Transitions: map[string][]string{"initial": {"dead_end"}}}
 	app.Actions["take_route"] = appir.Action{Name: "take_route", Entity: "item", Operation: "transition", Lifecycle: "flow", Transitions: map[string][]string{"initial": {"route"}, "route": {"done"}}}
-	plans, err := planLifecycleMoves(app, []Record{{Entity: "item", Values: map[string]any{"status": "done"}}})
+	plans, err := planLifecycleMoves(app, []Record{{Entity: "item", ID: "00000000-0000-4000-8000-000000000001", Values: map[string]any{"status": "done"}}})
 	if err != nil || !reflect.DeepEqual(plans, [][]lifecycleMove{{{Action: "take_route", State: "route"}, {Action: "take_route", State: "done"}}}) {
 		t.Fatalf("plans=%+v err=%v", plans, err)
 	}
@@ -130,10 +130,68 @@ func TestLifecyclePlanningUsesTransactionActionEdges(t *testing.T) {
 			{Field: "status", Value: appir.ValueBinding{Source: "input", Path: "next_state"}},
 		}}},
 	}
-	plans, err := planLifecycleMoves(app, []Record{{Entity: "item", Values: map[string]any{"status": "done"}}})
+	plans, err := planLifecycleMoves(app, []Record{{Entity: "item", ID: "00000000-0000-4000-8000-000000000001", Values: map[string]any{"status": "done"}}})
 	want := [][]lifecycleMove{{{Action: "finish_item", State: "done", IDInput: "item_id", StateInput: "next_state"}}}
 	if err != nil || !reflect.DeepEqual(plans, want) {
 		t.Fatalf("plans=%+v want=%+v err=%v", plans, want, err)
+	}
+}
+
+func TestLifecyclePlanningRejectsUnsafeTransactionActions(t *testing.T) {
+	lifecycle := appir.Lifecycle{
+		Name: "flow", Entity: "item", StateField: "status", Initial: "initial",
+		Transitions: map[string][]string{"initial": {"done"}},
+	}
+	base := appir.Action{
+		Name: "finish_item", Entity: "item", Operation: "transaction", Lifecycle: "flow",
+		Input: map[string]appir.Field{
+			"item_id":    {Name: "item_id", Type: "uuid", Required: true},
+			"next_state": {Name: "next_state", Type: "enum", Required: true, Options: []string{"initial", "done"}},
+		},
+		Steps: []appir.Step{{Op: "transition", Values: []appir.Assignment{
+			{Field: "id", Value: appir.ValueBinding{Source: "input", Path: "item_id"}},
+			{Field: "status", Value: appir.ValueBinding{Source: "input", Path: "next_state"}},
+		}}},
+	}
+	tests := map[string]appir.Action{
+		"extra mutation": func() appir.Action {
+			action := base
+			action.Steps = append(append([]appir.Step{}, base.Steps...), appir.Step{Op: "create"})
+			return action
+		}(),
+		"invalid id input": func() appir.Action {
+			action := base
+			action.Input = map[string]appir.Field{
+				"item_id":    {Name: "item_id", Type: "integer", Required: true},
+				"next_state": base.Input["next_state"],
+			}
+			return action
+		}(),
+		"invalid state input": func() appir.Action {
+			action := base
+			action.Input = map[string]appir.Field{
+				"item_id":    base.Input["item_id"],
+				"next_state": {Name: "next_state", Type: "enum", Required: true, Options: []string{"initial"}},
+			}
+			return action
+		}(),
+		"legacy entity override": func() appir.Action {
+			action := base
+			action.Steps = append([]appir.Step{}, base.Steps...)
+			action.Steps[0].Values = append(action.Steps[0].Values, appir.Assignment{Field: "entity", Value: appir.ValueBinding{Source: "literal", Literal: []byte(`"other"`)}})
+			return action
+		}(),
+	}
+	for name, actionDefinition := range tests {
+		t.Run(name, func(t *testing.T) {
+			app := appir.Empty()
+			app.Lifecycles["flow"] = lifecycle
+			app.Actions["finish_item"] = actionDefinition
+			_, err := planLifecycleMoves(app, []Record{{Entity: "item", ID: "00000000-0000-4000-8000-000000000001", Values: map[string]any{"status": "done"}}})
+			if err == nil || !strings.Contains(err.Error(), "no executable Action path") {
+				t.Fatalf("error=%v", err)
+			}
+		})
 	}
 }
 

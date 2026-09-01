@@ -14,6 +14,7 @@ import (
 	"github.com/beanruntime/bean/internal/appir"
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/dbal"
+	fieldpkg "github.com/beanruntime/bean/internal/field"
 	"github.com/beanruntime/bean/internal/view"
 )
 
@@ -158,7 +159,7 @@ func planLifecycleMoves(app *appir.App, records []Record) ([][]lifecycleMove, er
 		if desiredState == lifecycle.Initial {
 			continue
 		}
-		path, executable := lifecycleExecutablePath(app, lifecycle, desiredState)
+		path, executable := lifecycleExecutablePath(app, lifecycle, record.ID, desiredState)
 		if !executable {
 			return nil, fmt.Errorf("Lifecycle %s has no executable Action path from %s to generated state %s", lifecycle.Name, lifecycle.Initial, desiredState)
 		}
@@ -216,7 +217,7 @@ func demoLifecycleForEntity(app *appir.App, entity string) (appir.Lifecycle, boo
 	return appir.Lifecycle{}, false
 }
 
-func lifecycleExecutablePath(app *appir.App, lifecycle appir.Lifecycle, target string) ([]lifecycleMove, bool) {
+func lifecycleExecutablePath(app *appir.App, lifecycle appir.Lifecycle, recordID, target string) ([]lifecycleMove, bool) {
 	if target == lifecycle.Initial {
 		return []lifecycleMove{}, true
 	}
@@ -235,7 +236,7 @@ func lifecycleExecutablePath(app *appir.App, lifecycle appir.Lifecycle, target s
 			if _, visited := previous[state]; visited {
 				continue
 			}
-			move, executable := lifecycleTransitionMove(app, lifecycle, from, state)
+			move, executable := lifecycleTransitionMove(app, lifecycle, recordID, from, state)
 			if !executable {
 				continue
 			}
@@ -258,7 +259,7 @@ func lifecycleExecutablePath(app *appir.App, lifecycle appir.Lifecycle, target s
 	return nil, false
 }
 
-func lifecycleTransitionMove(app *appir.App, lifecycle appir.Lifecycle, from, target string) (lifecycleMove, bool) {
+func lifecycleTransitionMove(app *appir.App, lifecycle appir.Lifecycle, recordID, from, target string) (lifecycleMove, bool) {
 	names := make([]string, 0, len(app.Actions))
 	for name := range app.Actions {
 		names = append(names, name)
@@ -281,7 +282,7 @@ func lifecycleTransitionMove(app *appir.App, lifecycle appir.Lifecycle, from, ta
 			continue
 		}
 		if actionDefinition.Operation == "transaction" {
-			idInput, stateInput, compatible := transactionLifecycleInputs(actionDefinition, lifecycle, target)
+			idInput, stateInput, compatible := transactionLifecycleInputs(actionDefinition, lifecycle, recordID, target)
 			if compatible {
 				return lifecycleMove{Action: name, State: target, IDInput: idInput, StateInput: stateInput}, true
 			}
@@ -300,14 +301,14 @@ func lifecycleTransitionMove(app *appir.App, lifecycle appir.Lifecycle, from, ta
 	return lifecycleMove{}, false
 }
 
-func transactionLifecycleInputs(actionDefinition appir.Action, lifecycle appir.Lifecycle, target string) (string, string, bool) {
+func transactionLifecycleInputs(actionDefinition appir.Action, lifecycle appir.Lifecycle, recordID, target string) (string, string, bool) {
+	if len(actionDefinition.Steps) != 1 {
+		return "", "", false
+	}
 	var transition *appir.Step
 	for index := range actionDefinition.Steps {
 		step := &actionDefinition.Steps[index]
-		entity := step.Entity
-		if entity == "" {
-			entity = actionDefinition.Entity
-		}
+		entity := transactionStepEntity(actionDefinition, *step)
 		if step.Op != "transition" || entity != lifecycle.Entity {
 			continue
 		}
@@ -348,15 +349,32 @@ func transactionLifecycleInputs(actionDefinition appir.Action, lifecycle appir.L
 			return "", "", false
 		}
 	}
-	if _, exists := actionDefinition.Input[id.Path]; !exists {
+	idDefinition, exists := actionDefinition.Input[id.Path]
+	if !exists || fieldpkg.Validate(idDefinition, recordID) != nil {
 		return "", "", false
 	}
 	if stateInput != "" {
-		if _, exists := actionDefinition.Input[stateInput]; !exists {
+		stateDefinition, exists := actionDefinition.Input[stateInput]
+		if !exists || fieldpkg.Validate(stateDefinition, target) != nil {
 			return "", "", false
 		}
 	}
 	return id.Path, stateInput, true
+}
+
+func transactionStepEntity(actionDefinition appir.Action, step appir.Step) string {
+	entity := step.Entity
+	if entity == "" {
+		entity = actionDefinition.Entity
+	}
+	if entity == actionDefinition.Entity {
+		for _, assignment := range step.Values {
+			if assignment.Field == "entity" && assignment.Value.Source == "literal" {
+				_ = json.Unmarshal(assignment.Value.Literal, &entity)
+			}
+		}
+	}
+	return entity
 }
 
 func inspectTarget(ctx context.Context, database dbal.Database, app *appir.App, records []Record, request beanctx.Request, seed int64) (bool, bool, error) {
@@ -580,7 +598,7 @@ func generatedConstraintValue(app *appir.App, entityName string, record Record, 
 	case "version":
 		version := 1
 		if lifecycle, exists := demoLifecycleForEntity(app, entityName); exists {
-			if path, executable := lifecycleExecutablePath(app, lifecycle, lifecycleDesiredState(lifecycle, record.Values)); executable {
+			if path, executable := lifecycleExecutablePath(app, lifecycle, record.ID, lifecycleDesiredState(lifecycle, record.Values)); executable {
 				version += len(path)
 			}
 		}
