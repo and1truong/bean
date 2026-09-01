@@ -20,6 +20,7 @@ import (
 	"github.com/beanruntime/bean/internal/bootstrap"
 	"github.com/beanruntime/bean/internal/compiler"
 	"github.com/beanruntime/bean/internal/definition"
+	"github.com/beanruntime/bean/internal/expr"
 	"github.com/beanruntime/bean/internal/migration"
 	"github.com/beanruntime/bean/internal/release"
 )
@@ -924,8 +925,15 @@ func semanticDiff(current, candidate *appir.App) []semanticChange {
 
 func redactedApp(source *appir.App) *appir.App {
 	redacted, _ := source.Clone()
+	for name, view := range redacted.Views {
+		redactExpression(view.Filter)
+		redactExpression(view.ContextFilter)
+		redacted.Views[name] = view
+	}
 	for name, action := range redacted.Actions {
 		for stepIndex := range action.Steps {
+			redactExpression(action.Steps[stepIndex].Where)
+			redactExpression(action.Steps[stepIndex].Condition)
 			for valueIndex := range action.Steps[stepIndex].Values {
 				value := &action.Steps[stepIndex].Values[valueIndex].Value
 				if value.Source == "literal" {
@@ -935,7 +943,37 @@ func redactedApp(source *appir.App) *appir.App {
 		}
 		redacted.Actions[name] = action
 	}
+	for name, policy := range redacted.Policies {
+		redactExpression(policy.Condition)
+		redacted.Policies[name] = policy
+	}
+	for name, webform := range redacted.Webforms {
+		redactFormExpressions(webform.Elements)
+		redacted.Webforms[name] = webform
+	}
 	return redacted
+}
+
+func redactExpression(expression *expr.Expr) {
+	if expression == nil {
+		return
+	}
+	for _, value := range []*expr.Value{expression.Left, expression.Right} {
+		if value != nil && value.Source == "literal" {
+			value.Literal = "[REDACTED]"
+		}
+	}
+	for index := range expression.Args {
+		redactExpression(&expression.Args[index])
+	}
+}
+
+func redactFormExpressions(elements []appir.FormElement) {
+	for index := range elements {
+		redactExpression(elements[index].Visible)
+		redactExpression(elements[index].RequiredWhen)
+		redactFormExpressions(elements[index].Children)
+	}
 }
 
 func diffValue(path string, before, after any, changes *[]semanticChange) {

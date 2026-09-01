@@ -107,6 +107,9 @@ type Database interface {
 	Transaction(context.Context, func(Transaction) error) error
 	Close() error
 }
+type PublicationLocker interface {
+	WithPublicationLock(context.Context, string, func() error) error
+}
 type Transaction interface {
 	Select(context.Context, Select) ([]Row, error)
 	Insert(context.Context, Insert) (Result, error)

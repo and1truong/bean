@@ -292,6 +292,28 @@ func (s *Store) PublishBundle(ctx context.Context, appID string, bundle definiti
 }
 
 func (s *Store) publishCandidate(ctx context.Context, appID string, r compiler.Result, plan migration.Plan, current *appir.App, definitions []definition.Definition, bundle *definition.Bundle) (Published, []definition.Diagnostic, error) {
+	locker, ok := s.DB.(dbal.PublicationLocker)
+	if !ok {
+		return Published{}, nil, fmt.Errorf("database does not support serialized publication")
+	}
+	var published Published
+	var diagnostics []definition.Diagnostic
+	err := locker.WithPublicationLock(ctx, appID, func() error {
+		var err error
+		published, diagnostics, err = s.publishCandidateLocked(ctx, appID, r, plan, current, definitions, bundle)
+		return err
+	})
+	return published, diagnostics, err
+}
+
+func (s *Store) publishCandidateLocked(ctx context.Context, appID string, r compiler.Result, plan migration.Plan, current *appir.App, definitions []definition.Definition, bundle *definition.Bundle) (Published, []definition.Diagnostic, error) {
+	active, err := s.activeApp(ctx, appID)
+	if err != nil {
+		return Published{}, nil, err
+	}
+	if (current == nil) != (active == nil) || current != nil && current.ReleaseID != active.ReleaseID {
+		return Published{}, nil, &dbal.Error{Code: dbal.Conflict, Message: "active release changed during publication"}
+	}
 	var e error
 	applyPlan := plan
 	if s.Inspector != nil {
@@ -361,7 +383,7 @@ func (s *Store) publishCandidate(ctx context.Context, appID string, r compiler.R
 		return Published{}, nil, e
 	}
 	fault.Point("release.after_activation_commit")
-	active, e := s.activeApp(ctx, appID)
+	active, e = s.activeApp(ctx, appID)
 	if e != nil {
 		return Published{}, nil, e
 	}

@@ -14,6 +14,7 @@ import (
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/bootstrap"
 	"github.com/beanruntime/bean/internal/compiler"
+	"github.com/beanruntime/bean/internal/expr"
 )
 
 type testEnvelope struct {
@@ -381,32 +382,55 @@ func TestRuntimeFailuresRedactDatabaseCredentials(t *testing.T) {
 
 func TestInspectionAndDiffRedactActionLiterals(t *testing.T) {
 	application := appir.Empty()
+	literalExpression := func(secret string) *expr.Expr {
+		return &expr.Expr{Op: "and", Args: []expr.Expr{{Op: "eq", Left: &expr.Value{Source: "literal", Literal: secret}, Right: &expr.Value{Source: "input", Name: "value"}}}}
+	}
 	application.Actions["call_service"] = appir.Action{
 		Name: "call_service",
 		Steps: []appir.Step{{
-			Op: "return",
+			Op:        "return",
+			Where:     literalExpression("action-where-secret"),
+			Condition: literalExpression("action-condition-secret"),
 			Values: []appir.Assignment{{
 				Field: "api_key",
 				Value: appir.ValueBinding{Source: "literal", Literal: json.RawMessage(`"super-secret"`)},
 			}},
 		}},
 	}
+	application.Views["private"] = appir.View{Name: "private", Filter: literalExpression("view-filter-secret"), ContextFilter: literalExpression("view-context-secret")}
+	application.Policies["private"] = appir.Policy{Name: "private", Condition: literalExpression("policy-secret")}
+	application.Webforms["private"] = appir.Webform{Name: "private", Elements: []appir.FormElement{{
+		Name:         "group",
+		Visible:      literalExpression("form-visible-secret"),
+		RequiredWhen: literalExpression("form-required-secret"),
+		Children:     []appir.FormElement{{Name: "child", Visible: literalExpression("form-child-secret")}},
+	}}}
 	inspectable := redactedApp(application)
-	definition, _, exists := inspectedDefinition(inspectable, "Action", "call_service")
-	if !exists {
-		t.Fatal("redacted Action is not inspectable")
+	inspections := make([][]byte, 0, 4)
+	for _, target := range [][2]string{{"Action", "call_service"}, {"View", "private"}, {"Policy", "private"}, {"Webform", "private"}} {
+		definition, _, exists := inspectedDefinition(inspectable, target[0], target[1])
+		if !exists {
+			t.Fatalf("redacted %s is not inspectable", target[0])
+		}
+		inspection, err := json.Marshal(definition)
+		if err != nil {
+			t.Fatal(err)
+		}
+		inspections = append(inspections, inspection)
 	}
-	inspection, err := json.Marshal(definition)
-	if err != nil {
-		t.Fatal(err)
-	}
+	inspection := bytes.Join(inspections, nil)
 	diff, err := json.Marshal(semanticDiff(appir.Empty(), application))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for name, output := range map[string][]byte{"inspection": inspection, "diff": diff} {
-		if bytes.Contains(output, []byte("super-secret")) || !bytes.Contains(output, []byte("[REDACTED]")) {
-			t.Fatalf("%s leaked or omitted redaction: %s", name, output)
+		for _, secret := range []string{"super-secret", "action-where-secret", "action-condition-secret", "view-filter-secret", "view-context-secret", "policy-secret", "form-visible-secret", "form-required-secret", "form-child-secret"} {
+			if bytes.Contains(output, []byte(secret)) {
+				t.Fatalf("%s leaked %q: %s", name, secret, output)
+			}
+		}
+		if !bytes.Contains(output, []byte("[REDACTED]")) {
+			t.Fatalf("%s omitted redaction: %s", name, output)
 		}
 	}
 }
