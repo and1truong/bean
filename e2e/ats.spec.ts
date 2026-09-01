@@ -11,13 +11,13 @@ test('applicant tracker opens populated and operational',async({page,bean})=>{
 
   await page.getByRole('searchbox',{name:'Search candidate pipeline'}).fill('Avery')
   await page.getByRole('button',{name:'Search'}).click()
-  await expect(page.getByRole('link',{name:'Avery Nguyen 1'}).first()).toBeVisible()
+  await expect(page.getByRole('link',{name:'Avery Nguyen 1',exact:true}).first()).toBeVisible()
 
   const status=page.getByRole('combobox',{name:'Status for Avery Nguyen 1',exact:true})
   await status.selectOption('screen')
   await expect(status).toHaveValue('screen')
 
-  await page.getByRole('link',{name:'Avery Nguyen 1'}).first().click()
+  await page.getByRole('link',{name:'Avery Nguyen 1',exact:true}).first().click()
   await expect(page).toHaveURL(/\/candidates\//)
   await expect(page.getByRole('heading',{name:'Avery Nguyen 1',exact:true})).toBeVisible()
 })

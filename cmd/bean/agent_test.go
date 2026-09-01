@@ -117,6 +117,18 @@ func TestAgentDemoSeedPublishesDeterministicDatasetThroughActions(t *testing.T) 
 		if exit := execute([]string{"app", "publish", "--file", manifest, "--db", database, "--json"}, &stdout, &stderr); exit != exitOK {
 			t.Fatalf("publish exit=%d stderr=%s stdout=%s", exit, stderr.String(), stdout.String())
 		}
+		if index == 0 {
+			stale := filepath.Join(directory, "stale.yaml")
+			staleSource := source + "---\nkind: Action\nname: import_candidate\nentity: candidate\noperation: create\n"
+			if err := os.WriteFile(stale, []byte(staleSource), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			stdout.Reset()
+			stderr.Reset()
+			if exit := execute([]string{"demo", "seed", "--file", stale, "--db", database, "--seed", "42", "--json"}, &stdout, &stderr); exit != exitRuntime || !strings.Contains(stdout.String(), "does not match") {
+				t.Fatalf("stale source seed exit=%d stderr=%s stdout=%s", exit, stderr.String(), stdout.String())
+			}
+		}
 		stdout.Reset()
 		stderr.Reset()
 		if exit := execute([]string{"demo", "seed", "--file", manifest, "--db", database, "--seed", "42", "--json"}, &stdout, &stderr); exit != exitOK {

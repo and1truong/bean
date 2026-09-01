@@ -37,6 +37,21 @@ func TestGenerateIsDeterministicAndOrdersRelations(t *testing.T) {
 	}
 }
 
+func TestGenerateUsesDeclaredRelationTargetField(t *testing.T) {
+	app := appir.Empty()
+	app.Entities["account"] = appir.Entity{Name: "account", Fields: []appir.Field{{Name: "external_id", Type: "uuid", Required: true, Unique: true}}}
+	app.Entities["contact"] = appir.Entity{Name: "contact", Fields: []appir.Field{{Name: "account_key", Type: "relation", Required: true, Relation: &appir.Relation{Entity: "account", Kind: "many-to-one", TargetField: "external_id"}}}}
+	app.DemoSeed = &appir.DemoSeed{Name: "demo", Entities: map[string]appir.DemoSeedEntity{"account": {Count: 2}, "contact": {Count: 2}}}
+	records, err := Generate(app, 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := records[0].Values["external_id"]
+	if records[2].Values["account_key"] != target || target == records[0].ID {
+		t.Fatalf("relation=%v target=%v record ID=%s", records[2].Values["account_key"], target, records[0].ID)
+	}
+}
+
 func TestGenerateCoversSupportedScalarTypesAndSkipsUnsafeFields(t *testing.T) {
 	app := appir.Empty()
 	fields := []appir.Field{

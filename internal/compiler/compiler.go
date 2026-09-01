@@ -631,6 +631,29 @@ func validate(a *appir.App) []definition.Diagnostic {
 						out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path, "requires seeded relation Entity "+field.Relation.Entity))
 					}
 				}
+				if field.Unique && field.Type == "boolean" && seed.Count > 2 {
+					out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path+".count", "exceeds the two unique boolean values available to field "+field.Name))
+				}
+				if field.Unique && field.Type == "enum" && seed.Count > len(field.Options) {
+					out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path+".count", "exceeds the unique enum options available to field "+field.Name))
+				}
+			}
+			verificationView := a.Views[entityName+"_list"]
+			if verificationView.Entity != entityName {
+				out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path, "requires "+entityName+"_list to read Entity "+entityName+" for replay verification"))
+			}
+			selected := nameSet(verificationView.Fields)
+			for _, field := range entity.Fields {
+				if !selected[field.Name] {
+					out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path, "requires "+entityName+"_list to select field "+field.Name+" for replay verification"))
+				}
+			}
+			if policyDefinition, exists := a.Policies[verificationView.Policy]; exists {
+				for _, fieldName := range policyDefinition.Redact {
+					if selected[fieldName] {
+						out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path, "cannot verify redacted seed field "+fieldName+" through "+entityName+"_list"))
+					}
+				}
 			}
 			total += seed.Count
 		}
@@ -1441,7 +1464,7 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 			out = append(out, diagnostic("Block", name, "spec.presentation.titleField", "timeline requires a selected title field"))
 		}
 		field, exists := fieldDefinition(presentation.TimeField)
-		if presentation.TimeField == "" || !exists || field.Type != "date" && field.Type != "datetime" {
+		if presentation.TimeField == "" || !selected[presentation.TimeField] || !exists || field.Type != "date" && field.Type != "datetime" {
 			out = append(out, diagnostic("Block", name, "spec.presentation.timeField", "timeline requires a selected date or datetime field"))
 		}
 	}

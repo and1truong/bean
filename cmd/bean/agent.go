@@ -154,7 +154,7 @@ func agentDemoSeed(args []string, stdout, stderr io.Writer) int {
 	if !exists {
 		return writeRuntimeFailure("demo.seed", fmt.Errorf("target database has no active application; run bean app publish first"), jsonOutput, stdout, stderr)
 	}
-	if !reflect.DeepEqual(active.DemoSeed, compiled.App.DemoSeed) || !reflect.DeepEqual(active.Entities, compiled.App.Entities) {
+	if !sameApplicationDefinition(active, compiled.App) {
 		return writeRuntimeFailure("demo.seed", fmt.Errorf("active application does not match --file; publish it before seeding"), jsonOutput, stdout, stderr)
 	}
 	result, err := demoseed.Run(context.Background(), runtime.DB, active, *seed)
@@ -167,6 +167,20 @@ func agentDemoSeed(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "seeded %d records (checksum %s)\n", result.Records, result.Checksum)
 	}
 	return exitOK
+}
+
+func sameApplicationDefinition(active, candidate *appir.App) bool {
+	activeCopy, activeErr := active.Clone()
+	candidateCopy, candidateErr := candidate.Clone()
+	if activeErr != nil || candidateErr != nil {
+		return false
+	}
+	for _, app := range []*appir.App{activeCopy, candidateCopy} {
+		app.ReleaseID = ""
+		app.Version = 0
+		app.OpenAPI = nil
+	}
+	return reflect.DeepEqual(activeCopy, candidateCopy)
 }
 
 func agentCapabilities(args []string, stdout, stderr io.Writer) int {

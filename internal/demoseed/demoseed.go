@@ -38,7 +38,8 @@ func Generate(app *appir.App, seed int64) ([]Record, error) {
 	if err != nil {
 		return nil, err
 	}
-	ids := map[string][]string{}
+	referenced := referencedTargetFields(app)
+	generated := map[string][]Record{}
 	records := []Record{}
 	for _, entityName := range order {
 		entity := app.Entities[entityName]
@@ -51,18 +52,19 @@ func Generate(app *appir.App, seed int64) ([]Record, error) {
 					continue
 				}
 				if field.Relation != nil {
-					value := relationValue(field, index, ids)
+					value := relationValue(field, index, generated)
 					if value != nil {
 						values[field.Name] = value
 					}
 					continue
 				}
-				if field.Required || includeOptional(index, field.Name) {
+				if field.Required || field.Unique || referenced[entityName][field.Name] || includeOptional(index, field.Name) {
 					values[field.Name] = scalarValue(field, definition.Profile, index, seed)
 				}
 			}
-			records = append(records, Record{Entity: entityName, ID: id, Values: values})
-			ids[entityName] = append(ids[entityName], id)
+			record := Record{Entity: entityName, ID: id, Values: values}
+			records = append(records, record)
+			generated[entityName] = append(generated[entityName], record)
 		}
 	}
 	return records, nil
@@ -221,15 +223,37 @@ func entityOrder(app *appir.App) ([]string, error) {
 	return order, nil
 }
 
-func relationValue(field appir.Field, index int, ids map[string][]string) any {
-	targets := ids[field.Relation.Entity]
+func relationValue(field appir.Field, index int, records map[string][]Record) any {
+	targets := records[field.Relation.Entity]
 	if len(targets) == 0 {
 		return nil
 	}
-	if field.Relation.Kind == "one-to-many" || field.Relation.Kind == "many-to-many" {
-		return []any{targets[index%len(targets)]}
+	target := targets[index%len(targets)]
+	value := any(target.ID)
+	if field.Relation.TargetField != "id" {
+		value = target.Values[field.Relation.TargetField]
 	}
-	return targets[index%len(targets)]
+	if field.Relation.Kind == "one-to-many" || field.Relation.Kind == "many-to-many" {
+		return []any{value}
+	}
+	return value
+}
+
+func referencedTargetFields(app *appir.App) map[string]map[string]bool {
+	out := map[string]map[string]bool{}
+	for entityName := range app.DemoSeed.Entities {
+		out[entityName] = map[string]bool{}
+	}
+	for entityName := range app.DemoSeed.Entities {
+		for _, field := range app.Entities[entityName].Fields {
+			if field.Relation != nil && field.Relation.TargetField != "id" {
+				if target, seeded := out[field.Relation.Entity]; seeded {
+					target[field.Relation.TargetField] = true
+				}
+			}
+		}
+	}
+	return out
 }
 
 func scalarValue(field appir.Field, profile string, index int, seed int64) any {

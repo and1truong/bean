@@ -203,6 +203,32 @@ func TestDemoSeedRejectsRequiredRelationCycles(t *testing.T) {
 	}
 }
 
+func TestDemoSeedRejectsImpossibleUniqueValuesAndPartialVerificationView(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "sample"}, Spec: map[string]any{"fields": []any{
+			map[string]any{"name": "enabled", "type": "boolean", "unique": true},
+			map[string]any{"name": "state", "type": "enum", "unique": true, "options": []any{"one", "two"}},
+		}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "sample_list"}, Spec: map[string]any{"entity": "sample", "fields": []any{"id", "enabled"}}},
+		{APIVersion: definition.APIVersion, Kind: "DemoSeed", Metadata: definition.Metadata{Name: "demo"}, Spec: map[string]any{"entities": map[string]any{"sample": map[string]any{"count": 3}}}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasDiagnostic(diagnostics, "demo", "spec.entities.sample.count") || !hasDiagnostic(diagnostics, "demo", "spec.entities.sample") {
+		t.Fatalf("impossible seed accepted: %v", diagnostics)
+	}
+}
+
+func TestTimelineRequiresSelectedTimeField(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "activity"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}, map[string]any{"name": "occurred_at", "type": "datetime"}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "activities"}, Spec: map[string]any{"entity": "activity", "fields": []any{"id", "title"}}},
+		{APIVersion: definition.APIVersion, Kind: "Block", Metadata: definition.Metadata{Name: "timeline"}, Spec: map[string]any{"type": "view", "view": "activities", "presentation": map[string]any{"mode": "timeline", "titleField": "title", "timeField": "occurred_at"}}},
+	}
+	if diagnostics := compiler.Compile("test", 1, definitions).Diagnostics; !hasDiagnostic(diagnostics, "timeline", "spec.presentation.timeField") {
+		t.Fatalf("unselected timeline time field accepted: %v", diagnostics)
+	}
+}
+
 func TestPresentationRejectsRelatedFileDownloads(t *testing.T) {
 	defs := []definition.Definition{
 		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "attachment"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "file", "type": "file"}}}},
