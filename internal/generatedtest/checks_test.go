@@ -51,4 +51,16 @@ func TestJourneyChecksExerciseStaticPagesAndViewRoutes(t *testing.T) {
 	if len(diagnostics) != 2 || diagnostics[0].Code != "BEAN-T1201" || checks[0].Status != "failed" || checks[1].Status != "failed" {
 		t.Fatalf("checks=%+v diagnostics=%v", checks, diagnostics)
 	}
+
+	app.Blocks["filtered_notes"] = appir.Block{
+		Name: "filtered_notes", Type: "view", View: "notes",
+		Inputs:   map[string]appir.Field{"id": {Name: "id", Type: "uuid", Required: true}},
+		Bindings: map[string]appir.ContextBinding{"id": {Source: "context", Name: "id"}},
+	}
+	app.Panels["home"] = appir.Panel{Name: "home", Regions: []appir.Region{{Name: "main", Blocks: []string{"filtered_notes"}}}}
+	app.Pages["home"] = appir.Page{Name: "home", Route: "/", Panel: "home", Context: map[string]appir.ContextBinding{"id": {Source: "query", Name: "id"}}}
+	checks, diagnostics = generatedtest.JourneyChecks(context.Background(), app, handler)
+	if len(diagnostics) != 0 || len(checks) != 1 || checks[0].ID != "generated/journey/View/notes/api" {
+		t.Fatalf("required Block input page was not omitted: checks=%+v diagnostics=%v", checks, diagnostics)
+	}
 }
