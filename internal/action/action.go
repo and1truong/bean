@@ -61,6 +61,13 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 	if a.Operation != "register_local_user" && !authorize(app, a.Policy, true, request, nil) {
 		return nil, &dbal.Error{Code: dbal.Conflict, Message: "Action is not permitted"}
 	}
+	if a.Operation == "create" {
+		var initialErr error
+		input, initialErr = applyLifecycleInitial(app, e, input)
+		if initialErr != nil {
+			return nil, initialErr
+		}
+	}
 	for inputName, definition := range a.Input {
 		value := input[inputName]
 		if definition.Type == "file" && value != nil {
@@ -156,8 +163,13 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 		case "create":
 			result, er = s.create(ctx, tx, app, e, input, request, createID)
 		case "update":
+			if lifecycle, exists := lifecycleForEntity(app, a.Entity); exists {
+				if _, supplied := input[lifecycle.StateField]; supplied {
+					return &dbal.Error{Code: dbal.Conflict, Message: "protected state requires a transition Action"}
+				}
+			}
 			for _, candidate := range app.Actions {
-				if candidate.Entity != a.Entity || candidate.Operation != "transition" {
+				if candidate.Entity != a.Entity || candidate.Operation != "transition" || candidate.Lifecycle != "" {
 					continue
 				}
 				fieldName := candidate.StateField
@@ -274,6 +286,10 @@ func scopedIdempotencyKey(key string, request beanctx.Request) string {
 	return fmt.Sprintf("%x:%s", scope, key)
 }
 func (s Service) create(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.Entity, input map[string]any, c beanctx.Request, id string) (dbal.Row, error) {
+	input, initialErr := applyLifecycleInitial(app, e, input)
+	if initialErr != nil {
+		return nil, initialErr
+	}
 	values := map[string]dbal.Value{}
 	for _, f := range e.Fields {
 		v := input[f.Name]
@@ -350,9 +366,20 @@ func update(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.En
 	values := map[string]dbal.Value{}
 	fields := map[string]appir.Field{}
 	replacedBlobs := []string{}
-	stateField := a.StateField
-	if stateField == "" {
-		stateField = "status"
+	stateField, transitions := transitionContract(app, a)
+	stateProtected := len(transitions) > 0
+	if lifecycle, exists := lifecycleForEntity(app, e.Name); exists {
+		stateField = lifecycle.StateField
+		stateProtected = true
+		if transition {
+			if a.Lifecycle != lifecycle.Name {
+				return nil, &dbal.Error{Code: dbal.Conflict, Message: "transition Action is not bound to the Entity Lifecycle"}
+			}
+			transitions = lifecycle.Transitions
+			if a.Transitions != nil {
+				transitions = a.Transitions
+			}
+		}
 	}
 	for _, f := range e.Fields {
 		fields[f.Name] = f
@@ -365,10 +392,10 @@ func update(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.En
 		if transition && k == stateField {
 			from := fmt.Sprint(row[k])
 			to := fmt.Sprint(v)
-			if !allowedTransition(a.Transitions, from, to) {
+			if !allowedTransition(transitions, from, to) {
 				return nil, &dbal.Error{Code: dbal.Conflict, Message: "state transition is not allowed"}
 			}
-		} else if !transition && k == stateField && len(a.Transitions) > 0 {
+		} else if !transition && k == stateField && stateProtected {
 			return nil, &dbal.Error{Code: dbal.Conflict, Message: "protected state requires a transition Action"}
 		}
 		if er = field.Validate(f, v); er != nil {
@@ -711,7 +738,7 @@ func (s Service) steps(ctx context.Context, tx dbal.Transaction, app *appir.App,
 					return nil, &dbal.Error{Code: dbal.Conflict, Message: message(step, "conditional update failed")}
 				}
 			}
-			operation := appir.Action{Entity: entity.Name, StateField: step.StateField, Transitions: a.Transitions}
+			operation := appir.Action{Entity: entity.Name, Lifecycle: a.Lifecycle, StateField: step.StateField, Transitions: a.Transitions}
 			row, x := update(ctx, tx, app, entity, values, operation, c, step.Op == "transition")
 			if x != nil {
 				return nil, x
@@ -1031,6 +1058,48 @@ func authorize(app *appir.App, name string, write bool, c beanctx.Request, row m
 	}
 	p, ok := app.Policies[name]
 	return ok && policy.Can(p, write, c, row)
+}
+func lifecycleForEntity(app *appir.App, entity string) (appir.Lifecycle, bool) {
+	names := make([]string, 0, len(app.Lifecycles))
+	for name := range app.Lifecycles {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		lifecycle := app.Lifecycles[name]
+		if lifecycle.Entity == entity {
+			return lifecycle, true
+		}
+	}
+	return appir.Lifecycle{}, false
+}
+func applyLifecycleInitial(app *appir.App, entity appir.Entity, input map[string]any) (map[string]any, error) {
+	lifecycle, exists := lifecycleForEntity(app, entity.Name)
+	if !exists || lifecycle.Initial == "" {
+		return input, nil
+	}
+	if value, supplied := input[lifecycle.StateField]; supplied && value != nil && fmt.Sprint(value) != lifecycle.Initial {
+		return nil, &dbal.Error{Code: dbal.Conflict, Message: "record must start in Lifecycle initial state"}
+	}
+	initialized := make(map[string]any, len(input)+1)
+	for name, value := range input {
+		initialized[name] = value
+	}
+	initialized[lifecycle.StateField] = lifecycle.Initial
+	return initialized, nil
+}
+func transitionContract(app *appir.App, action appir.Action) (string, map[string][]string) {
+	if lifecycle, exists := app.Lifecycles[action.Lifecycle]; exists {
+		if action.Transitions != nil {
+			return lifecycle.StateField, action.Transitions
+		}
+		return lifecycle.StateField, lifecycle.Transitions
+	}
+	stateField := action.StateField
+	if stateField == "" {
+		stateField = "status"
+	}
+	return stateField, action.Transitions
 }
 func allowedTransition(m map[string][]string, from, to string) bool {
 	for _, v := range m[from] {

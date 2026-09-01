@@ -2,7 +2,7 @@
 
 Bean v0.6 exposes the compiler and release lifecycle as a provider-neutral command contract. An agent does not need to inspect Bean source or parse human prose.
 
-v0.8 retains that contract and adds a generic one-to-one adapter over the shared `bean.agent/v1alpha1` dispatcher:
+v0.9 retains the v0.8 generic one-to-one adapter over the shared `bean.agent/v1alpha1` dispatcher and adds first-class Lifecycle semantics without changing the transport envelope:
 
 ```bash
 bean agent call bean.definition.validate --input request.json --json
@@ -94,6 +94,7 @@ Codes and structured fields are the compatibility interface. Human messages may 
 | `BEAN-E2002` | incompatible definition reference |
 | `BEAN-E2101` | missing or invalid Entity/View field reference |
 | `BEAN-E2201` | invalid Action operation, state field, or transition edge |
+| `BEAN-E2202` | invalid Lifecycle entity, state field, initial state, graph, or reachability |
 | `BEAN-E2301` | invalid Policy or role contract |
 | `BEAN-E2401` | invalid serializer, renderer, or presentation contract |
 | `BEAN-E2501` | invalid context/input binding |
@@ -107,7 +108,7 @@ Sensitive inputs, file bytes, secrets, passwords, and database credentials are e
 
 ## Schemas and capabilities
 
-`bean capabilities --json` reports definition/API versions, definition kinds, field types, Action operations and steps, Block types, presentations, serializers, layouts, database backends, and hard limits.
+`bean capabilities --json` reports definition/API versions, definition kinds, semantic primitives, field types, Action operations and steps, Block types, presentations, serializers, layouts, database backends, and hard limits. In v0.9, `semanticPrimitives` contains `Lifecycle`.
 
 `bean schema [Kind] --json` returns canonical Draft 2020-12 JSON Schema. `bean schema --output ./schemas` writes `bean.schema.json` and one lower-case file per definition kind. The checked-in [schemas](../schemas) directory is generated from the same Go specification types used by compiler decoding; tests fail if those files drift or stop covering a maintained example.
 

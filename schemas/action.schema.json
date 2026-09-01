@@ -145,6 +145,9 @@
     "kind": {
       "const": "Action"
     },
+    "lifecycle": {
+      "type": "string"
+    },
     "name": {
       "pattern": "^[a-z][a-z0-9_]*$",
       "type": "string"

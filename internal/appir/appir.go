@@ -54,6 +54,7 @@ type Sort struct {
 }
 type Action struct {
 	Name, Entity, Operation, Policy string
+	Lifecycle                       string
 	DefaultRole                     string
 	Confirm                         string
 	StateField                      string
@@ -61,6 +62,10 @@ type Action struct {
 	Output                          map[string]Field
 	Steps                           []Step
 	Transitions                     map[string][]string
+}
+type Lifecycle struct {
+	Name, Entity, StateField, Initial string
+	Transitions                       map[string][]string
 }
 type LocalRegistration struct{ Action, Route string }
 type Step struct {
@@ -182,6 +187,7 @@ type App struct {
 	Entities          map[string]Entity
 	Views             map[string]View
 	Actions           map[string]Action
+	Lifecycles        map[string]Lifecycle
 	Policies          map[string]Policy
 	Webforms          map[string]Webform
 	Blocks            map[string]Block
@@ -199,7 +205,7 @@ type App struct {
 }
 
 func Empty() *App {
-	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
+	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
 }
 func (a *App) ValidateFormat() error {
 	if a.FormatVersion != CurrentFormat {

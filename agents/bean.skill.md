@@ -15,6 +15,7 @@ Treat Bean definitions as structured application intent and Bean diagnostics as 
 - Run release plan and semantic diff before publish. Stop if the migration contract is incompatible or the diff exceeds the requested change.
 - Publish only when requested, then run the isolated release test.
 - For live verification, query a declared View and execute a declared Action. Never substitute an Entity name, table, raw SQL, or arbitrary mutation.
+- Model an Entity state machine once with Lifecycle. Bind transition Actions to it; add an Action transition map only when that Action intentionally exposes a strict subset of the canonical graph.
 
 ## Authority
 

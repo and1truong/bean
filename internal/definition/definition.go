@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-var Kinds = map[string]bool{"Entity": true, "View": true, "Action": true, "Webform": true, "Policy": true, "Filter": true, "Block": true, "Panel": true, "Page": true, "Role": true, "Menu": true, "Job": true, "AdminResource": true, "LocalRegistration": true, "Theme": true, "DemoSeed": true}
+var Kinds = map[string]bool{"Entity": true, "View": true, "Action": true, "Lifecycle": true, "Webform": true, "Policy": true, "Filter": true, "Block": true, "Panel": true, "Page": true, "Role": true, "Menu": true, "Job": true, "AdminResource": true, "LocalRegistration": true, "Theme": true, "DemoSeed": true}
 var machineName = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 type Metadata struct {
@@ -90,6 +90,8 @@ func DiagnosticCode(d Diagnostic) string {
 		return "BEAN-E2002"
 	case kind == "action" || strings.Contains(message, "transition action"):
 		return "BEAN-E2201"
+	case kind == "lifecycle":
+		return "BEAN-E2202"
 	case kind == "policy" || strings.Contains(path, "policy") || strings.Contains(message, "role"):
 		return "BEAN-E2301"
 	case kind == "block" && strings.Contains(path, "presentation") || strings.Contains(message, "renderer") || strings.Contains(message, "serializer"):

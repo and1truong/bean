@@ -2,9 +2,11 @@
 
 ## Current
 
-Bean v0.9 Semantic Application Model is active from merge commit `c51705d`. The scoped first slice adds exactly one first-class primitive, `Lifecycle`, derived from the maintained ATS candidate pipeline and commerce order flow. Milestone 0 is active to freeze the smallest source shape, Action binding, and legacy-transition compatibility contract before runtime implementation.
+Bean v0.9 Semantic Application Model is active from merge commit `c51705d`. The scoped first slice adds exactly one first-class primitive, `Lifecycle`, derived from the maintained ATS candidate pipeline and commerce order flow. Milestones 0–4 are complete; milestone 5 is active for CI and a clean reviewed pull request.
 
-Lifecycle will own canonical state-machine structure while Actions remain the only mutation boundary and Policies remain the authorization boundary. Schema, compiler diagnostics, immutable AppIR, capabilities, inspect, semantic diff, runtime enforcement, backend parity, and two independent reference applications are required. Ownership, auditability, soft deletion, terminal-state immutability, rules, generated tests, and extensions remain outside v0.9.
+Lifecycle owns one Entity enum state field, its initial state, and a reachable canonical transition graph. The compiler validates Action bindings and optional Policy-specific graph subsets with stable `BEAN-E2202`/`BEAN-E2201` diagnostics; immutable AppIR, capabilities, canonical schema, named inspection, references, and semantic diff expose the same model through the shared CLI/MCP Agent Protocol. Create Actions inject the initial state, generic and transaction updates cannot change it, and only a Lifecycle-bound transition path can follow the graph after existing Policy checks.
+
+ATS candidates and commerce orders now use the shared primitive with no application-name branch. DemoSeed creates Lifecycle records at their initial state and reaches deterministic generated states through compatible Actions. Focused compiler, AppIR, Action, release/restart, DemoSeed, Agent Protocol, CLI/MCP parity, HTTP, React, and complete Go tests pass; legacy Action-local transitions remain covered. `make check` passes including race, black-box contracts, 25 React tests, and 14/14 Playwright journeys; `make test-crash`, `make test-postgres`, and `make build` pass, and the binary reports `bean 0.9.0-alpha`. Ownership, auditability, soft deletion, terminal-state immutability, rules, generated tests, and extensions remain outside v0.9.
 
 ## v0.8 completed state
 

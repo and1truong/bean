@@ -82,6 +82,66 @@ func TestOptionalRichTextCanBeClearedOnUpdate(t *testing.T) {
 	}
 }
 
+func TestLifecycleInitialPolicyAndTransitionBoundary(t *testing.T) {
+	ctx := context.Background()
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "lifecycle.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	k := kernel.New()
+	store := &release.Store{DB: db, Migrations: db, Kernel: k, OpenAPI: openapi.Generate}
+	if err = store.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Policy", Metadata: definition.Metadata{Name: "order_managers"}, Spec: map[string]any{"readRoles": []any{"manager"}, "writeRoles": []any{"manager"}}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "order"}, Spec: map[string]any{"policy": "order_managers", "fields": []any{
+			map[string]any{"name": "status", "type": "enum", "required": true, "options": []any{"pending", "paid", "fulfilled"}},
+			map[string]any{"name": "reference", "type": "string", "required": true},
+		}}},
+		{APIVersion: definition.APIVersion, Kind: "Lifecycle", Metadata: definition.Metadata{Name: "order_fulfillment"}, Spec: map[string]any{
+			"entity": "order", "initial": "pending", "transitions": map[string]any{"pending": []any{"paid"}, "paid": []any{"fulfilled"}},
+		}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "advance_order"}, Spec: map[string]any{
+			"entity": "order", "operation": "transition", "policy": "order_managers", "lifecycle": "order_fulfillment",
+		}},
+	}
+	if err = store.SaveBundle(ctx, "default", definition.Bundle{Name: "lifecycle", Definitions: definitions}); err != nil {
+		t.Fatal(err)
+	}
+	if _, diagnostics, publishErr := store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) != 0 {
+		t.Fatalf("publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	app, _ := k.Active()
+	engine := action.Service{DB: db}
+	manager := beanctx.Request{User: &beanctx.User{ID: "manager", Roles: []string{"manager"}}, RequestID: "lifecycle"}
+	member := beanctx.Request{User: &beanctx.User{ID: "member", Roles: []string{"member"}}, RequestID: "denied"}
+
+	created, err := engine.Execute(ctx, app, "order_create", map[string]any{"reference": "ORDER-1"}, manager)
+	if err != nil || created["status"] != "pending" {
+		t.Fatalf("created=%v err=%v", created, err)
+	}
+	id := created["id"]
+	if _, err = engine.Execute(ctx, app, "order_update", map[string]any{"id": id, "status": "paid"}, manager); !dbal.IsCode(err, dbal.InvalidQuery) {
+		t.Fatalf("generic update bypass err=%v", err)
+	}
+	if _, err = engine.Execute(ctx, app, "advance_order", map[string]any{"id": id, "status": "paid"}, member); err == nil {
+		t.Fatal("Policy-denied transition succeeded")
+	}
+	rows, selectErr := db.Select(ctx, dbal.Select{Table: "order", Columns: []string{"status"}, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id}, Limit: 1})
+	if selectErr != nil || len(rows) != 1 || rows[0]["status"] != "pending" {
+		t.Fatalf("denied transition mutated state: rows=%v err=%v", rows, selectErr)
+	}
+	paid, err := engine.Execute(ctx, app, "advance_order", map[string]any{"id": id, "status": "paid"}, manager)
+	if err != nil || paid["status"] != "paid" {
+		t.Fatalf("paid=%v err=%v", paid, err)
+	}
+	if _, err = engine.Execute(ctx, app, "advance_order", map[string]any{"id": id, "status": "pending"}, manager); !dbal.IsCode(err, dbal.Conflict) {
+		t.Fatalf("invalid reverse transition err=%v", err)
+	}
+}
+
 func TestFileFieldPersistsAndDeletesBlobInActionTransaction(t *testing.T) {
 	ctx := context.Background()
 	db, err := sqlite.Open(filepath.Join(t.TempDir(), "files.db"))
@@ -398,8 +458,9 @@ func TestEveryTransactionStepHasRuntimeSemantics(t *testing.T) {
 	}
 	defs := []definition.Definition{
 		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "item"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "name", "type": "string", "required": true}, map[string]any{"name": "status", "type": "enum", "required": true, "options": []any{"draft", "done"}}, map[string]any{"name": "count", "type": "integer", "required": true}}}},
+		{APIVersion: "bean/v1alpha1", Kind: "Lifecycle", Metadata: definition.Metadata{Name: "item_flow"}, Spec: map[string]any{"entity": "item", "initial": "draft", "transitions": map[string]any{"draft": []any{"done"}}}},
 		{APIVersion: "bean/v1alpha1", Kind: "View", Metadata: definition.Metadata{Name: "items"}, Spec: map[string]any{"entity": "item", "fields": []any{"id", "name", "status", "count"}, "sort": []any{map[string]any{"field": "id"}}}},
-		{APIVersion: "bean/v1alpha1", Kind: "Action", Metadata: definition.Metadata{Name: "flow"}, Spec: map[string]any{"entity": "item", "operation": "transaction", "input": map[string]any{"id": map[string]any{"type": "uuid", "required": true}, "name": map[string]any{"type": "string", "required": true}}, "output": map[string]any{"message": map[string]any{"type": "string"}}, "stateField": "status", "transitions": map[string]any{"draft": []any{"done"}}, "steps": []any{
+		{APIVersion: "bean/v1alpha1", Kind: "Action", Metadata: definition.Metadata{Name: "flow"}, Spec: map[string]any{"entity": "item", "operation": "transaction", "lifecycle": "item_flow", "input": map[string]any{"id": map[string]any{"type": "uuid", "required": true}, "name": map[string]any{"type": "string", "required": true}}, "output": map[string]any{"message": map[string]any{"type": "string"}}, "steps": []any{
 			map[string]any{"op": "load", "result": "loaded", "values": map[string]any{"id": "$input.id"}},
 			map[string]any{"op": "assert", "condition": map[string]any{"op": "ne", "left": value("input", "name", nil), "right": value("literal", "", "")}},
 			map[string]any{"op": "update", "result": "updated", "values": map[string]any{"id": "$input.id", "name": "$input.name"}},

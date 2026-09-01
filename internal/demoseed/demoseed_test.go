@@ -1,13 +1,21 @@
 package demoseed
 
 import (
+	"context"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/beanruntime/bean/internal/appir"
+	"github.com/beanruntime/bean/internal/dbal"
+	"github.com/beanruntime/bean/internal/dbal/sqlite"
+	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/expr"
 	fieldpkg "github.com/beanruntime/bean/internal/field"
+	"github.com/beanruntime/bean/internal/kernel"
+	"github.com/beanruntime/bean/internal/openapi"
+	"github.com/beanruntime/bean/internal/release"
 )
 
 func TestGenerateIsDeterministicAndOrdersRelations(t *testing.T) {
@@ -36,6 +44,50 @@ func TestGenerateIsDeterministicAndOrdersRelations(t *testing.T) {
 	}
 	if first[2].Values["company_id"] != first[0].ID {
 		t.Fatalf("relation=%v want %s", first[2].Values["company_id"], first[0].ID)
+	}
+}
+
+func TestRunReachesGeneratedLifecycleStatesThroughActions(t *testing.T) {
+	ctx := context.Background()
+	database, err := sqlite.Open(filepath.Join(t.TempDir(), "lifecycle-seed.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	runtime := kernel.New()
+	store := &release.Store{DB: database, Migrations: database, Kernel: runtime, OpenAPI: openapi.Generate}
+	if err = store.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "order"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "status", "type": "enum", "required": true, "options": []any{"pending", "paid", "fulfilled"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "Lifecycle", Metadata: definition.Metadata{Name: "order_fulfillment"}, Spec: map[string]any{"entity": "order", "initial": "pending", "transitions": map[string]any{"pending": []any{"paid"}, "paid": []any{"fulfilled"}}}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "advance_order"}, Spec: map[string]any{"entity": "order", "operation": "transition", "lifecycle": "order_fulfillment"}},
+		{APIVersion: definition.APIVersion, Kind: "DemoSeed", Metadata: definition.Metadata{Name: "demo"}, Spec: map[string]any{"entities": map[string]any{"order": map[string]any{"count": 3}}}},
+	}
+	if err = store.SaveBundle(ctx, "default", definition.Bundle{Name: "lifecycle seed", Definitions: definitions}); err != nil {
+		t.Fatal(err)
+	}
+	if _, diagnostics, publishErr := store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) != 0 {
+		t.Fatalf("publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	app, _ := runtime.Active()
+	result, err := Run(ctx, database, app, 42)
+	if err != nil || result.Records != 3 {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	rows, err := database.Select(ctx, dbal.Select{Table: "order", Columns: []string{"status"}, OrderBy: []dbal.Order{{Column: "status"}}, Limit: 10})
+	if err != nil || len(rows) != 3 {
+		t.Fatalf("rows=%v err=%v", rows, err)
+	}
+	states := map[string]bool{}
+	for _, row := range rows {
+		states[row["status"].(string)] = true
+	}
+	for _, state := range []string{"pending", "paid", "fulfilled"} {
+		if !states[state] {
+			t.Fatalf("state %s missing from %v", state, rows)
+		}
 	}
 }
 

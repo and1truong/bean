@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	beanctx "github.com/beanruntime/bean/internal/context"
+	"github.com/beanruntime/bean/internal/dbal"
 )
 
 const protocolFixtureSource = `apiVersion: bean/v1alpha1
@@ -24,6 +25,7 @@ tenant: true
 policy: member_scope
 fields:
   - {label: Title, name: title, required: true, type: string}
+  - {label: Status, name: status, required: true, type: enum, options: [draft, done]}
 ---
 kind: Policy
 name: member_scope
@@ -35,8 +37,15 @@ writeRoles: [member]
 kind: View
 name: items
 entity: item
-fields: [id, title, owner_id, tenant_id]
+fields: [id, title, status, owner_id, tenant_id]
 policy: member_scope
+---
+kind: Lifecycle
+name: item_flow
+entity: item
+initial: draft
+transitions:
+  draft: [done]
 ---
 kind: Action
 name: create_item
@@ -48,6 +57,13 @@ input:
 steps:
   - op: create
     values: {title: $input.title}
+---
+kind: Action
+name: finish_item
+entity: item
+operation: transition
+policy: member_scope
+lifecycle: item_flow
 `
 
 func TestRegistryDefinesStableProviderNeutralOperations(t *testing.T) {
@@ -141,6 +157,20 @@ func TestAllOperationsUseSharedRuntimeBoundaries(t *testing.T) {
 	if !query.OK || !bytes.Contains(encoded, []byte(`"First"`)) {
 		t.Fatalf("query=%+v result=%s", query, encoded)
 	}
+	var page struct {
+		Rows []dbal.Row `json:"rows"`
+	}
+	if err := json.Unmarshal(encoded, &page); err != nil || len(page.Rows) != 1 || page.Rows[0]["status"] != "draft" {
+		t.Fatalf("page=%+v err=%v", page, err)
+	}
+	finished := service.Call(context.Background(), "bean.application.execute", rawInput(map[string]any{"target": database, "action": "finish_item", "input": map[string]any{"id": page.Rows[0]["id"], "status": "done"}}), member)
+	if !finished.OK {
+		t.Fatalf("finish=%+v", finished)
+	}
+	reversed := service.Call(context.Background(), "bean.application.execute", rawInput(map[string]any{"target": database, "action": "finish_item", "input": map[string]any{"id": page.Rows[0]["id"], "status": "draft"}}), member)
+	if reversed.OK || reversed.Error == nil || reversed.Error.Code != "BEAN-P3001" {
+		t.Fatalf("reverse transition=%+v", reversed)
+	}
 
 	otherOwner := member
 	otherOwner.Request.User = &beanctx.User{ID: "22222222-2222-4222-8222-222222222222", Roles: []string{"member"}}
@@ -186,17 +216,28 @@ func TestApplicationPlanePostgresParity(t *testing.T) {
 		Request: beanctx.Request{User: &beanctx.User{ID: "11111111-1111-4111-8111-111111111111", Roles: []string{"member"}}, TenantID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", RequestID: "postgres-test"},
 	}
 	service := New()
+	var created dbal.Row
 	for _, call := range []struct {
 		name  string
 		input map[string]any
 	}{
 		{"bean.release.publish", map[string]any{"file": manifest, "target": target}},
 		{"bean.application.execute", map[string]any{"target": target, "action": "create_item", "input": map[string]any{"title": "PostgreSQL"}}},
+		{"bean.application.execute", map[string]any{"target": target, "action": "finish_item", "input": map[string]any{}}},
 		{"bean.application.query", map[string]any{"target": target, "view": "items", "params": map[string]any{}}},
 	} {
+		if call.input["action"] == "finish_item" {
+			call.input["input"] = map[string]any{"id": created["id"], "status": "done"}
+		}
 		outcome := service.Call(context.Background(), call.name, rawInput(call.input), principal)
 		if !outcome.OK {
 			t.Fatalf("%s diagnostics=%+v error=%+v", call.name, outcome.Diagnostics, outcome.Error)
+		}
+		if call.input["action"] == "create_item" {
+			created, _ = outcome.Result.(dbal.Row)
+			if created["status"] != "draft" {
+				t.Fatalf("created=%+v", created)
+			}
 		}
 	}
 }

@@ -27,6 +27,8 @@ func InspectedDefinition(app *appir.App, kind, name string) (any, []InspectedRef
 		value, exists = app.Views[name]
 	case "Action":
 		value, exists = app.Actions[name]
+	case "Lifecycle":
+		value, exists = app.Lifecycles[name]
 	case "Policy":
 		value, exists = app.Policies[name]
 	case "Filter":
@@ -81,6 +83,8 @@ func DefinitionNames(app *appir.App, kind string) []string {
 		appendMap(app.Views)
 	case "Action":
 		appendMap(app.Actions)
+	case "Lifecycle":
+		appendMap(app.Lifecycles)
 	case "Policy":
 		appendMap(app.Policies)
 	case "Filter":
@@ -143,6 +147,7 @@ func definitionReferences(app *appir.App, kind, name string) []InspectedReferenc
 	case "Action":
 		item := app.Actions[name]
 		add("entity", "Entity", item.Entity)
+		add("lifecycle", "Lifecycle", item.Lifecycle)
 		add("policy", "Policy", item.Policy)
 		add("defaultRole", "Role", item.DefaultRole)
 		for index, step := range item.Steps {
@@ -150,6 +155,8 @@ func definitionReferences(app *appir.App, kind, name string) []InspectedReferenc
 			add(fmt.Sprintf("steps.%d.view", index), "View", step.View)
 			add(fmt.Sprintf("steps.%d.job", index), "Job", step.Job)
 		}
+	case "Lifecycle":
+		add("entity", "Entity", app.Lifecycles[name].Entity)
 	case "Webform":
 		add("action", "Action", app.Webforms[name].Action)
 	case "Block":

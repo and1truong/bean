@@ -119,7 +119,7 @@ func Run(ctx context.Context, database dbal.Database, app *appir.App, seed int64
 		},
 	}
 	for _, record := range records {
-		if _, err = service.Execute(ctx, app, record.Entity+"_create", record.Values, request); err != nil {
+		if err = seedRecord(ctx, service, app, record, request); err != nil {
 			return Result{}, fmt.Errorf("seed %s: %w", record.Entity, err)
 		}
 	}
@@ -131,6 +131,123 @@ func Run(ctx context.Context, database dbal.Database, app *appir.App, seed int64
 		return Result{}, fmt.Errorf("seed Actions did not produce the generated dataset")
 	}
 	return result, nil
+}
+
+func seedRecord(ctx context.Context, service action.Service, app *appir.App, record Record, request beanctx.Request) error {
+	values := make(map[string]any, len(record.Values))
+	for name, value := range record.Values {
+		values[name] = value
+	}
+	lifecycle, hasLifecycle := demoLifecycleForEntity(app, record.Entity)
+	desiredState := ""
+	if hasLifecycle {
+		desiredState = lifecycle.Initial
+		if desired := values[lifecycle.StateField]; desired != nil {
+			desiredState = fmt.Sprint(desired)
+		}
+		values[lifecycle.StateField] = lifecycle.Initial
+	}
+	created, err := service.Execute(ctx, app, record.Entity+"_create", values, request)
+	if err != nil || !hasLifecycle || desiredState == "" || desiredState == lifecycle.Initial {
+		return err
+	}
+	path, exists := lifecyclePath(lifecycle, desiredState)
+	if !exists {
+		return fmt.Errorf("Lifecycle %s cannot reach generated state %s from %s", lifecycle.Name, desiredState, lifecycle.Initial)
+	}
+	current := lifecycle.Initial
+	for _, target := range path {
+		actionName, exists := lifecycleTransitionAction(app, lifecycle, current, target)
+		if !exists {
+			return fmt.Errorf("Lifecycle %s has no Action for transition %s -> %s", lifecycle.Name, current, target)
+		}
+		if _, err = service.Execute(ctx, app, actionName, map[string]any{"id": created["id"], lifecycle.StateField: target}, request); err != nil {
+			return err
+		}
+		current = target
+	}
+	return nil
+}
+
+func demoLifecycleForEntity(app *appir.App, entity string) (appir.Lifecycle, bool) {
+	names := make([]string, 0, len(app.Lifecycles))
+	for name := range app.Lifecycles {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if app.Lifecycles[name].Entity == entity {
+			return app.Lifecycles[name], true
+		}
+	}
+	return appir.Lifecycle{}, false
+}
+
+func lifecyclePath(lifecycle appir.Lifecycle, target string) ([]string, bool) {
+	if target == lifecycle.Initial {
+		return []string{}, true
+	}
+	queue := []string{lifecycle.Initial}
+	previous := map[string]string{lifecycle.Initial: ""}
+	for len(queue) > 0 {
+		from := queue[0]
+		queue = queue[1:]
+		next := append([]string{}, lifecycle.Transitions[from]...)
+		sort.Strings(next)
+		for _, state := range next {
+			if _, visited := previous[state]; visited {
+				continue
+			}
+			previous[state] = from
+			if state == target {
+				path := []string{state}
+				for current := from; current != lifecycle.Initial; current = previous[current] {
+					path = append(path, current)
+				}
+				for left, right := 0, len(path)-1; left < right; left, right = left+1, right-1 {
+					path[left], path[right] = path[right], path[left]
+				}
+				return path, true
+			}
+			queue = append(queue, state)
+		}
+	}
+	return nil, false
+}
+
+func lifecycleTransitionAction(app *appir.App, lifecycle appir.Lifecycle, from, target string) (string, bool) {
+	names := make([]string, 0, len(app.Actions))
+	for name := range app.Actions {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		actionDefinition := app.Actions[name]
+		if actionDefinition.Entity != lifecycle.Entity || actionDefinition.Operation != "transition" || actionDefinition.Lifecycle != lifecycle.Name {
+			continue
+		}
+		transitions := lifecycle.Transitions
+		if actionDefinition.Transitions != nil {
+			transitions = actionDefinition.Transitions
+		}
+		allowed := false
+		for _, candidate := range transitions[from] {
+			allowed = allowed || candidate == target
+		}
+		if !allowed {
+			continue
+		}
+		compatible := true
+		for inputName, input := range actionDefinition.Input {
+			if input.Required && inputName != "id" && inputName != lifecycle.StateField {
+				compatible = false
+			}
+		}
+		if compatible {
+			return name, true
+		}
+	}
+	return "", false
 }
 
 func inspectTarget(ctx context.Context, database dbal.Database, app *appir.App, records []Record, request beanctx.Request, seed int64) (bool, bool, error) {
@@ -182,6 +299,9 @@ func inspectTarget(ctx context.Context, database dbal.Database, app *appir.App, 
 				break
 			}
 			for _, fieldName := range verificationFields(entity)[1:] {
+				if _, lifecycle := demoLifecycleForEntity(app, entityName); lifecycle && (fieldName == "updated_at" || fieldName == "version") {
+					continue
+				}
 				value, generated := generatedConstraintValue(app, entityName, record, fieldName, seed)
 				if !generated && omittedValueMatches(entity, fieldName, row[fieldName]) {
 					continue

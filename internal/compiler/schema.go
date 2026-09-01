@@ -19,6 +19,7 @@ type Capabilities struct {
 	AgentProtocolAPIVersion string   `json:"agentProtocolAPIVersion,omitempty"`
 	AppIRFormat             string   `json:"appIRFormat"`
 	DefinitionKinds         []string `json:"definitionKinds"`
+	SemanticPrimitives      []string `json:"semanticPrimitives"`
 	FieldTypes              []string `json:"fieldTypes"`
 	ActionOperations        []string `json:"actionOperations"`
 	ActionSteps             []string `json:"actionSteps"`
@@ -50,6 +51,7 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 		AgentProtocolAPIVersion: agentProtocolAPIVersion,
 		AppIRFormat:             appir.CurrentFormat,
 		DefinitionKinds:         kinds,
+		SemanticPrimitives:      []string{"Lifecycle"},
 		FieldTypes:              []string{"boolean", "date", "datetime", "decimal", "email", "enum", "file", "integer", "json", "money", "password", "relation", "richtext", "slug", "string", "text", "url", "uuid"},
 		ActionOperations:        []string{"create", "delete", "register_local_user", "transaction", "transition", "update"},
 		ActionSteps:             []string{"assert", "assert_no_overlap", "conditional_update", "create", "decrement", "delete", "emit", "load", "query", "return", "schedule", "transition", "update"},
@@ -109,6 +111,7 @@ func specificationTypes() map[string]reflect.Type {
 		"Entity":            reflect.TypeOf(appir.Entity{}),
 		"Filter":            reflect.TypeOf(appir.Filter{}),
 		"Job":               reflect.TypeOf(appir.Job{}),
+		"Lifecycle":         reflect.TypeOf(appir.Lifecycle{}),
 		"LocalRegistration": reflect.TypeOf(appir.LocalRegistration{}),
 		"Menu":              reflect.TypeOf(appir.Menu{}),
 		"Page":              reflect.TypeOf(appir.Page{}),

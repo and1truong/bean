@@ -4,12 +4,12 @@ Status values: `pending`, `active`, `done`. A milestone is `done` only when its 
 
 | Milestone | Deliverable | Evidence | Status |
 | --- | --- | --- | --- |
-| 0 | Catalogue existing transition use, freeze the minimal Lifecycle and Action-binding contract, and define compatibility behavior | ATS/commerce fixtures plus schema and diagnostic test plan | active |
-| 1 | Canonical Lifecycle schema, compiler validation, immutable AppIR, capabilities, inspect, and semantic diff | focused schema/compiler/AppIR/Agent Protocol tests | pending |
-| 2 | Policy-aware Lifecycle enforcement through Actions with safe publication and restart behavior | positive/negative Action, release, and crash contracts | pending |
-| 3 | Convert ATS candidate and commerce order flows to the shared primitive | source validation plus independent application journeys | pending |
-| 4 | Preserve legacy transition compatibility and SQLite/PostgreSQL parity | compatibility, CLI/MCP parity, backend, and bypass-refusal tests | pending |
-| 5 | Documentation, version cut, terminal gates, CI, and clean reviewed PR | all gates, CI, and Codex review | pending |
+| 0 | Catalogue existing transition use, freeze the minimal Lifecycle and Action-binding contract, and define compatibility behavior | ATS/commerce fixtures plus schema and diagnostic test plan | done |
+| 1 | Canonical Lifecycle schema, compiler validation, immutable AppIR, capabilities, inspect, and semantic diff | focused schema/compiler/AppIR/Agent Protocol tests | done |
+| 2 | Policy-aware Lifecycle enforcement through Actions with safe publication and restart behavior | positive/negative Action, release, and crash contracts | done |
+| 3 | Convert ATS candidate and commerce order flows to the shared primitive | source validation plus independent application journeys | done |
+| 4 | Preserve legacy transition compatibility and SQLite/PostgreSQL parity | compatibility, CLI/MCP parity, backend, and bypass-refusal tests | done |
+| 5 | Documentation, version cut, terminal gates, CI, and clean reviewed PR | all gates, CI, and Codex review | active |
 
 ## Working rules
 
