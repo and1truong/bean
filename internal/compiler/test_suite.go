@@ -182,7 +182,7 @@ func validateFixtureUniqueness(app *appir.App, suiteName string, fixtures map[st
 		}
 		constraints := append([][]string{}, entity.Unique...)
 		for _, item := range entity.Fields {
-			if item.Unique {
+			if item.Unique || item.Relation != nil && item.Relation.Kind == "one-to-one" {
 				constraints = append(constraints, []string{item.Name})
 			}
 		}
@@ -524,7 +524,8 @@ func actionCreatedRecords(action appir.Action) int {
 
 func validatePartialRecord(suiteName string, entity appir.Entity, values map[string]any, path string) []definition.Diagnostic {
 	out := []definition.Diagnostic{}
-	for name, value := range values {
+	for _, name := range keys(values) {
+		value := values[name]
 		item, exists := testFieldDefinition(entity, name)
 		if !exists {
 			out = append(out, missingFieldDiagnostic("TestSuite", suiteName, path+"."+name, name, false))
@@ -553,7 +554,7 @@ func testFieldDefinition(entity appir.Entity, name string) (appir.Field, bool) {
 	case "deleted_at":
 		return appir.Field{Name: name, Type: "datetime"}, entity.SoftDelete
 	case "version":
-		return appir.Field{Name: name, Type: "integer"}, true
+		return appir.Field{Name: name, Type: "integer", Required: true}, true
 	default:
 		return appir.Field{}, false
 	}

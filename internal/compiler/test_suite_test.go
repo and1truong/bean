@@ -167,6 +167,24 @@ func TestTestSuiteRejectsDuplicateFixtureUniqueValues(t *testing.T) {
 	}
 }
 
+func TestTestSuiteRejectsDuplicateFixtureOneToOneRelations(t *testing.T) {
+	const accountID = "00000000-0000-4000-8000-000000000001"
+	definitions := semanticSuiteDefinitions()
+	definitions[0].Spec["fields"] = []any{
+		map[string]any{"name": "quantity", "type": "integer", "required": true},
+		map[string]any{"name": "account_id", "type": "relation", "relation": map[string]any{"entity": "account", "kind": "one-to-one", "targetField": "id"}},
+	}
+	definitions = append(definitions, definition.Definition{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "account"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "name", "type": "string", "required": true}}}})
+	definitions[2].Spec["tests"].([]any)[0].(map[string]any)["fixtures"] = map[string]any{
+		"account": []any{map[string]any{"id": accountID, "name": "shared"}},
+		"order": []any{
+			map[string]any{"id": "00000000-0000-4000-8000-000000000002", "quantity": 1, "account_id": accountID},
+			map[string]any{"id": "00000000-0000-4000-8000-000000000003", "quantity": 2, "account_id": accountID},
+		},
+	}
+	assertTestSuiteDiagnostic(t, compiler.Compile("test", 1, definitions).Diagnostics, "spec.tests.0.fixtures.order.1")
+}
+
 func TestActionTestSuiteValidatesMutationIdentityAndSystemFields(t *testing.T) {
 	definitions := actionAssertionSuiteDefinitions()
 	change := definitions[2].Spec["tests"].([]any)[0].(map[string]any)["expect"].(map[string]any)["changes"].([]any)[0].(map[string]any)
@@ -190,12 +208,16 @@ func TestActionTestSuiteValidatesMutationIdentityAndSystemFields(t *testing.T) {
 	}
 }
 
-func TestTestSuiteRejectsNullFixtureTimestamps(t *testing.T) {
-	definitions := semanticSuiteDefinitions()
-	definitions[2].Spec["tests"].([]any)[0].(map[string]any)["fixtures"] = map[string]any{
-		"order": []any{map[string]any{"id": "00000000-0000-4000-8000-000000000001", "quantity": 1, "created_at": nil}},
+func TestTestSuiteRejectsNullFixtureRequiredSystemFields(t *testing.T) {
+	for _, fieldName := range []string{"created_at", "version"} {
+		t.Run(fieldName, func(t *testing.T) {
+			definitions := semanticSuiteDefinitions()
+			definitions[2].Spec["tests"].([]any)[0].(map[string]any)["fixtures"] = map[string]any{
+				"order": []any{map[string]any{"id": "00000000-0000-4000-8000-000000000001", "quantity": 1, fieldName: nil}},
+			}
+			assertTestSuiteDiagnostic(t, compiler.Compile("test", 1, definitions).Diagnostics, "spec.tests.0.fixtures.order.0."+fieldName)
+		})
 	}
-	assertTestSuiteDiagnostic(t, compiler.Compile("test", 1, definitions).Diagnostics, "spec.tests.0.fixtures.order.0.created_at")
 }
 
 func TestActionTestSuiteInputDiagnosticsAreSorted(t *testing.T) {
@@ -210,6 +232,22 @@ func TestActionTestSuiteInputDiagnosticsAreSorted(t *testing.T) {
 		}
 	}
 	want := []string{"spec.tests.0.input.alpha", "spec.tests.0.input.zeta"}
+	if !reflect.DeepEqual(paths, want) {
+		t.Fatalf("paths=%v", paths)
+	}
+}
+
+func TestActionTestSuitePartialRecordDiagnosticsAreSorted(t *testing.T) {
+	definitions := actionAssertionSuiteDefinitions()
+	change := definitions[2].Spec["tests"].([]any)[0].(map[string]any)["expect"].(map[string]any)["changes"].([]any)[0].(map[string]any)
+	change["values"] = map[string]any{"zeta": true, "alpha": true}
+	paths := []string{}
+	for _, diagnostic := range compiler.Compile("test", 1, definitions).Diagnostics {
+		if strings.HasPrefix(diagnostic.Path, "spec.tests.0.expect.changes.0.values.") {
+			paths = append(paths, diagnostic.Path)
+		}
+	}
+	want := []string{"spec.tests.0.expect.changes.0.values.alpha", "spec.tests.0.expect.changes.0.values.zeta"}
 	if !reflect.DeepEqual(paths, want) {
 		t.Fatalf("paths=%v", paths)
 	}
