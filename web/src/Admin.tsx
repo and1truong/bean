@@ -105,7 +105,8 @@ function ResourceRecord({manifest,create=false}:{manifest:AdminManifest;create?:
   if(!resource)return <NotFound/>
   if(!create&&record.isPending)return <LoadingState label="Loading record…"/>
   if(!create&&record.error)return <ErrorAlert error={record.error}/>
-  return <RecordEditor key={create?'new':id} manifest={manifest} resource={resource} initial={create?{}:record.data?.data||{}} create={create}/>
+  const lifecycle=Object.values(manifest.lifecycles||{}).find(candidate=>candidate.Entity===resource.Entity)
+  return <RecordEditor key={create?'new':id} manifest={manifest} resource={resource} initial={create&&lifecycle?{[lifecycle.StateField]:lifecycle.Initial}:create?{}:record.data?.data||{}} create={create}/>
 }
 
 function RecordEditor({manifest,resource,initial,create}:{manifest:AdminManifest;resource:AdminResource;initial:Row;create:boolean}){

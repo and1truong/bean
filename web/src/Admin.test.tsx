@@ -25,6 +25,7 @@ describe('Admin',()=>{
     expect(await screen.findByRole('heading',{name:'Add Article'})).toBeInTheDocument()
     expect(screen.getByTestId('field-title')).toBeRequired()
     expect(screen.getByTestId('field-status').tagName).toBe('SELECT')
+    expect(screen.getByTestId('field-status')).toHaveValue('draft')
   })
 
   it('uses the AdminResource View for current file downloads',async()=>{
