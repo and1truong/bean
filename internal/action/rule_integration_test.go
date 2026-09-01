@@ -98,7 +98,11 @@ func TestCreateRulesTreatAbsentOptionalAndSystemFieldsAsNull(t *testing.T) {
 		}},
 		{APIVersion: definition.APIVersion, Kind: "Rule", Metadata: definition.Metadata{Name: "optional_empty"}, Spec: map[string]any{
 			"entity": "document", "result": "boolean",
-			"expression": map[string]any{"op": "is_null", "args": []any{map[string]any{"source": "this", "path": "note"}}},
+			"input": map[string]any{"note": map[string]any{"type": "string"}},
+			"expression": map[string]any{"op": "and", "args": []any{
+				map[string]any{"op": "is_null", "args": []any{map[string]any{"source": "this", "path": "note"}}},
+				map[string]any{"op": "is_null", "args": []any{map[string]any{"source": "input", "path": "note"}}},
+			}},
 		}},
 		{APIVersion: definition.APIVersion, Kind: "Rule", Metadata: definition.Metadata{Name: "not_deleted"}, Spec: map[string]any{
 			"entity": "document", "result": "boolean",

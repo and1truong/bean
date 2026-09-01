@@ -42,6 +42,7 @@ func validateActionInput(action appir.Action, input map[string]any, includeDeriv
 
 func applyActionDerivations(app *appir.App, action appir.Action, input map[string]any, current dbal.Row, request beanctx.Request) (map[string]any, error) {
 	base := copyValues(input)
+	environmentInput := completeRuleInput(action, input)
 	derived := map[string]any{}
 	names := make([]string, 0, len(action.Derive))
 	for name := range action.Derive {
@@ -49,7 +50,7 @@ func applyActionDerivations(app *appir.App, action appir.Action, input map[strin
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		value, err := evaluateRule(app.Rules[action.Derive[name]], base, current, request)
+		value, err := evaluateRule(app.Rules[action.Derive[name]], environmentInput, current, request)
 		if err != nil {
 			return nil, ruleRuntimeError(action.Derive[name], err)
 		}
@@ -65,7 +66,7 @@ func evaluateActionGuard(app *appir.App, action appir.Action, input map[string]a
 	if action.When == "" {
 		return nil
 	}
-	value, err := evaluateRule(app.Rules[action.When], input, current, request)
+	value, err := evaluateRule(app.Rules[action.When], completeRuleInput(action, input), current, request)
 	if err != nil {
 		return ruleRuntimeError(action.When, err)
 	}
@@ -77,6 +78,19 @@ func evaluateActionGuard(app *appir.App, action appir.Action, input map[string]a
 		return &dbal.Error{Code: dbal.Conflict, Message: "Action guard " + action.When + " denied the mutation"}
 	}
 	return nil
+}
+
+func completeRuleInput(action appir.Action, input map[string]any) map[string]any {
+	complete := make(map[string]any, len(action.Input)+len(input))
+	for name := range action.Input {
+		if _, derived := action.Derive[name]; !derived {
+			complete[name] = nil
+		}
+	}
+	for name, value := range input {
+		complete[name] = value
+	}
+	return complete
 }
 
 func actionUsesCurrentRecord(app *appir.App, action appir.Action) bool {

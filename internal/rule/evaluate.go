@@ -256,60 +256,81 @@ func compareResult(comparison int, operator string) bool {
 }
 
 func arithmetic(operator string, arguments []any, path string) (any, error) {
-	numbers := make([]float64, len(arguments))
+	numbers := make([]*big.Rat, len(arguments))
 	allIntegers := true
 	for index, argument := range arguments {
-		value, integer, ok := numeric(argument)
+		value, ok := rationalValue(argument)
 		if !ok {
+			if _, isNumber := argument.(json.Number); isNumber {
+				return nil, ruleError(CodeLimit, path, "numeric operand exceeds exact arithmetic limit")
+			}
 			return nil, typeError(path, operator+" requires numeric arguments")
 		}
 		numbers[index] = value
+		_, integer := integerValue(argument)
 		allIntegers = allIntegers && integer
 	}
-	if allIntegers && operator != "divide" {
-		result := big.NewInt(0)
-		first, _ := integerValue(arguments[0])
-		result.SetInt64(first)
-		for _, argument := range arguments[1:] {
-			value, _ := integerValue(argument)
-			next := big.NewInt(value)
-			switch operator {
-			case "add":
-				result.Add(result, next)
-			case "subtract":
-				result.Sub(result, next)
-			case "multiply":
-				result.Mul(result, next)
-			}
-		}
-		if !result.IsInt64() {
-			return nil, ruleError(CodeLimit, path, "rule integer result is out of range")
-		}
-		return result.Int64(), nil
-	}
-	result := numbers[0]
+	result := new(big.Rat).Set(numbers[0])
 	switch operator {
 	case "add":
 		for _, value := range numbers[1:] {
-			result += value
+			result.Add(result, value)
 		}
 	case "subtract":
-		result -= numbers[1]
+		result.Sub(result, numbers[1])
 	case "multiply":
 		for _, value := range numbers[1:] {
-			result *= value
+			result.Mul(result, value)
 		}
 	case "divide":
-		if numbers[1] == 0 {
+		if numbers[1].Sign() == 0 {
 			return nil, ruleError(CodeDivideByZero, path, "rule division by zero")
 		}
-		result /= numbers[1]
-		allIntegers = false
+		result.Quo(result, numbers[1])
 	}
-	if math.IsInf(result, 0) || math.IsNaN(result) {
+	if allIntegers && operator != "divide" {
+		if !result.IsInt() || !result.Num().IsInt64() {
+			return nil, ruleError(CodeLimit, path, "rule integer result is out of range")
+		}
+		return result.Num().Int64(), nil
+	}
+	approximate, _ := result.Float64()
+	if !math.IsInf(approximate, 0) {
+		if exact := new(big.Rat).SetFloat64(approximate); exact != nil && exact.Cmp(result) == 0 {
+			return approximate, nil
+		}
+	}
+	if decimal, ok := finiteDecimal(result); ok {
+		return json.Number(decimal), nil
+	}
+	if math.IsInf(approximate, 0) || math.IsNaN(approximate) {
 		return nil, ruleError(CodeLimit, path, "rule numeric result is not finite")
 	}
-	return result, nil
+	return approximate, nil
+}
+
+func finiteDecimal(value *big.Rat) (string, bool) {
+	denominator := new(big.Int).Set(value.Denom())
+	twos := 0
+	for denominator.Bit(0) == 0 {
+		denominator.Rsh(denominator, 1)
+		twos++
+	}
+	fives := 0
+	five := big.NewInt(5)
+	for new(big.Int).Mod(denominator, five).Sign() == 0 {
+		denominator.Quo(denominator, five)
+		fives++
+	}
+	if denominator.Cmp(big.NewInt(1)) != 0 {
+		return "", false
+	}
+	precision := max(twos, fives)
+	text := value.FloatString(precision)
+	if precision > 0 {
+		text = strings.TrimRight(strings.TrimRight(text, "0"), ".")
+	}
+	return text, true
 }
 
 func integerValue(value any) (int64, bool) {
@@ -397,43 +418,6 @@ func rationalValue(value any) (*big.Rat, bool) {
 	default:
 		return nil, false
 	}
-}
-
-func numeric(value any) (float64, bool, bool) {
-	switch typed := value.(type) {
-	case int:
-		return float64(typed), true, true
-	case int8:
-		return float64(typed), true, true
-	case int16:
-		return float64(typed), true, true
-	case int32:
-		return float64(typed), true, true
-	case int64:
-		return float64(typed), true, true
-	case uint:
-		return float64(typed), true, true
-	case uint8:
-		return float64(typed), true, true
-	case uint16:
-		return float64(typed), true, true
-	case uint32:
-		return float64(typed), true, true
-	case uint64:
-		return float64(typed), true, true
-	case float32:
-		return float64(typed), false, true
-	case float64:
-		return typed, math.Trunc(typed) == typed, true
-	case json.Number:
-		if integer, err := typed.Int64(); err == nil {
-			return float64(integer), true, true
-		}
-		if number, err := typed.Float64(); err == nil {
-			return number, false, true
-		}
-	}
-	return 0, false, false
 }
 
 func bounded(value any, path string) (any, error) {

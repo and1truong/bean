@@ -179,7 +179,7 @@ func ValueMatches(expected Type, value any) bool {
 		_, valid := integerValue(value)
 		return valid
 	case Number:
-		_, _, valid := numeric(value)
+		_, valid := rationalValue(value)
 		return valid
 	case String:
 		_, valid := value.(string)

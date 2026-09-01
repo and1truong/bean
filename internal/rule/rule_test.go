@@ -218,11 +218,21 @@ func TestNumericComparisonsPreserveIntegerPrecision(t *testing.T) {
 }
 
 func TestTypedEvaluationRejectsRuntimeResultMismatch(t *testing.T) {
+	if value, err := rule.EvaluateTyped(literal(json.Number("1e309")), rule.Environment{}, rule.Number); err != nil || value != json.Number("1e309") {
+		t.Fatalf("bounded exact number value=%v err=%v", value, err)
+	}
 	if _, err := rule.EvaluateTyped(literal("true"), rule.Environment{}, rule.Boolean); err == nil {
 		t.Fatal("string result accepted as boolean")
 	}
 	if !rule.ResultCompatible(rule.Number, rule.Integer) || rule.ResultCompatible(rule.Integer, rule.Number) {
 		t.Fatal("numeric result compatibility is incorrect")
+	}
+}
+
+func TestArithmeticPreservesExactDecimals(t *testing.T) {
+	value, err := rule.Evaluate(op("add", literal(json.Number("9007199254740992.5")), literal(1)), rule.Environment{})
+	if err != nil || value != json.Number("9007199254740993.5") {
+		t.Fatalf("value=%v (%T) err=%v", value, value, err)
 	}
 }
 
