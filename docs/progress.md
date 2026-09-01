@@ -2,6 +2,12 @@
 
 ## Current
 
+The sealed internal capability-registry refactor is active from merge commit `b0eaaf5`. The behavior-preserving inventory found three real extension seams: Definition kinds repeated across compile/schema/inspection, Action steps repeated across compiler/runtime/DemoSeed, and Block types repeated across validation/render/component selection. Milestones 0–2 are complete; milestone 3 is active. The shared registry primitive is immutable after explicit construction, rejects blank or duplicate entries, and exposes deterministic copied names without a global mutation API. One Definition-kind registry now owns compilation, schema/capability vocabulary, compiled lookup and names, reference inspection, and diagnostic candidate context; its completeness is checked against the source envelope vocabulary.
+
+The target is an explicitly constructed modular monolith, not a public plugin platform. Registries will be immutable and deterministic, and core continues to own Policy, transactions, idempotency, audit/outbox behavior, View-read/Action-write boundaries, migration, and atomic activation. Field types, expressions, DB predicates, migrations, and other deliberately closed algebras retain exhaustive switches. Action operations and presentation modes move only if tracer-bullet evidence shows a clearer boundary without hiding invariants.
+
+## v0.9 completed state
+
 Bean v0.9 Semantic Application Model is complete on top of merge commit `c51705d`. The scoped first slice adds exactly one first-class primitive, `Lifecycle`, derived from the maintained ATS candidate pipeline and commerce order flow. Milestones 0–5 are done.
 
 Lifecycle owns one Entity enum state field, its initial state, and a reachable canonical transition graph. The compiler validates Action bindings and optional Policy-specific graph subsets with stable `BEAN-E2202`/`BEAN-E2201` diagnostics; immutable AppIR, capabilities, canonical schema, named inspection, references, and semantic diff expose the same model through the shared CLI/MCP Agent Protocol. Create Actions inject the initial state, generic and transaction updates cannot change it, and only a Lifecycle-bound transition path can follow the graph after existing Policy checks.

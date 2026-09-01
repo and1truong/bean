@@ -72,6 +72,10 @@ Presentation remains a separately reported score so a technically correct but un
 - Bean integrates with infrastructure through adapters instead of rebuilding infrastructure products.
 - A phase starts only when its predecessor's exit criteria are met. Version labels express dependency order, not calendar commitments.
 
+## Current engineering goal
+
+Before v0.10 feature work, Bean is performing a behavior-preserving internal refactor around sealed capability registries. The work centralizes repeated Definition-kind, Action-step, and Block-type extension seams while retaining explicit control flow for closed algebras and security-sensitive orchestration. It does not add a public plugin SDK or change the roadmap's application capabilities.
+
 ## Roadmap
 
 | Phase | Target | Outcome | Status |

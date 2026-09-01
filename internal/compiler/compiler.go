@@ -66,220 +66,11 @@ func compile(appID string, version int, defs []definition.Definition, validateGr
 			continue
 		}
 		seen[key] = true
-		switch d.Kind {
-		case "Entity":
-			var x appir.Entity
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			for i := range x.Fields {
-				if x.Fields[i].Type != "relation" {
-					continue
-				}
-				if x.Fields[i].Relation == nil {
-					target := strings.TrimSuffix(x.Fields[i].Name, "_id")
-					x.Fields[i].Relation = &appir.Relation{Entity: target, Kind: "many-to-one", TargetField: "id"}
-				}
-				if x.Fields[i].Relation.Kind == "" {
-					x.Fields[i].Relation.Kind = "many-to-one"
-				}
-				if x.Fields[i].Relation.TargetField == "" {
-					x.Fields[i].Relation.TargetField = "id"
-				}
-			}
-			if x.Label == "" {
-				x.Label = x.Name
-			}
-			a.Entities[x.Name] = x
-		case "View":
-			var x appir.View
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			for i := range x.Relationships {
-				if x.Relationships[i].Type == "" {
-					x.Relationships[i].Type = "inner"
-				}
-			}
-			if x.DefaultLimit == 0 {
-				x.DefaultLimit = 50
-			}
-			if x.MaxLimit == 0 {
-				x.MaxLimit = 200
-			}
-			a.Views[x.Name] = x
-		case "Action":
-			var source actionSource
-			if e := definition.DecodeSpec(d.Spec, &source); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x := appir.Action{Name: d.Metadata.Name, Entity: source.Entity, Operation: source.Operation, Policy: source.Policy, Lifecycle: source.Lifecycle, StateField: source.StateField, DefaultRole: source.DefaultRole, Confirm: source.Confirm, Input: source.Input, Output: source.Output, Transitions: source.Transitions}
-			for inputName, input := range x.Input {
-				if input.Name == "" {
-					input.Name = inputName
-					x.Input[inputName] = input
-				}
-			}
-			for outputName, output := range x.Output {
-				if output.Name == "" {
-					output.Name = outputName
-					x.Output[outputName] = output
-				}
-			}
-			for _, step := range source.Steps {
-				compiled := appir.Step{Op: step.Op, Result: step.Result, Entity: step.Entity, View: step.View, StateField: step.StateField, Where: step.Where, Condition: step.Condition, Event: step.Event, Job: step.Job}
-				keys := make([]string, 0, len(step.Values))
-				for key := range step.Values {
-					keys = append(keys, key)
-				}
-				sort.Strings(keys)
-				for _, key := range keys {
-					compiled.Values = append(compiled.Values, appir.Assignment{Field: key, Value: compileBinding(step.Values[key])})
-				}
-				x.Steps = append(x.Steps, compiled)
-			}
-			a.Actions[x.Name] = x
-		case "Lifecycle":
-			var x appir.Lifecycle
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			if x.StateField == "" {
-				x.StateField = "status"
-			}
-			a.Lifecycles[x.Name] = x
-		case "Policy":
-			var x appir.Policy
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			a.Policies[x.Name] = x
-		case "Filter":
-			var x appir.Filter
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			a.Filters[x.Name] = x
-		case "Webform":
-			var x appir.Webform
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			a.Webforms[x.Name] = x
-		case "Block":
-			var x appir.Block
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			a.Blocks[x.Name] = x
-		case "Panel":
-			var x appir.Panel
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			a.Panels[x.Name] = x
-		case "Page":
-			var x appir.Page
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			a.Pages[x.Name] = x
-		case "Role":
-			var x appir.Role
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			a.Roles[x.Name] = x
-		case "Menu":
-			var x appir.Menu
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			a.Menus[x.Name] = x
-		case "Job":
-			var x appir.Job
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			a.Jobs[x.Name] = x
-		case "AdminResource":
-			var x appir.AdminResource
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			a.AdminResources[x.Name] = x
-		case "LocalRegistration":
-			var x appir.LocalRegistration
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			if a.LocalRegistration != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "metadata.name", "only one local registration definition is allowed"))
-				continue
-			}
-			a.LocalRegistration = &x
-		case "Theme":
-			var x appir.Theme
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			if a.Theme != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "metadata.name", "only one Theme definition is allowed"))
-				continue
-			}
-			if x.DisplayName == "" {
-				x.DisplayName = "Bean"
-			}
-			if x.Preset == "" {
-				x.Preset = "professional"
-			}
-			if x.Accent == "" {
-				x.Accent = "emerald"
-			}
-			a.Theme = &x
-		case "DemoSeed":
-			var x appir.DemoSeed
-			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
-				continue
-			}
-			x.Name = d.Metadata.Name
-			if a.DemoSeed != nil {
-				r.Diagnostics = append(r.Diagnostics, diag(d, "metadata.name", "only one DemoSeed definition is allowed"))
-				continue
-			}
-			a.DemoSeed = &x
+		registered, exists := definitionKinds.Lookup(d.Kind)
+		if !exists {
+			continue
 		}
+		r.Diagnostics = append(r.Diagnostics, registered.Compile(a, d)...)
 	}
 	unavailable := unavailableDefinitions(r.Diagnostics)
 	for name, entity := range a.Entities {
@@ -342,21 +133,14 @@ func enrichDiagnosticCandidates(app *appir.App, diagnostics []definition.Diagnos
 				diagnostics[index].Candidates = closest(unknown, names)
 			}
 		}
-		for prefix, names := range map[string][]string{
-			"references missing Entity ":    keys(app.Entities),
-			"references missing Lifecycle ": keys(app.Lifecycles),
-			"references missing View ":      keys(app.Views),
-			"references missing Action ":    keys(app.Actions),
-			"references missing Policy ":    keys(app.Policies),
-			"references missing Role ":      keys(app.Roles),
-			"references missing Filter ":    keys(app.Filters),
-			"references missing Block ":     keys(app.Blocks),
-			"references missing Panel ":     keys(app.Panels),
-			"references missing Menu ":      keys(app.Menus),
-			"references missing Job ":       keys(app.Jobs),
-		} {
+		for _, kindName := range definitionKinds.Names() {
+			registered, _ := definitionKinds.Lookup(kindName)
+			if !registered.ReferenceCandidates {
+				continue
+			}
+			prefix := "references missing " + kindName + " "
 			if strings.HasPrefix(message, prefix) {
-				diagnostics[index].Candidates = closest(strings.TrimPrefix(message, prefix), names)
+				diagnostics[index].Candidates = closest(strings.TrimPrefix(message, prefix), registered.Names(app))
 				break
 			}
 		}
@@ -378,19 +162,9 @@ func keys[T any](values map[string]T) []string {
 
 func fieldsForDiagnostic(app *appir.App, diagnostic definition.Diagnostic) []string {
 	entityName := ""
-	switch diagnostic.Kind {
-	case "View":
-		entityName = app.Views[diagnostic.Name].Entity
-	case "Action":
-		entityName = app.Actions[diagnostic.Name].Entity
-	case "Lifecycle":
-		entityName = app.Lifecycles[diagnostic.Name].Entity
-	case "AdminResource":
-		entityName = app.AdminResources[diagnostic.Name].Entity
-	case "Block":
-		entityName = app.Views[app.Blocks[diagnostic.Name].View].Entity
-	case "Entity":
-		entityName = diagnostic.Name
+	registered, exists := definitionKinds.Lookup(diagnostic.Kind)
+	if exists && registered.FieldEntity != nil {
+		entityName = registered.FieldEntity(app, diagnostic.Name)
 	}
 	names := []string{"created_at", "id", "updated_at", "version"}
 	if entity, ok := app.Entities[entityName]; ok {

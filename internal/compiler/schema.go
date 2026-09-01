@@ -3,7 +3,6 @@ package compiler
 import (
 	"encoding/json"
 	"reflect"
-	"sort"
 	"strings"
 	"unicode"
 
@@ -40,17 +39,12 @@ func AgentCapabilities(cliAPIVersion string) Capabilities {
 }
 
 func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabilities {
-	kinds := make([]string, 0, len(definition.Kinds))
-	for kind := range definition.Kinds {
-		kinds = append(kinds, kind)
-	}
-	sort.Strings(kinds)
 	return Capabilities{
 		DefinitionAPIVersion:    definition.APIVersion,
 		CLIAPIVersion:           cliAPIVersion,
 		AgentProtocolAPIVersion: agentProtocolAPIVersion,
 		AppIRFormat:             appir.CurrentFormat,
-		DefinitionKinds:         kinds,
+		DefinitionKinds:         definitionKinds.Names(),
 		SemanticPrimitives:      []string{"Lifecycle"},
 		FieldTypes:              []string{"boolean", "date", "datetime", "decimal", "email", "enum", "file", "integer", "json", "money", "password", "relation", "richtext", "slug", "string", "text", "url", "uuid"},
 		ActionOperations:        []string{"create", "delete", "register_local_user", "transaction", "transition", "update"},
@@ -85,15 +79,11 @@ func ManifestSchema() map[string]any {
 }
 
 func DefinitionSchemas() map[string]map[string]any {
-	types := specificationTypes()
-	kinds := make([]string, 0, len(types))
-	for kind := range types {
-		kinds = append(kinds, kind)
-	}
-	sort.Strings(kinds)
+	kinds := definitionKinds.Names()
 	out := make(map[string]map[string]any, len(kinds))
 	for _, kind := range kinds {
-		out[kind] = definitionSchema(kind, types[kind])
+		registered, _ := definitionKinds.Lookup(kind)
+		out[kind] = definitionSchema(kind, registered.Specification)
 	}
 	return out
 }
@@ -101,28 +91,6 @@ func DefinitionSchemas() map[string]map[string]any {
 func SchemaProperties(schema map[string]any) (map[string]any, bool) {
 	properties, ok := schema["properties"].(map[string]any)
 	return properties, ok
-}
-
-func specificationTypes() map[string]reflect.Type {
-	return map[string]reflect.Type{
-		"Action":            reflect.TypeOf(actionSource{}),
-		"AdminResource":     reflect.TypeOf(appir.AdminResource{}),
-		"Block":             reflect.TypeOf(appir.Block{}),
-		"Entity":            reflect.TypeOf(appir.Entity{}),
-		"Filter":            reflect.TypeOf(appir.Filter{}),
-		"Job":               reflect.TypeOf(appir.Job{}),
-		"Lifecycle":         reflect.TypeOf(appir.Lifecycle{}),
-		"LocalRegistration": reflect.TypeOf(appir.LocalRegistration{}),
-		"Menu":              reflect.TypeOf(appir.Menu{}),
-		"Page":              reflect.TypeOf(appir.Page{}),
-		"Panel":             reflect.TypeOf(appir.Panel{}),
-		"Policy":            reflect.TypeOf(appir.Policy{}),
-		"Role":              reflect.TypeOf(appir.Role{}),
-		"Theme":             reflect.TypeOf(appir.Theme{}),
-		"DemoSeed":          reflect.TypeOf(appir.DemoSeed{}),
-		"View":              reflect.TypeOf(appir.View{}),
-		"Webform":           reflect.TypeOf(appir.Webform{}),
-	}
 }
 
 func definitionSchema(kind string, specification reflect.Type) map[string]any {

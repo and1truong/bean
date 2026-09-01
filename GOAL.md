@@ -1,69 +1,62 @@
-# Goal: Bean v0.9 Semantic Application Model
+# Goal: Sealed Internal Capability Registries
 
-Add one evidence-driven first-class semantic primitive: `Lifecycle`. Bean must understand an application's state machine structurally instead of requiring every agent and Action to repeat an untyped transition map.
+Refactor Bean's growing discriminator-based dispatch into explicit, immutable internal capability registries where multiple packages currently repeat the same vocabulary. Preserve every public definition, AppIR, diagnostic, protocol, runtime, storage, and UI behavior.
 
 ## Primary outcome
 
-An agent can declare lifecycle intent once and Bean can validate, compile, inspect, diff, authorize, and enforce it deterministically:
+Adding an internal capability has one declared owner and fails closed if its compiler/runtime pieces are incomplete:
 
 ```text
-Lifecycle definition
-  -> compiler validation
-  -> immutable AppIR
-  -> Action transition boundary
-  -> Policy-aware runtime enforcement
-  -> inspectable Agent Protocol result
+capability module
+  -> sealed registry entry
+  -> compiler/schema/introspection contract
+  -> declared effects and runtime handler
+  -> deterministic application behavior
 ```
 
-The maintained applicant-tracking candidate pipeline and commerce order flow are the two unrelated reference applications for this primitive. Both remain metadata-only and use the same generic compiler/runtime path.
+The result remains a modular monolith. This goal does not create a third-party plugin platform.
 
-## Scope
+## Evidence-driven scope
 
-`Lifecycle` owns the canonical state field and allowed transition graph for one Entity. Milestone 0 freezes the smallest source shape and Action binding that can represent both reference flows, including cases where different Actions or Policies expose different subsets of the lifecycle.
+The initial inventory found three duplicated extension seams:
 
-The implementation must provide:
+1. Definition kinds are independently enumerated by compilation, schema generation, lookup, name listing, and reference inspection.
+2. Action transaction steps are independently enumerated by compiler allowlists/value rules, runtime dispatch, and DemoSeed safety inference.
+3. Block types are independently enumerated by compiler validation, runtime prop construction, and component selection.
 
-- canonical JSON Schema and compiler capabilities for `Lifecycle`
-- stable diagnostics for missing Entity/field references, non-enum state fields, unknown states, invalid edges, and incompatible Action bindings
-- immutable AppIR representation with deterministic ordering and compatibility handling
-- semantic inspect and diff output through the v0.8 Agent Protocol
-- runtime transition enforcement only through Actions, with existing Policy, owner, and tenant context preserved
-- SQLite and PostgreSQL parity
-- positive and negative contract evidence from at least two unrelated maintained applications
-
-Lifecycle does not create a second mutation path. Views remain the read boundary; Actions remain the write boundary. The transition graph is semantic application metadata, while authorization remains Policy metadata.
+Action operations and presentation modes will move behind registries only if the tracer bullets prove that ownership becomes clearer without hiding Policy, transaction, audit, or serialization invariants. Field types, expression operators, DB predicates, migration types, and other deliberately closed algebras retain explicit exhaustive switches.
 
 ## Architecture constraints
 
-- Preserve definition -> validation -> migration -> immutable AppIR -> atomic activation.
-- Keep application-specific states and transitions under `examples/`; core packages stay generic.
-- Keep SQL and SQLite dependencies within their existing DBAL and migration boundaries.
-- Do not duplicate lifecycle rules across compiler, CLI, MCP, and runtime adapters; all transports consume the same compiled semantics.
-- Publication of an invalid or incompatible lifecycle must fail before activation.
-- Lifecycle changes appear in semantic diff without exposing secrets or storage details.
-- Existing Action transition definitions remain compatible for the declared v0.9 compatibility window; any normalization or migration path must be deterministic and tested.
+- Registries are immutable after construction, deterministic, reject duplicate names, and expose no mutable global registration API.
+- Registration is explicit; package `init()` side effects and runtime mutation are forbidden.
+- Core retains transaction ownership, Policy checks, idempotency, audit/outbox behavior, View-read/Action-write boundaries, migration planning, and atomic activation.
+- Capability handlers receive only typed context required for their declared responsibility.
+- Compiler and runtime support cannot silently drift; tests compare registered vocabulary and required handlers.
+- Effects such as reads, entity mutation, event emission, and job scheduling are declared as data where consumers need safe introspection.
+- Public definition syntax, canonical schemas, AppIR format, diagnostics, CLI/MCP envelopes, HTTP behavior, and maintained examples remain compatible.
+- SQL and backend-specific behavior remain confined to existing DBAL and migration boundaries.
 
 ## Measurable acceptance criteria
 
-- Exactly one new semantic primitive, `Lifecycle`, is added in v0.9.
-- ATS candidate and commerce order definitions use the primitive without core application-name branches.
-- Both applications compile, publish, restart, and enforce every allowed and denied transition on SQLite and PostgreSQL where the existing gate applies.
-- Compiler tests reject invalid Entity, state-field, state, edge, and Action/lifecycle combinations with stable structured diagnostics.
-- AppIR compatibility tests cover the new format and the supported legacy Action transition representation.
-- `bean capabilities`, canonical schemas, definition inspection, semantic diff, CLI, and MCP expose the same Lifecycle semantics through shared v0.8 contracts.
-- Runtime tests prove Policy checks occur before mutation and direct Entity/table mutation cannot bypass the lifecycle Action.
-- Existing examples and v0.6-v0.8 machine contracts remain compatible.
+- A focused immutable-registry contract proves deterministic names, duplicate rejection, lookup, and construction-time sealing.
+- Definition compilation, schema generation, named inspection, name listing, and reference inspection consume one Definition-kind registry rather than parallel kind switches.
+- Action-step compiler metadata and runtime handlers share one registered vocabulary; missing handlers or duplicate steps fail tests.
+- DemoSeed classifies transaction safety from declared step effects instead of maintaining its own incomplete operation list.
+- Block validation, runtime rendering, and component selection consume one Block-type registry.
+- Any Action-operation or presentation refactor has equivalent parity tests; otherwise the inventory explicitly records why the exhaustive control flow remains.
+- Existing AppIR/diagnostic/Agent Protocol golden behavior remains unchanged.
 - `make check`, `make test-crash`, `make test-postgres`, and `make build` pass.
 - The pull request is clean under a fresh Codex review of its latest commit and all actionable threads are resolved.
 
 ## Explicit non-goals
 
-- Ownership, auditability, soft deletion, terminal-state immutability, or a general invariant framework
-- Deterministic rule expressions, generated semantic tests, or typed extensions
-- Arbitrary scripts, embedded JavaScript, raw SQL, or another mutation API
-- New MCP transports, provider SDKs, embedded LLMs, or agent orchestration
-- Destructive migration support or production-envelope qualification
-- Application-specific workflow code or a new visual workflow designer
+- Dynamic loading, Go `plugin`, WASM, subprocess, HTTP, or marketplace extensions
+- Public plugin SDK or compatibility promise for internal registry interfaces
+- New definition kinds, Action operations, transaction steps, presentations, or application features
+- Changes to application metadata, migration semantics, storage layout, or AppIR version
+- A general dependency-injection container or service locator
+- Registry conversion whose only benefit is deleting a small exhaustive switch
 
 ## Terminal gates
 
