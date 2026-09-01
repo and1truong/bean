@@ -22,7 +22,7 @@ Given the same Rule, input, record, user, tenant, and explicitly injected contex
 ### Rule definition
 
 ```yaml
-apiVersion: bean/v1
+apiVersion: bean/v1alpha1
 kind: Rule
 metadata:
   name: order_subtotal

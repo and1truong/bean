@@ -66,10 +66,10 @@ entity: candidate
 operation: transition
 policy: public_access
 lifecycle: candidate_pipeline
-when: candidate_has_started
+when: candidate_is_named
 ---
 kind: Rule
-name: candidate_has_started
+name: candidate_is_named
 entity: candidate
 result: boolean
 expression:

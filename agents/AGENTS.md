@@ -13,6 +13,8 @@ Use Bean as a deterministic compiler and runtime. Keep application behavior in B
 
 Declare a `Lifecycle` when an Entity has a business state machine. Put the canonical initial state and graph on Lifecycle, bind transition Actions with `lifecycle`, and use Action-local `transitions` only for a narrower Policy-specific subset. Do not expose the lifecycle field through generic update behavior.
 
+Use a named `Rule` only for a bounded local predicate or calculation after checking that an existing semantic primitive does not own the behavior. Declare every `input` type and the closed Rule `result` type, use only capabilities-reported sources/operators, bind boolean guards with `Action.when`, server-owned derived inputs with `Action.derive`, and same-Entity invariants with `Entity.validations`. Policy authorizes before Rules; never encode authorization in a Rule. Do not invent text scripts, ambient clock/randomness, I/O, dynamic lookup, or dependencies between derived inputs.
+
 Never request raw tables, SQL, arbitrary mutations, roles, tenant identity, or plane grants as tool input. The host configures Definition, Release, and Application Plane access plus runtime identity. A missing primitive is a design constraint to surface, not permission to generate arbitrary code inside metadata.
 
 Prefer the generic `bean agent call` contract for scripts and the MCP stdio adapter for compatible hosts. Both expose the same ten `bean.agent/v1alpha1` operations described in [the protocol reference](../docs/agent-protocol.md).
