@@ -9,6 +9,7 @@ import (
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/compiler"
 	"github.com/beanruntime/bean/internal/definition"
+	"github.com/beanruntime/bean/internal/expr"
 	"github.com/beanruntime/bean/internal/generatedtest"
 )
 
@@ -64,5 +65,15 @@ func TestJourneyChecksExerciseStaticPagesAndViewRoutes(t *testing.T) {
 	checks, diagnostics = generatedtest.JourneyChecks(context.Background(), app, handler)
 	if len(diagnostics) != 0 || len(checks) != 1 || checks[0].ID != "generated/journey/View/notes/api" {
 		t.Fatalf("typed Block input page was not omitted: checks=%+v diagnostics=%v", checks, diagnostics)
+	}
+
+	condition := expr.Expr{Op: "is_null", Left: &expr.Value{Source: "context", Name: "filter"}}
+	app.Policies["empty_filter"] = appir.Policy{Name: "empty_filter", Condition: &condition}
+	app.Blocks["filtered_notes"] = appir.Block{Name: "filtered_notes", Type: "view", View: "notes"}
+	app.Panels["home"] = appir.Panel{Name: "home", Policy: "empty_filter", Regions: []appir.Region{{Name: "main", Blocks: []string{"filtered_notes"}}}}
+	app.Pages["home"] = appir.Page{Name: "home", Route: "/", Panel: "home", Context: map[string]appir.ContextBinding{"filter": {Source: "query", Name: "filter"}}}
+	checks, diagnostics = generatedtest.JourneyChecks(context.Background(), app, handler)
+	if len(diagnostics) != 0 || len(checks) != 1 || checks[0].ID != "generated/journey/View/notes/api" {
+		t.Fatalf("context-dependent Policy page was not omitted: checks=%+v diagnostics=%v", checks, diagnostics)
 	}
 }

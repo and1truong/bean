@@ -12,6 +12,7 @@ import (
 	"github.com/beanruntime/bean/internal/appir"
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/definition"
+	"github.com/beanruntime/bean/internal/page"
 	"github.com/beanruntime/bean/internal/policy"
 	"github.com/beanruntime/bean/internal/rule"
 )
@@ -119,14 +120,19 @@ func staticAnonymousPage(app *appir.App, item appir.Page) bool {
 			return false
 		}
 	}
+	contextValues, err := page.ResolveContext(item, nil, nil, beanctx.Request{})
+	if err != nil {
+		return false
+	}
+	request := beanctx.Request{Values: contextValues}
 	panel, exists := app.Panels[item.Panel]
-	if !exists || !anonymousPolicy(app, panel.Policy) {
+	if !exists || !anonymousPolicyForRequest(app, panel.Policy, request) {
 		return false
 	}
 	for _, region := range panel.Regions {
 		for _, blockName := range region.Blocks {
 			block, exists := app.Blocks[blockName]
-			if !exists || !anonymousPolicy(app, block.Policy) {
+			if !exists || !anonymousPolicyForRequest(app, block.Policy, request) {
 				return false
 			}
 			if len(block.Inputs) > 0 {
@@ -146,11 +152,15 @@ func anonymousView(app *appir.App, item appir.View) bool {
 }
 
 func anonymousPolicy(app *appir.App, name string) bool {
+	return anonymousPolicyForRequest(app, name, beanctx.Request{})
+}
+
+func anonymousPolicyForRequest(app *appir.App, name string, request beanctx.Request) bool {
 	if name == "" {
 		return true
 	}
 	item, exists := app.Policies[name]
-	return exists && policy.Can(item, false, beanctx.Request{}, nil)
+	return exists && policy.Can(item, false, request, nil)
 }
 
 func requestStatus(ctx context.Context, handler http.Handler, path string) int {

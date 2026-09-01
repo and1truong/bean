@@ -350,6 +350,10 @@ func invalidTransitionCases(app *appir.App, action appir.Action, cases []appir.T
 	if !exists || action.Operation != "transition" {
 		return nil
 	}
+	entity := app.Entities[lifecycle.Entity]
+	if len(entity.Validations) > 0 {
+		return nil
+	}
 	transitions := lifecycle.Transitions
 	if action.Transitions != nil {
 		transitions = action.Transitions
@@ -364,7 +368,7 @@ func invalidTransitionCases(app *appir.App, action appir.Action, cases []appir.T
 		if current == "" {
 			continue
 		}
-		invalid := invalidState(app.Entities[lifecycle.Entity], lifecycle.StateField, current, transitions[current])
+		invalid := invalidState(entity, lifecycle.StateField, current, transitions[current])
 		if invalid == "" {
 			continue
 		}

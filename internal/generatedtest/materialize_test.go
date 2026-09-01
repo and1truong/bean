@@ -118,6 +118,39 @@ func TestMaterializeGeneratesPolicyDenialAndInvalidTransitionCases(t *testing.T)
 	}
 }
 
+func TestMaterializeSkipsTransitionNegativeForValidatedEntity(t *testing.T) {
+	const ticketID = "00000000-0000-4000-8000-000000000001"
+	bundle := definition.Bundle{Name: "Validated workflow", Definitions: []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Rule", Metadata: definition.Metadata{Name: "status_not_open"}, Spec: map[string]any{
+			"entity": "ticket", "result": "boolean", "expression": map[string]any{"op": "ne", "args": []any{
+				map[string]any{"source": "this", "path": "status"}, map[string]any{"source": "literal", "literal": "open"},
+			}},
+		}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "ticket"}, Spec: map[string]any{
+			"fields":      []any{map[string]any{"name": "status", "type": "enum", "required": true, "options": []any{"open", "closed"}}},
+			"validations": map[string]any{"status_not_open": "status_not_open"},
+		}},
+		{APIVersion: definition.APIVersion, Kind: "Lifecycle", Metadata: definition.Metadata{Name: "ticket_flow"}, Spec: map[string]any{"entity": "ticket", "initial": "open", "transitions": map[string]any{"open": []any{"closed"}}}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "close_ticket"}, Spec: map[string]any{"entity": "ticket", "operation": "transition", "lifecycle": "ticket_flow"}},
+		{APIVersion: definition.APIVersion, Kind: "TestSuite", Metadata: definition.Metadata{Name: "close_ticket_contract"}, Spec: map[string]any{
+			"target": map[string]any{"kind": "Action", "name": "close_ticket"}, "tests": []any{map[string]any{
+				"name": "closes_ticket", "fixtures": map[string]any{"ticket": []any{map[string]any{"id": ticketID, "status": "open"}}},
+				"context": map[string]any{"time": "2026-09-01T10:00:00Z"},
+				"input":   map[string]any{"id": ticketID, "status": "closed"}, "expect": map[string]any{"result": map[string]any{"status": "closed"}},
+			}},
+		}},
+	}}
+
+	materialized, _, diagnostics := generatedtest.Materialize(bundle)
+	if len(diagnostics) != 0 {
+		t.Fatalf("diagnostics=%v", diagnostics)
+	}
+	compiled := compiler.Compile("test", 1, materialized.Definitions)
+	if _, exists := compiled.App.TestSuites["generated_transition_close_ticket_contract"]; exists {
+		t.Fatal("transition-negative case was generated with a confounding Entity validation")
+	}
+}
+
 func TestMaterializeGeneratesDemoSeedCRUDSuites(t *testing.T) {
 	bundle := definition.Bundle{Name: "CRUD", Definitions: []definition.Definition{
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "note"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string", "required": true}}}},
