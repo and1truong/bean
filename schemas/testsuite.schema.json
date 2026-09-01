@@ -161,6 +161,9 @@
     "github_com_beanruntime_bean_internal_appir_TestMutation": {
       "additionalProperties": false,
       "properties": {
+        "absent": {
+          "type": "boolean"
+        },
         "entity": {
           "type": "string"
         },

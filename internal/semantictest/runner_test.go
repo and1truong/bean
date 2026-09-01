@@ -107,6 +107,42 @@ func TestActionSuiteCanAssertSoftDeletedRows(t *testing.T) {
 	}
 }
 
+func TestActionSuiteCanAssertHardDeletedRows(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "document"}, Spec: map[string]any{}},
+		{APIVersion: definition.APIVersion, Kind: "TestSuite", Metadata: definition.Metadata{Name: "document_delete_contract"}, Spec: map[string]any{
+			"target": map[string]any{"kind": "Action", "name": "document_delete"},
+			"tests": []any{map[string]any{
+				"name": "removes_record", "fixtures": map[string]any{"document": []any{map[string]any{"id": ticketID}}},
+				"context": map[string]any{"actor": map[string]any{"roles": []any{"administrator"}}, "time": fixedNow}, "input": map[string]any{"id": ticketID},
+				"expect": map[string]any{"changes": []any{map[string]any{"entity": "document", "id": ticketID, "absent": true}}},
+			}},
+		}},
+	}
+	results, diagnostics, err := semantictest.Run(context.Background(), definition.Bundle{Name: "Hard delete", Definitions: definitions}, t.TempDir())
+	if err != nil || len(diagnostics) != 0 || len(results) != 1 || results[0].Status != "passed" {
+		t.Fatalf("results=%+v diagnostics=%v err=%v", results, diagnostics, err)
+	}
+}
+
+func TestActionSuiteChangeRequiresAssertedValueDelta(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "document"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string", "required": true}}}},
+		{APIVersion: definition.APIVersion, Kind: "TestSuite", Metadata: definition.Metadata{Name: "document_update_contract"}, Spec: map[string]any{
+			"target": map[string]any{"kind": "Action", "name": "document_update"},
+			"tests": []any{map[string]any{
+				"name": "same_value", "fixtures": map[string]any{"document": []any{map[string]any{"id": ticketID, "title": "unchanged"}}},
+				"context": map[string]any{"actor": map[string]any{"roles": []any{"administrator"}}, "time": fixedNow}, "input": map[string]any{"id": ticketID, "title": "unchanged"},
+				"expect": map[string]any{"changes": []any{map[string]any{"entity": "document", "id": ticketID, "values": map[string]any{"title": "unchanged"}}}},
+			}},
+		}},
+	}
+	results, diagnostics, err := semantictest.Run(context.Background(), definition.Bundle{Name: "No-op update", Definitions: definitions}, t.TempDir())
+	if err != nil || len(diagnostics) != 1 || diagnostics[0].Code != "BEAN-T1001" || diagnostics[0].Path != "tests.same_value.expect.changes.0" || len(results) != 1 || results[0].Status != "failed" {
+		t.Fatalf("results=%+v diagnostics=%v err=%v", results, diagnostics, err)
+	}
+}
+
 func TestAssertionFailuresAreStableAndDoNotExposeValues(t *testing.T) {
 	definitions := ruleSuiteDefinitions()
 	tests := definitions[1].Spec["tests"].([]any)

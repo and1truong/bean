@@ -113,6 +113,7 @@ type TestMutation struct {
 	Entity string         `json:"entity"`
 	ID     string         `json:"id"`
 	Values map[string]any `json:"values"`
+	Absent bool           `json:"absent"`
 }
 type TestExpectation struct {
 	Result    json.RawMessage `json:"result"`

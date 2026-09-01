@@ -2,6 +2,7 @@ package agentprotocol
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -79,10 +80,12 @@ func RedactedApp(source *appir.App) *appir.App {
 				test.Context.Actor.DisplayName = redactTestString(test.Context.Actor.DisplayName)
 			}
 			test.Context.Tenant = redactTestString(test.Context.Tenant)
+			test.Context.Time = redactTestString(test.Context.Time)
 			test.Context.RequestID = redactTestString(test.Context.RequestID)
 			for index := range test.Context.IDs {
 				test.Context.IDs[index] = redactTestString(test.Context.IDs[index])
 			}
+			test.Context.Seed = redactTestSeed(test.Context.Seed)
 			if len(test.Expect.Result) > 0 {
 				var value any
 				if json.Unmarshal(test.Expect.Result, &value) == nil {
@@ -148,6 +151,16 @@ func redactTestString(value string) string {
 		return ""
 	}
 	return redactTestValue(value).(string)
+}
+
+func redactTestSeed(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	encoded, _ := json.Marshal(*value)
+	digest := sha256.Sum256(encoded)
+	redacted := int64(binary.BigEndian.Uint64(digest[:8]))
+	return &redacted
 }
 
 func redactRuleExpression(expression *rule.Expression) {

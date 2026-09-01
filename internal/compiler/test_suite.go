@@ -481,6 +481,11 @@ func validateActionTestCase(app *appir.App, suite appir.TestSuite, test appir.Te
 		} else if err := field.Validate(appir.Field{Name: "id", Type: "uuid"}, change.ID); err != nil {
 			out = append(out, testSuiteDiagnostic(suite.Name, changePath+".id", err.Error()))
 		}
+		if change.Absent && len(change.Values) > 0 {
+			out = append(out, testSuiteDiagnostic(suite.Name, changePath+".values", "cannot combine values with absent"))
+		} else if !change.Absent && len(change.Values) == 0 {
+			out = append(out, requiredDiagnostic("TestSuite", suite.Name, changePath+".values", "at least one asserted value is required unless absent is true"))
+		}
 		out = append(out, validatePartialRecord(suite.Name, entity, change.Values, changePath+".values")...)
 	}
 	if len(bytes.TrimSpace(test.Expect.Result)) > 0 {
@@ -489,7 +494,8 @@ func validateActionTestCase(app *appir.App, suite appir.TestSuite, test appir.Te
 		if err != nil || value != nil && !isObject {
 			out = append(out, testSuiteDiagnostic(suite.Name, path+".expect.result", "Action result assertion must be an object or null"))
 		} else if isObject {
-			for name, expected := range result {
+			for _, name := range keys(result) {
+				expected := result[name]
 				output, declared := action.Output[name]
 				if !declared {
 					out = append(out, testSuiteDiagnostic(suite.Name, path+".expect.result."+name, "is not declared by target Action output"))

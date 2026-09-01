@@ -307,8 +307,17 @@ func assertCase(parentCtx context.Context, database dbal.Database, app *appir.Ap
 		}
 	}
 	for index, expected := range test.Expect.Changes {
+		beforeRow, existed := snapshotRecord(before[expected.Entity], expected.ID)
 		rows, err := semanticRows(ctx, database, app, expected.Entity, expected.ID)
-		if err != nil || len(rows) != 1 || !rowContains(app.Entities[expected.Entity], rows[0], expected.Values) {
+		matched := err == nil
+		if expected.Absent {
+			matched = matched && existed && len(rows) == 0
+		} else if matched && len(rows) == 1 && rowContains(app.Entities[expected.Entity], rows[0], expected.Values) {
+			matched = !existed || assertedValuesChanged(beforeRow, rows[0], expected.Values)
+		} else {
+			matched = false
+		}
+		if !matched {
 			out = append(out, assertionDiagnostic(suite.Name, fmt.Sprintf("%s.changes.%d", base, index), expected, rows))
 		}
 	}
@@ -457,6 +466,24 @@ func rowContains(entity appir.Entity, row dbal.Row, expected map[string]any) boo
 		}
 	}
 	return true
+}
+
+func snapshotRecord(rows []dbal.Row, id string) (dbal.Row, bool) {
+	for _, row := range rows {
+		if fmt.Sprint(row["id"]) == id {
+			return row, true
+		}
+	}
+	return nil, false
+}
+
+func assertedValuesChanged(before, after dbal.Row, expected map[string]any) bool {
+	for name := range expected {
+		if !equalJSON(before[name], after[name]) {
+			return true
+		}
+	}
+	return false
 }
 
 func hydrateRow(entity appir.Entity, row dbal.Row) {

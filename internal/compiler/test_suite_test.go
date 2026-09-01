@@ -208,6 +208,18 @@ func TestActionTestSuiteValidatesMutationIdentityAndSystemFields(t *testing.T) {
 	}
 }
 
+func TestActionTestSuiteValidatesMutationAbsence(t *testing.T) {
+	definitions := actionAssertionSuiteDefinitions()
+	change := definitions[2].Spec["tests"].([]any)[0].(map[string]any)["expect"].(map[string]any)["changes"].([]any)[0].(map[string]any)
+	change["absent"] = true
+	assertTestSuiteDiagnostic(t, compiler.Compile("test", 1, definitions).Diagnostics, "spec.tests.0.expect.changes.0.values")
+
+	definitions = actionAssertionSuiteDefinitions()
+	change = definitions[2].Spec["tests"].([]any)[0].(map[string]any)["expect"].(map[string]any)["changes"].([]any)[0].(map[string]any)
+	change["values"] = map[string]any{}
+	assertTestSuiteDiagnosticCode(t, compiler.Compile("test", 1, definitions).Diagnostics, "spec.tests.0.expect.changes.0.values", "BEAN-E1003")
+}
+
 func TestTestSuiteRejectsNullFixtureRequiredSystemFields(t *testing.T) {
 	for _, fieldName := range []string{"created_at", "version"} {
 		t.Run(fieldName, func(t *testing.T) {
@@ -248,6 +260,22 @@ func TestActionTestSuitePartialRecordDiagnosticsAreSorted(t *testing.T) {
 		}
 	}
 	want := []string{"spec.tests.0.expect.changes.0.values.alpha", "spec.tests.0.expect.changes.0.values.zeta"}
+	if !reflect.DeepEqual(paths, want) {
+		t.Fatalf("paths=%v", paths)
+	}
+}
+
+func TestActionTestSuiteResultDiagnosticsAreSorted(t *testing.T) {
+	definitions := actionAssertionSuiteDefinitions()
+	expect := definitions[2].Spec["tests"].([]any)[0].(map[string]any)["expect"].(map[string]any)
+	expect["result"] = map[string]any{"zeta": true, "alpha": true}
+	paths := []string{}
+	for _, diagnostic := range compiler.Compile("test", 1, definitions).Diagnostics {
+		if strings.HasPrefix(diagnostic.Path, "spec.tests.0.expect.result.") {
+			paths = append(paths, diagnostic.Path)
+		}
+	}
+	want := []string{"spec.tests.0.expect.result.alpha", "spec.tests.0.expect.result.zeta"}
 	if !reflect.DeepEqual(paths, want) {
 		t.Fatalf("paths=%v", paths)
 	}
