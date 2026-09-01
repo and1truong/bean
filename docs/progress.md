@@ -8,6 +8,8 @@ The Action-step registry now owns the thirteen-step vocabulary, compiler require
 
 The Block registry now supplies the stable capabilities vocabulary, validation traits, input-target semantics, normalization behavior, runtime property handlers, and component names used by compiler, HTTP, schema/introspection, and render paths. Its parity test exercises every registered renderer. Milestones 0–4 are complete; milestone 5 qualification is active.
 
+Local qualification passes `make check` (including vet, frontend lint/typecheck, 25 React tests, all Go and race tests, and 14/14 Playwright journeys), `make test-crash`, `make test-postgres` (including the PostgreSQL blog journey), and `make build`. Milestone 5 still requires clean CI and a fresh Codex review before completion.
+
 The target remains an explicitly constructed modular monolith, not a public plugin platform. Core continues to own Policy, transactions, idempotency, audit/outbox behavior, View-read/Action-write boundaries, migration, and atomic activation. Field types, expressions, DB predicates, migrations, and other deliberately closed algebras retain exhaustive switches. Action operations remain explicit because their shared ordered transaction and security orchestration is the invariant; presentation modes remain explicit because they form a closed Go/TypeScript algebra and a Go-only registry would not create one real owner. The detailed decision record is in `docs/architecture.md`.
 
 ## v0.9 completed state
