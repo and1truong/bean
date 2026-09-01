@@ -109,6 +109,9 @@ func Run(ctx context.Context, database dbal.Database, app *appir.App, seed int64
 	if err != nil {
 		return Result{}, err
 	}
+	if err = validateLifecycleTransitionUniqueness(app, records, lifecyclePlans, seed); err != nil {
+		return Result{}, err
+	}
 	ids := map[string][]string{}
 	for _, record := range records {
 		ids[record.Entity] = append(ids[record.Entity], record.ID)
@@ -391,12 +394,17 @@ func verificationFields(entity appir.Entity) []string {
 }
 
 func validateGeneratedUniqueness(app *appir.App, records []Record, seed int64) error {
-	if err := validateRecordUniqueness(app, records, seed); err != nil {
-		return err
+	return validateRecordUniqueness(app, records, seed)
+}
+
+func validateLifecycleTransitionUniqueness(app *appir.App, records []Record, plans [][]lifecycleMove, seed int64) error {
+	type plannedRecord struct {
+		record Record
+		moves  []lifecycleMove
 	}
-	byEntity := map[string][]Record{}
-	for _, record := range records {
-		byEntity[record.Entity] = append(byEntity[record.Entity], record)
+	byEntity := map[string][]plannedRecord{}
+	for index, record := range records {
+		byEntity[record.Entity] = append(byEntity[record.Entity], plannedRecord{record: record, moves: plans[index]})
 	}
 	entityNames := make([]string, 0, len(byEntity))
 	for entityName := range byEntity {
@@ -409,10 +417,10 @@ func validateGeneratedUniqueness(app *appir.App, records []Record, seed int64) e
 			continue
 		}
 		created := []Record{}
-		for _, record := range byEntity[entityName] {
-			transient := record
-			transient.Values = make(map[string]any, len(record.Values))
-			for name, value := range record.Values {
+		for _, planned := range byEntity[entityName] {
+			transient := planned.record
+			transient.Values = make(map[string]any, len(planned.record.Values))
+			for name, value := range planned.record.Values {
 				transient.Values[name] = value
 			}
 			transient.Values[lifecycle.StateField] = lifecycle.Initial
@@ -420,7 +428,14 @@ func validateGeneratedUniqueness(app *appir.App, records []Record, seed int64) e
 			if err := validateRecordUniqueness(app, candidate, seed); err != nil {
 				return fmt.Errorf("Lifecycle %s intermediate initial state: %w", lifecycle.Name, err)
 			}
-			created = append(created, record)
+			for _, move := range planned.moves {
+				transient.Values[lifecycle.StateField] = move.State
+				candidate[len(candidate)-1] = transient
+				if err := validateRecordUniqueness(app, candidate, seed); err != nil {
+					return fmt.Errorf("Lifecycle %s intermediate transition state %s: %w", lifecycle.Name, move.State, err)
+				}
+			}
+			created = append(created, planned.record)
 		}
 	}
 	return nil

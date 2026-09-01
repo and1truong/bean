@@ -175,6 +175,37 @@ func TestLifecycleIntermediateUniquenessFailsBeforeCreatingAnyRecord(t *testing.
 	}
 }
 
+func TestLifecycleIntermediateTransitionUniquenessFailsBeforeCreatingAnyRecord(t *testing.T) {
+	ctx := context.Background()
+	database, err := sqlite.Open(filepath.Join(t.TempDir(), "lifecycle-unique-transition.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	runtime := kernel.New()
+	store := &release.Store{DB: database, Migrations: database, Kernel: runtime, OpenAPI: openapi.Generate}
+	if err = store.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "item"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "status", "type": "enum", "required": true, "unique": true, "options": []any{"mid", "done", "initial"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "Lifecycle", Metadata: definition.Metadata{Name: "flow"}, Spec: map[string]any{"entity": "item", "initial": "initial", "transitions": map[string]any{"initial": []any{"mid"}, "mid": []any{"done"}}}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "move_item"}, Spec: map[string]any{"entity": "item", "operation": "transition", "lifecycle": "flow"}},
+		{APIVersion: definition.APIVersion, Kind: "DemoSeed", Metadata: definition.Metadata{Name: "demo"}, Spec: map[string]any{"entities": map[string]any{"item": map[string]any{"count": 2}}}},
+	}
+	if _, _, diagnostics, publishErr := store.PublishBundle(ctx, "default", definition.Bundle{Name: "unique transition", Definitions: definitions}); publishErr != nil || len(diagnostics) != 0 {
+		t.Fatalf("publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	app, _ := runtime.Active()
+	if _, err = Run(ctx, database, app, 42); err == nil || !strings.Contains(err.Error(), "intermediate transition state mid") {
+		t.Fatalf("error=%v", err)
+	}
+	rows, err := database.Select(ctx, dbal.Select{Table: "item", Columns: []string{"id"}, Limit: 10})
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("partial seed rows=%v err=%v", rows, err)
+	}
+}
+
 func TestGenerateUsesDeclaredRelationTargetField(t *testing.T) {
 	app := appir.Empty()
 	app.Entities["account"] = appir.Entity{Name: "account", Fields: []appir.Field{{Name: "external_id", Type: "uuid", Required: true, Unique: true}}}
