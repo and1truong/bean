@@ -24,8 +24,10 @@ type Record struct {
 }
 
 type lifecycleMove struct {
-	Action string
-	State  string
+	Action     string
+	State      string
+	IDInput    string
+	StateInput string
 }
 
 type Result struct {
@@ -179,7 +181,14 @@ func seedRecord(ctx context.Context, service action.Service, app *appir.App, rec
 		return err
 	}
 	for _, move := range moves {
-		if _, err = service.Execute(ctx, app, move.Action, map[string]any{"id": created["id"], lifecycle.StateField: move.State}, request); err != nil {
+		input := map[string]any{"id": created["id"], lifecycle.StateField: move.State}
+		if move.IDInput != "" {
+			input = map[string]any{move.IDInput: created["id"]}
+			if move.StateInput != "" {
+				input[move.StateInput] = move.State
+			}
+		}
+		if _, err = service.Execute(ctx, app, move.Action, input, request); err != nil {
 			return err
 		}
 	}
@@ -211,7 +220,10 @@ func lifecycleExecutablePath(app *appir.App, lifecycle appir.Lifecycle, target s
 	if target == lifecycle.Initial {
 		return []lifecycleMove{}, true
 	}
-	type predecessor struct{ state, action string }
+	type predecessor struct {
+		state string
+		move  lifecycleMove
+	}
 	queue := []string{lifecycle.Initial}
 	previous := map[string]predecessor{lifecycle.Initial: {}}
 	for len(queue) > 0 {
@@ -223,16 +235,16 @@ func lifecycleExecutablePath(app *appir.App, lifecycle appir.Lifecycle, target s
 			if _, visited := previous[state]; visited {
 				continue
 			}
-			actionName, executable := lifecycleTransitionAction(app, lifecycle, from, state)
+			move, executable := lifecycleTransitionMove(app, lifecycle, from, state)
 			if !executable {
 				continue
 			}
-			previous[state] = predecessor{state: from, action: actionName}
+			previous[state] = predecessor{state: from, move: move}
 			if state == target {
 				path := []lifecycleMove{}
 				for current := state; current != lifecycle.Initial; {
 					edge := previous[current]
-					path = append(path, lifecycleMove{Action: edge.action, State: current})
+					path = append(path, edge.move)
 					current = edge.state
 				}
 				for left, right := 0, len(path)-1; left < right; left, right = left+1, right-1 {
@@ -246,7 +258,7 @@ func lifecycleExecutablePath(app *appir.App, lifecycle appir.Lifecycle, target s
 	return nil, false
 }
 
-func lifecycleTransitionAction(app *appir.App, lifecycle appir.Lifecycle, from, target string) (string, bool) {
+func lifecycleTransitionMove(app *appir.App, lifecycle appir.Lifecycle, from, target string) (lifecycleMove, bool) {
 	names := make([]string, 0, len(app.Actions))
 	for name := range app.Actions {
 		names = append(names, name)
@@ -254,7 +266,7 @@ func lifecycleTransitionAction(app *appir.App, lifecycle appir.Lifecycle, from, 
 	sort.Strings(names)
 	for _, name := range names {
 		actionDefinition := app.Actions[name]
-		if actionDefinition.Entity != lifecycle.Entity || actionDefinition.Operation != "transition" || actionDefinition.Lifecycle != lifecycle.Name {
+		if actionDefinition.Entity != lifecycle.Entity || actionDefinition.Lifecycle != lifecycle.Name || actionDefinition.Operation != "transition" && actionDefinition.Operation != "transaction" {
 			continue
 		}
 		transitions := lifecycle.Transitions
@@ -268,6 +280,13 @@ func lifecycleTransitionAction(app *appir.App, lifecycle appir.Lifecycle, from, 
 		if !allowed {
 			continue
 		}
+		if actionDefinition.Operation == "transaction" {
+			idInput, stateInput, compatible := transactionLifecycleInputs(actionDefinition, lifecycle, target)
+			if compatible {
+				return lifecycleMove{Action: name, State: target, IDInput: idInput, StateInput: stateInput}, true
+			}
+			continue
+		}
 		compatible := true
 		for inputName, input := range actionDefinition.Input {
 			if input.Required && inputName != "id" && inputName != lifecycle.StateField {
@@ -275,10 +294,69 @@ func lifecycleTransitionAction(app *appir.App, lifecycle appir.Lifecycle, from, 
 			}
 		}
 		if compatible {
-			return name, true
+			return lifecycleMove{Action: name, State: target}, true
 		}
 	}
-	return "", false
+	return lifecycleMove{}, false
+}
+
+func transactionLifecycleInputs(actionDefinition appir.Action, lifecycle appir.Lifecycle, target string) (string, string, bool) {
+	var transition *appir.Step
+	for index := range actionDefinition.Steps {
+		step := &actionDefinition.Steps[index]
+		entity := step.Entity
+		if entity == "" {
+			entity = actionDefinition.Entity
+		}
+		if step.Op != "transition" || entity != lifecycle.Entity {
+			continue
+		}
+		if transition != nil {
+			return "", "", false
+		}
+		transition = step
+	}
+	if transition == nil {
+		return "", "", false
+	}
+	bindings := map[string]appir.ValueBinding{}
+	for _, assignment := range transition.Values {
+		bindings[assignment.Field] = assignment.Value
+	}
+	id := bindings["id"]
+	if id.Source != "input" || id.Path == "" {
+		return "", "", false
+	}
+	state := bindings[lifecycle.StateField]
+	stateInput := ""
+	switch state.Source {
+	case "input":
+		stateInput = state.Path
+		if stateInput == "" || stateInput == id.Path {
+			return "", "", false
+		}
+	case "literal":
+		var literal string
+		if json.Unmarshal(state.Literal, &literal) != nil || literal != target {
+			return "", "", false
+		}
+	default:
+		return "", "", false
+	}
+	for inputName, input := range actionDefinition.Input {
+		if input.Required && inputName != id.Path && inputName != stateInput {
+			return "", "", false
+		}
+	}
+	if _, exists := actionDefinition.Input[id.Path]; !exists {
+		return "", "", false
+	}
+	if stateInput != "" {
+		if _, exists := actionDefinition.Input[stateInput]; !exists {
+			return "", "", false
+		}
+	}
+	return id.Path, stateInput, true
 }
 
 func inspectTarget(ctx context.Context, database dbal.Database, app *appir.App, records []Record, request beanctx.Request, seed int64) (bool, bool, error) {

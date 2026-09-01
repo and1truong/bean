@@ -113,6 +113,69 @@ func TestLifecyclePlanningUsesOnlyExecutableActionEdges(t *testing.T) {
 	}
 }
 
+func TestLifecyclePlanningUsesTransactionActionEdges(t *testing.T) {
+	app := appir.Empty()
+	app.Lifecycles["flow"] = appir.Lifecycle{
+		Name: "flow", Entity: "item", StateField: "status", Initial: "initial",
+		Transitions: map[string][]string{"initial": {"done"}},
+	}
+	app.Actions["finish_item"] = appir.Action{
+		Name: "finish_item", Entity: "item", Operation: "transaction", Lifecycle: "flow",
+		Input: map[string]appir.Field{
+			"item_id":    {Name: "item_id", Type: "uuid", Required: true},
+			"next_state": {Name: "next_state", Type: "enum", Required: true, Options: []string{"initial", "done"}},
+		},
+		Steps: []appir.Step{{Op: "transition", Values: []appir.Assignment{
+			{Field: "id", Value: appir.ValueBinding{Source: "input", Path: "item_id"}},
+			{Field: "status", Value: appir.ValueBinding{Source: "input", Path: "next_state"}},
+		}}},
+	}
+	plans, err := planLifecycleMoves(app, []Record{{Entity: "item", Values: map[string]any{"status": "done"}}})
+	want := [][]lifecycleMove{{{Action: "finish_item", State: "done", IDInput: "item_id", StateInput: "next_state"}}}
+	if err != nil || !reflect.DeepEqual(plans, want) {
+		t.Fatalf("plans=%+v want=%+v err=%v", plans, want, err)
+	}
+}
+
+func TestRunUsesTransactionActionForLifecycleTransition(t *testing.T) {
+	ctx := context.Background()
+	database, err := sqlite.Open(filepath.Join(t.TempDir(), "lifecycle-transaction.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	runtime := kernel.New()
+	store := &release.Store{DB: database, Migrations: database, Kernel: runtime, OpenAPI: openapi.Generate}
+	if err = store.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "item"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "status", "type": "enum", "required": true, "options": []any{"initial", "done"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "Lifecycle", Metadata: definition.Metadata{Name: "flow"}, Spec: map[string]any{"entity": "item", "initial": "initial", "transitions": map[string]any{"initial": []any{"done"}}}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "finish_item"}, Spec: map[string]any{
+			"entity": "item", "operation": "transaction", "lifecycle": "flow",
+			"input": map[string]any{"item_id": map[string]any{"type": "uuid", "required": true}},
+			"output": map[string]any{
+				"id": map[string]any{"type": "uuid", "required": true}, "status": map[string]any{"type": "enum", "required": true, "options": []any{"initial", "done"}},
+				"created_at": map[string]any{"type": "datetime", "required": true}, "updated_at": map[string]any{"type": "datetime", "required": true}, "version": map[string]any{"type": "integer", "required": true},
+			},
+			"steps": []any{map[string]any{"op": "transition", "values": map[string]any{"id": "$input.item_id", "status": "done"}}},
+		}},
+		{APIVersion: definition.APIVersion, Kind: "DemoSeed", Metadata: definition.Metadata{Name: "demo"}, Spec: map[string]any{"entities": map[string]any{"item": map[string]any{"count": 2}}}},
+	}
+	if _, _, diagnostics, publishErr := store.PublishBundle(ctx, "default", definition.Bundle{Name: "transaction transition", Definitions: definitions}); publishErr != nil || len(diagnostics) != 0 {
+		t.Fatalf("publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	app, _ := runtime.Active()
+	if _, err = Run(ctx, database, app, 42); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := database.Select(ctx, dbal.Select{Table: "item", Columns: []string{"status"}, OrderBy: []dbal.Order{{Column: "status"}}, Limit: 10})
+	if err != nil || len(rows) != 2 || rows[0]["status"] != "done" || rows[1]["status"] != "initial" {
+		t.Fatalf("rows=%v err=%v", rows, err)
+	}
+}
+
 func TestLifecyclePlanningFailsBeforeCreatingAnyRecord(t *testing.T) {
 	ctx := context.Background()
 	database, err := sqlite.Open(filepath.Join(t.TempDir(), "lifecycle-no-path.db"))
