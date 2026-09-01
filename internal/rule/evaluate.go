@@ -98,7 +98,8 @@ func evaluate(expression Expression, environment Environment, path string, evalu
 	var err error
 	switch expression.Op {
 	case "eq", "ne":
-		equal := valuesEqual(arguments[0], arguments[1])
+		var equal bool
+		equal, err = valuesEqual(arguments[0], arguments[1], path)
 		if expression.Op == "ne" {
 			equal = !equal
 		}
@@ -189,23 +190,15 @@ func requiredLookup(values map[string]any, name, path string) (any, error) {
 	return value, nil
 }
 
-func valuesEqual(left, right any) bool {
-	leftInteger, leftIsInteger := integerValue(left)
-	rightInteger, rightIsInteger := integerValue(right)
-	if leftIsInteger && rightIsInteger {
-		return leftInteger == rightInteger
+func valuesEqual(left, right any, path string) (bool, error) {
+	comparison, numeric, err := compareNumeric(left, right, path)
+	if err != nil {
+		return false, err
 	}
-	leftRational, leftIsRational := rationalValue(left)
-	rightRational, rightIsRational := rationalValue(right)
-	if leftIsRational && rightIsRational {
-		return leftRational.Cmp(rightRational) == 0
+	if numeric {
+		return comparison == 0, nil
 	}
-	leftNumber, _, leftNumeric := numeric(left)
-	rightNumber, _, rightNumeric := numeric(right)
-	if leftNumeric && rightNumeric {
-		return leftNumber == rightNumber
-	}
-	return reflect.DeepEqual(left, right)
+	return reflect.DeepEqual(left, right), nil
 }
 
 func ordered(left, right any, operator, path string) (bool, error) {
@@ -224,34 +217,29 @@ func ordered(left, right any, operator, path string) (bool, error) {
 		}
 		return false, typeError(path, operator+" requires numbers, dates, or datetimes")
 	}
-	leftInteger, leftIsInteger := integerValue(left)
-	rightInteger, rightIsInteger := integerValue(right)
-	if leftIsInteger && rightIsInteger {
-		comparison := 0
-		if leftInteger < rightInteger {
-			comparison = -1
-		} else if leftInteger > rightInteger {
-			comparison = 1
-		}
-		return compareResult(comparison, operator), nil
+	comparison, numeric, err := compareNumeric(left, right, path)
+	if err != nil {
+		return false, err
 	}
-	leftRational, leftIsRational := rationalValue(left)
-	rightRational, rightIsRational := rationalValue(right)
-	if leftIsRational && rightIsRational {
-		return compareResult(leftRational.Cmp(rightRational), operator), nil
-	}
-	leftNumber, _, leftOK := numeric(left)
-	rightNumber, _, rightOK := numeric(right)
-	if !leftOK || !rightOK {
+	if !numeric {
 		return false, typeError(path, operator+" requires numbers, dates, or datetimes")
 	}
-	comparison := 0
-	if leftNumber < rightNumber {
-		comparison = -1
-	} else if leftNumber > rightNumber {
-		comparison = 1
-	}
 	return compareResult(comparison, operator), nil
+}
+
+func compareNumeric(left, right any, path string) (int, bool, error) {
+	leftRational, leftOK := rationalValue(left)
+	rightRational, rightOK := rationalValue(right)
+	if _, isNumber := left.(json.Number); isNumber && !leftOK {
+		return 0, false, ruleError(CodeLimit, path, "numeric operand exceeds exact comparison limit")
+	}
+	if _, isNumber := right.(json.Number); isNumber && !rightOK {
+		return 0, false, ruleError(CodeLimit, path, "numeric operand exceeds exact comparison limit")
+	}
+	if !leftOK || !rightOK {
+		return 0, false, nil
+	}
+	return leftRational.Cmp(rightRational), true, nil
 }
 
 func compareResult(comparison int, operator string) bool {
@@ -400,7 +388,7 @@ func rationalValue(value any) (*big.Rat, bool) {
 		text := typed.String()
 		if index := strings.IndexAny(text, "eE"); index >= 0 {
 			exponent, err := strconv.Atoi(text[index+1:])
-			if err != nil || exponent < -64 || exponent > 64 {
+			if err != nil || exponent < -MaxValueBytes || exponent > MaxValueBytes {
 				return nil, false
 			}
 		}

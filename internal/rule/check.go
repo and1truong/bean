@@ -142,6 +142,9 @@ func infer(expression Expression, environment TypeEnvironment, path string) (Typ
 		if err := requireArity(expression.Op, len(types), 2, 2, path); err != nil {
 			return "", err
 		}
+		if types[0] == Null || types[1] == Null {
+			return "", typeError(path, expression.Op+" does not accept null arguments")
+		}
 		unified, ok := unify(types[0], types[1])
 		if !ok || unified != Integer && unified != Number && unified != Date && unified != DateTime {
 			return "", typeError(path, expression.Op+" requires compatible number, date, or datetime arguments")

@@ -1,6 +1,7 @@
 package rule
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -46,6 +47,30 @@ type Expression struct {
 	Source  string          `json:"source,omitempty" yaml:"source,omitempty"`
 	Path    string          `json:"path,omitempty" yaml:"path,omitempty"`
 	Literal json.RawMessage `json:"literal,omitempty" yaml:"literal,omitempty"`
+}
+
+func (e *Expression) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Op      string          `json:"op"`
+		Args    json.RawMessage `json:"args"`
+		Source  string          `json:"source"`
+		Path    string          `json:"path"`
+		Literal json.RawMessage `json:"literal"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&raw); err != nil {
+		return err
+	}
+	*e = Expression{Op: raw.Op, Source: raw.Source, Path: raw.Path, Literal: raw.Literal}
+	if raw.Args == nil {
+		return nil
+	}
+	e.Args = []Expression{}
+	if !bytes.Equal(bytes.TrimSpace(raw.Args), []byte("null")) {
+		return json.Unmarshal(raw.Args, &e.Args)
+	}
+	return nil
 }
 
 type TypeEnvironment struct {

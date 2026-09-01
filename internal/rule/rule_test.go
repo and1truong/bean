@@ -76,6 +76,7 @@ func TestCheckRejectsUnknownAndIncompatibleExpressions(t *testing.T) {
 		{name: "operator", expression: op("exec", literal("echo")), code: rule.CodeUnknownOperator},
 		{name: "arity", expression: op("not", literal(true), literal(false)), code: rule.CodeArity},
 		{name: "type", expression: op("add", literal("one"), literal(2)), code: rule.CodeType},
+		{name: "ordered null", expression: op("gt", literal(nil), literal(1)), code: rule.CodeType},
 		{name: "shape", expression: rule.Expression{Op: "upper", Source: "input", Path: "quantity", Args: []rule.Expression{literal("x")}}, code: rule.CodeShape},
 		{name: "missing literal", expression: rule.Expression{Source: "literal"}, code: rule.CodeShape},
 		{name: "literal on input", expression: rule.Expression{Source: "input", Path: "quantity", Literal: json.RawMessage("1")}, code: rule.CodeShape},
@@ -192,6 +193,26 @@ func TestNumericComparisonsPreserveIntegerPrecision(t *testing.T) {
 			}
 		}
 	}
+	exponentLeft := json.Number("1e65")
+	exponentRight := json.Number("1" + strings.Repeat("0", 64) + "1")
+	exponentEnvironment := rule.Environment{Input: map[string]any{"left": exponentLeft, "right": exponentRight}}
+	for _, test := range []struct {
+		expression rule.Expression
+		want       bool
+	}{
+		{expression: op("eq", source("input", "left"), source("input", "right")), want: false},
+		{expression: op("lt", source("input", "left"), source("input", "right")), want: true},
+	} {
+		got, err := rule.Evaluate(test.expression, exponentEnvironment)
+		if err != nil || got != test.want {
+			t.Fatalf("exponent expression=%s value=%v err=%v want=%v", test.expression.Op, got, err, test.want)
+		}
+	}
+	_, err := rule.Evaluate(
+		op("eq", source("input", "left"), source("input", "right")),
+		rule.Environment{Input: map[string]any{"left": json.Number("1e16385"), "right": json.Number("1e16385")}},
+	)
+	assertRuleError(t, err, rule.CodeLimit)
 }
 
 func TestTypedEvaluationRejectsRuntimeResultMismatch(t *testing.T) {
