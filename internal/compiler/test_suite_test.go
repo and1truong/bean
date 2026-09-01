@@ -350,6 +350,18 @@ func TestActionTestSuiteRejectsNonNullFileInput(t *testing.T) {
 	assertTestSuiteDiagnostic(t, compiler.Compile("test", 1, definitions).Diagnostics, "spec.tests.0.input.attachment")
 }
 
+func TestTestSuiteRejectsNonNullFileFixture(t *testing.T) {
+	definitions := semanticSuiteDefinitions()
+	definitions[0].Spec["fields"] = []any{
+		map[string]any{"name": "quantity", "type": "integer", "required": true},
+		map[string]any{"name": "attachment", "type": "file"},
+	}
+	definitions[2].Spec["tests"].([]any)[0].(map[string]any)["fixtures"] = map[string]any{
+		"order": []any{map[string]any{"id": "00000000-0000-4000-8000-000000000001", "quantity": 1, "attachment": "00000000-0000-4000-8000-000000000002"}},
+	}
+	assertTestSuiteDiagnostic(t, compiler.Compile("test", 1, definitions).Diagnostics, "spec.tests.0.fixtures.order.0.attachment")
+}
+
 func actionAssertionSuiteDefinitions() []definition.Definition {
 	const id = "00000000-0000-4000-8000-000000000001"
 	return []definition.Definition{

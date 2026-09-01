@@ -407,6 +407,10 @@ func validateFixture(app *appir.App, suiteName string, entity appir.Entity, row 
 		if !supplied && !item.Required {
 			continue
 		}
+		if item.Type == "file" && value != nil {
+			out = append(out, testSuiteDiagnostic(suiteName, path+"."+item.Name, "file fixture values are not representable in TestSuite metadata"))
+			continue
+		}
 		if err := field.Validate(item, value); err != nil {
 			out = append(out, testSuiteDiagnostic(suiteName, path+"."+item.Name, err.Error()))
 		}
