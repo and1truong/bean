@@ -626,10 +626,11 @@ func validate(a *appir.App) []definition.Diagnostic {
 				if field.Required && (field.Type == "file" || field.Type == "password" || field.Sensitive) {
 					out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path, "cannot generate required sensitive, password, or file field "+field.Name))
 				}
-				if field.Required && field.Relation != nil {
-					if _, seeded := a.DemoSeed.Entities[field.Relation.Entity]; !seeded {
+				if field.Relation != nil {
+					_, seeded := a.DemoSeed.Entities[field.Relation.Entity]
+					if field.Required && !seeded {
 						out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path, "requires seeded relation Entity "+field.Relation.Entity))
-					} else if field.Relation.TargetField != "id" {
+					} else if seeded && field.Relation.TargetField != "id" {
 						targetEntity := a.Entities[field.Relation.Entity]
 						target, exists := entityFieldDefinition(targetEntity, field.Relation.TargetField)
 						if exists && (target.Sensitive || target.Type == "password" || target.Type == "file") {

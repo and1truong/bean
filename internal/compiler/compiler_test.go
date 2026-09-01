@@ -250,6 +250,17 @@ func TestDemoSeedRejectsRequiredRelationTargetingNonUUIDField(t *testing.T) {
 	}
 }
 
+func TestDemoSeedRejectsOptionalRelationTargetingNonUUIDField(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "account"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "slug", "type": "slug", "unique": true}}}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "contact"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "account_slug", "type": "relation", "relation": map[string]any{"entity": "account", "kind": "many-to-one", "targetField": "slug"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "DemoSeed", Metadata: definition.Metadata{Name: "demo"}, Spec: map[string]any{"entities": map[string]any{"account": map[string]any{"count": 1}, "contact": map[string]any{"count": 1}}}},
+	}
+	if diagnostics := compiler.Compile("test", 1, definitions).Diagnostics; !hasDiagnostic(diagnostics, "demo", "spec.entities.contact") {
+		t.Fatalf("optional non-UUID relation target accepted: %v", diagnostics)
+	}
+}
+
 func TestMetricRejectsGroupedView(t *testing.T) {
 	definitions := []definition.Definition{
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "candidate"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "stage", "type": "enum", "options": []any{"applied", "hired"}}}}},

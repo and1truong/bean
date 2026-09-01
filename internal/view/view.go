@@ -195,7 +195,7 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 			}
 		}
 	}
-	if len(v.GroupBy) == 0 && !orderedBy(orders, "id") {
+	if len(v.GroupBy) == 0 && len(v.Aggregates) == 0 && !orderedBy(orders, "id") {
 		orders = append(orders, dbal.Order{Column: qualify("id", v.Entity, joined)})
 	}
 	if params.Cursor != "" {
