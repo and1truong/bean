@@ -299,7 +299,7 @@ func (s *Service) query(ctx context.Context, raw json.RawMessage, principal Prin
 	if input.Target == "" || input.View == "" {
 		return invalidInput(fmt.Errorf("target and view are required"))
 	}
-	runtime, err := bootstrap.OpenURL(ctx, input.Target, false)
+	runtime, err := bootstrap.OpenInspection(ctx, input.Target)
 	if err != nil {
 		return operationError(err)
 	}

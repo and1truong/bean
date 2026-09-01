@@ -112,7 +112,7 @@ func (s *Server) handle(ctx context.Context, line []byte) (response, bool) {
 		if len(id) == 0 || !validRequestID(id) {
 			id = json.RawMessage("null")
 		}
-		return errorResponse(id, -32600, "Invalid Request", nil), len(req.ID) > 0
+		return errorResponse(id, -32600, "Invalid Request", nil), true
 	}
 	notification := len(req.ID) == 0
 	if notification {
@@ -137,6 +137,8 @@ func (s *Server) handle(ctx context.Context, line []byte) (response, bool) {
 	}
 
 	switch req.Method {
+	case "ping":
+		return successResponse(req.ID, map[string]any{}), true
 	case "tools/list":
 		return successResponse(req.ID, s.listTools(s.legacyVersion == "")), true
 	case "tools/call":

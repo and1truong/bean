@@ -220,6 +220,21 @@ func TestStrictInputsRejectModelControlledAuthority(t *testing.T) {
 	}
 }
 
+func TestApplicationQueryDoesNotInitializeMissingTarget(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "missing.db")
+	outcome := New().Call(context.Background(), "bean.application.query", rawInput(map[string]any{
+		"target": target,
+		"view":   "items",
+		"params": map[string]any{},
+	}), Principal{Planes: map[Plane]bool{ApplicationPlane: true}})
+	if outcome.OK || outcome.Error == nil {
+		t.Fatalf("outcome=%+v", outcome)
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("query created target: %v", err)
+	}
+}
+
 func TestRuntimeErrorsRedactDatabaseCredentials(t *testing.T) {
 	outcome := operationError(errors.New("connect postgres://agent:super-secret@db/bean?password=also-secret"))
 	if outcome.Error == nil || bytes.Contains([]byte(outcome.Error.Message), []byte("super-secret")) || bytes.Contains([]byte(outcome.Error.Message), []byte("also-secret")) {

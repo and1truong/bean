@@ -121,5 +121,7 @@ func OpenInspection(ctx context.Context, databaseURL string) (*Runtime, error) {
 		db.Close()
 		return nil, err
 	}
-	return &Runtime{DB: db, Kernel: kernel, Store: store}, nil
+	views := view.Service{DB: db}
+	server := &httpapi.Server{Kernel: kernel, Store: store, Views: views}
+	return &Runtime{DB: db, Kernel: kernel, Store: store, HTTP: server}, nil
 }

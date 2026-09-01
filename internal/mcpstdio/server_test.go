@@ -66,6 +66,36 @@ func TestLegacyInitializeCompatibility(t *testing.T) {
 	}
 }
 
+func TestModernAndLegacyPing(t *testing.T) {
+	metadata := `"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}`
+	modernInput := `{"jsonrpc":"2.0","id":1,"method":"ping","params":{` + metadata + `}}` + "\n"
+	var output bytes.Buffer
+	server := New(Config{Principal: agentprotocol.Principal{Planes: agentprotocol.AllPlanes()}})
+	if err := server.Serve(context.Background(), strings.NewReader(modernInput), &output); err != nil {
+		t.Fatal(err)
+	}
+	if result := resultMap(t, decodeLines(t, output.String())[0]); len(result) != 0 {
+		t.Fatalf("modern ping result=%v", result)
+	}
+
+	legacyInput := strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"ping","params":{}}`,
+	}, "\n") + "\n"
+	output.Reset()
+	server = New(Config{Principal: agentprotocol.Principal{Planes: agentprotocol.AllPlanes()}})
+	if err := server.Serve(context.Background(), strings.NewReader(legacyInput), &output); err != nil {
+		t.Fatal(err)
+	}
+	responses := decodeLines(t, output.String())
+	if len(responses) != 2 {
+		t.Fatalf("responses=%s", output.String())
+	}
+	if result := resultMap(t, responses[1]); len(result) != 0 {
+		t.Fatalf("legacy ping result=%v", result)
+	}
+}
+
 func TestAuthorizationHidesUnavailableTools(t *testing.T) {
 	metadata := `"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}`
 	input := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"bean.release.publish","arguments":{"file":"missing","target":"missing"},` + metadata + `}}` + "\n"
@@ -134,11 +164,16 @@ func TestEachPlaneIsIndependentlyAuthorized(t *testing.T) {
 func TestMalformedRequestAndEOFKeepStdoutClean(t *testing.T) {
 	var output bytes.Buffer
 	server := New(Config{Principal: agentprotocol.Principal{Planes: agentprotocol.AllPlanes()}})
-	if err := server.Serve(context.Background(), strings.NewReader("not-json\n"), &output); err != nil {
+	input := "not-json\n" + `{"jsonrpc":"2.0"}` + "\n"
+	if err := server.Serve(context.Background(), strings.NewReader(input), &output); err != nil {
 		t.Fatal(err)
 	}
 	responses := decodeLines(t, output.String())
-	if len(responses) != 1 || responses[0]["jsonrpc"] != "2.0" {
+	if len(responses) != 2 || responses[0]["jsonrpc"] != "2.0" || responses[1]["id"] != nil {
+		t.Fatalf("output=%q", output.String())
+	}
+	invalid := responses[1]["error"].(map[string]any)
+	if invalid["code"] != float64(-32600) {
 		t.Fatalf("output=%q", output.String())
 	}
 	output.Reset()
