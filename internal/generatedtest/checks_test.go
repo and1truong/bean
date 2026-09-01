@@ -86,3 +86,27 @@ func TestJourneyChecksExerciseStaticPagesAndViewRoutes(t *testing.T) {
 		t.Fatalf("routing-query Policy page was not omitted: checks=%+v diagnostics=%v", checks, diagnostics)
 	}
 }
+
+func TestJourneyChecksReportMalformedRoutes(t *testing.T) {
+	app := appir.Empty()
+	app.Entities["note"] = appir.Entity{Name: "note"}
+	app.Views["notes"] = appir.View{Name: "notes", Entity: "note", Displays: map[string]appir.Display{
+		"api": {Type: "json", Route: "/%view"},
+	}}
+	app.Panels["home"] = appir.Panel{Name: "home", Regions: []appir.Region{{Name: "main"}}}
+	app.Pages["home"] = appir.Page{Name: "home", Route: "/%page", Panel: "home"}
+	handler := http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) { response.WriteHeader(http.StatusOK) })
+
+	checks, diagnostics := generatedtest.JourneyChecks(context.Background(), app, handler)
+	if len(diagnostics) != 2 || len(checks) != 2 {
+		t.Fatalf("checks=%+v diagnostics=%v", checks, diagnostics)
+	}
+	for _, check := range checks {
+		if check.Status != "failed" {
+			t.Fatalf("check=%+v", check)
+		}
+	}
+	if checks[0].Evidence["frontendError"] != "invalid request target" || checks[1].Evidence["error"] != "invalid request target" {
+		t.Fatalf("checks=%+v", checks)
+	}
+}

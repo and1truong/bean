@@ -76,10 +76,16 @@ func JourneyChecks(ctx context.Context, app *appir.App, handler http.Handler) ([
 		if !staticAnonymousPage(app, item) {
 			continue
 		}
-		status := requestStatus(ctx, handler, "/api/system/page?path="+url.QueryEscape(item.Route))
-		frontendStatus := requestStatus(ctx, handler, item.Route)
+		status, pageTargetValid := requestStatus(ctx, handler, "/api/system/page?path="+url.QueryEscape(item.Route))
+		frontendStatus, frontendTargetValid := requestStatus(ctx, handler, item.Route)
 		check := passedCheck("generated/journey/Page/"+name, "Page", name, map[string]any{"route": item.Route, "pageStatus": status, "frontendStatus": frontendStatus})
-		if status != http.StatusOK || frontendStatus != http.StatusOK {
+		if !pageTargetValid {
+			check.Evidence["pageError"] = "invalid request target"
+		}
+		if !frontendTargetValid {
+			check.Evidence["frontendError"] = "invalid request target"
+		}
+		if !pageTargetValid || !frontendTargetValid || status != http.StatusOK || frontendStatus != http.StatusOK {
 			check.Status = "failed"
 			diagnostics = append(diagnostics, journeyDiagnostic("Page", name, check.ID, status, frontendStatus))
 		}
@@ -95,9 +101,12 @@ func JourneyChecks(ctx context.Context, app *appir.App, handler http.Handler) ([
 			if display.Route == "" {
 				continue
 			}
-			status := requestStatus(ctx, handler, display.Route)
+			status, targetValid := requestStatus(ctx, handler, display.Route)
 			check := passedCheck("generated/journey/View/"+name+"/"+displayName, "View", name, map[string]any{"route": display.Route, "display": displayName, "status": status})
-			if status != http.StatusOK {
+			if !targetValid {
+				check.Evidence["error"] = "invalid request target"
+			}
+			if !targetValid || status != http.StatusOK {
 				check.Status = "failed"
 				diagnostics = append(diagnostics, journeyDiagnostic("View", name, check.ID, status, 0))
 			}
@@ -163,11 +172,14 @@ func anonymousPolicyForRequest(app *appir.App, name string, request beanctx.Requ
 	return exists && policy.Can(item, false, request, nil)
 }
 
-func requestStatus(ctx context.Context, handler http.Handler, path string) int {
+func requestStatus(ctx context.Context, handler http.Handler, path string) (int, bool) {
+	if _, err := url.ParseRequestURI(path); err != nil {
+		return 0, false
+	}
 	request := httptest.NewRequest(http.MethodGet, path, nil).WithContext(ctx)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	return response.Code
+	return response.Code, true
 }
 
 func journeyDiagnostic(kind, name, id string, status, frontendStatus int) definition.Diagnostic {
