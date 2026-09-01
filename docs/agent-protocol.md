@@ -1,6 +1,6 @@
 # Bean Agent Protocol
 
-Bean v0.8 introduced one provider-neutral `bean.agent/v1alpha1` dispatcher. v0.11 retains that contract and exposes Lifecycle, Rule, and TestSuite capabilities, schemas, inspection, references, diff, and runtime behavior through the same operations. CLI and MCP change only framing; each operation's metadata and handler are sealed together, and operation names, input schemas, plane authorization, compiler diagnostics, runtime results, and errors originate from the same service.
+Bean v0.8 introduced one provider-neutral `bean.agent/v1alpha1` dispatcher. v0.12 retains that contract and adds stable generated-suite, structural, and HTTP-journey evidence to `bean.release.test`. CLI and MCP change only framing; each operation's metadata and handler are sealed together, and operation names, input schemas, plane authorization, compiler diagnostics, runtime results, and errors originate from the same service.
 
 ## Operations
 
@@ -46,7 +46,7 @@ The safe default is Definition Plane only. The process host may configure runtim
 
 The adapter implements newline-delimited UTF-8 JSON-RPC over stdin/stdout, current MCP `2026-07-28` `server/discover`, `tools/list`, and `tools/call`, plus initialization compatibility for maintained `2024-11-05`, `2025-03-26`, `2025-06-18`, and `2025-11-25` clients. Modern results include `resultType`, private cache metadata, and server identity metadata. Tool calls return equivalent JSON text and `structuredContent`. Only MCP messages are written to stdout.
 
-The current framing follows the official [MCP discovery](https://modelcontextprotocol.io/specification/2026-07-28/server/discover), [tools](https://modelcontextprotocol.io/specification/2026-07-28/server/tools), and [stdio](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio) contracts. Streamable HTTP, OAuth, hosted identity, prompts, resources, sampling, and subscriptions are outside v0.11.
+The current framing follows the official [MCP discovery](https://modelcontextprotocol.io/specification/2026-07-28/server/discover), [tools](https://modelcontextprotocol.io/specification/2026-07-28/server/tools), and [stdio](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio) contracts. Streamable HTTP, OAuth, hosted identity, prompts, resources, sampling, and subscriptions are outside v0.12.
 
 ## Authorization and runtime boundaries
 

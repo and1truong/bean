@@ -756,18 +756,27 @@ func TestAgentInitPublishDiffAndLifecycleTest(t *testing.T) {
 	var smoke struct {
 		Result struct {
 			Checks []struct {
-				ID     string `json:"id"`
-				Status string `json:"status"`
+				ID       string         `json:"id"`
+				Status   string         `json:"status"`
+				Source   map[string]any `json:"source"`
+				Evidence map[string]any `json:"evidence"`
 			} `json:"checks"`
 		} `json:"result"`
 	}
-	if err := json.Unmarshal(stdout.Bytes(), &smoke); err != nil || len(smoke.Result.Checks) != 6 {
+	if err := json.Unmarshal(stdout.Bytes(), &smoke); err != nil || len(smoke.Result.Checks) < 7 {
 		t.Fatalf("smoke err=%v value=%#v output=%s", err, smoke, stdout.String())
 	}
+	generated := false
 	for _, check := range smoke.Result.Checks {
 		if check.ID == "" || check.Status != "passed" {
 			t.Fatalf("check = %#v", check)
 		}
+		if check.ID == "generated/schema/Entity/candidate" {
+			generated = check.Source["kind"] == "Entity" && check.Source["name"] == "candidate" && check.Evidence["contract"] == "canonical-schema"
+		}
+	}
+	if !generated {
+		t.Fatalf("generated schema evidence missing: %#v", smoke.Result.Checks)
 	}
 
 	withoutRole := "apiVersion: bean/v1alpha1\nname: Candidates\n---\nkind: Entity\nname: candidate\nfields:\n  - {name: name, label: Name, type: string, required: true}\nlabel: Candidate\n"

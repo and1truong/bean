@@ -22,6 +22,7 @@ import (
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/field"
+	"github.com/beanruntime/bean/internal/generatedtest"
 	"github.com/beanruntime/bean/internal/rule"
 	"github.com/beanruntime/bean/internal/testsuite"
 	"github.com/beanruntime/bean/internal/view"
@@ -33,18 +34,40 @@ type CaseResult struct {
 }
 
 type SuiteResult struct {
-	ID     string       `json:"id"`
-	Status string       `json:"status"`
-	Cases  []CaseResult `json:"cases"`
+	ID       string             `json:"id"`
+	Status   string             `json:"status"`
+	Evidence *GeneratedEvidence `json:"evidence,omitempty"`
+	Cases    []CaseResult       `json:"cases"`
+}
+
+type GeneratedEvidence struct {
+	Family string           `json:"family"`
+	Source appir.TestTarget `json:"source"`
+	Suite  string           `json:"suite"`
 }
 
 func Run(ctx context.Context, bundle definition.Bundle, directory string) ([]SuiteResult, []definition.Diagnostic, error) {
+	return run(ctx, bundle, directory, nil)
+}
+
+func RunGenerated(ctx context.Context, bundle definition.Bundle, directory string) ([]SuiteResult, []definition.Diagnostic, error) {
+	materialized, origins, diagnostics := generatedtest.Materialize(bundle)
+	if len(diagnostics) > 0 {
+		return nil, diagnostics, nil
+	}
+	return run(ctx, materialized, directory, origins)
+}
+
+func run(ctx context.Context, bundle definition.Bundle, directory string, origins map[string]generatedtest.Origin) ([]SuiteResult, []definition.Diagnostic, error) {
 	compiled := compileBundle(bundle)
 	results := make([]SuiteResult, 0, len(compiled.TestSuites))
 	diagnostics := []definition.Diagnostic{}
 	for _, suiteName := range sortedKeys(compiled.TestSuites) {
 		suite := compiled.TestSuites[suiteName]
 		suiteResult := SuiteResult{ID: "TestSuite/" + suiteName, Status: "passed", Cases: []CaseResult{}}
+		if origin, generated := origins[suiteName]; generated {
+			suiteResult.Evidence = &GeneratedEvidence{Family: origin.Family, Source: origin.Source, Suite: origin.Suite}
+		}
 		for caseIndex, test := range suite.Tests {
 			caseID := suiteResult.ID + "/" + test.Name
 			caseResult := CaseResult{ID: caseID, Status: "passed"}

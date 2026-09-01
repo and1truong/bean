@@ -467,7 +467,7 @@ func validateActionTestCase(app *appir.App, suite appir.TestSuite, test appir.Te
 		out = append(out, testSuiteDiagnostic(suite.Name, path+".context.ids", fmt.Sprintf("requires at least %d deterministic IDs", requiredIDs)))
 	}
 	if action.Operation == "register_local_user" {
-		out = append(out, testSuiteDiagnostic(suite.Name, path+".target", "register_local_user is not supported by v0.11 TestSuite cases"))
+		out = append(out, testSuiteDiagnostic(suite.Name, path+".target", "register_local_user is not supported by TestSuite cases"))
 	}
 	for _, name := range keys(test.Input) {
 		input, declared := action.Input[name]
