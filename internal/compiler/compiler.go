@@ -756,30 +756,27 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 		if v.DefaultLimit < 1 || v.MaxLimit < 1 || v.MaxLimit > 200 || v.DefaultLimit > v.MaxLimit {
 			out = append(out, diagnostic("View", name, "spec.maxLimit", "must be between the default and 200"))
 		}
-		if v.Policy != "" {
-			definition, exists := a.Policies[v.Policy]
-			if !exists {
-				out = append(out, missingReferenceDiagnostic("View", name, "spec.policy", "Policy", v.Policy))
-			} else {
-				redacted := map[string]bool{}
-				for _, field := range definition.Redact {
-					redacted[field] = true
+		policyName := policy.EffectiveViewPolicyName(v, e)
+		policyDefinition, policyExists := a.Policies[policyName]
+		if v.Policy != "" && !policyExists {
+			out = append(out, missingReferenceDiagnostic("View", name, "spec.policy", "Policy", v.Policy))
+		}
+		if policyName != "" && policyExists {
+			redacted := nameSet(policyDefinition.Redact)
+			for i, order := range v.Sort {
+				if redacted[order.Field] {
+					out = append(out, diagnostic("View", name, fmt.Sprintf("spec.sort.%d.field", i), "redacted fields cannot control ordering"))
 				}
-				for i, order := range v.Sort {
-					if redacted[order.Field] {
-						out = append(out, diagnostic("View", name, fmt.Sprintf("spec.sort.%d.field", i), "redacted fields cannot control ordering"))
-					}
+			}
+			for key, exposed := range v.ExposedFilters {
+				if redacted[exposed.Name] || exposed.Name == "" && redacted[key] {
+					out = append(out, diagnostic("View", name, "spec.exposedFilters."+key, "redacted fields cannot be exposed as filters"))
 				}
-				for key, exposed := range v.ExposedFilters {
-					if redacted[exposed.Name] || exposed.Name == "" && redacted[key] {
-						out = append(out, diagnostic("View", name, "spec.exposedFilters."+key, "redacted fields cannot be exposed as filters"))
-					}
-				}
-				for _, expression := range []*expr.Expr{v.Filter, v.ContextFilter} {
-					for _, field := range recordFields(expression) {
-						if redacted[field] {
-							out = append(out, diagnostic("View", name, "spec.filter", "redacted fields cannot control filtering"))
-						}
+			}
+			for _, expression := range []*expr.Expr{v.Filter, v.ContextFilter} {
+				for _, field := range recordFields(expression) {
+					if redacted[field] {
+						out = append(out, diagnostic("View", name, "spec.filter", "redacted fields cannot control filtering"))
 					}
 				}
 			}
@@ -1532,7 +1529,8 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 		}
 		return appir.Field{}, false
 	}
-	redacted := nameSet(a.Policies[viewDefinition.Policy].Redact)
+	policyName := policy.EffectiveViewPolicyName(viewDefinition, entity)
+	redacted := nameSet(a.Policies[policyName].Redact)
 	if presentation.Mode == "board" || presentation.Mode == "tree" {
 		for _, sortDefinition := range viewDefinition.Sort {
 			if aggregates[sortDefinition.Field] {
@@ -1558,7 +1556,7 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 		if !selected[fieldName] {
 			out = append(out, diagnostic("Block", name, "spec.presentation.linkRoute", "field "+fieldName+" must be selected by View "+block.View))
 		} else if redacted[fieldName] {
-			out = append(out, diagnostic("Block", name, "spec.presentation.linkRoute", "field "+fieldName+" must not be redacted by View policy "+viewDefinition.Policy))
+			out = append(out, diagnostic("Block", name, "spec.presentation.linkRoute", "field "+fieldName+" must not be redacted by View policy "+policyName))
 		}
 	}
 	for path, fieldName := range map[string]string{"titleField": presentation.TitleField, "bodyField": presentation.BodyField, "groupField": presentation.GroupField, "orderField": presentation.OrderField, "parentField": presentation.ParentField} {
@@ -1566,7 +1564,7 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 			out = append(out, diagnostic("Block", name, "spec.presentation."+path, "must be selected by View "+block.View))
 		}
 		if (presentation.Mode == "board" || presentation.Mode == "tree" || presentation.Mode == "timeline") && fieldName != "" && redacted[fieldName] && path != "bodyField" {
-			out = append(out, diagnostic("Block", name, "spec.presentation."+path, "must not be redacted by View policy "+viewDefinition.Policy))
+			out = append(out, diagnostic("Block", name, "spec.presentation."+path, "must not be redacted by View policy "+policyName))
 		}
 	}
 	searchable := map[string]bool{"email": true, "richtext": true, "slug": true, "string": true, "text": true, "url": true}
@@ -1578,7 +1576,7 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 		} else if !exists || !searchable[field.Type] {
 			out = append(out, invalidReferenceDiagnostic("Block", name, path, "must reference a searchable text field"))
 		} else if redacted[fieldName] {
-			out = append(out, diagnostic("Block", name, path, "must not be redacted by View policy "+viewDefinition.Policy))
+			out = append(out, diagnostic("Block", name, path, "must not be redacted by View policy "+policyName))
 		}
 	}
 	if presentation.Mode == "metric" {
@@ -1603,7 +1601,7 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 		if presentation.TimeField == "" || !selected[presentation.TimeField] || !exists || field.Type != "date" && field.Type != "datetime" {
 			out = append(out, requiredDiagnostic("Block", name, "spec.presentation.timeField", "timeline requires a selected date or datetime field"))
 		} else if redacted[presentation.TimeField] {
-			out = append(out, diagnostic("Block", name, "spec.presentation.timeField", "must not be redacted by View policy "+viewDefinition.Policy))
+			out = append(out, diagnostic("Block", name, "spec.presentation.timeField", "must not be redacted by View policy "+policyName))
 		}
 	}
 	if presentation.Mode == "board" {

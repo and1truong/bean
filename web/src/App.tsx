@@ -168,6 +168,8 @@ export function evaluate(expression:import('./api').Expression|undefined|null,va
   if(expression.Op==='eq')return left===right
   if(expression.Op==='ne')return left!==right
   if(expression.Op==='gt'||expression.Op==='gte'||expression.Op==='lt'||expression.Op==='lte'){
+    const inputPending=(value:typeof expression.Left)=>value?.Source==='input'&&!Object.prototype.hasOwnProperty.call(values,value.Name||'')
+    if(inputPending(expression.Left)||inputPending(expression.Right))return false
     if(typeof left!=='number'||typeof right!=='number')throw new Error('comparison requires numbers')
     if(expression.Op==='gt')return left>right;if(expression.Op==='gte')return left>=right;if(expression.Op==='lt')return left<right;return left<=right
   }

@@ -9,6 +9,10 @@ describe('client expressions',()=>{
   it('implements list membership and fails loudly for unknown operators',()=>{
     expect(evaluate({Op:'in',Left:{Source:'input',Name:'status'},Right:{Source:'literal',Literal:['draft','ready']}},{status:'ready'})).toBe(true)
     expect(evaluate({Op:'not_in',Left:{Source:'input',Name:'status'},Right:{Source:'literal',Literal:['draft']}},{status:'ready'})).toBe(true)
+    const adult:import('./api').Expression={Op:'gte',Left:{Source:'input',Name:'age'},Right:{Source:'literal',Literal:18}}
+    expect(evaluate(adult,{})).toBe(false)
+    expect(evaluate(adult,{age:21})).toBe(true)
+    expect(()=>evaluate({...adult,Right:{Source:'literal',Literal:'18'}},{age:21})).toThrow('comparison requires numbers')
     expect(()=>evaluate({Op:'future',Left:{Source:'literal',Literal:true},Right:{Source:'literal',Literal:true}},{})).toThrow('unsupported client expression operator')
   })
 })

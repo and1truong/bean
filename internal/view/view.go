@@ -148,10 +148,7 @@ func ReadPage(ctx context.Context, reader Reader, app *appir.App, name string, o
 		}
 	}
 	var redact []string
-	policyName := v.Policy
-	if policyName == "" {
-		policyName = e.Policy
-	}
+	policyName := policy.EffectiveViewPolicyName(v, e)
 	if policyName != "" {
 		p, ok := app.Policies[policyName]
 		if !ok {

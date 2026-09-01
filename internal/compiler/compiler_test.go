@@ -88,14 +88,20 @@ func TestBoardAndTreePresentationsValidateTypedFieldsAndActions(t *testing.T) {
 		t.Fatalf("invalid board accepted: %v", diagnostics)
 	}
 	redacted := append([]definition.Definition{}, defs...)
-	redacted[1].Spec = map[string]any{"entity": "task", "policy": "task_access", "fields": []any{"id", "title", "status", "position", "parent_id"}}
+	entitySpec := map[string]any{}
+	for key, value := range defs[0].Spec {
+		entitySpec[key] = value
+	}
+	entitySpec["policy"] = "task_access"
+	redacted[0].Spec = entitySpec
+	redacted[1].Spec = map[string]any{"entity": "task", "fields": []any{"id", "title", "status", "position", "parent_id"}, "sort": []any{map[string]any{"field": "status"}}, "exposedFilters": map[string]any{"status": map[string]any{"name": "status", "type": "enum"}}}
 	redacted = append(redacted, definition.Definition{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "task_access"}, Spec: map[string]any{"redact": []any{"title", "status", "parent_id"}}})
 	diagnostics := compiler.Compile("test", 1, redacted).Diagnostics
 	paths := map[string]bool{}
 	for _, diagnostic := range diagnostics {
 		paths[diagnostic.Name+":"+diagnostic.Path] = true
 	}
-	for _, path := range []string{"board:spec.presentation.titleField", "board:spec.presentation.groupField", "tree:spec.presentation.titleField", "tree:spec.presentation.parentField"} {
+	for _, path := range []string{"tasks:spec.sort.0.field", "tasks:spec.exposedFilters.status", "board:spec.presentation.titleField", "board:spec.presentation.groupField", "tree:spec.presentation.titleField", "tree:spec.presentation.parentField"} {
 		if !paths[path] {
 			t.Fatalf("redacted presentation field %s accepted: %v", path, diagnostics)
 		}
