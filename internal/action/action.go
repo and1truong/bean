@@ -130,7 +130,7 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 		if request.Values == nil {
 			request.Values = map[string]any{}
 		}
-		request.Values["now"] = s.now().Format(time.RFC3339)
+		request.Values["now"] = s.now().Format(time.RFC3339Nano)
 		result = nil
 		entityID = ""
 		changed = nil
@@ -180,9 +180,9 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 					return &dbal.Error{Code: dbal.Conflict, Message: "protected state requires a transition Action"}
 				}
 			}
-			result, er = update(ctx, tx, app, e, input, a, request, false)
+			result, er = update(ctx, tx, app, e, input, a, request, fmt.Sprint(request.Values["now"]), false)
 		case "transition":
-			result, er = update(ctx, tx, app, e, input, a, request, true)
+			result, er = update(ctx, tx, app, e, input, a, request, fmt.Sprint(request.Values["now"]), true)
 		case "delete":
 			result, er = remove(ctx, tx, e, input)
 		case "transaction":
@@ -349,7 +349,7 @@ func (s Service) create(ctx context.Context, tx dbal.Transaction, app *appir.App
 	hydrate(row, e)
 	return row, nil
 }
-func update(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.Entity, input map[string]any, a appir.Action, c beanctx.Request, transition bool) (dbal.Row, error) {
+func update(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.Entity, input map[string]any, a appir.Action, c beanctx.Request, now string, transition bool) (dbal.Row, error) {
 	id := fmt.Sprint(input["id"])
 	if id == "" {
 		return nil, &dbal.Error{Code: dbal.InvalidQuery, Message: "id is required"}
@@ -429,7 +429,7 @@ func update(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.En
 	}
 	version := toInt(row["version"])
 	values["version"] = version + 1
-	values["updated_at"] = time.Now().UTC().Format(time.RFC3339Nano)
+	values["updated_at"] = now
 	where := dbal.And(dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id}, dbal.Predicate{Op: dbal.OpEQ, Column: "version", Value: version})
 	if _, er = tx.Update(ctx, dbal.Update{Table: e.Name, Values: values, Where: where, ExpectedRows: 1}); er != nil {
 		return nil, er
@@ -739,7 +739,7 @@ func (s Service) steps(ctx context.Context, tx dbal.Transaction, app *appir.App,
 				}
 			}
 			operation := appir.Action{Entity: entity.Name, Lifecycle: a.Lifecycle, StateField: step.StateField, Transitions: a.Transitions}
-			row, x := update(ctx, tx, app, entity, values, operation, c, step.Op == "transition")
+			row, x := update(ctx, tx, app, entity, values, operation, c, fmt.Sprint(c.Values["now"]), step.Op == "transition")
 			if x != nil {
 				return nil, x
 			}

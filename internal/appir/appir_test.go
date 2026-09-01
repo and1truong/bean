@@ -34,7 +34,7 @@ func TestRejectsUnsupportedFormat(t *testing.T) {
 	}
 }
 
-func TestLifecycleIsAdditiveToV1Format(t *testing.T) {
+func TestLifecycleRequiresV2Format(t *testing.T) {
 	app := appir.Empty()
 	app.Lifecycles["order_fulfillment"] = appir.Lifecycle{
 		Name: "order_fulfillment", Entity: "order", StateField: "status", Initial: "pending",
@@ -53,5 +53,9 @@ func TestLifecycleIsAdditiveToV1Format(t *testing.T) {
 	}
 	if decoded.Lifecycles["order_fulfillment"].Initial != "pending" {
 		t.Fatalf("lifecycle=%+v", decoded.Lifecycles["order_fulfillment"])
+	}
+	decoded.FormatVersion = appir.LegacyFormat
+	if err = decoded.ValidateFormat(); err == nil {
+		t.Fatal("v1 AppIR accepted Lifecycle semantics that a v0.8 runtime would discard")
 	}
 }

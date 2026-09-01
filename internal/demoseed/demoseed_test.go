@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/dbal"
@@ -76,18 +77,70 @@ func TestRunReachesGeneratedLifecycleStatesThroughActions(t *testing.T) {
 	if err != nil || result.Records != 3 {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
-	rows, err := database.Select(ctx, dbal.Select{Table: "order", Columns: []string{"status"}, OrderBy: []dbal.Order{{Column: "status"}}, Limit: 10})
+	rows, err := database.Select(ctx, dbal.Select{Table: "order", Columns: []string{"status", "updated_at", "version"}, OrderBy: []dbal.Order{{Column: "status"}}, Limit: 10})
 	if err != nil || len(rows) != 3 {
 		t.Fatalf("rows=%v err=%v", rows, err)
 	}
-	states := map[string]bool{}
+	states := map[string]int{}
+	wantUpdatedAt := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC).Add(42 * time.Hour).Format(time.RFC3339Nano)
 	for _, row := range rows {
-		states[row["status"].(string)] = true
-	}
-	for _, state := range []string{"pending", "paid", "fulfilled"} {
-		if !states[state] {
-			t.Fatalf("state %s missing from %v", state, rows)
+		states[row["status"].(string)] = int(row["version"].(int64))
+		if row["updated_at"] != wantUpdatedAt {
+			t.Fatalf("nondeterministic updated_at row=%v want=%s", row, wantUpdatedAt)
 		}
+	}
+	for state, version := range map[string]int{"pending": 1, "paid": 2, "fulfilled": 3} {
+		if states[state] != version {
+			t.Fatalf("state %s version=%d want=%d rows=%v", state, states[state], version, rows)
+		}
+	}
+	if replay, replayErr := Run(ctx, database, app, 42); replayErr != nil || replay != result {
+		t.Fatalf("replay=%+v want=%+v err=%v", replay, result, replayErr)
+	}
+}
+
+func TestLifecyclePlanningUsesOnlyExecutableActionEdges(t *testing.T) {
+	app := appir.Empty()
+	app.Lifecycles["flow"] = appir.Lifecycle{
+		Name: "flow", Entity: "item", StateField: "status", Initial: "initial",
+		Transitions: map[string][]string{"initial": {"dead_end", "route"}, "dead_end": {"done"}, "route": {"done"}},
+	}
+	app.Actions["enter_dead_end"] = appir.Action{Name: "enter_dead_end", Entity: "item", Operation: "transition", Lifecycle: "flow", Transitions: map[string][]string{"initial": {"dead_end"}}}
+	app.Actions["take_route"] = appir.Action{Name: "take_route", Entity: "item", Operation: "transition", Lifecycle: "flow", Transitions: map[string][]string{"initial": {"route"}, "route": {"done"}}}
+	plans, err := planLifecycleMoves(app, []Record{{Entity: "item", Values: map[string]any{"status": "done"}}})
+	if err != nil || !reflect.DeepEqual(plans, [][]lifecycleMove{{{Action: "take_route", State: "route"}, {Action: "take_route", State: "done"}}}) {
+		t.Fatalf("plans=%+v err=%v", plans, err)
+	}
+}
+
+func TestLifecyclePlanningFailsBeforeCreatingAnyRecord(t *testing.T) {
+	ctx := context.Background()
+	database, err := sqlite.Open(filepath.Join(t.TempDir(), "lifecycle-no-path.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	runtime := kernel.New()
+	store := &release.Store{DB: database, Migrations: database, Kernel: runtime, OpenAPI: openapi.Generate}
+	if err = store.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "item"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "status", "type": "enum", "required": true, "options": []any{"initial", "done"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "Lifecycle", Metadata: definition.Metadata{Name: "flow"}, Spec: map[string]any{"entity": "item", "initial": "initial", "transitions": map[string]any{"initial": []any{"done"}}}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "move_item"}, Spec: map[string]any{"entity": "item", "operation": "transition", "lifecycle": "flow", "transitions": map[string]any{}}},
+		{APIVersion: definition.APIVersion, Kind: "DemoSeed", Metadata: definition.Metadata{Name: "demo"}, Spec: map[string]any{"entities": map[string]any{"item": map[string]any{"count": 2}}}},
+	}
+	if _, _, diagnostics, publishErr := store.PublishBundle(ctx, "default", definition.Bundle{Name: "no path", Definitions: definitions}); publishErr != nil || len(diagnostics) != 0 {
+		t.Fatalf("publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	app, _ := runtime.Active()
+	if _, err = Run(ctx, database, app, 42); err == nil || !strings.Contains(err.Error(), "no executable Action path") {
+		t.Fatalf("error=%v", err)
+	}
+	rows, err := database.Select(ctx, dbal.Select{Table: "item", Columns: []string{"id"}, Limit: 10})
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("partial seed rows=%v err=%v", rows, err)
 	}
 }
 

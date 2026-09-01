@@ -23,6 +23,11 @@ type Record struct {
 	Values map[string]any `json:"values"`
 }
 
+type lifecycleMove struct {
+	Action string
+	State  string
+}
+
 type Result struct {
 	Name     string `json:"name"`
 	Seed     int64  `json:"seed"`
@@ -100,6 +105,10 @@ func Run(ctx context.Context, database dbal.Database, app *appir.App, seed int64
 	if !empty {
 		return Result{}, fmt.Errorf("refusing to seed a non-empty target that does not match the generated dataset")
 	}
+	lifecyclePlans, err := planLifecycleMoves(app, records)
+	if err != nil {
+		return Result{}, err
+	}
 	ids := map[string][]string{}
 	for _, record := range records {
 		ids[record.Entity] = append(ids[record.Entity], record.ID)
@@ -118,8 +127,8 @@ func Run(ctx context.Context, database dbal.Database, app *appir.App, seed int64
 			return stableUUID(seed, "extra:"+entity.Name, index-len(ids[entity.Name]))
 		},
 	}
-	for _, record := range records {
-		if err = seedRecord(ctx, service, app, record, request); err != nil {
+	for index, record := range records {
+		if err = seedRecord(ctx, service, app, record, lifecyclePlans[index], request); err != nil {
 			return Result{}, fmt.Errorf("seed %s: %w", record.Entity, err)
 		}
 	}
@@ -133,40 +142,52 @@ func Run(ctx context.Context, database dbal.Database, app *appir.App, seed int64
 	return result, nil
 }
 
-func seedRecord(ctx context.Context, service action.Service, app *appir.App, record Record, request beanctx.Request) error {
+func planLifecycleMoves(app *appir.App, records []Record) ([][]lifecycleMove, error) {
+	plans := make([][]lifecycleMove, len(records))
+	for index, record := range records {
+		lifecycle, exists := demoLifecycleForEntity(app, record.Entity)
+		if !exists {
+			continue
+		}
+		desiredState := lifecycleDesiredState(lifecycle, record.Values)
+		if desiredState == lifecycle.Initial {
+			continue
+		}
+		path, executable := lifecycleExecutablePath(app, lifecycle, desiredState)
+		if !executable {
+			return nil, fmt.Errorf("Lifecycle %s has no executable Action path from %s to generated state %s", lifecycle.Name, lifecycle.Initial, desiredState)
+		}
+		plans[index] = path
+	}
+	return plans, nil
+}
+
+func seedRecord(ctx context.Context, service action.Service, app *appir.App, record Record, moves []lifecycleMove, request beanctx.Request) error {
 	values := make(map[string]any, len(record.Values))
 	for name, value := range record.Values {
 		values[name] = value
 	}
 	lifecycle, hasLifecycle := demoLifecycleForEntity(app, record.Entity)
-	desiredState := ""
 	if hasLifecycle {
-		desiredState = lifecycle.Initial
-		if desired := values[lifecycle.StateField]; desired != nil {
-			desiredState = fmt.Sprint(desired)
-		}
 		values[lifecycle.StateField] = lifecycle.Initial
 	}
 	created, err := service.Execute(ctx, app, record.Entity+"_create", values, request)
-	if err != nil || !hasLifecycle || desiredState == "" || desiredState == lifecycle.Initial {
+	if err != nil || !hasLifecycle || len(moves) == 0 {
 		return err
 	}
-	path, exists := lifecyclePath(lifecycle, desiredState)
-	if !exists {
-		return fmt.Errorf("Lifecycle %s cannot reach generated state %s from %s", lifecycle.Name, desiredState, lifecycle.Initial)
-	}
-	current := lifecycle.Initial
-	for _, target := range path {
-		actionName, exists := lifecycleTransitionAction(app, lifecycle, current, target)
-		if !exists {
-			return fmt.Errorf("Lifecycle %s has no Action for transition %s -> %s", lifecycle.Name, current, target)
-		}
-		if _, err = service.Execute(ctx, app, actionName, map[string]any{"id": created["id"], lifecycle.StateField: target}, request); err != nil {
+	for _, move := range moves {
+		if _, err = service.Execute(ctx, app, move.Action, map[string]any{"id": created["id"], lifecycle.StateField: move.State}, request); err != nil {
 			return err
 		}
-		current = target
 	}
 	return nil
+}
+
+func lifecycleDesiredState(lifecycle appir.Lifecycle, values map[string]any) string {
+	if desired := values[lifecycle.StateField]; desired != nil {
+		return fmt.Sprint(desired)
+	}
+	return lifecycle.Initial
 }
 
 func demoLifecycleForEntity(app *appir.App, entity string) (appir.Lifecycle, bool) {
@@ -183,12 +204,13 @@ func demoLifecycleForEntity(app *appir.App, entity string) (appir.Lifecycle, boo
 	return appir.Lifecycle{}, false
 }
 
-func lifecyclePath(lifecycle appir.Lifecycle, target string) ([]string, bool) {
+func lifecycleExecutablePath(app *appir.App, lifecycle appir.Lifecycle, target string) ([]lifecycleMove, bool) {
 	if target == lifecycle.Initial {
-		return []string{}, true
+		return []lifecycleMove{}, true
 	}
+	type predecessor struct{ state, action string }
 	queue := []string{lifecycle.Initial}
-	previous := map[string]string{lifecycle.Initial: ""}
+	previous := map[string]predecessor{lifecycle.Initial: {}}
 	for len(queue) > 0 {
 		from := queue[0]
 		queue = queue[1:]
@@ -198,11 +220,17 @@ func lifecyclePath(lifecycle appir.Lifecycle, target string) ([]string, bool) {
 			if _, visited := previous[state]; visited {
 				continue
 			}
-			previous[state] = from
+			actionName, executable := lifecycleTransitionAction(app, lifecycle, from, state)
+			if !executable {
+				continue
+			}
+			previous[state] = predecessor{state: from, action: actionName}
 			if state == target {
-				path := []string{state}
-				for current := from; current != lifecycle.Initial; current = previous[current] {
-					path = append(path, current)
+				path := []lifecycleMove{}
+				for current := state; current != lifecycle.Initial; {
+					edge := previous[current]
+					path = append(path, lifecycleMove{Action: edge.action, State: current})
+					current = edge.state
 				}
 				for left, right := 0, len(path)-1; left < right; left, right = left+1, right-1 {
 					path[left], path[right] = path[right], path[left]
@@ -299,9 +327,6 @@ func inspectTarget(ctx context.Context, database dbal.Database, app *appir.App, 
 				break
 			}
 			for _, fieldName := range verificationFields(entity)[1:] {
-				if _, lifecycle := demoLifecycleForEntity(app, entityName); lifecycle && (fieldName == "updated_at" || fieldName == "version") {
-					continue
-				}
 				value, generated := generatedConstraintValue(app, entityName, record, fieldName, seed)
 				if !generated && omittedValueMatches(entity, fieldName, row[fieldName]) {
 					continue
@@ -424,7 +449,13 @@ func generatedConstraintValue(app *appir.App, entityName string, record Record, 
 		value := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC).Add(time.Duration(seed%8760) * time.Hour).Format(time.RFC3339Nano)
 		return value, true
 	case "version":
-		return 1, true
+		version := 1
+		if lifecycle, exists := demoLifecycleForEntity(app, entityName); exists {
+			if path, executable := lifecycleExecutablePath(app, lifecycle, lifecycleDesiredState(lifecycle, record.Values)); executable {
+				version += len(path)
+			}
+		}
+		return version, true
 	case "owner_id":
 		if entity.Owner {
 			return stableUUID(seed, "owner", 0), true

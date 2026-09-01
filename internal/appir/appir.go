@@ -7,7 +7,10 @@ import (
 	"github.com/beanruntime/bean/internal/expr"
 )
 
-const CurrentFormat = "bean/appir/v1"
+const (
+	LegacyFormat  = "bean/appir/v1"
+	CurrentFormat = "bean/appir/v2"
+)
 
 type Field struct {
 	Name, Label, Type string
@@ -208,8 +211,18 @@ func Empty() *App {
 	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
 }
 func (a *App) ValidateFormat() error {
-	if a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != LegacyFormat && a.FormatVersion != CurrentFormat {
 		return fmt.Errorf("unsupported AppIR format %q", a.FormatVersion)
+	}
+	if a.FormatVersion == LegacyFormat {
+		if len(a.Lifecycles) > 0 {
+			return fmt.Errorf("AppIR format %q cannot contain Lifecycle definitions", a.FormatVersion)
+		}
+		for _, action := range a.Actions {
+			if action.Lifecycle != "" {
+				return fmt.Errorf("AppIR format %q cannot contain Lifecycle-bound Actions", a.FormatVersion)
+			}
+		}
 	}
 	return nil
 }

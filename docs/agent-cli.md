@@ -114,6 +114,8 @@ Sensitive inputs, file bytes, secrets, passwords, and database credentials are e
 
 JSON Schema describes document shape and rejects unknown properties. Cross-definition references and semantic constraints remain compiler responsibilities and are visible through diagnostics, capabilities, and `app inspect`.
 
+v0.9 compilers emit `bean/appir/v2` so older runtimes reject Lifecycle-bearing releases instead of silently discarding their semantics. The v0.9 runtime still loads legacy `bean/appir/v1` releases that contain only the pre-Lifecycle representation; Lifecycle definitions or bindings are invalid under v1.
+
 ## Inspection, plan, and diff
 
 `app inspect` returns normalized compiled AppIR for the whole source or one `Kind name` pair. Named inspection also returns sorted, resolved definition references.
