@@ -76,7 +76,7 @@ Stable diagnostic families, source-relative paths, compiler-derived candidates, 
 - v0.7 builds the populated, themed, packageable Demo Factory after the machine contract is stable.
 - v0.8 adds a provider-neutral Agent Protocol with separate Definition, Release, and Application Planes; v0.9 begins evidence-driven semantic primitives with first-class `Lifecycle`.
 - v0.10 adds bounded, side-effect-free deterministic rules between first-class semantics and external effects.
-- v0.11 generates tests from semantic primitives and rules; v0.12 adds the typed extension boundary.
+- v0.11 adds first-class Semantic Test Suites for deterministic Rule and Action behavior; v0.12 generates tests through that contract; v0.13 adds the typed extension boundary.
 - v1.0 qualifies one explicit envelope: a single Bean application process backed by managed PostgreSQL and external object storage.
 - Realtime infrastructure, a functions platform, broad OAuth, Redis/messaging abstractions, arbitrary visual design, Kubernetes machinery, and embedded AI chat remain deferred.
 - Bean owns application semantics; providers own infrastructure capabilities.

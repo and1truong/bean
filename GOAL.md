@@ -124,8 +124,9 @@ The exact examples may be adjusted only when their existing domain model proves 
 - Computed read columns, SQL expressions, materialized fields, or Rule-backed View filtering
 - Conditional browser visibility or requiredness; existing typed form expressions remain unchanged
 - Public extension/plugin SDK, dynamic registration, JavaScript, Lua, WASM, shell, HTTP, SQL, or provider calls
-- Generated semantic tests; that is v0.11
-- External effects; that is v0.12
+- First-class Semantic Test Suites; that is v0.11
+- Generated semantic tests; that is v0.12
+- External effects; that is v0.13
 - New semantic primitives or application-specific core branches
 
 ## Terminal gates
