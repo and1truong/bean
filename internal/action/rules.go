@@ -42,7 +42,7 @@ func validateActionInput(action appir.Action, input map[string]any, includeDeriv
 
 func applyActionDerivations(app *appir.App, action appir.Action, input map[string]any, current dbal.Row, request beanctx.Request) (map[string]any, error) {
 	base := copyValues(input)
-	environmentInput := completeRuleInput(action, input)
+	environmentInput := CompleteRuleInput(action, input)
 	derived := map[string]any{}
 	names := make([]string, 0, len(action.Derive))
 	for name := range action.Derive {
@@ -66,7 +66,7 @@ func evaluateActionGuard(app *appir.App, action appir.Action, input map[string]a
 	if action.When == "" {
 		return nil
 	}
-	value, err := evaluateRule(app.Rules[action.When], completeRuleInput(action, input), current, request)
+	value, err := evaluateRule(app.Rules[action.When], CompleteRuleInput(action, input), current, request)
 	if err != nil {
 		return ruleRuntimeError(action.When, err)
 	}
@@ -80,7 +80,7 @@ func evaluateActionGuard(app *appir.App, action appir.Action, input map[string]a
 	return nil
 }
 
-func completeRuleInput(action appir.Action, input map[string]any) map[string]any {
+func CompleteRuleInput(action appir.Action, input map[string]any) map[string]any {
 	complete := make(map[string]any, len(action.Input)+len(input))
 	for name := range action.Input {
 		if _, derived := action.Derive[name]; !derived {
@@ -141,7 +141,8 @@ func completeRuleCandidate(candidate dbal.Row, entity appir.Entity) dbal.Row {
 	return complete
 }
 
-func validateEntityRules(app *appir.App, entity appir.Entity, candidate dbal.Row, request beanctx.Request) error {
+func ValidateEntityRules(app *appir.App, entity appir.Entity, candidate dbal.Row, request beanctx.Request) error {
+	candidate = completeRuleCandidate(candidate, entity)
 	names := make([]string, 0, len(entity.Validations))
 	for name := range entity.Validations {
 		names = append(names, name)

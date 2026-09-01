@@ -438,17 +438,39 @@ func rationalValue(value any) (*big.Rat, bool) {
 		return rational, rational != nil
 	case json.Number:
 		text := typed.String()
-		if index := strings.IndexAny(text, "eE"); index >= 0 {
-			exponent, err := strconv.Atoi(text[index+1:])
-			if err != nil || exponent < -MaxValueBytes || exponent > MaxValueBytes {
-				return nil, false
-			}
+		if !boundedDecimalExponent(text) {
+			return nil, false
 		}
 		rational, ok := new(big.Rat).SetString(text)
 		return rational, ok
 	default:
 		return nil, false
 	}
+}
+
+func boundedDecimalExponent(text string) bool {
+	unsigned := strings.TrimPrefix(text, "-")
+	exponent := 0
+	if index := strings.IndexAny(unsigned, "eE"); index >= 0 {
+		parsed, err := strconv.Atoi(unsigned[index+1:])
+		if err != nil || parsed < -MaxValueBytes || parsed > MaxValueBytes {
+			return false
+		}
+		exponent = parsed
+		unsigned = unsigned[:index]
+	}
+	point := strings.IndexByte(unsigned, '.')
+	if point < 0 {
+		point = len(unsigned)
+		unsigned += "."
+	}
+	digits := unsigned[:point] + unsigned[point+1:]
+	first := strings.IndexFunc(digits, func(r rune) bool { return r != '0' })
+	if first < 0 {
+		return true
+	}
+	normalized := exponent + point - first - 1
+	return normalized >= -MaxValueBytes && normalized <= MaxValueBytes
 }
 
 func bounded(value any, path string) (any, error) {

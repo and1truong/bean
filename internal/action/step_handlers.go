@@ -186,7 +186,7 @@ func executeDecrementStep(execution stepExecution) (stepOutcome, error) {
 	err = decrement(execution.ctx, execution.tx, entity, values, execution.input, func(row dbal.Row) bool {
 		return authorizeStepEntity(execution, entity, row)
 	}, func(row dbal.Row) error {
-		return validateEntityRules(execution.app, entity, row, execution.request)
+		return ValidateEntityRules(execution.app, entity, row, execution.request)
 	}, fmt.Sprint(execution.request.Values["now"]))
 	return stepOutcome{}, err
 }

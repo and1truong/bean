@@ -221,6 +221,19 @@ func TestTypedEvaluationRejectsRuntimeResultMismatch(t *testing.T) {
 	if value, err := rule.EvaluateTyped(literal(json.Number("1e309")), rule.Environment{}, rule.Number); err != nil || value != json.Number("1e309") {
 		t.Fatalf("bounded exact number value=%v err=%v", value, err)
 	}
+	for _, value := range []json.Number{"10e16384", "0.1e-16384"} {
+		if _, err := rule.EvaluateTyped(literal(value), rule.Environment{}, rule.Number); err == nil {
+			t.Fatalf("normalized exponent overflow %s accepted", value)
+		}
+		if _, err := rule.Check(literal(value), rule.TypeEnvironment{}); err == nil {
+			t.Fatalf("normalized exponent overflow %s type-checked", value)
+		}
+	}
+	for _, value := range []json.Number{"10e16383", "0.1e-16383"} {
+		if got, err := rule.EvaluateTyped(literal(value), rule.Environment{}, rule.Number); err != nil || got != value {
+			t.Fatalf("normalized exponent boundary value=%v err=%v want=%v", got, err, value)
+		}
+	}
 	if _, err := rule.EvaluateTyped(literal("true"), rule.Environment{}, rule.Boolean); err == nil {
 		t.Fatal("string result accepted as boolean")
 	}

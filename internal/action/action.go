@@ -363,7 +363,7 @@ func (s Service) create(ctx context.Context, tx dbal.Transaction, app *appir.App
 			row[f.Name] = input[f.Name]
 		}
 	}
-	if er := validateEntityRules(app, e, completeRuleCandidate(row, e), c); er != nil {
+	if er := ValidateEntityRules(app, e, row, c); er != nil {
 		return nil, er
 	}
 	if _, er := tx.Insert(ctx, dbal.Insert{Table: e.Name, Values: values}); er != nil {
@@ -468,7 +468,7 @@ func update(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.En
 			candidate[f.Name] = input[f.Name]
 		}
 	}
-	if er = validateEntityRules(app, e, candidate, c); er != nil {
+	if er = ValidateEntityRules(app, e, candidate, c); er != nil {
 		return nil, er
 	}
 	where := dbal.And(dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id}, dbal.Predicate{Op: dbal.OpEQ, Column: "version", Value: version})
