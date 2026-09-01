@@ -96,3 +96,33 @@ displays:
   api: {route: /api/products, type: json}
 entity: product
 fields: [id, name, price, inventory]
+---
+kind: TestSuite
+name: order_item_total_contract
+target: {kind: Rule, name: order_item_total}
+tests:
+  - name: calculates_line_total
+    input: {quantity: 3, unit_price: 12.5}
+    expect: {result: 37.5}
+---
+kind: TestSuite
+name: place_order_contract
+target: {kind: Action, name: place_order}
+tests:
+  - name: decrements_inventory_and_emits_event
+    fixtures:
+      product:
+        - {id: 00000000-0000-4000-8000-000000000101, name: Widget, price: 12.5, inventory: 5}
+    context:
+      actor: {id: 00000000-0000-4000-8000-000000000103, roles: [administrator]}
+      time: "2026-09-01T10:00:00Z"
+      requestId: commerce-test
+      ids: [00000000-0000-4000-8000-000000000102]
+    input: {product_id: 00000000-0000-4000-8000-000000000101, quantity: 2}
+    expect:
+      result: {payment: deterministic-success}
+      changes:
+        - {entity: product, id: 00000000-0000-4000-8000-000000000101, values: {inventory: 3}}
+        - {entity: order, id: 00000000-0000-4000-8000-000000000102, values: {status: pending_payment, payment_result: deterministic-success}}
+      events:
+        - {topic: order_placed, payload: {product_id: 00000000-0000-4000-8000-000000000101, quantity: 2}}

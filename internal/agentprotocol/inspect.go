@@ -2,6 +2,7 @@ package agentprotocol
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -62,6 +63,50 @@ func RedactedApp(source *appir.App) *appir.App {
 		redactRuleExpression(&item.Expression)
 		redacted.Rules[name] = item
 	}
+	for name, suite := range redacted.TestSuites {
+		for caseIndex := range suite.Tests {
+			test := &suite.Tests[caseIndex]
+			test.Input = redactTestMap(test.Input)
+			test.This = redactTestMap(test.This)
+			for entityName, rows := range test.Fixtures {
+				for rowIndex := range rows {
+					rows[rowIndex] = redactTestMap(rows[rowIndex])
+				}
+				test.Fixtures[entityName] = rows
+			}
+			if test.Context.Actor != nil {
+				test.Context.Actor.ID = redactTestString(test.Context.Actor.ID)
+				test.Context.Actor.Email = redactTestString(test.Context.Actor.Email)
+				test.Context.Actor.DisplayName = redactTestString(test.Context.Actor.DisplayName)
+			}
+			test.Context.Tenant = redactTestString(test.Context.Tenant)
+			test.Context.Time = redactTestString(test.Context.Time)
+			test.Context.RequestID = redactTestString(test.Context.RequestID)
+			for index := range test.Context.IDs {
+				test.Context.IDs[index] = redactTestString(test.Context.IDs[index])
+			}
+			test.Context.Seed = redactTestSeed(test.Context.Seed)
+			if len(test.Expect.Result) > 0 {
+				var value any
+				if json.Unmarshal(test.Expect.Result, &value) == nil {
+					test.Expect.Result, _ = json.Marshal(redactTestValue(value))
+				}
+			}
+			for index := range test.Expect.Changes {
+				test.Expect.Changes[index].ID = redactTestString(test.Expect.Changes[index].ID)
+				test.Expect.Changes[index].Values = redactTestMap(test.Expect.Changes[index].Values)
+			}
+			for index := range test.Expect.Events {
+				test.Expect.Events[index].Payload = redactTestMap(test.Expect.Events[index].Payload)
+			}
+			for index := range test.Expect.Audit {
+				test.Expect.Audit[index].ActorID = redactTestString(test.Expect.Audit[index].ActorID)
+				test.Expect.Audit[index].TenantID = redactTestString(test.Expect.Audit[index].TenantID)
+				test.Expect.Audit[index].EntityID = redactTestString(test.Expect.Audit[index].EntityID)
+			}
+		}
+		redacted.TestSuites[name] = suite
+	}
 	for name, item := range redacted.Policies {
 		redactExpression(item.Condition)
 		redacted.Policies[name] = item
@@ -71,6 +116,51 @@ func RedactedApp(source *appir.App) *appir.App {
 		redacted.Webforms[name] = item
 	}
 	return redacted
+}
+
+func redactTestMap(values map[string]any) map[string]any {
+	if values == nil {
+		return nil
+	}
+	out := make(map[string]any, len(values))
+	for name, value := range values {
+		out[name] = redactTestValue(value)
+	}
+	return out
+}
+
+func redactTestValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return redactTestMap(typed)
+	case []any:
+		out := make([]any, len(typed))
+		for index, item := range typed {
+			out[index] = redactTestValue(item)
+		}
+		return out
+	default:
+		encoded, _ := json.Marshal(value)
+		digest := sha256.Sum256(encoded)
+		return fmt.Sprintf("[REDACTED sha256:%x]", digest[:8])
+	}
+}
+
+func redactTestString(value string) string {
+	if value == "" {
+		return ""
+	}
+	return redactTestValue(value).(string)
+}
+
+func redactTestSeed(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	encoded, _ := json.Marshal(*value)
+	digest := sha256.Sum256(encoded)
+	redacted := int64(binary.BigEndian.Uint64(digest[:8]))
+	return &redacted
 }
 
 func redactRuleExpression(expression *rule.Expression) {

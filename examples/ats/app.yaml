@@ -80,6 +80,33 @@ expression:
         - {source: this, path: name}
     - {source: literal, literal: ""}
 ---
+kind: TestSuite
+name: candidate_move_contract
+target: {kind: Action, name: move_candidate}
+tests:
+  - name: named_candidate_moves
+    fixtures:
+      job:
+        - {id: 00000000-0000-4000-8000-000000000201, title: Engineer, department: Product}
+      candidate:
+        - {id: 00000000-0000-4000-8000-000000000202, job_id: 00000000-0000-4000-8000-000000000201, name: Ada, email: ada@example.test, stage: applied, applied_at: 2026-09-01T09:00:00Z}
+    context: {time: "2026-09-01T10:00:00Z", requestId: ats-test}
+    input: {id: 00000000-0000-4000-8000-000000000202, stage: screen}
+    expect:
+      result: {id: 00000000-0000-4000-8000-000000000202, stage: screen}
+      changes:
+        - {entity: candidate, id: 00000000-0000-4000-8000-000000000202, values: {stage: screen, version: 2}}
+      noEvents: true
+  - name: unnamed_candidate_is_denied
+    fixtures:
+      job:
+        - {id: 00000000-0000-4000-8000-000000000201, title: Engineer, department: Product}
+      candidate:
+        - {id: 00000000-0000-4000-8000-000000000202, job_id: 00000000-0000-4000-8000-000000000201, name: "", email: ada@example.test, stage: applied, applied_at: 2026-09-01T09:00:00Z}
+    context: {time: "2026-09-01T10:00:00Z", requestId: ats-test}
+    input: {id: 00000000-0000-4000-8000-000000000202, stage: screen}
+    expect: {error: conflict, noChanges: true, noEvents: true}
+---
 kind: View
 name: candidate_pipeline
 entity: candidate

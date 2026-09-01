@@ -2,7 +2,7 @@
 
 Bean v0.6 exposes the compiler and release lifecycle as a provider-neutral command contract. An agent does not need to inspect Bean source or parse human prose.
 
-v0.10 retains the v0.8 generic one-to-one adapter over the shared `bean.agent/v1alpha1` dispatcher and adds first-class deterministic Rule semantics without changing the transport envelope:
+v0.11 retains the v0.8 generic one-to-one adapter over the shared `bean.agent/v1alpha1` dispatcher and adds first-class semantic TestSuites without changing the transport envelope:
 
 ```bash
 bean agent call bean.definition.validate --input request.json --json
@@ -39,7 +39,7 @@ bean app test --file ./ats/app.yaml --json
 
 `app init` refuses to overwrite an existing `app.yaml`. `app validate`, `app inspect`, and `app test` do not require a database. Without a target, `app plan` plans from an empty schema and `app diff` compares against an empty application. With `--db` or `--database-url`, plan and diff open an initialized Bean database without running metadata initialization, upgrades, migrations, or writes.
 
-`app publish` validates and plans the source, replaces the draft with the exact source definition set, applies the existing additive migration lifecycle, and atomically activates immutable AppIR. It creates the selected SQLite database when needed. `app test` uses a temporary SQLite database and checks source loading, compilation, migration planning, publication, and restart activation; it does not generate business-semantic tests.
+`app publish` validates and plans the source, replaces the draft with the exact source definition set, applies the existing additive migration lifecycle, and atomically activates immutable AppIR. It creates the selected SQLite database when needed. `app test` uses temporary SQLite databases to check source loading, compilation, migration planning, publication, restart activation, and every declared semantic TestSuite. It executes metadata-authored suites; generated suites remain deferred to v0.12.
 
 ## JSON envelope
 
@@ -101,7 +101,9 @@ Codes and structured fields are the compatibility interface. Human messages may 
 | `BEAN-E2501` | invalid context/input binding |
 | `BEAN-E2601` | invalid Page route contract |
 | `BEAN-E2701` | unsafe or incompatible migration contract |
+| `BEAN-E2851` | invalid TestSuite target, case, fixture, context, assertion, or bound |
 | `BEAN-E2900` | other typed definition semantic failure |
+| `BEAN-T1001` | failed semantic TestSuite assertion |
 
 Paths are canonical source paths such as `spec.fields` or `spec.transitions.screening`; source file paths are relative to the application manifest directory. `candidates` appear only when Bean can derive valid alternatives. Unknown fields use the decoded specification shape, missing definitions use the compiled symbol table, missing fields use the resolved Entity, and invalid transition edges use enum options.
 
@@ -109,13 +111,13 @@ Sensitive inputs, file bytes, secrets, passwords, and database credentials are e
 
 ## Schemas and capabilities
 
-`bean capabilities --json` reports definition/API versions, definition kinds, semantic primitives, field types, Action operations and steps, Block types, presentations, serializers, layouts, database backends, and hard limits. In v0.10, `semanticPrimitives` contains `Lifecycle` and `Rule`; `ruleOperators`, `ruleSources`, and the node/depth/literal/value limits expose the closed evaluator contract.
+`bean capabilities --json` reports definition/API versions, definition kinds, semantic primitives, field types, Action operations and steps, Block types, presentations, serializers, layouts, database backends, and hard limits. In v0.11, `semanticPrimitives` contains `Lifecycle` and `Rule`; `ruleOperators`, `ruleSources`, and the node/depth/literal/value limits expose the closed evaluator contract. `testSuiteTargets` and the suite/case/fixture/encoded-byte limits expose the bounded TestSuite contract.
 
 `bean schema [Kind] --json` returns canonical Draft 2020-12 JSON Schema. `bean schema --output ./schemas` writes `bean.schema.json` and one lower-case file per definition kind. The checked-in [schemas](../schemas) directory is generated from the same Go specification types used by compiler decoding; tests fail if those files drift or stop covering a maintained example.
 
 JSON Schema describes document shape and rejects unknown properties. Cross-definition references and semantic constraints remain compiler responsibilities and are visible through diagnostics, capabilities, and `app inspect`.
 
-v0.10 compilers emit `bean/appir/v3` so older runtimes reject Rule-bearing releases instead of silently discarding their semantics. The v0.10 runtime still loads `bean/appir/v1` releases without Lifecycle or Rule semantics and `bean/appir/v2` releases with Lifecycle but without Rules. Rule definitions and Rule-bound Actions or Entities are invalid under v1/v2.
+v0.11 compilers emit `bean/appir/v4` so older runtimes reject TestSuite-bearing releases instead of silently discarding their semantics. The v0.11 runtime still loads `bean/appir/v1` releases without Lifecycle, Rule, or TestSuite semantics; `bean/appir/v2` releases with Lifecycle but without Rules or TestSuites; and `bean/appir/v3` releases with Rules but without TestSuites. Rule definitions and Rule-bound consumers remain invalid under v1/v2; TestSuites are invalid under v1/v2/v3.
 
 ## Inspection, plan, and diff
 

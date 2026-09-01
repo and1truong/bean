@@ -273,7 +273,7 @@ func executeDeleteStep(execution stepExecution) (stepOutcome, error) {
 	if !authorizeStepEntity(execution, entity, loaded[0]) {
 		return stepOutcome{}, &dbal.Error{Code: dbal.NotFound, Message: "record not found"}
 	}
-	row, err := remove(execution.ctx, execution.tx, entity, values)
+	row, err := remove(execution.ctx, execution.tx, entity, values, fmt.Sprint(execution.request.Values["now"]))
 	if err != nil {
 		return stepOutcome{}, err
 	}

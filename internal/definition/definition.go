@@ -62,6 +62,7 @@ const (
 	RuleRoute            DiagnosticRule = "route"
 	RuleMigration        DiagnosticRule = "migration"
 	RuleFixture          DiagnosticRule = "fixture"
+	RuleTestSuite        DiagnosticRule = "test-suite"
 	RuleGeneral          DiagnosticRule = "general"
 )
 
@@ -156,6 +157,8 @@ func codeForRule(rule DiagnosticRule) string {
 		return "BEAN-E2701"
 	case RuleFixture:
 		return "BEAN-E2801"
+	case RuleTestSuite:
+		return "BEAN-E2851"
 	default:
 		return "BEAN-E2900"
 	}

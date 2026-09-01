@@ -484,7 +484,7 @@ func TestAgentCapabilitiesAndSchemaAreSelfDescribing(t *testing.T) {
 		assert  func(*testing.T, map[string]any)
 	}{
 		{args: []string{"capabilities", "--json"}, command: "capabilities", assert: func(t *testing.T, result map[string]any) {
-			if result["definitionAPIVersion"] != "bean/v1alpha1" || result["appIRFormat"] != "bean/appir/v3" {
+			if result["definitionAPIVersion"] != "bean/v1alpha1" || result["appIRFormat"] != "bean/appir/v4" {
 				t.Fatalf("capabilities = %#v", result)
 			}
 			if len(result["definitionKinds"].([]any)) < 10 || len(result["fieldTypes"].([]any)) < 10 {
@@ -761,7 +761,7 @@ func TestAgentInitPublishDiffAndLifecycleTest(t *testing.T) {
 			} `json:"checks"`
 		} `json:"result"`
 	}
-	if err := json.Unmarshal(stdout.Bytes(), &smoke); err != nil || len(smoke.Result.Checks) != 5 {
+	if err := json.Unmarshal(stdout.Bytes(), &smoke); err != nil || len(smoke.Result.Checks) != 6 {
 		t.Fatalf("smoke err=%v value=%#v output=%s", err, smoke, stdout.String())
 	}
 	for _, check := range smoke.Result.Checks {

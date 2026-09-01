@@ -1,6 +1,6 @@
-# Bean v0.10 capability matrix
+# Bean v0.11 capability matrix
 
-`complete` means the v0.10 compiler/runtime pair has direct executable evidence. Bean remains alpha software and the limits below are part of the contract.
+`complete` means the v0.11 compiler/runtime pair has direct executable evidence. Bean remains alpha software and the limits below are part of the contract.
 
 | Area | Capability | Status | Direct evidence |
 | --- | --- | --- | --- |
@@ -14,6 +14,7 @@
 | Lifecycle semantics | Canonical initial state and reachable transition graph, optional Action subsets, protected generic updates, AppIR v2, semantic inspect/diff | complete | compiler, AppIR, Action, release, CLI/MCP parity, ATS, and commerce contracts |
 | Deterministic Rules | Named typed canonical AST, closed sources/operators, compile/runtime bounds, AppIR v3, inspect/references/redacted semantic diff | complete | Rule, compiler, schema, AppIR, Agent Protocol, and release contracts |
 | Rule consumers | Policy-ordered Action guards, simultaneous server-owned derives, final-candidate Entity invariants | complete | Action rollback/replay/context tests plus commerce, ATS, and booking slices |
+| Semantic TestSuites | Typed Rule/Action targets, fixtures, explicit actor/tenant/time/ID/seed context, deterministic assertions, fresh case isolation, AppIR v4 | complete | compiler/schema/AppIR, isolated runner, CLI/Agent Protocol, release, and maintained defect contracts |
 | DBAL | Parameterized CRUD, predicates, joins, groups, aggregates, transactions, inspection, migrations | complete | reusable SQLite/PostgreSQL contract |
 | PostgreSQL | pgx backend selection, numbered parameters, SQLSTATE errors, Admin/Action/View HTTP parity | complete | `make test-postgres` against PostgreSQL 17 |
 | Entity/relations | Typed native tables, four relation cardinalities, owner/tenant/soft-delete/version | complete | migration, Action, View, policy contracts |
@@ -49,11 +50,11 @@
 - One Bean process and one active application per database are qualified. Clustering, multi-process writers, replicas, HA, and failover are not.
 - Migrations are additive. Destructive schema changes, data transformations, and automated rollback are rejected or deferred.
 - Outbox delivery is at-least-once. A crash after delivery but before acknowledgement can duplicate an effect.
-- v0.10 retains the v0.5 crash qualification assumption of a functioning filesystem or PostgreSQL service. Corruption, host loss, backup/restore, and point-in-time recovery are outside scope.
+- v0.11 retains the v0.5 crash qualification assumption of a functioning filesystem or PostgreSQL service. Corruption, host loss, backup/restore, and point-in-time recovery are outside scope.
 - The visual builder covers the core operational definition path; non-core page composition kinds use advanced JSON in this slice.
 - Tree presentation is bounded by the View maximum of 200 rows. File fields are bounded small attachments stored as base64 metadata content; external object storage, resumable transfer, scanning, and media processing are outside this slice.
 - SQLite/PostgreSQL parity is contract and workflow parity, not identical query plans or operational characteristics.
 - `bean package` deliberately targets local SQLite only. It does not create containers, installers, hosted previews, signatures, or a distribution channel.
-- Lifecycle owns only one Entity enum field, initial state, and transition graph. Rules own only bounded side-effect-free local predicates and scalar calculations. Text scripts, computed reads, browser visibility rules, generated semantic tests, external effects, and typed extensions remain future work. Legacy Action-local transition graphs remain supported; AppIR v1 without Lifecycle/Rules and v2 with Lifecycle but without Rules remain readable.
-- MCP deliberately targets local stdio only. Streamable HTTP, hosted identity, OAuth, subscriptions, prompts, resources, sampling, and remote rate-limit infrastructure are outside v0.10.
+- Lifecycle owns only one Entity enum field, initial state, and transition graph. Rules own only bounded side-effect-free local predicates and scalar calculations. TestSuites target Rules and Actions in isolated SQLite only; generated suites, direct Policy/Lifecycle targets, provider mocks, external effects, and release gating remain future work. Text scripts, computed reads, browser visibility rules, and typed extensions remain future work. Legacy Action-local transition graphs remain supported; AppIR v1 without Lifecycle/Rules/TestSuites, v2 with Lifecycle only, and v3 with Rules but without TestSuites remain readable.
+- MCP deliberately targets local stdio only. Streamable HTTP, hosted identity, OAuth, subscriptions, prompts, resources, sampling, and remote rate-limit infrastructure are outside v0.11.
 - External security review, load envelopes, SLOs, supply-chain signing, and production release certification remain future work.

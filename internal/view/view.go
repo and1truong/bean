@@ -30,6 +30,7 @@ type ReadOptions struct {
 	ExpressionValues   map[string]any
 	ExtraPredicate     *expr.Expr
 	ApplyExposedFilter bool
+	IncludeDeleted     bool
 }
 
 type Params struct {
@@ -175,7 +176,7 @@ func ReadPage(ctx context.Context, reader Reader, app *appir.App, name string, o
 		}
 		predicates = append(predicates, dbal.Predicate{Op: dbal.OpEQ, Column: "tenant_id", Value: c.TenantID})
 	}
-	if e.SoftDelete {
+	if e.SoftDelete && !options.IncludeDeleted {
 		predicates = append(predicates, dbal.Predicate{Op: dbal.OpIsNull, Column: "deleted_at"})
 	}
 	limit := params.Limit

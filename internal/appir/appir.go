@@ -11,7 +11,8 @@ import (
 const (
 	LegacyFormat    = "bean/appir/v1"
 	LifecycleFormat = "bean/appir/v2"
-	CurrentFormat   = "bean/appir/v3"
+	RuleFormat      = "bean/appir/v3"
+	CurrentFormat   = "bean/appir/v4"
 )
 
 type Field struct {
@@ -76,6 +77,65 @@ type Rule struct {
 	Result       rule.Type
 	Input        map[string]Field
 	Expression   rule.Expression
+}
+type TestTarget struct {
+	Kind string `json:"kind"`
+	Name string `json:"name"`
+}
+type TestActor struct {
+	ID          string   `json:"id"`
+	Email       string   `json:"email"`
+	DisplayName string   `json:"displayName"`
+	Roles       []string `json:"roles"`
+}
+type TestContext struct {
+	Actor     *TestActor `json:"actor"`
+	Tenant    string     `json:"tenant"`
+	Time      string     `json:"time"`
+	RequestID string     `json:"requestId"`
+	IDs       []string   `json:"ids"`
+	Seed      *int64     `json:"seed"`
+}
+type TestEvent struct {
+	Topic   string         `json:"topic"`
+	Payload map[string]any `json:"payload"`
+}
+type TestAudit struct {
+	Action   string   `json:"action"`
+	ActorID  string   `json:"actorId"`
+	TenantID string   `json:"tenantId"`
+	Entity   string   `json:"entity"`
+	EntityID string   `json:"entityId"`
+	Changed  []string `json:"changed"`
+	Success  *bool    `json:"success"`
+}
+type TestMutation struct {
+	Entity string         `json:"entity"`
+	ID     string         `json:"id"`
+	Values map[string]any `json:"values"`
+	Absent bool           `json:"absent"`
+}
+type TestExpectation struct {
+	Result    json.RawMessage `json:"result"`
+	Error     string          `json:"error"`
+	Changes   []TestMutation  `json:"changes"`
+	Events    []TestEvent     `json:"events"`
+	Audit     []TestAudit     `json:"audit"`
+	NoChanges bool            `json:"noChanges"`
+	NoEvents  bool            `json:"noEvents"`
+}
+type TestCase struct {
+	Name     string                      `json:"name"`
+	Fixtures map[string][]map[string]any `json:"fixtures"`
+	Input    map[string]any              `json:"input"`
+	This     map[string]any              `json:"this"`
+	Context  TestContext                 `json:"context"`
+	Expect   TestExpectation             `json:"expect"`
+}
+type TestSuite struct {
+	Name   string     `json:"name"`
+	Target TestTarget `json:"target"`
+	Tests  []TestCase `json:"tests"`
 }
 type Lifecycle struct {
 	Name, Entity, StateField, Initial string
@@ -203,6 +263,7 @@ type App struct {
 	Actions           map[string]Action
 	Lifecycles        map[string]Lifecycle
 	Rules             map[string]Rule
+	TestSuites        map[string]TestSuite
 	Policies          map[string]Policy
 	Webforms          map[string]Webform
 	Blocks            map[string]Block
@@ -220,10 +281,10 @@ type App struct {
 }
 
 func Empty() *App {
-	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Rules: map[string]Rule{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
+	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Rules: map[string]Rule{}, TestSuites: map[string]TestSuite{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
 }
 func (a *App) ValidateFormat() error {
-	if a.FormatVersion != LegacyFormat && a.FormatVersion != LifecycleFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != LegacyFormat && a.FormatVersion != LifecycleFormat && a.FormatVersion != RuleFormat && a.FormatVersion != CurrentFormat {
 		return fmt.Errorf("unsupported AppIR format %q", a.FormatVersion)
 	}
 	if a.FormatVersion == LegacyFormat {
@@ -236,7 +297,7 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != CurrentFormat {
+	if a.FormatVersion == LegacyFormat || a.FormatVersion == LifecycleFormat {
 		if len(a.Rules) > 0 {
 			return fmt.Errorf("AppIR format %q cannot contain Rule definitions", a.FormatVersion)
 		}
@@ -250,6 +311,9 @@ func (a *App) ValidateFormat() error {
 				return fmt.Errorf("AppIR format %q cannot contain Rule-bound Actions", a.FormatVersion)
 			}
 		}
+	}
+	if a.FormatVersion != CurrentFormat && len(a.TestSuites) > 0 {
+		return fmt.Errorf("AppIR format %q cannot contain TestSuite definitions", a.FormatVersion)
 	}
 	return nil
 }

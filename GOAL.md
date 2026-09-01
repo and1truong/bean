@@ -1,132 +1,117 @@
-# Goal: Bean v0.10 Deterministic Rule Expressions
+# Goal: Bean v0.11 First-class Semantic Test Suites
 
 Status: active
 
-Add a bounded, side-effect-free Rule primitive for small local business calculations and predicates while keeping Entity, Lifecycle, Policy, View, and Action semantics structural. A Rule is named, typed, inspectable, and compiled from a canonical structured expression AST; it is not a script or extension runtime.
+Add a canonical `TestSuite` definition that verifies Rule and Action behavior through Bean's production execution paths. Every case is isolated, deterministic, bounded, and reported through the existing machine-readable `bean app test --json` contract.
 
 ## Primary outcome
 
 ```text
-semantic primitive
-  + named typed Rule
-  -> compiler validation and canonical AppIR
-  -> bounded deterministic evaluator
-  -> Action guard / derived value / Entity invariant
-  -> inspectable working software
+typed TestSuite metadata
+  + explicit fixtures and context
+  -> compiler validation and immutable AppIR
+  -> isolated production Rule/Action execution
+  -> deterministic result, mutation, event, audit, and error assertions
+  -> stable app test evidence
 ```
 
-Given the same Rule, input, record, user, tenant, and explicitly injected context, evaluation returns the same typed result or the same stable failure.
+Given the same suite, definition digest, fixtures, input, and explicit context, Bean returns the same ordered case results and diagnostics without retaining any case mutation.
 
-## Frozen v0.10 contract
+## Frozen v0.11 contract
 
-### Rule definition
+### Definition
 
 ```yaml
-apiVersion: bean/v1alpha1
-kind: Rule
-metadata:
-  name: order_subtotal
-spec:
-  entity: order
-  result: number
-  input:
-    quantity: {type: integer}
-    unit_price: {type: money}
-  expression:
-    op: multiply
-    args:
-      - {source: input, path: quantity}
-      - {source: input, path: unit_price}
+kind: TestSuite
+name: order_rules
+target: {kind: Rule, name: order_subtotal}
+tests:
+  - name: computes_a_line_total
+    input: {quantity: 3, unit_price: 12.5}
+    expect: {result: 37.5}
 ```
 
-- `entity` is optional; when present it types `this.<field>` and restricts consumers to that Entity.
-- `input` declares the Bean scalar field types available through `input.<field>`; sensitive, file, relation, password, and arbitrary executable inputs are forbidden.
-- `result` is required and uses the closed Rule types `boolean`, `integer`, `number`, `string`, `date`, `datetime`, or `strings`. Consumers check compatibility with their Bean field type; for example, `money` accepts `number`.
-- An expression node is either a leaf (`source` plus `path`, or `literal`) or a known operator with ordered `args`; mixed/unknown node shapes fail compilation.
-- AppIR stores the canonical AST, not source formatting, so inspect and semantic diff are deterministic.
+- A suite targets exactly one stable `Rule/<name>` or `Action/<name>` identity.
+- Case names are non-empty machine names and unique within a suite. Suite and case order is canonical by name.
+- Rule cases supply `input`, optional `this`, and explicit context, then assert exactly one of `result` or `error`.
+- Action cases supply typed entity fixtures, Action `input`, and explicit context. They may assert `result`, `error`, selected field mutations, emitted outbox events, audit records, `noChanges`, or `noEvents`.
+- Fixtures are keyed by Entity name and contain explicit records. They pass Bean field validation and relation checks before case execution.
+- Context may provide an actor (`id`, `email`, `displayName`, and roles), tenant ID, fixed RFC3339 time, request ID, deterministic IDs, and a deterministic integer seed. Explicit IDs are consumed first; a seed derives any remaining Action-created UUIDs. Omitted values remain explicitly unavailable; there is no ambient clock, randomness, environment, or network input.
+- Expected errors use Bean's stable runtime error code vocabulary rather than matching prose.
+- Assertion values use canonical JSON-compatible Bean scalar values. Ordering never depends on source map order or database row order.
 
-### Sources
+### Isolation and bounds
 
-- `this.<field>`: current/candidate Entity record, including system fields
-- `input.<field>`: declared Action input
-- `user.id|email|display_name|roles`: authenticated request context, nullable when anonymous
-- `tenant.id`: current tenant identifier
-- `context.now|request_id`: Bean-injected values
-- literal JSON scalars
+- `bean app test` compiles, migrates, and publishes the candidate into an ephemeral SQLite database, then runs every compiled suite.
+- Each case executes against fresh fixtures and cannot observe mutations from another case. State is discarded after the case, including entity writes, audit, idempotency, jobs, and outbox rows.
+- The suite runner calls the production Rule evaluator and Action service. It does not duplicate their semantics.
+- Maximum 64 suites per application, 128 cases per suite, 1,024 fixtures per case, and 1 MiB canonical encoded suite data per application.
+- Each case has a five-second context deadline. Existing Rule bounds remain authoritative.
+- Network access and provider mocks do not exist in the v0.11 execution vocabulary.
 
-There is no environment, filesystem, network, SQL, process, module, clock, random, UUID-generator, global-state, result-step, route, or query source.
+### Machine result
 
-### Operators
+`bean app test --json` retains its versioned envelope and existing lifecycle smoke checks, then includes canonical semantic-suite evidence:
 
-- Boolean: `and`, `or`, `not`
-- Comparison: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `is_null`, `is_not_null`
-- Numeric: `add`, `subtract`, `multiply`, `divide`
-- Selection: `if`
-- String: `concat`, `lower`, `upper`, `trim`
+```json
+{
+  "checks": [{"id":"definition.load","status":"passed"}],
+  "suites": [{
+    "id":"TestSuite/order_rules",
+    "status":"passed",
+    "cases":[{"id":"TestSuite/order_rules/computes_a_line_total","status":"passed"}]
+  }]
+}
+```
 
-Operators have fixed arity and result typing. There are no user functions, loops, recursion, dynamic property lookup, mutation, or implicit coercion.
-
-### Initial consumers
-
-- `Action.when: <Rule>` requires a boolean result and is evaluated inside the Action transaction after existing Policy checks and before mutation.
-- `Action.derive.<input>: <Rule>` computes a declared Action input inside the transaction. Client supply of a derived input is rejected; derives are simultaneous and cannot reference other derived inputs.
-- `Entity.validations.<name>: <Rule>` requires a boolean Rule for the same Entity and validates create/update/transition candidates before persistence.
-
-Policy remains authorization. A Rule guard or invariant may further deny behavior but can never grant access or bypass Policy. Reads still use Views and writes still use Actions.
-
-### Bounds
-
-- maximum 128 expression nodes
-- maximum depth 16
-- maximum literal encoding 4 KiB
-- maximum intermediate or final encoded value 16 KiB
-- deterministic short-circuit evaluation with a maximum 128 evaluated nodes
-
-The compiler rejects statically visible bound violations. Runtime enforces the same evaluation and result bounds.
+- A failed assertion makes the command unsuccessful and reports a stable diagnostic with suite/case/assertion paths plus safe expected and actual values.
+- Results and diagnostics are deterministically ordered by suite name, case name, and assertion path.
+- The result includes the candidate definition checksum already returned by `app test`; test evidence is therefore tied to one source digest.
 
 ## Reference slices
 
-Three unrelated metadata-only applications must demonstrate the complete initial surface:
+Maintained metadata-only suites must cover:
 
-1. commerce: numeric computed/derived value
-2. ATS or tracker: record-aware Action guard
-3. booking or tracker: Entity invariant plus a derived `context.now` value
+1. commerce Rule calculation plus Action mutation/event behavior and seeded defects;
+2. ATS Action guard allow/deny behavior;
+3. booking Action derivation, invariant rollback, mutation, and no-event behavior.
 
-The exact examples may be adjusted only when their existing domain model proves a smaller credible slice.
+The exact suite placement may follow the existing feature-oriented resource layout. Core packages must not branch on application names.
 
 ## Architecture constraints
 
 - Preserve definition -> validation -> migration -> immutable AppIR -> atomic activation.
-- Rule evaluation has no I/O and receives only an explicit typed environment.
-- Existing Policy, Lifecycle, transaction, idempotency, audit/outbox, Action-step effect, and View-read boundaries remain authoritative.
-- Compiler validates unknown sources, paths, operators, arity, consumer Entity, result types, and forbidden result capabilities before publication where possible.
-- Runtime fails closed on missing values, type mismatch, divide-by-zero, resource limits, and unavailable context.
-- Rule Definition ownership includes compile, normalize, validate, storage completeness, schema, inspect, references, and semantic diff.
-- AppIR compatibility accepts older formats without Rules and rejects Rules in formats that cannot represent them.
-- Core remains generic; all domain behavior stays under `examples/`.
-- SQL and backend-specific behavior remain in existing DBAL and migration boundaries.
+- `TestSuite` owns compile, normalize, validate, storage completeness, schema, capabilities, inspection, references, and semantic diff.
+- AppIR compatibility accepts older formats without suites and rejects suites in formats that cannot represent them.
+- Rule cases call the existing typed bounded evaluator with an explicit environment.
+- Action cases call the existing Action service with injected clock and deterministic ID providers.
+- Policy remains authorization; tests describe behavior but cannot bypass it.
+- Fixture setup is runner infrastructure, not an application write API. Assertions observe application records through compiled identities and system event/audit tables through the runner only.
+- SQL and SQLite dependencies remain confined to `internal/dbal/sqlite` and `internal/migration`; the runner depends on DBAL interfaces.
+- Application behavior remains under `examples/`; core remains generic.
 
 ## Measurable acceptance criteria
 
-- Rule core tests prove type checking, evaluation replay determinism, short-circuiting, all operators/sources, and every resource limit.
-- Compiler diagnostics cover unknown fields, sources, operators, invalid arity, incompatible results/consumers, forbidden result types, missing references, and derive cycles.
-- Canonical schema, capabilities, inspect, references, and semantic diff expose Rule behavior with deterministic ordering.
-- Action tests prove Policy-before-guard, guard denial, simultaneous derivation, client override refusal, Entity invariants, transaction rollback, idempotent replay, and explicit `context.now`.
-- Three reference applications use Rules without application-name branches.
-- SQLite/PostgreSQL and publication restart compatibility remain green.
-- The binary reports `bean 0.10.0-alpha`.
+- Compiler tests cover target existence/kind, case uniqueness, typed input/fixtures/context, assertion compatibility, bounds, and stable diagnostics.
+- Canonical schema, capabilities, inspect, references, AppIR storage completeness, compatibility, and semantic diff expose TestSuite behavior deterministically.
+- Rule suite tests prove production evaluator reuse, explicit context, result/error assertions, replay determinism, and Rule-bound failures.
+- Action suite tests prove production Policy/guard/derive/invariant execution, expected result/error, selected mutation/event/audit assertions, deterministic IDs/time, and no cross-case or post-run persistence.
+- Maintained positive and negative suites catch seeded guard, invariant, permission, mutation, event, and Rule-result defects.
+- `bean app test --json` returns stable ordered suite/case evidence and diagnostics while retaining compile/migration/publication/restart smoke behavior.
+- SQLite execution, PostgreSQL application parity, publication restart compatibility, and existing examples remain green.
+- The binary reports `bean 0.11.0-alpha`.
 - `make check`, `make test-crash`, `make test-postgres`, and `make build` pass.
 - The latest PR commit has a clean Codex review, all actionable threads are resolved, CI passes, and the PR is merged.
 
 ## Explicit non-goals
 
-- Text/infix script parser or Bloblang compatibility
-- Computed read columns, SQL expressions, materialized fields, or Rule-backed View filtering
-- Conditional browser visibility or requiredness; existing typed form expressions remain unchanged
-- Public extension/plugin SDK, dynamic registration, JavaScript, Lua, WASM, shell, HTTP, SQL, or provider calls
-- Generated semantic tests; that is v0.11
-- External effects; that is v0.12
-- New semantic primitives or application-specific core branches
+- Generated tests; that is v0.12.
+- Provider mocks or interaction assertions; those arrive with the v0.13 typed extension boundary.
+- A standalone `bean test` command, watch mode, release gating, performance/concurrency testing, or full database snapshots.
+- Direct Policy or Lifecycle suite targets beyond behavior exercised by Actions.
+- PostgreSQL-backed semantic-suite execution; v0.11 uses the existing isolated SQLite `app test` environment.
+- Network access, external effects, arbitrary scripts, Lua, JavaScript, SQL, filesystem, process, or environment capabilities.
+- Inferring unstated application intent or replacing application-specific browser acceptance tests.
 
 ## Terminal gates
 

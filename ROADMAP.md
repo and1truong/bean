@@ -74,7 +74,7 @@ Presentation remains a separately reported score so a technically correct but un
 
 ## Current engineering goal
 
-Bean v0.10 Deterministic Rule Expressions is active. The initial contract uses named, typed, canonical structured ASTs for Action guards, server-derived Action inputs, and Entity invariants. It deliberately excludes a text script parser, browser-only surfaces, computed read columns, generated tests, and external effects. The executable contract and milestones are in `GOAL.md` and `PLANS.md`.
+Bean v0.11 First-class Semantic Test Suites is active. The initial contract adds canonical metadata suites targeting stable Rule and Action identities, explicit fixtures and actor/tenant/time/ID/seed context, deterministic result/error/mutation/event/audit assertions, isolated execution through production paths, and machine-readable `app test` evidence. Generated tests, provider mocks, standalone test commands, and direct Policy/Lifecycle targets are deferred. The executable contract and milestones are in `GOAL.md` and `PLANS.md`.
 
 ## Roadmap
 
@@ -85,12 +85,13 @@ Bean v0.10 Deterministic Rule Expressions is active. The initial contract uses n
 | 2 | v0.7 | Demo Factory for fast, populated, presentable local applications | complete |
 | 3 | v0.8 | Agent Protocol, MCP adapter, and shipped agent guidance | complete |
 | 4 | v0.9 | First-class semantic model for common business structure | complete |
-| 5 | v0.10 | Deterministic Rule Expressions for local application logic | active |
-| 6 | v0.11 | Generated tests from semantic primitives and rules | planned |
-| 7 | v0.12 | Typed extension boundary for external effects | planned |
-| 8 | v1.0 | Qualification of one explicit production envelope | planned |
-| 9 | post-v1.0 | Bean Cloud preview environments | exploratory |
-| 10 | post-v1.0 | Composable application-pattern ecosystem | exploratory |
+| 5 | v0.10 | Deterministic Rule Expressions for local application logic | complete |
+| 6 | v0.11 | First-class Semantic Test Suites for Bean definitions | active |
+| 7 | v0.12 | Generated tests from semantic primitives and rules | planned |
+| 8 | v0.13 | Typed extension boundary for external effects | planned |
+| 9 | v1.0 | Qualification of one explicit production envelope | planned |
+| 10 | post-v1.0 | Bean Cloud preview environments | exploratory |
+| 11 | post-v1.0 | Composable application-pattern ecosystem | exploratory |
 
 ### Phase 0 — Application runtime (complete)
 
@@ -114,7 +115,7 @@ bean app publish
 bean app test
 ```
 
-Every command supports `--json`, a versioned response envelope, documented exit statuses, deterministic ordering, and clean separation between machine output and logs. `app plan` is side-effect-free. `app diff` reports semantic definition/AppIR changes rather than YAML formatting changes. `app publish` reports the candidate checksum and applied release. `app test` runs compile, migration, publication, and startup smoke contracts in an isolated SQLite database; semantic test generation is deferred to v0.11.
+Every command supports `--json`, a versioned response envelope, documented exit statuses, deterministic ordering, and clean separation between machine output and logs. `app plan` is side-effect-free. `app diff` reports semantic definition/AppIR changes rather than YAML formatting changes. `app publish` reports the candidate checksum and applied release. `app test` runs compile, migration, publication, and startup smoke contracts in an isolated SQLite database; first-class semantic test suites are deferred to v0.11.
 
 Self-description is part of the same contract:
 
@@ -216,6 +217,8 @@ Increase the local application logic agents can express without arbitrary applic
 Semantic application model
         ↓
 Deterministic rule expressions
+        ↓
+First-class Semantic Test Suites
         ↓
 Generated semantic tests
         ↓
@@ -427,9 +430,27 @@ extension/provider
 
 v0.10 is not a general-purpose scripting runtime. Lua may be reconsidered later only behind the typed extension boundary or another strongly sandboxed provider abstraction when a concrete vertical slice proves the need.
 
-### Phase 6 — v0.11: generated semantic and rule tests
+### Phase 6 — v0.11: first-class Semantic Test Suites
 
-Use the semantic model and deterministic rules to generate schema, policy, transition, route-binding, rule-evaluation, CRUD smoke, and browser-journey checks. `bean app test --json` reports stable check identifiers and evidence.
+Add the deterministic behavioral-test contract proposed in [issue #12](https://github.com/and1truong/bean/issues/12). A suite targets stable Bean definition identities and executes through the same engine used in production rather than a separate test interpreter.
+
+Cases provide typed fixtures, input, and explicit actor, tenant, clock, ID, and randomness context. They assert externally meaningful results or errors, object mutations, emitted events, and audit records. Network access is disabled by default. Every case runs in isolation with ephemeral storage or transaction rollback and bounded CPU, memory, and execution time.
+
+The initial contract supports Rules and Actions. Policy and Lifecycle targets may follow only where the same assertion vocabulary and execution path apply. The existing `bean app test --json` command returns stable, machine-readable diagnostics suitable for humans, CI, and repair loops. Agents may derive suites from definitions and requirements, but generated cases do not infer unstated intent or replace application-specific acceptance tests.
+
+v0.11 does not invent a provider mock API before Bean has a production provider contract. Typed provider-call mocks and interaction assertions join the suite vocabulary with the v0.13 typed extension boundary so tests continue to exercise the production execution path.
+
+Exit criteria:
+
+- A canonical JSON/YAML suite contract targets stable Rule and Action identities and is visible through schema, capabilities, validation, inspection, and semantic diff.
+- Suites provide fixtures plus explicit actor, tenant, and fixed-time context; they assert results or errors, mutations, and emitted events.
+- Every case rolls back all state and produces the same deterministically ordered result and structured diagnostics for the same suite, definition digest, and context.
+- The suite runner invokes production Rule and Action execution paths and enforces declared resource bounds.
+- Maintained positive and negative suites catch seeded guard, invariant, permission, mutation, and event defects.
+
+### Phase 7 — v0.12: generated semantic and rule tests
+
+Use the semantic model, deterministic rules, and Semantic Test Suite contract to generate schema, policy, transition, route-binding, rule-evaluation, CRUD smoke, and browser-journey checks. `bean app test --json` reports stable check identifiers and evidence.
 
 Generated checks cover rule type correctness, evaluation fixtures, Action guard allow/deny cases, invariant violations, representative boundary values, deterministic replay, forbidden capability access, and execution or resource-limit failures. They verify declared semantics and representative boundaries; they do not infer unstated requirements or prove arbitrary business correctness. Generated checks supplement application-specific acceptance tests.
 
@@ -437,10 +458,10 @@ Exit criteria:
 
 - Generated negative transition and Policy cases catch seeded defects in reference definitions.
 - Generated rule tests catch intentionally seeded guard, validation, calculation, context, and resource-limit defects.
-- Generated checks trace assertions to semantic or rule definitions and stable identifiers.
+- Generated checks materialize through the Semantic Test Suite contract and trace assertions to stable definition identities.
 - Identical definitions and runtime state produce deterministically ordered results and evidence.
 
-### Phase 7 — v0.12: typed extension boundary
+### Phase 8 — v0.13: typed extension boundary
 
 Provide a narrow escape hatch without allowing arbitrary scripts throughout metadata:
 
@@ -454,9 +475,10 @@ Exit criteria:
 
 - A reference application uses an extension without weakening Action transaction, authorization, audit, or idempotency contracts.
 - Extension unavailability and retry behavior are deterministic and tested.
+- Semantic Test Suites can replace typed provider calls with mocks and assert their interactions without contacting real infrastructure.
 - Arbitrary inline JavaScript, SQL, and React remain unsupported.
 
-### Phase 8 — v1.0: production qualification
+### Phase 9 — v1.0: production qualification
 
 Qualify Bean for one deliberately narrow production envelope only after the agent-to-demo loop is strong:
 
@@ -466,7 +488,7 @@ Qualify backup/restore, secrets, migration and upgrade behavior, observability, 
 
 The phase must publish explicit supported topologies, failure models, SLO evidence, restore drills, compatibility windows, and known exclusions. Bean consumes managed databases, storage, identity, and orchestration; it does not become a Kubernetes platform, distributed database, Kafka clone, S3 clone, or identity provider.
 
-### Phase 9 — Bean Cloud
+### Phase 10 — Bean Cloud
 
 Only after the local engine and production contract are proven, provide the narrow hosted loop:
 
@@ -476,7 +498,7 @@ git or prompt -> Bean build -> preview environment -> shareable URL
 
 The minimum platform supplies PostgreSQL, object storage, secrets, domains, logs, deployments, and expiring previews. It does not expand into a general backend-as-a-service or functions platform.
 
-### Phase 10 — application-pattern ecosystem
+### Phase 11 — application-pattern ecosystem
 
 Once the definition and extension compatibility contracts are stable, allow agents to discover and compose versioned packages such as approval workflows, kanban, comments, tenant ownership, and activity feeds.
 

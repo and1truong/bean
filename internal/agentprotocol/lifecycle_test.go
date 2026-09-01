@@ -69,6 +69,44 @@ func TestRuleInspectionReferencesRedactionAndSemanticDiff(t *testing.T) {
 	}
 }
 
+func TestTestSuiteInspectionReferencesRedactionAndSemanticDiff(t *testing.T) {
+	definitions := ruleProtocolDefinitions(t)
+	definitions = append(definitions, definition.Definition{APIVersion: definition.APIVersion, Kind: "TestSuite", Metadata: definition.Metadata{Name: "minimum_total_contract"}, Spec: map[string]any{
+		"target": map[string]any{"kind": "Rule", "name": "minimum_total"},
+		"tests":  []any{map[string]any{"name": "allows_large_total", "this": map[string]any{"total": 1234568}, "context": map[string]any{"time": "2026-09-01T10:00:00Z", "seed": 42}, "expect": map[string]any{"result": true}}},
+	}})
+	app := compiler.Compile("test", 1, definitions).App
+	value, references, exists := compiler.InspectDefinition(app, "TestSuite", "minimum_total_contract")
+	if !exists || value == nil || !hasReference(references, "target.name", "Rule", "minimum_total") {
+		t.Fatalf("value=%+v references=%+v", value, references)
+	}
+	redactedApp := agentprotocol.RedactedApp(app)
+	redactedCase := redactedApp.TestSuites["minimum_total_contract"].Tests[0]
+	if redactedCase.Context.Time == "2026-09-01T10:00:00Z" || redactedCase.Context.Seed == nil || *redactedCase.Context.Seed == 42 {
+		t.Fatalf("redacted context=%+v", redactedCase.Context)
+	}
+	redacted, _ := json.Marshal(redactedApp)
+	if strings.Contains(string(redacted), "1234568") || !strings.Contains(string(redacted), "REDACTED") {
+		t.Fatalf("redacted=%s", redacted)
+	}
+	for _, mutate := range []func(*appir.TestCase){
+		func(test *appir.TestCase) { test.Context.Time = "2026-09-02T10:00:00Z" },
+		func(test *appir.TestCase) {
+			seed := int64(43)
+			test.Context.Seed = &seed
+		},
+	} {
+		candidate, _ := app.Clone()
+		suite := candidate.TestSuites["minimum_total_contract"]
+		mutate(&suite.Tests[0])
+		candidate.TestSuites["minimum_total_contract"] = suite
+		changes := agentprotocol.SemanticDiff(app, candidate)
+		if len(changes) != 1 || !strings.HasPrefix(changes[0].Path, "testSuites.minimum_total_contract.tests") {
+			t.Fatalf("changes=%+v", changes)
+		}
+	}
+}
+
 func ruleProtocolDefinitions(t *testing.T) []definition.Definition {
 	t.Helper()
 	return []definition.Definition{
