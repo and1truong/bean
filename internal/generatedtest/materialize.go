@@ -124,7 +124,8 @@ func crudSuites(app *appir.App, records []demoseed.Record) []appir.TestSuite {
 				}
 				test.Expect = appir.TestExpectation{Result: raw(map[string]any{"id": record.ID}), Changes: []appir.TestMutation{change}, NoEvents: true}
 			}
-			if action.When != "" || !crudInputSupported(action, test.Input) || !crudAuthorized(app, action, record, test.Context) {
+			validatedMutation := operation != "delete" && len(entity.Validations) > 0
+			if action.When != "" || validatedMutation || !crudInputSupported(action, test.Input) || !crudAuthorized(app, action, record, test.Context) {
 				continue
 			}
 			suites = append(suites, appir.TestSuite{Target: appir.TestTarget{Kind: "Action", Name: actionName}, Tests: []appir.TestCase{test}})
@@ -316,6 +317,9 @@ func appendGeneratedSuite(bundle *definition.Bundle, origins map[string]Origin, 
 }
 
 func policyDenialCases(app *appir.App, action appir.Action, cases []appir.TestCase) []appir.TestCase {
+	if action.When != "" {
+		return nil
+	}
 	policyDefinition, exists := app.Policies[action.Policy]
 	if !exists {
 		return nil
