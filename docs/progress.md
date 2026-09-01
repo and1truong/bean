@@ -2,6 +2,12 @@
 
 ## Current
 
+Bean v0.9 Semantic Application Model is active from merge commit `c51705d`. The scoped first slice adds exactly one first-class primitive, `Lifecycle`, derived from the maintained ATS candidate pipeline and commerce order flow. Milestone 0 is active to freeze the smallest source shape, Action binding, and legacy-transition compatibility contract before runtime implementation.
+
+Lifecycle will own canonical state-machine structure while Actions remain the only mutation boundary and Policies remain the authorization boundary. Schema, compiler diagnostics, immutable AppIR, capabilities, inspect, semantic diff, runtime enforcement, backend parity, and two independent reference applications are required. Ownership, auditability, soft deletion, terminal-state immutability, rules, generated tests, and extensions remain outside v0.9.
+
+## v0.8 completed state
+
 Bean v0.8 Agent Protocol is complete from merge commit `f281bae`. The frozen contract has ten provider-neutral operations across Definition, Release, and Application Planes, with CLI as the reference transport and a local MCP stdio adapter over the same dispatcher. Plane grants are host configuration; Application operations retain View-read and Action-write Policy boundaries.
 
 Milestones 0–5 are done. Existing v0.6 commands and generic `agent call` invoke the shared dispatcher. MCP targets current `2026-07-28` stateless metadata plus maintained initialization compatibility, filters discovery by process grants, handles standard liveness and malformed-request behavior, and keeps stdout JSON-RPC-clean. All ten handlers, exact CLI/MCP result parity, independent transport authorization, strict authority inputs, non-initializing View reads, SQLite/PostgreSQL View/Action owner/tenant behavior, and raw Entity/mutation bypass refusal have focused evidence.

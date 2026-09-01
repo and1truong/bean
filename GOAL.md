@@ -1,125 +1,69 @@
-# Goal: Bean v0.8 Agent Protocol
+# Goal: Bean v0.9 Semantic Application Model
 
-Turn the v0.6 machine-readable CLI contract and v0.7 Demo Factory into one provider-neutral protocol that CLI and MCP clients use without embedding an LLM or duplicating Bean application logic.
+Add one evidence-driven first-class semantic primitive: `Lifecycle`. Bean must understand an application's state machine structurally instead of requiring every agent and Action to repeat an untyped transition map.
 
 ## Primary outcome
 
-Codex, Claude Code, Cursor, OpenCode, Pi, and custom clients can discover and invoke the same deterministic Bean operations through either the reference CLI transport or a standards-compliant MCP stdio adapter.
+An agent can declare lifecycle intent once and Bean can validate, compile, inspect, diff, authorize, and enforce it deterministically:
 
 ```text
-agent provider
-  -> CLI or MCP transport
-  -> shared Agent Protocol dispatcher
-     -> Definition Plane
-     -> Release Plane
-     -> Application Plane
-  -> existing compiler / release / View / Action services
+Lifecycle definition
+  -> compiler validation
+  -> immutable AppIR
+  -> Action transition boundary
+  -> Policy-aware runtime enforcement
+  -> inspectable Agent Protocol result
 ```
 
-The protocol is versioned as `bean.agent/v1alpha1`. Transports may change framing, but operation names, input schemas, authorization decisions, structured results, diagnostics, and errors come from the shared dispatcher.
+The maintained applicant-tracking candidate pipeline and commerce order flow are the two unrelated reference applications for this primitive. Both remain metadata-only and use the same generic compiler/runtime path.
 
-## Protocol operations
+## Scope
 
-| Plane | Operation | Contract |
-| --- | --- | --- |
-| Definition | `bean.definition.capabilities` | Return compiler-owned vocabulary and protocol capabilities |
-| Definition | `bean.definition.schema` | Return canonical manifest or per-kind JSON Schema |
-| Definition | `bean.definition.validate` | Load and compile application source without database mutation |
-| Definition | `bean.definition.inspect` | Return redacted AppIR or one definition plus references |
-| Release | `bean.release.plan` | Produce a side-effect-free migration preview against a target |
-| Release | `bean.release.diff` | Produce a semantic diff against the active release |
-| Release | `bean.release.publish` | Compile, migrate, persist, and atomically activate a candidate |
-| Release | `bean.release.test` | Run the isolated compile/migration/publish/restart smoke contract |
-| Application | `bean.application.query` | Read only through a compiled View |
-| Application | `bean.application.execute` | Write only through a compiled Action |
+`Lifecycle` owns the canonical state field and allowed transition graph for one Entity. Milestone 0 freezes the smallest source shape and Action binding that can represent both reference flows, including cases where different Actions or Policies expose different subsets of the lifecycle.
 
-Definition and Release source inputs use normal Bean application files. MCP is a local coding-agent adapter, not a source-upload or remote hosting API.
+The implementation must provide:
 
-## Shared dispatcher
+- canonical JSON Schema and compiler capabilities for `Lifecycle`
+- stable diagnostics for missing Entity/field references, non-enum state fields, unknown states, invalid edges, and incompatible Action bindings
+- immutable AppIR representation with deterministic ordering and compatibility handling
+- semantic inspect and diff output through the v0.8 Agent Protocol
+- runtime transition enforcement only through Actions, with existing Policy, owner, and tenant context preserved
+- SQLite and PostgreSQL parity
+- positive and negative contract evidence from at least two unrelated maintained applications
 
-The dispatcher owns:
+Lifecycle does not create a second mutation path. Views remain the read boundary; Actions remain the write boundary. The transition graph is semantic application metadata, while authorization remains Policy metadata.
 
-- the operation registry, plane assignment, descriptions, and JSON input schemas
-- deterministic input decoding and structured output
-- stable protocol errors and compiler diagnostics
-- authorization before opening a database or performing work
-- credential redaction and deterministic ordering
-- delegation to existing compiler, release, View, and Action services
+## Architecture constraints
 
-It does not own YAML grammar, migration execution, policy evaluation, SQL, or runtime mutation logic. Those remain in their existing packages.
-
-## CLI reference transport
-
-Existing v0.6 commands remain compatible and delegate to the shared operations. Add a one-to-one machine entry point for contract testing and custom clients:
-
-```bash
-bean agent call bean.definition.validate --input request.json --json
-bean agent call bean.release.publish --input request.json --json
-bean agent call bean.application.query --input request.json --json
-```
-
-The CLI envelope remains `bean.cli/v1alpha1`; its `result` is the same structured protocol result returned through MCP. Human output remains a presentation concern of the CLI adapter.
-
-## MCP adapter
-
-The supported v0.8 MCP transport is stdio:
-
-```bash
-bean mcp serve --allow-plane definition,release,application
-```
-
-It emits only newline-delimited UTF-8 JSON-RPC messages on stdout and may log only to stderr. It supports the current MCP `2026-07-28` stateless request metadata model plus initialization-based compatibility for maintained clients, deterministic `tools/list`, and `tools/call`. Tool results include both structured content and equivalent JSON text.
-
-Streamable HTTP, remote OAuth, subscriptions, prompts, resources, sampling, and elicitation are outside v0.8.
-
-## Authorization contract
-
-Plane access is process configuration, not model-controlled tool input.
-
-- `definition` grants compiler vocabulary, schema, validation, and inspection only.
-- `release` grants plan, diff, publish, and isolated test; `publish` remains a Release operation and never becomes an Action.
-- `application` grants discovery of Application tools, but every query still passes through a View and every mutation through an Action.
-- Missing plane access fails before source loading, target opening, or application execution.
-- MCP `tools/list` exposes only operations allowed to that server process.
-- The host supplies the runtime user, roles, and tenant context; tool arguments cannot self-assign roles or plane grants.
-
-CLI and MCP tests independently prove each allow/deny boundary. Application tests also prove Entity/table names cannot substitute for Views and arbitrary writes cannot substitute for Actions.
-
-## Agent guidance
-
-Ship:
-
-```text
-agents/
-  AGENTS.md
-  bean.skill.md
-  examples/
-```
-
-The guidance is provider-neutral and recommends: discover capabilities, inspect relevant definitions, model the smallest domain, validate and repair, preview plan/diff, publish, smoke-test, then improve presentation. Examples cover CLI and MCP configuration without provider-specific runtime branches.
+- Preserve definition -> validation -> migration -> immutable AppIR -> atomic activation.
+- Keep application-specific states and transitions under `examples/`; core packages stay generic.
+- Keep SQL and SQLite dependencies within their existing DBAL and migration boundaries.
+- Do not duplicate lifecycle rules across compiler, CLI, MCP, and runtime adapters; all transports consume the same compiled semantics.
+- Publication of an invalid or incompatible lifecycle must fail before activation.
+- Lifecycle changes appear in semantic diff without exposing secrets or storage details.
+- Existing Action transition definitions remain compatible for the declared v0.9 compatibility window; any normalization or migration path must be deterministic and tested.
 
 ## Measurable acceptance criteria
 
-- The shared registry contains exactly the ten named operations with stable plane assignments and deterministic schemas.
-- Existing v0.6 CLI commands and the generic `agent call` path execute shared handlers rather than parallel compiler/release implementations.
-- MCP stdio passes official JSON-RPC framing, discovery, tool listing, tool call, malformed-request, unknown-tool, EOF, and stdout-cleanliness tests.
-- The same protocol fixture produces semantically identical CLI and MCP structured results for every operation.
-- Definition, Release, and Application plane authorization are independently denied and allowed in both transports.
-- Release planning remains side-effect-free; publication preserves the immutable AppIR and atomic activation lifecycle.
-- Application Plane query/execute tests preserve Policy behavior, View-only reads, Action-only writes, owner/tenant context, and backend parity.
-- Tool input cannot select raw tables, arbitrary mutations, SQL, roles, tenants, or grants.
-- Agent guidance is complete enough to configure at least one generic stdio MCP client without Bean knowing the provider identity.
-- All maintained examples compile and existing v0.6/v0.7 machine contracts remain compatible.
+- Exactly one new semantic primitive, `Lifecycle`, is added in v0.9.
+- ATS candidate and commerce order definitions use the primitive without core application-name branches.
+- Both applications compile, publish, restart, and enforce every allowed and denied transition on SQLite and PostgreSQL where the existing gate applies.
+- Compiler tests reject invalid Entity, state-field, state, edge, and Action/lifecycle combinations with stable structured diagnostics.
+- AppIR compatibility tests cover the new format and the supported legacy Action transition representation.
+- `bean capabilities`, canonical schemas, definition inspection, semantic diff, CLI, and MCP expose the same Lifecycle semantics through shared v0.8 contracts.
+- Runtime tests prove Policy checks occur before mutation and direct Entity/table mutation cannot bypass the lifecycle Action.
+- Existing examples and v0.6-v0.8 machine contracts remain compatible.
 - `make check`, `make test-crash`, `make test-postgres`, and `make build` pass.
+- The pull request is clean under a fresh Codex review of its latest commit and all actionable threads are resolved.
 
 ## Explicit non-goals
 
-- Embedding an LLM, provider SDK, autonomous loop, chat UI, or prompt orchestration
-- MCP Streamable HTTP, hosted MCP, OAuth, API keys, remote identity, or rate-limit infrastructure
-- Raw SQL, table CRUD, filesystem tools, shell execution, or arbitrary code tools
-- Bean Cloud, preview URLs, sharing, domains, or remote deployment
-- Lifecycle semantics, deterministic rules, generated semantic tests, or typed extensions
-- Realtime, functions, messaging, Redis, object-storage implementation, containers, or Kubernetes
+- Ownership, auditability, soft deletion, terminal-state immutability, or a general invariant framework
+- Deterministic rule expressions, generated semantic tests, or typed extensions
+- Arbitrary scripts, embedded JavaScript, raw SQL, or another mutation API
+- New MCP transports, provider SDKs, embedded LLMs, or agent orchestration
+- Destructive migration support or production-envelope qualification
+- Application-specific workflow code or a new visual workflow designer
 
 ## Terminal gates
 
