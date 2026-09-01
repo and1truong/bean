@@ -10,14 +10,24 @@ type Entry[T any] struct {
 	Value T
 }
 
-// Registry is immutable after construction. Names returns a copy so callers
-// cannot alter its deterministic iteration order.
+type Clone[T any] func(T) T
+
+func Identity[T any](value T) T {
+	return value
+}
+
+// Registry is immutable after construction. Values are copied by the required
+// clone function when sealed and returned; Names also returns a copy.
 type Registry[T any] struct {
 	entries map[string]T
 	names   []string
+	clone   Clone[T]
 }
 
-func New[T any](entries ...Entry[T]) (Registry[T], error) {
+func New[T any](clone Clone[T], entries ...Entry[T]) (Registry[T], error) {
+	if clone == nil {
+		return Registry[T]{}, fmt.Errorf("registry clone function is required")
+	}
 	values := make(map[string]T, len(entries))
 	names := make([]string, 0, len(entries))
 	for _, entry := range entries {
@@ -27,15 +37,15 @@ func New[T any](entries ...Entry[T]) (Registry[T], error) {
 		if _, exists := values[entry.Name]; exists {
 			return Registry[T]{}, fmt.Errorf("duplicate registry entry %q", entry.Name)
 		}
-		values[entry.Name] = entry.Value
+		values[entry.Name] = clone(entry.Value)
 		names = append(names, entry.Name)
 	}
 	sort.Strings(names)
-	return Registry[T]{entries: values, names: names}, nil
+	return Registry[T]{entries: values, names: names, clone: clone}, nil
 }
 
-func Must[T any](entries ...Entry[T]) Registry[T] {
-	result, err := New(entries...)
+func Must[T any](clone Clone[T], entries ...Entry[T]) Registry[T] {
+	result, err := New(clone, entries...)
 	if err != nil {
 		panic(err)
 	}
@@ -44,7 +54,11 @@ func Must[T any](entries ...Entry[T]) Registry[T] {
 
 func (r Registry[T]) Lookup(name string) (T, bool) {
 	value, exists := r.entries[name]
-	return value, exists
+	if !exists {
+		var zero T
+		return zero, false
+	}
+	return r.clone(value), true
 }
 
 func (r Registry[T]) Names() []string {

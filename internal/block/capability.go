@@ -35,6 +35,7 @@ type capability struct {
 }
 
 var capabilities = registry.Must(
+	registry.Identity[capability],
 	entry("action", Specification{Component: "ActionBlock"}, actionProperties),
 	entry("entity", Specification{Component: "EntityBlock"}, entityProperties),
 	entry("menu", Specification{Component: "MenuBlock"}, menuProperties),

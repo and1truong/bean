@@ -40,6 +40,7 @@ type stepOutcome struct {
 type stepHandler func(stepExecution) (stepOutcome, error)
 
 var stepHandlers = registry.Must(
+	registry.Identity[stepHandler],
 	registry.Entry[stepHandler]{Name: "assert", Value: executeAssertStep},
 	registry.Entry[stepHandler]{Name: "assert_no_overlap", Value: executeNoOverlapStep},
 	registry.Entry[stepHandler]{Name: "conditional_update", Value: executeUpdateStep},

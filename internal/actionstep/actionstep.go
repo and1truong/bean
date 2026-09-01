@@ -26,6 +26,7 @@ type Specification struct {
 }
 
 var specifications = registry.Must(
+	cloneSpecification,
 	entry("assert", Specification{AllowedValues: []string{"message"}, RequiresCondition: true}),
 	entry("assert_no_overlap", Specification{Effects: Effects{ReadsEntity: true}, UsesEntity: true, AllowedValues: []string{"match", "start", "end", "message"}}),
 	entry("conditional_update", Specification{Effects: Effects{ReadsEntity: true, MutatesEntity: true}, UsesEntity: true, EntityFields: true, AllowedValues: []string{"entity", "id", "message"}, RequiresID: true, RequiresCondition: true, ProtectLifecycleState: true}),
@@ -42,16 +43,16 @@ var specifications = registry.Must(
 )
 
 func entry(name string, specification Specification) registry.Entry[Specification] {
-	specification.AllowedValues = append([]string{}, specification.AllowedValues...)
 	return registry.Entry[Specification]{Name: name, Value: specification}
 }
 
+func cloneSpecification(specification Specification) Specification {
+	specification.AllowedValues = append([]string{}, specification.AllowedValues...)
+	return specification
+}
+
 func Lookup(name string) (Specification, bool) {
-	specification, exists := specifications.Lookup(name)
-	if exists {
-		specification.AllowedValues = append([]string{}, specification.AllowedValues...)
-	}
-	return specification, exists
+	return specifications.Lookup(name)
 }
 
 func Names() []string {

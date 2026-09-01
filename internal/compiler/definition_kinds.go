@@ -88,6 +88,7 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 	admin.FieldEntity = func(app *appir.App, name string) string { return app.AdminResources[name].Entity }
 
 	return registry.Must(
+		registry.Identity[definitionKind],
 		registry.Entry[definitionKind]{Name: "Action", Value: action},
 		registry.Entry[definitionKind]{Name: "AdminResource", Value: admin},
 		registry.Entry[definitionKind]{Name: "Block", Value: block},
