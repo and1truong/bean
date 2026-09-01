@@ -9,7 +9,7 @@ import (
 )
 
 func TestSpecificationsDeclareStableEffects(t *testing.T) {
-	want := []string{"assert", "assert_no_overlap", "conditional_update", "create", "decrement", "delete", "emit", "load", "query", "return", "schedule", "transition", "update"}
+	want := []string{"assert", "assert_no_overlap", "conditional_update", "create", "decrement", "delete", "emit", "extension", "load", "query", "return", "schedule", "transition", "update"}
 	if got := Names(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("steps=%v want=%v", got, want)
 	}
@@ -30,6 +30,10 @@ func TestSpecificationsDeclareStableEffects(t *testing.T) {
 	emit, _ := Lookup("emit")
 	if !emit.Effects.EmitsEvent || emit.Effects.MutatesEntity {
 		t.Fatalf("emit effects=%+v", emit.Effects)
+	}
+	extension, _ := Lookup("extension")
+	if !extension.RequiresExtension || !extension.Effects.EmitsEvent || extension.Effects.MutatesEntity {
+		t.Fatalf("extension effects=%+v", extension)
 	}
 	schedule, _ := Lookup("schedule")
 	if !schedule.Effects.SchedulesJob || schedule.Effects.MutatesEntity {

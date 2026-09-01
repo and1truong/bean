@@ -23,10 +23,11 @@ import (
 )
 
 type Service struct {
-	DB       dbal.Database
-	Auth     auth.Service
-	CreateID func(appir.Entity, map[string]any) string
-	Now      func() time.Time
+	DB                 dbal.Database
+	Auth               auth.Service
+	CreateID           func(appir.Entity, map[string]any) string
+	CreateInvocationID func() string
+	Now                func() time.Time
 }
 
 func (s Service) now() time.Time {
@@ -39,6 +40,13 @@ func (s Service) now() time.Time {
 func (s Service) createID(entity appir.Entity, input map[string]any) string {
 	if s.CreateID != nil {
 		return s.CreateID(entity, input)
+	}
+	return uid.New()
+}
+
+func (s Service) createInvocationID() string {
+	if s.CreateInvocationID != nil {
+		return s.CreateInvocationID()
 	}
 	return uid.New()
 }
@@ -110,6 +118,8 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 	}
 	generatedIDs := []string{}
 	generatedIDIndex := 0
+	generatedInvocationIDs := []string{}
+	generatedInvocationIDIndex := 0
 	execution := s
 	execution.CreateID = func(entity appir.Entity, input map[string]any) string {
 		if generatedIDIndex == len(generatedIDs) {
@@ -119,10 +129,19 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 		generatedIDIndex++
 		return id
 	}
+	execution.CreateInvocationID = func() string {
+		if generatedInvocationIDIndex == len(generatedInvocationIDs) {
+			generatedInvocationIDs = append(generatedInvocationIDs, s.createInvocationID())
+		}
+		id := generatedInvocationIDs[generatedInvocationIDIndex]
+		generatedInvocationIDIndex++
+		return id
+	}
 	baseInput := copyValues(input)
 	executionNow := s.now().Format(time.RFC3339Nano)
 	err := s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
 		generatedIDIndex = 0
+		generatedInvocationIDIndex = 0
 		input = copyValues(baseInput)
 		request.Values = copyValues(request.Values)
 		now := executionNow

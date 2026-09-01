@@ -11,6 +11,7 @@ import (
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/event"
 	"github.com/beanruntime/bean/internal/expr"
+	"github.com/beanruntime/bean/internal/extension"
 	"github.com/beanruntime/bean/internal/job"
 	"github.com/beanruntime/bean/internal/registry"
 	"github.com/beanruntime/bean/internal/view"
@@ -48,6 +49,7 @@ var stepHandlers = registry.Must(
 	registry.Entry[stepHandler]{Name: "decrement", Value: executeDecrementStep},
 	registry.Entry[stepHandler]{Name: "delete", Value: executeDeleteStep},
 	registry.Entry[stepHandler]{Name: "emit", Value: executeEmitStep},
+	registry.Entry[stepHandler]{Name: "extension", Value: executeExtensionStep},
 	registry.Entry[stepHandler]{Name: "load", Value: executeLoadStep},
 	registry.Entry[stepHandler]{Name: "query", Value: executeQueryStep},
 	registry.Entry[stepHandler]{Name: "return", Value: executeReturnStep},
@@ -290,6 +292,25 @@ func executeEmitStep(execution stepExecution) (stepOutcome, error) {
 		payload = resolved
 	}
 	return stepOutcome{}, event.Emit(execution.ctx, execution.tx, execution.step.Event, payload)
+}
+
+func executeExtensionStep(execution stepExecution) (stepOutcome, error) {
+	definition, exists := execution.app.Extensions[execution.step.Extension]
+	if !exists {
+		return stepOutcome{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "Action step references an invalid Extension"}
+	}
+	values, err := resolveValues(execution.step.Values, execution.input, execution.results, execution.request)
+	if err != nil {
+		return stepOutcome{}, err
+	}
+	createdAt, err := time.Parse(time.RFC3339Nano, fmt.Sprint(execution.request.Values["now"]))
+	if err != nil {
+		return stepOutcome{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "Extension invocation time is invalid"}
+	}
+	if err = extension.Enqueue(execution.ctx, execution.tx, definition, values, execution.service.createInvocationID(), createdAt); err != nil {
+		return stepOutcome{}, &dbal.Error{Code: dbal.InvalidQuery, Message: err.Error()}
+	}
+	return stepOutcome{}, nil
 }
 
 func executeScheduleStep(execution stepExecution) (stepOutcome, error) {

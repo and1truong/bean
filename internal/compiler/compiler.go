@@ -43,9 +43,9 @@ type actionSource struct {
 	Derive                                map[string]string
 }
 type stepSource struct {
-	Op, Result, Entity, View, StateField, Event, Job string
-	Values                                           map[string]any
-	Where, Condition                                 *expr.Expr
+	Op, Result, Entity, View, Extension, StateField, Event, Job string
+	Values                                                      map[string]any
+	Where, Condition                                            *expr.Expr
 }
 
 func Compile(appID string, version int, defs []definition.Definition) Result {
@@ -638,6 +638,10 @@ func sameStrings(left, right []string) bool {
 
 func extensionDiagnostic(name, path, message string) definition.Diagnostic {
 	return definition.NewDiagnostic(definition.RuleExtension, "Extension", name, path, message)
+}
+
+func actionExtensionDiagnostic(name, path, message string) definition.Diagnostic {
+	return definition.NewDiagnostic(definition.RuleExtension, "Action", name, path, message)
 }
 
 func validateTheme(a *appir.App, _ *validationState) []definition.Diagnostic {
@@ -1343,6 +1347,42 @@ func validateActions(a *appir.App, _ *validationState) []definition.Diagnostic {
 			}
 			if stepSpecification.RequiresEvent && step.Event == "" {
 				out = append(out, requiredDiagnostic("Action", name, path+".event", "is required"))
+			}
+			if stepSpecification.RequiresExtension {
+				extensionDefinition, exists := a.Extensions[step.Extension]
+				if !exists {
+					out = append(out, missingReferenceDiagnostic("Action", name, path+".extension", "Extension", step.Extension))
+				} else {
+					assigned := map[string]bool{}
+					for _, item := range step.Values {
+						assigned[item.Field] = true
+						fieldDefinition, declared := extensionDefinition.Input[item.Field]
+						if !declared {
+							out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "Action binds undeclared Extension input"))
+							continue
+						}
+						if item.Value.Source == valuesource.Input {
+							actionInput := action.Input[item.Value.Path]
+							if actionInput.Type != fieldDefinition.Type {
+								out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "Action input type does not match Extension input"))
+							}
+						}
+						if valuesource.IsLiteral(item.Value.Source) {
+							var value any
+							if err := json.Unmarshal(item.Value.Literal, &value); err != nil || field.Validate(fieldDefinition, value) != nil {
+								out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "literal does not match Extension input type"))
+							}
+						}
+					}
+					for inputName, inputDefinition := range extensionDefinition.Input {
+						if inputDefinition.Required && !assigned[inputName] {
+							out = append(out, actionExtensionDiagnostic(name, path+".values."+inputName, "required Extension input is not bound"))
+						}
+					}
+				}
+				if step.Result != "" {
+					out = append(out, actionExtensionDiagnostic(name, path+".result", "after-commit Extension output cannot be used by the Action transaction"))
+				}
 			}
 			if stepSpecification.OutputValues {
 				for _, assignment := range step.Values {

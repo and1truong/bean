@@ -77,6 +77,69 @@ func TestExtensionEndpointAllowsHTTPSAndLoopbackHTTPOnly(t *testing.T) {
 	}
 }
 
+func TestTransactionActionBindsTypedExtensionInputs(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "order"}, Spec: map[string]any{}},
+		validExtensionDefinition(),
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "notify_order"}, Spec: map[string]any{
+			"entity": "order", "operation": "transaction",
+			"input": map[string]any{"order_id": map[string]any{"type": "uuid", "required": true}},
+			"steps": []any{map[string]any{"op": "extension", "extension": "order_notification", "values": map[string]any{"order_id": "$input.order_id"}}},
+		}},
+	}
+	result := Compile("test", 1, definitions)
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("diagnostics=%v", result.Diagnostics)
+	}
+	step := result.App.Actions["notify_order"].Steps[0]
+	if step.Extension != "order_notification" || len(step.Values) != 1 || step.Values[0].Value.Source != "input" {
+		t.Fatalf("step=%+v", step)
+	}
+	_, references, exists := InspectDefinition(result.App, "Action", "notify_order")
+	if !exists || len(references) != 2 || references[1] != (DefinitionReference{Path: "steps.0.extension", Kind: "Extension", Name: "order_notification"}) {
+		t.Fatalf("references=%+v", references)
+	}
+}
+
+func TestTransactionActionRejectsInvalidExtensionBindings(t *testing.T) {
+	tests := []struct {
+		name string
+		step map[string]any
+		path string
+		code string
+	}{
+		{"missing extension", map[string]any{"op": "extension", "extension": "missing", "values": map[string]any{"order_id": "$input.order_id"}}, "spec.steps.0.extension", "BEAN-E2001"},
+		{"missing input", map[string]any{"op": "extension", "extension": "order_notification", "values": map[string]any{}}, "spec.steps.0.values.order_id", "BEAN-E2871"},
+		{"extra input", map[string]any{"op": "extension", "extension": "order_notification", "values": map[string]any{"order_id": "$input.order_id", "extra": "value"}}, "spec.steps.0.values.extra", "BEAN-E2871"},
+		{"wrong input type", map[string]any{"op": "extension", "extension": "order_notification", "values": map[string]any{"order_id": "$input.message"}}, "spec.steps.0.values.order_id", "BEAN-E2871"},
+		{"result unavailable", map[string]any{"op": "extension", "extension": "order_notification", "result": "provider", "values": map[string]any{"order_id": "$input.order_id"}}, "spec.steps.0.result", "BEAN-E2871"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			definitions := []definition.Definition{
+				{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "order"}, Spec: map[string]any{}},
+				validExtensionDefinition(),
+				{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "notify_order"}, Spec: map[string]any{
+					"entity": "order", "operation": "transaction",
+					"input": map[string]any{
+						"order_id": map[string]any{"type": "uuid", "required": true},
+						"message":  map[string]any{"type": "string", "required": true},
+					},
+					"steps": []any{test.step},
+				}},
+			}
+			result := Compile("test", 1, definitions)
+			found := false
+			for _, diagnostic := range result.Diagnostics {
+				found = found || diagnostic.Kind == "Action" && diagnostic.Name == "notify_order" && diagnostic.Path == test.path && diagnostic.Code == test.code
+			}
+			if !found {
+				t.Fatalf("diagnostics=%v", result.Diagnostics)
+			}
+		})
+	}
+}
+
 func validExtensionDefinition() definition.Definition {
 	return definition.Definition{APIVersion: definition.APIVersion, Kind: "Extension", Metadata: definition.Metadata{Name: "order_notification"}, Spec: map[string]any{
 		"transport": "http", "endpoint": "https://provider.example/v1/orders",

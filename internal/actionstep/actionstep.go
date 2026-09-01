@@ -26,6 +26,7 @@ type Specification struct {
 	RequiresView          bool
 	RequiresJob           bool
 	RequiresEvent         bool
+	RequiresExtension     bool
 	Transition            bool
 	ProtectLifecycleState bool
 }
@@ -39,6 +40,7 @@ var specifications = registry.Must(
 	entry("decrement", Specification{Effects: Effects{ReadsEntity: true, MutatesEntity: true}, UsesEntity: true, AllowedValues: []string{"entity", "field", "id_input", "amount_input", "message"}}),
 	entry("delete", Specification{Effects: Effects{ReadsEntity: true, MutatesEntity: true}, UsesEntity: true, AllowedValues: []string{"entity", "id"}, RequiresID: true}),
 	entry("emit", Specification{Effects: Effects{EmitsEvent: true}, AnyValues: true, RequiresEvent: true}),
+	entry("extension", Specification{Effects: Effects{EmitsEvent: true}, AnyValues: true, RequiresExtension: true}),
 	entry("load", Specification{Effects: Effects{ReadsEntity: true}, UsesEntity: true, AllowedValues: []string{"entity", "id"}, RequiresID: true}),
 	entry("query", Specification{Effects: Effects{ReadsEntity: true}, UsesEntity: true, RequiresView: true}),
 	entry("return", Specification{OutputValues: true}),

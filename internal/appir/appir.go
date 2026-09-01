@@ -159,6 +159,7 @@ type Step struct {
 	Op, Result string
 	Entity     string
 	View       string
+	Extension  string
 	StateField string
 	Values     []Assignment
 	Where      *expr.Expr

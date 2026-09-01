@@ -315,7 +315,7 @@ func actionDefinitionKind() definitionKind {
 				}
 			}
 			for _, step := range raw.Steps {
-				compiled := appir.Step{Op: step.Op, Result: step.Result, Entity: step.Entity, View: step.View, StateField: step.StateField, Where: step.Where, Condition: step.Condition, Event: step.Event, Job: step.Job}
+				compiled := appir.Step{Op: step.Op, Result: step.Result, Entity: step.Entity, View: step.View, Extension: step.Extension, StateField: step.StateField, Where: step.Where, Condition: step.Condition, Event: step.Event, Job: step.Job}
 				keys := make([]string, 0, len(step.Values))
 				for key := range step.Values {
 					keys = append(keys, key)
@@ -536,6 +536,7 @@ func actionReferences(app *appir.App, name string) []DefinitionReference {
 			reference(fmt.Sprintf("steps.%d.entity", index), "Entity", step.Entity),
 			reference(fmt.Sprintf("steps.%d.view", index), "View", step.View),
 			reference(fmt.Sprintf("steps.%d.job", index), "Job", step.Job),
+			reference(fmt.Sprintf("steps.%d.extension", index), "Extension", step.Extension),
 		)
 	}
 	return references(out...)
