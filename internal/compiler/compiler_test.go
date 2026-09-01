@@ -272,6 +272,17 @@ func TestMetricRejectsGroupedView(t *testing.T) {
 	}
 }
 
+func TestMetricRejectsSelectedRecordFields(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "candidate"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "name", "type": "string"}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "candidate_metrics"}, Spec: map[string]any{"entity": "candidate", "fields": []any{"id"}, "aggregates": []any{map[string]any{"function": "count", "field": "id", "alias": "candidate_count"}}}},
+		{APIVersion: definition.APIVersion, Kind: "Block", Metadata: definition.Metadata{Name: "candidate_count"}, Spec: map[string]any{"type": "view", "view": "candidate_metrics", "presentation": map[string]any{"mode": "metric", "metricField": "candidate_count"}}},
+	}
+	if diagnostics := compiler.Compile("test", 1, definitions).Diagnostics; !hasDiagnostic(diagnostics, "candidate_count", "spec.presentation.metricField") {
+		t.Fatalf("metric View with selected fields accepted: %v", diagnostics)
+	}
+}
+
 func TestTimelineRequiresSelectedTimeField(t *testing.T) {
 	definitions := []definition.Definition{
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "activity"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}, map[string]any{"name": "occurred_at", "type": "datetime"}}}},

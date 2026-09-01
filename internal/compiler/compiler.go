@@ -1452,6 +1452,9 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 		if len(viewDefinition.GroupBy) > 0 {
 			out = append(out, diagnostic("Block", name, "spec.presentation.metricField", "metric requires an ungrouped View"))
 		}
+		if len(viewDefinition.Fields) > 0 {
+			out = append(out, diagnostic("Block", name, "spec.presentation.metricField", "metric requires an aggregate-only View"))
+		}
 		if len(presentation.SearchFields) > 0 {
 			out = append(out, diagnostic("Block", name, "spec.presentation.searchFields", "metric does not support search"))
 		}
