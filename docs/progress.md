@@ -2,11 +2,11 @@
 
 ## Current
 
-Bean v0.8 Agent Protocol is active from merge commit `f281bae`. The frozen contract has ten provider-neutral operations across Definition, Release, and Application Planes, with CLI as the reference transport and a local MCP stdio adapter over the same dispatcher. Plane grants are host configuration; Application operations retain View-read and Action-write Policy boundaries.
+Bean v0.8 Agent Protocol is complete from merge commit `f281bae`. The frozen contract has ten provider-neutral operations across Definition, Release, and Application Planes, with CLI as the reference transport and a local MCP stdio adapter over the same dispatcher. Plane grants are host configuration; Application operations retain View-read and Action-write Policy boundaries.
 
-Milestones 0–4 are done; milestone 5 is active. Existing v0.6 commands and generic `agent call` invoke the shared dispatcher. MCP targets current `2026-07-28` stateless metadata plus maintained initialization compatibility, filters discovery by process grants, and keeps stdout JSON-RPC-clean. All ten handlers, exact CLI/MCP result parity, independent transport authorization, strict authority inputs, SQLite/PostgreSQL View/Action owner/tenant behavior, and raw Entity/mutation bypass refusal have focused evidence.
+Milestones 0–5 are done. Existing v0.6 commands and generic `agent call` invoke the shared dispatcher. MCP targets current `2026-07-28` stateless metadata plus maintained initialization compatibility, filters discovery by process grants, handles standard liveness and malformed-request behavior, and keeps stdout JSON-RPC-clean. All ten handlers, exact CLI/MCP result parity, independent transport authorization, strict authority inputs, non-initializing View reads, SQLite/PostgreSQL View/Action owner/tenant behavior, and raw Entity/mutation bypass refusal have focused evidence.
 
-Local terminal qualification passes: `make check` including race, black-box CLI, and 14/14 Playwright journeys; `make test-crash`; `make test-postgres` including Agent Protocol parity and the PostgreSQL blog journey; and `make build`. The real binary reports `bean 0.8.0-alpha`; generic CLI validation and Definition-only MCP discovery produce clean versioned machine output. CI and a clean Codex review remain before completion.
+Local terminal qualification passes: `make check` including race, black-box CLI, and 14/14 Playwright journeys; `make test-crash`; `make test-postgres` including Agent Protocol parity and the PostgreSQL blog journey; and `make build`. The real binary reports `bean 0.8.0-alpha`; generic CLI validation and Definition-only MCP discovery produce clean versioned machine output. PR CI passes and the latest implementation review reports no major issues after all findings were fixed, answered, and resolved.
 
 ## v0.7 completed state
 

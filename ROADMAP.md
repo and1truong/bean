@@ -79,7 +79,7 @@ Presentation remains a separately reported score so a technically correct but un
 | 0 | v0.5 | Compiled application runtime and complex metadata-only reference applications | complete |
 | 1 | v0.6 | Agent-readable compiler and machine-stable CLI contract | complete |
 | 2 | v0.7 | Demo Factory for fast, populated, presentable local applications | complete |
-| 3 | v0.8 | Agent Protocol, MCP adapter, and shipped agent guidance | active |
+| 3 | v0.8 | Agent Protocol, MCP adapter, and shipped agent guidance | complete |
 | 4 | v0.9 | First-class semantic model for common business structure | planned |
 | 5 | v0.10 | Deterministic Rule Expressions for local application logic | planned |
 | 6 | v0.11 | Generated tests from semantic primitives and rules | planned |

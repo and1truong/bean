@@ -9,7 +9,7 @@ Status values: `pending`, `active`, `done`. A milestone is `done` only when its 
 | 2 | Existing command delegation plus generic CLI protocol transport | CLI compatibility and plane allow/deny contract suite | done |
 | 3 | MCP 2026-07-28 stdio adapter with maintained legacy initialization compatibility | framing/discovery/list/call/error/EOF tests | done |
 | 4 | Cross-transport parity, runtime Policy boundaries, and backend qualification | CLI/MCP parity plus SQLite/PostgreSQL View/Action tests | done |
-| 5 | Provider-neutral agent guidance, documentation, terminal gates, and clean reviewed PR | shipped `agents/`, docs, all gates, CI, and Codex review | active |
+| 5 | Provider-neutral agent guidance, documentation, terminal gates, and clean reviewed PR | shipped `agents/`, docs, all gates, CI, and Codex review | done |
 
 ## Working rules
 
