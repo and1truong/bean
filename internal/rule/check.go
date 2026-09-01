@@ -48,6 +48,9 @@ func checkStructure(expression Expression) error {
 				if current.Path != "" {
 					return ruleError(CodeShape, path+".path", "literal source cannot contain a path")
 				}
+				if len(current.Literal) == 0 {
+					return ruleError(CodeShape, path+".literal", "literal source requires a value")
+				}
 				literal, err := decodeLiteral(current.Literal)
 				if err != nil || !literalScalar(literal) {
 					return ruleError(CodeType, path+".literal", "rule literals must be JSON scalars")

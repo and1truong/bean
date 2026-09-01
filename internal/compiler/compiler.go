@@ -1337,6 +1337,8 @@ func validateWebforms(a *appir.App, _ *validationState) []definition.Diagnostic 
 				input, exists := action.Input[element.Name]
 				if !exists {
 					out = append(out, invalidReferenceDiagnostic("Webform", name, fmt.Sprintf("spec.elements.%d.name", i), "has no matching Action input"))
+				} else if _, derived := action.Derive[element.Name]; derived {
+					out = append(out, diagnostic("Webform", name, fmt.Sprintf("spec.elements.%d.name", i), "derived Action input is server-owned"))
 				} else if !compatibleFormType(element.Type, input.Type) {
 					out = append(out, diagnostic("Webform", name, fmt.Sprintf("spec.elements.%d.type", i), "does not match Action input type "+input.Type))
 				}

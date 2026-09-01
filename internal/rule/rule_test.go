@@ -77,6 +77,7 @@ func TestCheckRejectsUnknownAndIncompatibleExpressions(t *testing.T) {
 		{name: "arity", expression: op("not", literal(true), literal(false)), code: rule.CodeArity},
 		{name: "type", expression: op("add", literal("one"), literal(2)), code: rule.CodeType},
 		{name: "shape", expression: rule.Expression{Op: "upper", Source: "input", Path: "quantity", Args: []rule.Expression{literal("x")}}, code: rule.CodeShape},
+		{name: "missing literal", expression: rule.Expression{Source: "literal"}, code: rule.CodeShape},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
