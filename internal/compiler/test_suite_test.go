@@ -136,6 +136,37 @@ func TestTestSuiteRejectsCyclicFixtureRelations(t *testing.T) {
 	assertTestSuiteDiagnostic(t, compiler.Compile("test", 1, definitions).Diagnostics, "spec.tests.0.fixtures")
 }
 
+func TestTestSuiteRejectsDuplicateFixtureUniqueValues(t *testing.T) {
+	const firstID = "00000000-0000-4000-8000-000000000001"
+	const secondID = "00000000-0000-4000-8000-000000000002"
+	for _, test := range []struct {
+		name string
+		rows []any
+	}{
+		{"field", []any{
+			map[string]any{"id": firstID, "quantity": 1, "code": "same", "region": "au", "external": "one"},
+			map[string]any{"id": secondID, "quantity": 2, "code": "same", "region": "au", "external": "two"},
+		}},
+		{"composite", []any{
+			map[string]any{"id": firstID, "quantity": 1, "code": "one", "region": "au", "external": "same"},
+			map[string]any{"id": secondID, "quantity": 2, "code": "two", "region": "au", "external": "same"},
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			definitions := semanticSuiteDefinitions()
+			definitions[0].Spec["fields"] = []any{
+				map[string]any{"name": "quantity", "type": "integer", "required": true},
+				map[string]any{"name": "code", "type": "string", "unique": true},
+				map[string]any{"name": "region", "type": "string"},
+				map[string]any{"name": "external", "type": "string"},
+			}
+			definitions[0].Spec["unique"] = []any{[]any{"region", "external"}}
+			definitions[2].Spec["tests"].([]any)[0].(map[string]any)["fixtures"] = map[string]any{"order": test.rows}
+			assertTestSuiteDiagnostic(t, compiler.Compile("test", 1, definitions).Diagnostics, "spec.tests.0.fixtures.order.1")
+		})
+	}
+}
+
 func actionAssertionSuiteDefinitions() []definition.Definition {
 	const id = "00000000-0000-4000-8000-000000000001"
 	return []definition.Definition{

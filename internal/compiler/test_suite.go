@@ -138,6 +138,7 @@ func validateTestCase(app *appir.App, suite appir.TestSuite, test appir.TestCase
 			out = append(out, validateFixtureRelations(suite.Name, entity, row, fixtureValues, fixturePath)...)
 		}
 	}
+	out = append(out, validateFixtureUniqueness(app, suite.Name, test.Fixtures, path+".fixtures")...)
 	out = append(out, validateFixtureCycles(app, suite.Name, test.Fixtures, fixtureValues, path+".fixtures")...)
 	if fixtureCount > testsuite.MaxFixtures {
 		out = append(out, testSuiteDiagnostic(suite.Name, path+".fixtures", fmt.Sprintf("exceeds %d fixture records", testsuite.MaxFixtures)))
@@ -168,6 +169,48 @@ func validateTestCase(app *appir.App, suite appir.TestSuite, test appir.TestCase
 		out = append(out, validateRuleTestCase(app, suite, test, path)...)
 	case "Action":
 		out = append(out, validateActionTestCase(app, suite, test, path)...)
+	}
+	return out
+}
+
+func validateFixtureUniqueness(app *appir.App, suiteName string, fixtures map[string][]map[string]any, path string) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
+	for _, entityName := range keys(fixtures) {
+		entity, exists := app.Entities[entityName]
+		if !exists {
+			continue
+		}
+		constraints := append([][]string{}, entity.Unique...)
+		for _, item := range entity.Fields {
+			if item.Unique {
+				constraints = append(constraints, []string{item.Name})
+			}
+		}
+		for _, constraint := range constraints {
+			seen := map[string]string{}
+			for rowIndex, row := range fixtures[entityName] {
+				values := make([]any, 0, len(constraint))
+				complete := true
+				for _, fieldName := range constraint {
+					value, exists := row[fieldName]
+					if !exists || value == nil {
+						complete = false
+						break
+					}
+					values = append(values, value)
+				}
+				if !complete {
+					continue
+				}
+				key := canonicalTestValue(values)
+				rowPath := fmt.Sprintf("%s.%s.%d", path, entityName, rowIndex)
+				if first := seen[key]; first != "" {
+					out = append(out, testSuiteDiagnostic(suiteName, rowPath, "duplicates fixture unique constraint at "+first))
+				} else {
+					seen[key] = rowPath
+				}
+			}
+		}
 	}
 	return out
 }

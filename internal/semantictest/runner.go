@@ -316,6 +316,9 @@ func assertCase(ctx context.Context, database dbal.Database, app *appir.App, sui
 }
 
 func assertEvents(ctx context.Context, database dbal.Database, suiteName, base string, expectation appir.TestExpectation) []definition.Diagnostic {
+	if len(expectation.Events) == 0 && !expectation.NoEvents {
+		return nil
+	}
 	rows, err := database.Select(ctx, dbal.Select{Table: "bean_outbox", Columns: []string{"topic", "payload"}})
 	if err != nil {
 		return []definition.Diagnostic{assertionDiagnostic(suiteName, base+".events", expectation.Events, "unavailable")}
@@ -470,12 +473,12 @@ func errorCode(err error) string {
 	if errors.As(err, &ruleError) {
 		return ruleError.Code
 	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "timeout"
+	}
 	var databaseError *dbal.Error
 	if errors.As(err, &databaseError) {
 		return string(databaseError.Code)
-	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return "timeout"
 	}
 	return "runtime_error"
 }
@@ -529,7 +532,8 @@ func matchNormalized(expected, actual any) bool {
 	actualMap, actualIsMap := actual.(map[string]any)
 	if expectedIsMap && actualIsMap {
 		for name, value := range expectedMap {
-			if !matchNormalized(value, actualMap[name]) {
+			actualValue, exists := actualMap[name]
+			if !exists || !matchNormalized(value, actualValue) {
 				return false
 			}
 		}
