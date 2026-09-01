@@ -174,3 +174,33 @@ func TestMaterializeSkipsCRUDWhenGeneratedPrincipalIsUnauthorized(t *testing.T) 
 		}
 	}
 }
+
+func TestMaterializeSkipsGuardedCRUD(t *testing.T) {
+	bundle := definition.Bundle{Name: "Guarded CRUD", Definitions: []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "note"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string", "required": true}}}},
+		{APIVersion: definition.APIVersion, Kind: "Rule", Metadata: definition.Metadata{Name: "demo_user"}, Spec: map[string]any{
+			"entity": "note", "result": "boolean", "expression": map[string]any{"op": "eq", "args": []any{
+				map[string]any{"source": "user", "path": "email"}, map[string]any{"source": "literal", "literal": "demo@bean.local"},
+			}},
+		}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "note_update"}, Spec: map[string]any{"entity": "note", "operation": "update", "when": "demo_user"}},
+		{APIVersion: definition.APIVersion, Kind: "DemoSeed", Metadata: definition.Metadata{Name: "demo"}, Spec: map[string]any{"entities": map[string]any{"note": map[string]any{"count": 1}}}},
+	}}
+
+	materialized, _, diagnostics := generatedtest.Materialize(bundle)
+	if len(diagnostics) != 0 {
+		t.Fatalf("diagnostics=%v", diagnostics)
+	}
+	compiled := compiler.Compile("test", 1, materialized.Definitions)
+	if len(compiled.Diagnostics) != 0 {
+		t.Fatalf("diagnostics=%v", compiled.Diagnostics)
+	}
+	if _, exists := compiled.App.TestSuites["generated_crud_note_update"]; exists {
+		t.Fatal("guarded update case was generated without a proven allow result")
+	}
+	for _, action := range []string{"note_create", "note_delete"} {
+		if _, exists := compiled.App.TestSuites["generated_crud_"+action]; !exists {
+			t.Fatalf("compatible generated case is missing for %s", action)
+		}
+	}
+}
