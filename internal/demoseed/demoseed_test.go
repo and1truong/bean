@@ -17,6 +17,7 @@ import (
 	"github.com/beanruntime/bean/internal/kernel"
 	"github.com/beanruntime/bean/internal/openapi"
 	"github.com/beanruntime/bean/internal/release"
+	"github.com/beanruntime/bean/internal/rule"
 )
 
 func TestGenerateIsDeterministicAndOrdersRelations(t *testing.T) {
@@ -96,6 +97,107 @@ func TestRunReachesGeneratedLifecycleStatesThroughActions(t *testing.T) {
 	}
 	if replay, replayErr := Run(ctx, database, app, 42); replayErr != nil || replay != result {
 		t.Fatalf("replay=%+v want=%+v err=%v", replay, result, replayErr)
+	}
+}
+
+func TestRunUsesServerDerivedCreateInputs(t *testing.T) {
+	ctx := context.Background()
+	database, err := sqlite.Open(filepath.Join(t.TempDir(), "rule-seed.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	runtime := kernel.New()
+	store := &release.Store{DB: database, Migrations: database, Kernel: runtime, OpenAPI: openapi.Generate}
+	if err = store.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "line"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "quantity", "type": "integer", "required": true}, map[string]any{"name": "total", "type": "money", "required": true}}}},
+		{APIVersion: definition.APIVersion, Kind: "Rule", Metadata: definition.Metadata{Name: "copy_total"}, Spec: map[string]any{"entity": "line", "result": "number", "input": map[string]any{"quantity": map[string]any{"type": "integer"}}, "expression": map[string]any{"source": "input", "path": "quantity"}}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "line_create"}, Spec: map[string]any{"entity": "line", "operation": "create", "derive": map[string]any{"total": "copy_total"}}},
+		{APIVersion: definition.APIVersion, Kind: "DemoSeed", Metadata: definition.Metadata{Name: "demo"}, Spec: map[string]any{"entities": map[string]any{"line": map[string]any{"count": 2}}}},
+	}
+	if err = store.SaveBundle(ctx, "default", definition.Bundle{Name: "rule seed", Definitions: definitions}); err != nil {
+		t.Fatal(err)
+	}
+	if _, diagnostics, publishErr := store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) != 0 {
+		t.Fatalf("publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	app, _ := runtime.Active()
+	generated, err := Generate(app, 42)
+	if err != nil || generated[0].Values["total"] != int64(10) && generated[0].Values["total"] != 10 {
+		t.Fatalf("generated=%v err=%v", generated, err)
+	}
+	if _, err = Run(ctx, database, app, 42); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := database.Select(ctx, dbal.Select{Table: "line", Columns: []string{"quantity", "total"}, OrderBy: []dbal.Order{{Column: "quantity"}}, Limit: 10})
+	if err != nil || len(rows) != 2 || rows[0]["quantity"] != rows[0]["total"] {
+		t.Fatalf("rows=%v err=%v", rows, err)
+	}
+}
+
+func TestDeriveGeneratedValuesCompletesOmittedOptionalInputs(t *testing.T) {
+	app := appir.Empty()
+	entity := appir.Entity{Name: "item", Fields: []appir.Field{{Name: "note", Type: "string"}, {Name: "note_missing", Type: "boolean", Required: true}}}
+	app.Entities[entity.Name] = entity
+	app.Rules["note_missing"] = appir.Rule{
+		Name: "note_missing", Entity: entity.Name, Result: rule.Boolean,
+		Input:      map[string]appir.Field{"note": {Name: "note", Type: "string"}},
+		Expression: rule.Expression{Op: "is_null", Args: []rule.Expression{{Source: "input", Path: "note"}}},
+	}
+	app.Actions["item_create"] = appir.Action{
+		Name: "item_create", Entity: entity.Name, Operation: "create",
+		Input: map[string]appir.Field{
+			"note":         {Name: "note", Type: "string"},
+			"note_missing": {Name: "note_missing", Type: "boolean", Required: true},
+		},
+		Derive: map[string]string{"note_missing": "note_missing"},
+	}
+	values, err := deriveGeneratedValues(app, entity, map[string]any{}, 42)
+	if err != nil || values["note_missing"] != true {
+		t.Fatalf("values=%v err=%v", values, err)
+	}
+	if _, exists := values["note"]; exists {
+		t.Fatal("optional input completion leaked into the sparse generated record")
+	}
+}
+
+func TestEntityRulePreflightFailsBeforeCreatingAnyRecord(t *testing.T) {
+	ctx := context.Background()
+	database, err := sqlite.Open(filepath.Join(t.TempDir(), "rule-preflight.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	runtime := kernel.New()
+	store := &release.Store{DB: database, Migrations: database, Kernel: runtime, OpenAPI: openapi.Generate}
+	if err = store.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "sample"}, Spec: map[string]any{
+			"fields":      []any{map[string]any{"name": "rank", "type": "integer", "required": true}},
+			"validations": map[string]any{"rank_limit": "rank_limit"},
+		}},
+		{APIVersion: definition.APIVersion, Kind: "Rule", Metadata: definition.Metadata{Name: "rank_limit"}, Spec: map[string]any{
+			"entity": "sample", "result": "boolean", "expression": map[string]any{"op": "lte", "args": []any{
+				map[string]any{"source": "this", "path": "rank"}, map[string]any{"source": "literal", "literal": 10},
+			}},
+		}},
+		{APIVersion: definition.APIVersion, Kind: "DemoSeed", Metadata: definition.Metadata{Name: "demo"}, Spec: map[string]any{"entities": map[string]any{"sample": map[string]any{"count": 2}}}},
+	}
+	if _, _, diagnostics, publishErr := store.PublishBundle(ctx, "default", definition.Bundle{Name: "rule preflight", Definitions: definitions}); publishErr != nil || len(diagnostics) != 0 {
+		t.Fatalf("publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	app, _ := runtime.Active()
+	if _, err = Run(ctx, database, app, 42); err == nil || !strings.Contains(err.Error(), "rank_limit") {
+		t.Fatalf("error=%v", err)
+	}
+	rows, err := database.Select(ctx, dbal.Select{Table: "sample", Columns: []string{"id"}, Limit: 10})
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("partial seed rows=%v err=%v", rows, err)
 	}
 }
 

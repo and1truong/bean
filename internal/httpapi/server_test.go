@@ -357,7 +357,7 @@ func testAdminResourceAPI(t *testing.T, databaseURL string) {
 	}
 	if err = runtime.DB.ExecuteMigration(ctx, []string{
 		`CREATE TABLE resource (id TEXT PRIMARY KEY,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,version INTEGER NOT NULL,name TEXT NOT NULL)`,
-		`CREATE TABLE booking (id TEXT PRIMARY KEY,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,version INTEGER NOT NULL,resource_id TEXT NOT NULL,start_at TEXT NOT NULL,end_at TEXT NOT NULL,status TEXT NOT NULL,FOREIGN KEY(resource_id) REFERENCES resource(id))`,
+		`CREATE TABLE booking (id TEXT PRIMARY KEY,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,version INTEGER NOT NULL,resource_id TEXT NOT NULL,start_at TEXT NOT NULL,end_at TEXT NOT NULL,requested_at TEXT NOT NULL,status TEXT NOT NULL,FOREIGN KEY(resource_id) REFERENCES resource(id))`,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -396,9 +396,13 @@ func testAdminResourceAPI(t *testing.T, databaseURL string) {
 	if succeeded != 1 {
 		t.Fatalf("successful concurrent bookings=%d", succeeded)
 	}
-	bookings, err := runtime.DB.Select(ctx, dbal.Select{Table: "booking", Columns: []string{"id"}, Limit: 10})
-	if err != nil || len(bookings) != 1 {
+	bookings, err := runtime.DB.Select(ctx, dbal.Select{Table: "booking", Columns: []string{"id", "requested_at"}, Limit: 10})
+	if err != nil || len(bookings) != 1 || bookings[0]["requested_at"] == nil {
 		t.Fatalf("bookings=%v err=%v", bookings, err)
+	}
+	invalidInterval := serve(t, handler, http.MethodPost, "/api/actions/book_resource", map[string]any{"resource_id": resourceResult.Data["id"], "start_at": time.Now().UTC().Add(6 * time.Hour).Format(time.RFC3339), "end_at": time.Now().UTC().Add(5 * time.Hour).Format(time.RFC3339)}, cookie, csrf)
+	if invalidInterval.Code != http.StatusConflict {
+		t.Fatalf("invalid interval status=%d body=%s", invalidInterval.Code, invalidInterval.Body.String())
 	}
 	if strings.HasPrefix(databaseURL, "postgres") {
 		runtime.HTTP.Actions.DB = newIdempotencyBarrierDatabase(runtime.DB)

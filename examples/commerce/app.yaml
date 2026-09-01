@@ -27,7 +27,28 @@ fields:
   - {label: Product, name: product_id, required: true, type: relation}
   - {label: Quantity, name: quantity, required: true, type: integer}
   - {label: Unit price, name: unit_price, required: true, type: money}
+  - {label: Line total, name: line_total, required: true, type: money}
 label: Order Item
+---
+kind: Rule
+name: order_item_total
+entity: order_item
+result: number
+input:
+  quantity: {type: integer}
+  unit_price: {type: money}
+expression:
+  op: multiply
+  args:
+    - {source: input, path: quantity}
+    - {source: input, path: unit_price}
+---
+kind: Action
+name: order_item_create
+entity: order_item
+operation: create
+derive:
+  line_total: order_item_total
 ---
 kind: Lifecycle
 name: order_fulfillment

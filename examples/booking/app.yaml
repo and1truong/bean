@@ -13,27 +13,56 @@ fields:
   - {label: Resource, name: resource_id, required: true, type: relation}
   - {label: Start, name: start_at, required: true, type: datetime}
   - {label: End, name: end_at, required: true, type: datetime}
+  - {label: Requested, name: requested_at, required: true, type: datetime}
   - label: Status
     name: status
     options: [confirmed, cancelled]
     required: true
     type: enum
 label: Booking
+validations:
+  valid_interval: booking_interval_valid
+---
+kind: Rule
+name: booking_interval_valid
+entity: booking
+result: boolean
+expression:
+  op: lt
+  args:
+    - {source: this, path: start_at}
+    - {source: this, path: end_at}
+---
+kind: Rule
+name: booking_requested_now
+entity: booking
+result: datetime
+expression: {source: context, path: now}
+---
+kind: Action
+name: booking_create
+entity: booking
+operation: create
+derive:
+  requested_at: booking_requested_now
 ---
 kind: Action
 name: book_resource
 entity: booking
 input:
   end_at: {required: true, type: datetime}
+  requested_at: {required: true, type: datetime}
   resource_id: {required: true, type: relation}
   start_at: {required: true, type: datetime}
+derive:
+  requested_at: booking_requested_now
 operation: transaction
 steps:
   - op: assert_no_overlap
     values: {end: end_at, match: resource_id, message: The requested booking overlaps an existing booking., start: start_at}
   - op: create
     result: booking
-    values: {end_at: $input.end_at, resource_id: $input.resource_id, start_at: $input.start_at, status: confirmed}
+    values: {end_at: $input.end_at, requested_at: $input.requested_at, resource_id: $input.resource_id, start_at: $input.start_at, status: confirmed}
   - job: booking_reminder
     op: schedule
     values: {id: $result.booking.id, status: cancelled}

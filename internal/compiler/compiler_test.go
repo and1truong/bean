@@ -507,6 +507,22 @@ func TestWebformRejectsFileElementsInsideRepeatingGroups(t *testing.T) {
 	}
 }
 
+func TestWebformRejectsDerivedActionInput(t *testing.T) {
+	defs := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "invoice"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "total", "type": "money", "required": true}}}},
+		{APIVersion: definition.APIVersion, Kind: "Rule", Metadata: definition.Metadata{Name: "one"}, Spec: map[string]any{"result": "number", "expression": map[string]any{"source": "literal", "literal": 1}}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "invoice_create"}, Spec: map[string]any{"entity": "invoice", "operation": "create", "derive": map[string]any{"total": "one"}}},
+		{APIVersion: definition.APIVersion, Kind: "Webform", Metadata: definition.Metadata{Name: "invoice_form"}, Spec: map[string]any{"action": "invoice_create", "elements": []any{map[string]any{"name": "total", "type": "number", "required": true}}}},
+	}
+	result := compiler.Compile("test", 1, defs)
+	for _, diagnostic := range result.Diagnostics {
+		if diagnostic.Kind == "Webform" && diagnostic.Name == "invoice_form" && diagnostic.Path == "spec.elements.0.name" {
+			return
+		}
+	}
+	t.Fatalf("derived Webform input diagnostics=%v", result.Diagnostics)
+}
+
 func TestExpressionsRejectUnimplementedNowSource(t *testing.T) {
 	defs := []definition.Definition{{
 		APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "future"},

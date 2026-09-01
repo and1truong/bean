@@ -58,6 +58,23 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 	}
 	lifecycle.FieldEntity = func(app *appir.App, name string) string { return app.Lifecycles[name].Entity }
 	lifecycle.ReferenceCandidates = true
+	ruleKind := mappedDefinitionKind(appir.Rule{}, func(app *appir.App) map[string]appir.Rule { return app.Rules }, func(name string, value *appir.Rule) {
+		value.Name = name
+		if value.Input == nil {
+			value.Input = map[string]appir.Field{}
+		}
+		for inputName, input := range value.Input {
+			if input.Name == "" {
+				input.Name = inputName
+				value.Input[inputName] = input
+			}
+		}
+	})
+	ruleKind.References = func(app *appir.App, name string) []DefinitionReference {
+		return references(reference("entity", "Entity", app.Rules[name].Entity))
+	}
+	ruleKind.FieldEntity = func(app *appir.App, name string) string { return app.Rules[name].Entity }
+	ruleKind.ReferenceCandidates = true
 	policy := mappedDefinitionKind(appir.Policy{}, func(app *appir.App) map[string]appir.Policy { return app.Policies }, nameValue[appir.Policy](func(value *appir.Policy, name string) { value.Name = name }))
 	policy.ReferenceCandidates = true
 	filter := mappedDefinitionKind(appir.Filter{}, func(app *appir.App) map[string]appir.Filter { return app.Filters }, nameValue[appir.Filter](func(value *appir.Filter, name string) { value.Name = name }))
@@ -106,6 +123,7 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 	view.Validate = validateViews
 	action.Validate = validateActions
 	lifecycle.Validate = validateLifecycles
+	ruleKind.Validate = validateRules
 	policy.Validate = validatePolicies
 	filter.Validate = validateFilters
 	webform.Validate = validateWebforms
@@ -136,6 +154,7 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 		registry.Entry[definitionKind]{Name: "Panel", Value: panel},
 		registry.Entry[definitionKind]{Name: "Policy", Value: policy},
 		registry.Entry[definitionKind]{Name: "Role", Value: role},
+		registry.Entry[definitionKind]{Name: "Rule", Value: ruleKind},
 		registry.Entry[definitionKind]{Name: "Theme", Value: theme},
 		registry.Entry[definitionKind]{Name: "View", Value: view},
 		registry.Entry[definitionKind]{Name: "Webform", Value: webform},
@@ -227,7 +246,7 @@ func actionDefinitionKind() definitionKind {
 			if err := definition.DecodeSpec(source.Spec, &raw); err != nil {
 				return []definition.Diagnostic{diagError(source, "spec", err)}
 			}
-			value := appir.Action{Name: source.Metadata.Name, Entity: raw.Entity, Operation: raw.Operation, Policy: raw.Policy, Lifecycle: raw.Lifecycle, StateField: raw.StateField, DefaultRole: raw.DefaultRole, Confirm: raw.Confirm, Input: raw.Input, Output: raw.Output, Transitions: raw.Transitions}
+			value := appir.Action{Name: source.Metadata.Name, Entity: raw.Entity, Operation: raw.Operation, Policy: raw.Policy, Lifecycle: raw.Lifecycle, StateField: raw.StateField, DefaultRole: raw.DefaultRole, Confirm: raw.Confirm, Input: raw.Input, Output: raw.Output, Transitions: raw.Transitions, When: raw.When, Derive: raw.Derive}
 			for inputName, input := range value.Input {
 				if input.Name == "" {
 					input.Name = inputName
@@ -422,6 +441,9 @@ func references(values ...DefinitionReference) []DefinitionReference {
 func entityReferences(app *appir.App, name string) []DefinitionReference {
 	item := app.Entities[name]
 	out := []DefinitionReference{reference("policy", "Policy", item.Policy)}
+	for validationName, ruleName := range item.Validations {
+		out = append(out, reference("validations."+validationName, "Rule", ruleName))
+	}
 	for index, field := range item.Fields {
 		if field.Relation != nil {
 			out = append(out, reference(fmt.Sprintf("fields.%d.relation.entity", index), "Entity", field.Relation.Entity))
@@ -449,6 +471,10 @@ func actionReferences(app *appir.App, name string) []DefinitionReference {
 		reference("lifecycle", "Lifecycle", item.Lifecycle),
 		reference("policy", "Policy", item.Policy),
 		reference("defaultRole", "Role", item.DefaultRole),
+		reference("when", "Rule", item.When),
+	}
+	for fieldName, ruleName := range item.Derive {
+		out = append(out, reference("derive."+fieldName, "Rule", ruleName))
 	}
 	for index, step := range item.Steps {
 		out = append(out,

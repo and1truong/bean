@@ -64,6 +64,26 @@ entity: item
 operation: transition
 policy: member_scope
 lifecycle: item_flow
+---
+kind: Rule
+name: exact_value
+result: boolean
+input:
+  value: {type: integer}
+expression:
+  op: eq
+  args:
+    - {source: input, path: value}
+    - {source: literal, literal: 9007199254740993}
+---
+kind: Action
+name: rename_exact_item
+entity: item
+operation: update
+policy: member_scope
+when: exact_value
+input:
+  value: {type: integer}
 `
 
 func TestRegistryDefinesStableProviderNeutralOperations(t *testing.T) {
@@ -180,6 +200,13 @@ func TestAllOperationsUseSharedRuntimeBoundaries(t *testing.T) {
 	}
 	if err := json.Unmarshal(encoded, &page); err != nil || len(page.Rows) != 1 || page.Rows[0]["status"] != "draft" {
 		t.Fatalf("page=%+v err=%v", page, err)
+	}
+	exact := service.Call(context.Background(), "bean.application.execute", rawInput(map[string]any{
+		"target": database, "action": "rename_exact_item",
+		"input": map[string]any{"id": page.Rows[0]["id"], "title": "Exact", "value": json.Number("9007199254740993")},
+	}), member)
+	if !exact.OK {
+		t.Fatalf("large integer Action input lost precision: %+v", exact)
 	}
 	finished := service.Call(context.Background(), "bean.application.execute", rawInput(map[string]any{"target": database, "action": "finish_item", "input": map[string]any{"id": page.Rows[0]["id"], "status": "done"}}), member)
 	if !finished.OK {

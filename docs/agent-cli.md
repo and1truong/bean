@@ -2,7 +2,7 @@
 
 Bean v0.6 exposes the compiler and release lifecycle as a provider-neutral command contract. An agent does not need to inspect Bean source or parse human prose.
 
-v0.9 retains the v0.8 generic one-to-one adapter over the shared `bean.agent/v1alpha1` dispatcher and adds first-class Lifecycle semantics without changing the transport envelope:
+v0.10 retains the v0.8 generic one-to-one adapter over the shared `bean.agent/v1alpha1` dispatcher and adds first-class deterministic Rule semantics without changing the transport envelope:
 
 ```bash
 bean agent call bean.definition.validate --input request.json --json
@@ -96,6 +96,7 @@ Codes and structured fields are the compatibility interface. Human messages may 
 | `BEAN-E2201` | invalid Action operation, state field, or transition edge |
 | `BEAN-E2202` | invalid Lifecycle entity, state field, initial state, graph, or reachability |
 | `BEAN-E2301` | invalid Policy or role contract |
+| `BEAN-E2351` | invalid Rule expression, type, bound, or consumer contract |
 | `BEAN-E2401` | invalid serializer, renderer, or presentation contract |
 | `BEAN-E2501` | invalid context/input binding |
 | `BEAN-E2601` | invalid Page route contract |
@@ -108,13 +109,13 @@ Sensitive inputs, file bytes, secrets, passwords, and database credentials are e
 
 ## Schemas and capabilities
 
-`bean capabilities --json` reports definition/API versions, definition kinds, semantic primitives, field types, Action operations and steps, Block types, presentations, serializers, layouts, database backends, and hard limits. In v0.9, `semanticPrimitives` contains `Lifecycle`.
+`bean capabilities --json` reports definition/API versions, definition kinds, semantic primitives, field types, Action operations and steps, Block types, presentations, serializers, layouts, database backends, and hard limits. In v0.10, `semanticPrimitives` contains `Lifecycle` and `Rule`; `ruleOperators`, `ruleSources`, and the node/depth/literal/value limits expose the closed evaluator contract.
 
 `bean schema [Kind] --json` returns canonical Draft 2020-12 JSON Schema. `bean schema --output ./schemas` writes `bean.schema.json` and one lower-case file per definition kind. The checked-in [schemas](../schemas) directory is generated from the same Go specification types used by compiler decoding; tests fail if those files drift or stop covering a maintained example.
 
 JSON Schema describes document shape and rejects unknown properties. Cross-definition references and semantic constraints remain compiler responsibilities and are visible through diagnostics, capabilities, and `app inspect`.
 
-v0.9 compilers emit `bean/appir/v2` so older runtimes reject Lifecycle-bearing releases instead of silently discarding their semantics. The v0.9 runtime still loads legacy `bean/appir/v1` releases that contain only the pre-Lifecycle representation; Lifecycle definitions or bindings are invalid under v1.
+v0.10 compilers emit `bean/appir/v3` so older runtimes reject Rule-bearing releases instead of silently discarding their semantics. The v0.10 runtime still loads `bean/appir/v1` releases without Lifecycle or Rule semantics and `bean/appir/v2` releases with Lifecycle but without Rules. Rule definitions and Rule-bound Actions or Entities are invalid under v1/v2.
 
 ## Inspection, plan, and diff
 

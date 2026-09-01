@@ -68,3 +68,29 @@ func TestSensitiveInputsAreWriteOnlyAndRegistrationIsAnonymous(t *testing.T) {
 		t.Fatal("disabled registration action was exposed in OpenAPI")
 	}
 }
+
+func TestDerivedInputsAreNotAdvertisedToClients(t *testing.T) {
+	a := appir.Empty()
+	a.AppID = "test"
+	a.Actions["invoice_create"] = appir.Action{
+		Name: "invoice_create", Operation: "create",
+		Input: map[string]appir.Field{
+			"quantity": {Name: "quantity", Type: "integer", Required: true},
+			"total":    {Name: "total", Type: "money", Required: true},
+		},
+		Derive: map[string]string{"total": "subtotal"},
+	}
+	doc, err := openapi.Generate(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	if err = json.Unmarshal(doc, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	schema := decoded["paths"].(map[string]any)["/api/actions/invoice_create"].(map[string]any)["post"].(map[string]any)["requestBody"].(map[string]any)["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)
+	properties := schema["properties"].(map[string]any)
+	if properties["quantity"] == nil || properties["total"] != nil {
+		t.Fatalf("request schema=%v", schema)
+	}
+}

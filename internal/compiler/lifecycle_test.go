@@ -37,7 +37,7 @@ func TestLifecycleCompilesCanonicalSemanticModel(t *testing.T) {
 	if !containsString(capabilities.DefinitionKinds, "Lifecycle") {
 		t.Fatalf("definition kinds=%v", capabilities.DefinitionKinds)
 	}
-	if !reflect.DeepEqual(capabilities.SemanticPrimitives, []string{"Lifecycle"}) {
+	if !reflect.DeepEqual(capabilities.SemanticPrimitives, []string{"Lifecycle", "Rule"}) {
 		t.Fatalf("semantic primitives=%v", capabilities.SemanticPrimitives)
 	}
 	if compiler.DefinitionSchemas()["Lifecycle"] == nil {
@@ -74,6 +74,11 @@ func TestLifecycleDiagnosticsAreStable(t *testing.T) {
 		{"missing lifecycle", func(defs []definition.Definition) { defs[2].Spec["lifecycle"] = "missing" }, "Action", "spec.lifecycle", "BEAN-E2201"},
 		{"unbound transition", func(defs []definition.Definition) { delete(defs[2].Spec, "lifecycle") }, "Action", "spec.lifecycle", "BEAN-E2201"},
 		{"duplicated state field", func(defs []definition.Definition) { defs[2].Spec["stateField"] = "stage" }, "Action", "spec.stateField", "BEAN-E2201"},
+		{"derived state field", func(defs []definition.Definition) {
+			defs[2].Spec["operation"] = "create"
+			delete(defs[2].Spec, "lifecycle")
+			defs[2].Spec["derive"] = map[string]any{"stage": "initial_stage"}
+		}, "Action", "spec.derive.stage", "BEAN-E2201"},
 		{"transaction update bypass", func(defs []definition.Definition) {
 			defs[2].Spec = map[string]any{
 				"entity": "candidate", "operation": "transaction", "lifecycle": "candidate_pipeline",
@@ -128,6 +133,30 @@ func TestLifecycleSupportsPolicySpecificActionSubsetsAndTransactionSteps(t *test
 	}
 }
 
+func TestLegacyTransitionStateCannotBeDerivedByUpdate(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "candidate"}, Spec: map[string]any{"fields": []any{
+			map[string]any{"name": "stage", "type": "enum", "options": []any{"applied", "hired"}},
+		}}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "move_candidate"}, Spec: map[string]any{
+			"entity": "candidate", "operation": "transition", "stateField": "stage", "transitions": map[string]any{"applied": []any{"hired"}},
+		}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "update_candidate"}, Spec: map[string]any{
+			"entity": "candidate", "operation": "update", "derive": map[string]any{"stage": "initial_stage"},
+		}},
+		{APIVersion: definition.APIVersion, Kind: "Rule", Metadata: definition.Metadata{Name: "initial_stage"}, Spec: map[string]any{
+			"result": "string", "expression": map[string]any{"source": "literal", "literal": "applied"},
+		}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Kind == "Action" && diagnostic.Name == "update_candidate" && diagnostic.Path == "spec.derive.stage" && diagnostic.Code == "BEAN-E2201" {
+			return
+		}
+	}
+	t.Fatalf("legacy transition state derivation accepted: %v", diagnostics)
+}
+
 func lifecycleDefinitions() []definition.Definition {
 	return []definition.Definition{
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "candidate"}, Spec: map[string]any{"fields": []any{
@@ -139,6 +168,9 @@ func lifecycleDefinitions() []definition.Definition {
 		}},
 		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "move_candidate"}, Spec: map[string]any{
 			"entity": "candidate", "operation": "transition", "lifecycle": "candidate_pipeline",
+		}},
+		{APIVersion: definition.APIVersion, Kind: "Rule", Metadata: definition.Metadata{Name: "initial_stage"}, Spec: map[string]any{
+			"result": "string", "expression": map[string]any{"source": "literal", "literal": "applied"},
 		}},
 	}
 }

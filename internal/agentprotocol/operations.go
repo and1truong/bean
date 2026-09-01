@@ -332,6 +332,7 @@ func decodeInput(raw json.RawMessage, value any) error {
 		raw = json.RawMessage(`{}`)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(value); err != nil {
 		return err

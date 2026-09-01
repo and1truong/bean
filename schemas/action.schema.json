@@ -133,6 +133,12 @@
     "defaultRole": {
       "type": "string"
     },
+    "derive": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
     "entity": {
       "type": "string"
     },
@@ -184,6 +190,9 @@
         "type": "array"
       },
       "type": "object"
+    },
+    "when": {
+      "type": "string"
     }
   },
   "required": [

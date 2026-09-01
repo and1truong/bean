@@ -185,7 +185,9 @@ func executeDecrementStep(execution stepExecution) (stepOutcome, error) {
 	}
 	err = decrement(execution.ctx, execution.tx, entity, values, execution.input, func(row dbal.Row) bool {
 		return authorizeStepEntity(execution, entity, row)
-	})
+	}, func(row dbal.Row) error {
+		return ValidateEntityRules(execution.app, entity, row, execution.request)
+	}, fmt.Sprint(execution.request.Values["now"]))
 	return stepOutcome{}, err
 }
 
@@ -202,7 +204,7 @@ func executeCreateStep(execution stepExecution) (stepOutcome, error) {
 		return stepOutcome{}, err
 	}
 	delete(values, "entity")
-	row, err := execution.service.create(execution.ctx, execution.tx, execution.app, entity, values, execution.request, "")
+	row, err := execution.service.create(execution.ctx, execution.tx, execution.app, entity, values, execution.request, "", fmt.Sprint(execution.request.Values["now"]))
 	if err != nil {
 		return stepOutcome{}, err
 	}

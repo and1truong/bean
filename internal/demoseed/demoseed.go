@@ -16,6 +16,7 @@ import (
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/dbal"
 	fieldpkg "github.com/beanruntime/bean/internal/field"
+	"github.com/beanruntime/bean/internal/rule"
 	"github.com/beanruntime/bean/internal/view"
 )
 
@@ -71,6 +72,10 @@ func Generate(app *appir.App, seed int64) ([]Record, error) {
 					values[field.Name] = scalarValue(field, definition.Profile, index, seed)
 				}
 			}
+			values, err = deriveGeneratedValues(app, entity, values, seed)
+			if err != nil {
+				return nil, fmt.Errorf("derive %s: %w", entityName, err)
+			}
 			record := Record{Entity: entityName, ID: id, Values: values}
 			records = append(records, record)
 			generated[entityName] = append(generated[entityName], record)
@@ -98,7 +103,7 @@ func Run(ctx context.Context, database dbal.Database, app *appir.App, seed int64
 		}
 	}
 	sort.Strings(roles)
-	request := beanctx.Request{User: &beanctx.User{ID: stableUUID(seed, "owner", 0), Email: "demo@bean.local", Roles: roles}, TenantID: stableUUID(seed, "tenant", 0), RequestID: fmt.Sprintf("demo-seed:%d", seed)}
+	request := demoRequest(seed, roles)
 	empty, exact, err := inspectTarget(ctx, database, app, records, request, seed)
 	if err != nil {
 		return Result{}, err
@@ -116,12 +121,15 @@ func Run(ctx context.Context, database dbal.Database, app *appir.App, seed int64
 	if err = validateLifecycleTransitionUniqueness(app, records, lifecyclePlans, seed); err != nil {
 		return Result{}, err
 	}
+	if err = validateGeneratedEntityRules(app, records, lifecyclePlans, request, seed); err != nil {
+		return Result{}, err
+	}
 	ids := map[string][]string{}
 	for _, record := range records {
 		ids[record.Entity] = append(ids[record.Entity], record.ID)
 	}
 	nextID := map[string]int{}
-	clock := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC).Add(time.Duration(seed%8760) * time.Hour)
+	clock := demoClock(seed)
 	service := action.Service{
 		DB:  database,
 		Now: func() time.Time { return clock },
@@ -149,6 +157,38 @@ func Run(ctx context.Context, database dbal.Database, app *appir.App, seed int64
 	return result, nil
 }
 
+func validateGeneratedEntityRules(app *appir.App, records []Record, plans [][]lifecycleMove, request beanctx.Request, seed int64) error {
+	now := demoClock(seed).Format(time.RFC3339Nano)
+	for index, record := range records {
+		entity := app.Entities[record.Entity]
+		candidate := dbal.Row{"id": record.ID, "created_at": now, "updated_at": now, "version": int64(1)}
+		for name, value := range record.Values {
+			candidate[name] = value
+		}
+		if entity.Owner && request.User != nil {
+			candidate["owner_id"] = request.User.ID
+		}
+		if entity.Tenant {
+			candidate["tenant_id"] = request.TenantID
+		}
+		lifecycle, hasLifecycle := demoLifecycleForEntity(app, record.Entity)
+		if hasLifecycle {
+			candidate[lifecycle.StateField] = lifecycle.Initial
+		}
+		if err := action.ValidateEntityRules(app, entity, candidate, request); err != nil {
+			return fmt.Errorf("generated %s[%d] create candidate: %w", record.Entity, index, err)
+		}
+		for moveIndex, move := range plans[index] {
+			candidate[lifecycle.StateField] = move.State
+			candidate["version"] = int64(moveIndex + 2)
+			if err := action.ValidateEntityRules(app, entity, candidate, request); err != nil {
+				return fmt.Errorf("generated %s[%d] transition to %s: %w", record.Entity, index, move.State, err)
+			}
+		}
+	}
+	return nil
+}
+
 func planLifecycleMoves(app *appir.App, records []Record) ([][]lifecycleMove, error) {
 	plans := make([][]lifecycleMove, len(records))
 	for index, record := range records {
@@ -174,6 +214,9 @@ func seedRecord(ctx context.Context, service action.Service, app *appir.App, rec
 	for name, value := range record.Values {
 		values[name] = value
 	}
+	for name := range app.Actions[record.Entity+"_create"].Derive {
+		delete(values, name)
+	}
 	lifecycle, hasLifecycle := demoLifecycleForEntity(app, record.Entity)
 	if hasLifecycle {
 		values[lifecycle.StateField] = lifecycle.Initial
@@ -195,6 +238,60 @@ func seedRecord(ctx context.Context, service action.Service, app *appir.App, rec
 		}
 	}
 	return nil
+}
+
+func deriveGeneratedValues(app *appir.App, entity appir.Entity, values map[string]any, seed int64) (map[string]any, error) {
+	actionDefinition := app.Actions[entity.Name+"_create"]
+	if len(actionDefinition.Derive) == 0 {
+		return values, nil
+	}
+	roles := []string{"administrator"}
+	for name := range app.Roles {
+		if name != "administrator" {
+			roles = append(roles, name)
+		}
+	}
+	sort.Strings(roles)
+	request := demoRequest(seed, roles)
+	base := make(map[string]any, len(values))
+	for name, value := range values {
+		base[name] = value
+	}
+	environmentInput := action.CompleteRuleInput(actionDefinition, values)
+	derived := map[string]any{}
+	for _, name := range sortedKeys(actionDefinition.Derive) {
+		definition := app.Rules[actionDefinition.Derive[name]]
+		user := map[string]any{"id": request.User.ID, "email": request.User.Email, "display_name": request.User.DisplayName, "roles": request.User.Roles}
+		value, err := rule.EvaluateTyped(definition.Expression, rule.Environment{
+			Input: environmentInput, User: user, TenantID: request.TenantID,
+			Context: map[string]any{"now": demoClock(seed).Format(time.RFC3339Nano), "request_id": request.RequestID},
+		}, definition.Result)
+		if err != nil {
+			return nil, fmt.Errorf("Rule %s: %w", actionDefinition.Derive[name], err)
+		}
+		derived[name] = value
+	}
+	for name, value := range derived {
+		base[name] = value
+	}
+	return base, nil
+}
+
+func demoClock(seed int64) time.Time {
+	return time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC).Add(time.Duration(seed%8760) * time.Hour)
+}
+
+func demoRequest(seed int64, roles []string) beanctx.Request {
+	return beanctx.Request{User: &beanctx.User{ID: stableUUID(seed, "owner", 0), Email: "demo@bean.local", Roles: roles}, TenantID: stableUUID(seed, "tenant", 0), RequestID: fmt.Sprintf("demo-seed:%d", seed)}
+}
+
+func sortedKeys(values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func lifecycleDesiredState(lifecycle appir.Lifecycle, values map[string]any) string {
@@ -588,7 +685,7 @@ func generatedConstraintValue(app *appir.App, entityName string, record Record, 
 	case "id":
 		return record.ID, true
 	case "created_at", "updated_at":
-		value := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC).Add(time.Duration(seed%8760) * time.Hour).Format(time.RFC3339Nano)
+		value := demoClock(seed).Format(time.RFC3339Nano)
 		return value, true
 	case "version":
 		version := 1

@@ -56,6 +56,7 @@ const (
 	RuleAction           DiagnosticRule = "action"
 	RuleLifecycle        DiagnosticRule = "lifecycle"
 	RulePolicy           DiagnosticRule = "policy"
+	RuleExpression       DiagnosticRule = "rule-expression"
 	RulePresentation     DiagnosticRule = "presentation"
 	RuleBinding          DiagnosticRule = "binding"
 	RuleRoute            DiagnosticRule = "route"
@@ -143,6 +144,8 @@ func codeForRule(rule DiagnosticRule) string {
 		return "BEAN-E2202"
 	case RulePolicy:
 		return "BEAN-E2301"
+	case RuleExpression:
+		return "BEAN-E2351"
 	case RulePresentation:
 		return "BEAN-E2401"
 	case RuleBinding:

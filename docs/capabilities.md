@@ -1,6 +1,6 @@
-# Bean v0.9 capability matrix
+# Bean v0.10 capability matrix
 
-`complete` means the v0.9 compiler/runtime pair has direct executable evidence. Bean remains alpha software and the limits below are part of the contract.
+`complete` means the v0.10 compiler/runtime pair has direct executable evidence. Bean remains alpha software and the limits below are part of the contract.
 
 | Area | Capability | Status | Direct evidence |
 | --- | --- | --- | --- |
@@ -12,6 +12,8 @@
 | Application Plane | Policy-preserving View-only reads and Action-only writes with host-owned identity | complete | SQLite/PostgreSQL owner/tenant and bypass-refusal contracts |
 | Canonical schemas | Draft 2020-12 manifest and per-kind schemas generated from compiler specification types | complete | maintained-example coverage and checked-in schema drift tests |
 | Lifecycle semantics | Canonical initial state and reachable transition graph, optional Action subsets, protected generic updates, AppIR v2, semantic inspect/diff | complete | compiler, AppIR, Action, release, CLI/MCP parity, ATS, and commerce contracts |
+| Deterministic Rules | Named typed canonical AST, closed sources/operators, compile/runtime bounds, AppIR v3, inspect/references/redacted semantic diff | complete | Rule, compiler, schema, AppIR, Agent Protocol, and release contracts |
+| Rule consumers | Policy-ordered Action guards, simultaneous server-owned derives, final-candidate Entity invariants | complete | Action rollback/replay/context tests plus commerce, ATS, and booking slices |
 | DBAL | Parameterized CRUD, predicates, joins, groups, aggregates, transactions, inspection, migrations | complete | reusable SQLite/PostgreSQL contract |
 | PostgreSQL | pgx backend selection, numbered parameters, SQLSTATE errors, Admin/Action/View HTTP parity | complete | `make test-postgres` against PostgreSQL 17 |
 | Entity/relations | Typed native tables, four relation cardinalities, owner/tenant/soft-delete/version | complete | migration, Action, View, policy contracts |
@@ -20,12 +22,12 @@
 | Content rendering | Generic list/detail links, named content Filters, safe Markdown, metadata fields, legacy rich text, empty states, cursor controls | complete | Filter/View/React XSS tests and blog browser journey |
 | Operational presentation | Compiler-validated enum boards and expandable self-relation trees | complete | compiler/React contracts and Asana Lite browser journey |
 | Demo presentation | Typed themes plus compiler-validated Metric, Timeline, and declared public View Search | complete | schema/compiler/HTTP/React contracts and ATS browser journey |
-| Demo fixtures | Typed relation-aware deterministic generation through Actions with View-based replay verification | complete | scalar/relation/cycle/replay/refusal tests and ATS package evidence |
+| Demo fixtures | Typed relation-aware deterministic generation through Actions, including server-derived fields, with View-based replay verification | complete | scalar/relation/derive/cycle/replay/refusal tests and ATS package evidence |
 | Application patterns | Ten inspectable, byte-stable ordinary-definition bundles | complete | independent catalog compilation and CLI inspection tests |
 | Local package | Staged SQLite package with executable, populated database, versioned manifest, checksums, verification, and source-independent startup | complete | CLI tamper/failure-atomicity tests and packaged-binary browser journey |
 | Small file attachments | 5 MiB multipart `file` fields, transactional metadata/content, policy-checked download, replacement/deletion cleanup | complete | field/Action/HTTP/React contracts and Asana Lite browser journey |
 | UI system | Source-owned shadcn primitives, shared Bean tokens, accessible confirmations, responsive Shell/Public/Admin/System/Studio surfaces | complete | frontend lint/unit/build, `ui.spec.ts`, and full Playwright gate |
-| Actions | Typed I/O, full declared step set, rollback, concurrency, audit, job/outbox intent | complete | Action integration and race tests |
+| Actions | Typed I/O, full declared step set, Rule guards/derives/invariants, rollback, concurrency, audit, job/outbox intent | complete | Action integration and race tests |
 | Idempotency | Atomic result persistence and canonical input fingerprint conflict | complete | replay and changed-input contracts |
 | Views/policies | Projection, filters, joins, aggregates, keyset paging, tenant/owner/role/redaction | complete | View/policy contracts and browser apps |
 | Releases | Additive plan, schema-ahead reconciliation, pointer integrity, startup storage validation | complete | release tests and process-crash gate |
@@ -47,11 +49,11 @@
 - One Bean process and one active application per database are qualified. Clustering, multi-process writers, replicas, HA, and failover are not.
 - Migrations are additive. Destructive schema changes, data transformations, and automated rollback are rejected or deferred.
 - Outbox delivery is at-least-once. A crash after delivery but before acknowledgement can duplicate an effect.
-- v0.9 retains the v0.5 crash qualification assumption of a functioning filesystem or PostgreSQL service. Corruption, host loss, backup/restore, and point-in-time recovery are outside scope.
+- v0.10 retains the v0.5 crash qualification assumption of a functioning filesystem or PostgreSQL service. Corruption, host loss, backup/restore, and point-in-time recovery are outside scope.
 - The visual builder covers the core operational definition path; non-core page composition kinds use advanced JSON in this slice.
 - Tree presentation is bounded by the View maximum of 200 rows. File fields are bounded small attachments stored as base64 metadata content; external object storage, resumable transfer, scanning, and media processing are outside this slice.
 - SQLite/PostgreSQL parity is contract and workflow parity, not identical query plans or operational characteristics.
 - `bean package` deliberately targets local SQLite only. It does not create containers, installers, hosted previews, signatures, or a distribution channel.
-- Lifecycle owns only one Entity enum field, initial state, and transition graph. Ownership, terminal-state immutability, general invariants, generated semantic tests, and typed extensions remain future work. Legacy Action-local transition graphs and AppIR v1 releases without Lifecycle semantics remain supported for the v0.9 compatibility window.
-- MCP deliberately targets local stdio only. Streamable HTTP, hosted identity, OAuth, subscriptions, prompts, resources, sampling, and remote rate-limit infrastructure are outside v0.9.
+- Lifecycle owns only one Entity enum field, initial state, and transition graph. Rules own only bounded side-effect-free local predicates and scalar calculations. Text scripts, computed reads, browser visibility rules, generated semantic tests, external effects, and typed extensions remain future work. Legacy Action-local transition graphs remain supported; AppIR v1 without Lifecycle/Rules and v2 with Lifecycle but without Rules remain readable.
+- MCP deliberately targets local stdio only. Streamable HTTP, hosted identity, OAuth, subscriptions, prompts, resources, sampling, and remote rate-limit infrastructure are outside v0.10.
 - External security review, load envelopes, SLOs, supply-chain signing, and production release certification remain future work.

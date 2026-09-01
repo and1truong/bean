@@ -16,6 +16,7 @@ Treat Bean definitions as structured application intent and Bean diagnostics as 
 - Publish only when requested, then run the isolated release test.
 - For live verification, query a declared View and execute a declared Action. Never substitute an Entity name, table, raw SQL, or arbitrary mutation.
 - Model an Entity state machine once with Lifecycle. Bind transition Actions to it; add an Action transition map only when that Action intentionally exposes a strict subset of the canonical graph.
+- Prefer a semantic primitive, then a named typed Rule, then report a missing extension boundary. Use Rules only for bounded local guards, derived Action inputs, and Entity invariants. Treat derived inputs as server-owned and sibling derives as simultaneous; never use a Rule as authorization or invent scripts, I/O, ambient time, random values, or dynamic lookup.
 
 ## Authority
 
