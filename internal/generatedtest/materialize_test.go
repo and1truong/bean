@@ -286,6 +286,25 @@ func TestMaterializeSkipsGuardedCRUD(t *testing.T) {
 			t.Fatalf("compatible generated case is missing for %s", action)
 		}
 	}
+
+	delete(bundle.Definitions[2].Spec, "when")
+	bundle.Definitions = append(bundle.Definitions, definition.Definition{APIVersion: definition.APIVersion, Kind: "Rule", Metadata: definition.Metadata{Name: "derived_title"}, Spec: map[string]any{
+		"entity": "note", "result": "string", "expression": map[string]any{"source": "literal", "literal": "derived"},
+	}})
+	bundle.Definitions[2].Spec["derive"] = map[string]any{"title": "derived_title"}
+	materialized, _, diagnostics = generatedtest.Materialize(bundle)
+	if len(diagnostics) != 0 {
+		t.Fatalf("derived diagnostics=%v", diagnostics)
+	}
+	compiled = compiler.Compile("test", 1, materialized.Definitions)
+	if _, exists := compiled.App.TestSuites["generated_crud_note_update"]; exists {
+		t.Fatal("derived update case was generated without a proven derivation result")
+	}
+	for _, action := range []string{"note_create", "note_delete"} {
+		if _, exists := compiled.App.TestSuites["generated_crud_"+action]; !exists {
+			t.Fatalf("independent generated case is missing for %s", action)
+		}
+	}
 }
 
 func TestMaterializeSkipsValidatedCreateAndUpdateCRUD(t *testing.T) {

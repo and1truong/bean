@@ -125,7 +125,7 @@ func crudSuites(app *appir.App, records []demoseed.Record) []appir.TestSuite {
 				test.Expect = appir.TestExpectation{Result: raw(map[string]any{"id": record.ID}), Changes: []appir.TestMutation{change}, NoEvents: true}
 			}
 			validatedMutation := operation != "delete" && len(entity.Validations) > 0
-			if action.When != "" || validatedMutation || !crudInputSupported(action, test.Input) || !crudAuthorized(app, action, record, test.Context) {
+			if action.When != "" || len(action.Derive) > 0 || validatedMutation || !crudInputSupported(action, test.Input) || !crudAuthorized(app, action, record, test.Context) {
 				continue
 			}
 			suites = append(suites, appir.TestSuite{Target: appir.TestTarget{Kind: "Action", Name: actionName}, Tests: []appir.TestCase{test}})

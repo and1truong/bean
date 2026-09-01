@@ -120,7 +120,7 @@ func staticAnonymousPage(app *appir.App, item appir.Page) bool {
 			return false
 		}
 	}
-	contextValues, err := page.ResolveContext(item, nil, nil, beanctx.Request{})
+	contextValues, err := page.ResolveContext(item, nil, map[string]string{"path": item.Route}, beanctx.Request{})
 	if err != nil {
 		return false
 	}
