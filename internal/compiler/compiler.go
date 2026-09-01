@@ -974,6 +974,10 @@ func validateRules(a *appir.App, _ *validationState) []definition.Diagnostic {
 			out = append(out, ruleDefinitionDiagnostic(name, path, err.Error()))
 			continue
 		}
+		if item.Result == rule.Boolean && rule.StaticallyNullable(item.Expression) {
+			out = append(out, ruleDefinitionDiagnostic(name, "spec.result", "boolean Rule expression may return null"))
+			continue
+		}
 		if !rule.ResultCompatible(item.Result, inferred) {
 			out = append(out, ruleDefinitionDiagnostic(name, "spec.result", fmt.Sprintf("declares %s but expression returns %s", item.Result, inferred)))
 		}

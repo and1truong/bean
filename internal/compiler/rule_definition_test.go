@@ -81,6 +81,16 @@ func TestRuleDiagnosticsAreStableAndFailClosed(t *testing.T) {
 		{"null boolean result", func(defs []definition.Definition) {
 			defs[1].Spec["expression"] = map[string]any{"source": "literal", "literal": nil}
 		}, "Rule", "spec.result", "BEAN-E2351"},
+		{"conditionally null boolean result", func(defs []definition.Definition) {
+			defs[1].Spec["expression"] = map[string]any{"op": "if", "args": []any{
+				map[string]any{"op": "eq", "args": []any{
+					map[string]any{"source": "this", "path": "total"},
+					map[string]any{"source": "literal", "literal": 0},
+				}},
+				map[string]any{"source": "literal", "literal": nil},
+				map[string]any{"source": "literal", "literal": true},
+			}}
+		}, "Rule", "spec.result", "BEAN-E2351"},
 		{"forbidden input", func(defs []definition.Definition) {
 			defs[2].Spec["input"].(map[string]any)["amount"].(map[string]any)["type"] = "password"
 		}, "Rule", "spec.input.amount.type", "BEAN-E2351"},

@@ -9,7 +9,7 @@ Status values: `pending`, `active`, `done`. A milestone is `done` only when its 
 | 2 | Rule Definition, AppIR, schema, capabilities, inspect, references, diff, and compatibility | compiler/schema/Agent Protocol/AppIR tests | done |
 | 3 | Action guards, simultaneous derived inputs, and Entity invariants | Policy/order/rollback/idempotency/context tests | done |
 | 4 | Three metadata-only reference slices and backend/restart parity | source journeys plus SQLite/PostgreSQL/crash tests | done |
-| 5 | Documentation, v0.10 version cut, terminal gates, CI, clean review, and merge | all gates, CI, Codex review, merged PR | active |
+| 5 | Documentation, v0.10 version cut, terminal gates, CI, clean review, and merge | all gates, CI, Codex review, merged PR | done |
 
 ## Working rules
 

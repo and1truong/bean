@@ -301,7 +301,11 @@ func arithmetic(operator string, arguments []any, path string) (any, error) {
 		}
 	}
 	if decimal, ok := finiteDecimal(result); ok {
-		return json.Number(decimal), nil
+		number := json.Number(decimal)
+		if _, exact := rationalValue(number); !exact {
+			return nil, ruleError(CodeLimit, path, "numeric result exceeds exact arithmetic limit")
+		}
+		return number, nil
 	}
 	if math.IsInf(approximate, 0) || math.IsNaN(approximate) {
 		return nil, ruleError(CodeLimit, path, "rule numeric result is not finite")

@@ -224,6 +224,9 @@ func TestTypedEvaluationRejectsRuntimeResultMismatch(t *testing.T) {
 	if _, err := rule.EvaluateTyped(literal("true"), rule.Environment{}, rule.Boolean); err == nil {
 		t.Fatal("string result accepted as boolean")
 	}
+	if _, err := rule.EvaluateTyped(literal(nil), rule.Environment{}, rule.Boolean); err == nil {
+		t.Fatal("null result accepted as boolean")
+	}
 	if !rule.ResultCompatible(rule.Number, rule.Integer) || rule.ResultCompatible(rule.Integer, rule.Number) || rule.ResultCompatible(rule.Boolean, rule.Null) {
 		t.Fatal("result compatibility is incorrect")
 	}
@@ -237,6 +240,13 @@ func TestArithmeticPreservesExactDecimals(t *testing.T) {
 	value, err = rule.EvaluateTyped(op("multiply", literal(json.Number("1e16384")), literal(1)), rule.Environment{}, rule.Number)
 	if err != nil || value != json.Number("1e16384") {
 		t.Fatalf("boundary value=%v (%T) err=%v", value, value, err)
+	}
+	for _, expression := range []rule.Expression{
+		op("multiply", literal(json.Number("1e16384")), literal(10)),
+		op("multiply", literal(json.Number("1e-16384")), literal(json.Number("0.1"))),
+	} {
+		_, err := rule.Evaluate(expression, rule.Environment{})
+		assertRuleError(t, err, rule.CodeLimit)
 	}
 }
 

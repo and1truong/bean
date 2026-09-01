@@ -1,6 +1,6 @@
 # Goal: Bean v0.10 Deterministic Rule Expressions
 
-Status: active
+Status: complete
 
 Add a bounded, side-effect-free Rule primitive for small local business calculations and predicates while keeping Entity, Lifecycle, Policy, View, and Action semantics structural. A Rule is named, typed, inspectable, and compiled from a canonical structured expression AST; it is not a script or extension runtime.
 
@@ -117,6 +117,14 @@ The exact examples may be adjusted only when their existing domain model proves 
 - The binary reports `bean 0.10.0-alpha`.
 - `make check`, `make test-crash`, `make test-postgres`, and `make build` pass.
 - The latest PR commit has a clean Codex review, all actionable threads are resolved, CI passes, and the PR is merged.
+
+## Completion record
+
+- Named typed Rules compile to canonical `bean/appir/v3` ASTs and expose deterministic schema, capabilities, inspection, references, and semantic diff behavior.
+- Action guards, simultaneous server-owned derives, and Entity validations execute inside the existing Policy and transaction boundaries with stable fail-closed errors.
+- Commerce, ATS, and booking provide unrelated metadata-only evidence for calculation, record-aware guards, invariants, and injected context.
+- Resource bounds, numeric exactness, nullable boolean consumers, SQLite/PostgreSQL parity, restart behavior, and v1/v2 compatibility have focused regression coverage.
+- All terminal gates and PR CI pass; PR #11 completed the iterative Codex review loop with every actionable thread answered and resolved before merge.
 
 ## Explicit non-goals
 

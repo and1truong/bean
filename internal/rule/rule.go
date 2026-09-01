@@ -172,7 +172,7 @@ func ResultCompatible(expected, actual Type) bool {
 
 func ValueMatches(expected Type, value any) bool {
 	if value == nil {
-		return true
+		return expected != Boolean
 	}
 	switch expected {
 	case Boolean:

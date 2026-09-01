@@ -151,7 +151,7 @@ func infer(expression Expression, environment TypeEnvironment, path string) (Typ
 		if err := requireArity(expression.Op, len(types), 2, 2, path); err != nil {
 			return "", err
 		}
-		if types[0] == Null || types[1] == Null || staticallyNullable(expression.Args[0]) || staticallyNullable(expression.Args[1]) {
+		if types[0] == Null || types[1] == Null || StaticallyNullable(expression.Args[0]) || StaticallyNullable(expression.Args[1]) {
 			return "", typeError(path, expression.Op+" does not accept null arguments")
 		}
 		unified, ok := unify(types[0], types[1])
@@ -273,7 +273,7 @@ func literalType(value any, path string) (Type, error) {
 	return "", typeError(path+".literal", "rule literal has unsupported type")
 }
 
-func staticallyNullable(expression Expression) bool {
+func StaticallyNullable(expression Expression) bool {
 	if expression.Source == "literal" {
 		value, err := decodeLiteral(expression.Literal)
 		return err == nil && value == nil
@@ -285,13 +285,13 @@ func staticallyNullable(expression Expression) bool {
 		if condition, err := decodeLiteral(expression.Args[0].Literal); err == nil {
 			if selected, ok := condition.(bool); ok {
 				if selected {
-					return staticallyNullable(expression.Args[1])
+					return StaticallyNullable(expression.Args[1])
 				}
-				return staticallyNullable(expression.Args[2])
+				return StaticallyNullable(expression.Args[2])
 			}
 		}
 	}
-	return staticallyNullable(expression.Args[1]) || staticallyNullable(expression.Args[2])
+	return StaticallyNullable(expression.Args[1]) || StaticallyNullable(expression.Args[2])
 }
 
 func requireArity(operator string, got, minimum, maximum int, path string) error {

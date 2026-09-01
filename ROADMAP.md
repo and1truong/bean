@@ -74,7 +74,7 @@ Presentation remains a separately reported score so a technically correct but un
 
 ## Current engineering goal
 
-Bean v0.10 Deterministic Rule Expressions is active. The initial contract uses named, typed, canonical structured ASTs for Action guards, server-derived Action inputs, and Entity invariants. It deliberately excludes a text script parser, browser-only surfaces, computed read columns, generated tests, and external effects. The executable contract and milestones are in `GOAL.md` and `PLANS.md`.
+Bean v0.10 Deterministic Rule Expressions is complete. Named, typed, canonical structured ASTs now support Action guards, server-derived Action inputs, and Entity invariants with compile/runtime bounds and no script runtime. Work stops here before the planned v0.11 generated-test phase; the accepted contract and evidence are in `GOAL.md`, `PLANS.md`, and `docs/progress.md`.
 
 ## Roadmap
 
@@ -85,7 +85,7 @@ Bean v0.10 Deterministic Rule Expressions is active. The initial contract uses n
 | 2 | v0.7 | Demo Factory for fast, populated, presentable local applications | complete |
 | 3 | v0.8 | Agent Protocol, MCP adapter, and shipped agent guidance | complete |
 | 4 | v0.9 | First-class semantic model for common business structure | complete |
-| 5 | v0.10 | Deterministic Rule Expressions for local application logic | active |
+| 5 | v0.10 | Deterministic Rule Expressions for local application logic | complete |
 | 6 | v0.11 | Generated tests from semantic primitives and rules | planned |
 | 7 | v0.12 | Typed extension boundary for external effects | planned |
 | 8 | v1.0 | Qualification of one explicit production envelope | planned |
@@ -208,7 +208,7 @@ Exit criteria:
 - Illegal transitions and policy combinations fail at compile time where possible and deterministically at runtime otherwise.
 - Semantics remain visible in schema, capabilities, inspect, and diff, with stable identifiers and evidence for later rule refinement and test generation.
 
-### Phase 5 — v0.10: Deterministic Rule Expressions
+### Phase 5 — v0.10: Deterministic Rule Expressions (complete)
 
 Increase the local application logic agents can express without arbitrary application code or weakening Bean's deterministic, inspectable model. Rules sit between first-class semantic primitives and the later typed extension boundary:
 
