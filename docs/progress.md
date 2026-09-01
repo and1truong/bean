@@ -2,9 +2,17 @@
 
 ## Current
 
-Bean v0.7 Demo Factory implementation is complete on top of the v0.6 machine contract. Typed Theme/DemoSeed metadata, generic Metric/Timeline/Search presentation, ten inspectable ordinary-definition patterns, deterministic Action-based seeding, checksummed SQLite packaging, and the populated ATS reference slice have executable evidence. CRM and tracker also validate and package with deterministic datasets.
+Bean v0.8 Agent Protocol is active from merge commit `f281bae`. The frozen contract has ten provider-neutral operations across Definition, Release, and Application Planes, with CLI as the reference transport and a local MCP stdio adapter over the same dispatcher. Plane grants are host configuration; Application operations retain View-read and Action-write Policy boundaries.
 
-Milestones 0–4 are done. Milestone 5 remains active for the terminal repository gates and honest repeated external-agent p50/p90 prompt benchmark. Prepared-definition/package timings are not substituted for that North Star evidence. Provider-specific agents, MCP, hosted sharing, Lifecycle semantics, rules, generated semantic tests, and extensions remain outside this goal.
+Milestones 0–4 are done; milestone 5 is active. Existing v0.6 commands and generic `agent call` invoke the shared dispatcher. MCP targets current `2026-07-28` stateless metadata plus maintained initialization compatibility, filters discovery by process grants, and keeps stdout JSON-RPC-clean. All ten handlers, exact CLI/MCP result parity, independent transport authorization, strict authority inputs, SQLite/PostgreSQL View/Action owner/tenant behavior, and raw Entity/mutation bypass refusal have focused evidence.
+
+Local terminal qualification passes: `make check` including race, black-box CLI, and 14/14 Playwright journeys; `make test-crash`; `make test-postgres` including Agent Protocol parity and the PostgreSQL blog journey; and `make build`. The real binary reports `bean 0.8.0-alpha`; generic CLI validation and Definition-only MCP discovery produce clean versioned machine output. CI and a clean Codex review remain before completion.
+
+## v0.7 completed state
+
+Bean v0.7 Demo Factory is complete on top of the v0.6 machine contract. Typed Theme/DemoSeed metadata, generic Metric/Timeline/Search presentation, ten inspectable ordinary-definition patterns, deterministic Action-based seeding, checksummed SQLite packaging, and the populated ATS reference slice have executable evidence. CRM and tracker also validate and package with deterministic datasets.
+
+Milestones 0–5 are done. The repository gates pass and benchmark documentation records the honest qualification boundary; prepared-definition/package timings are not substituted for repeated external-agent p50/p90 North Star evidence. Provider-specific agents, MCP, hosted sharing, Lifecycle semantics, rules, generated semantic tests, and extensions were outside v0.7.
 
 ## v0.7 implementation evidence
 

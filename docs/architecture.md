@@ -10,6 +10,7 @@ YAML / typed visual Studio -> canonical definitions -> validation
 HTTP -> Context/Policy -> View reads / Action writes -> typed DBAL
                                                    -> SQLite adapter
                                                    -> PostgreSQL adapter
+Agent -> CLI/MCP -> shared Agent Protocol dispatcher -> compiler/release/View/Action
 UI   <- typed manifest/render tree
 Admin <- AdminResource data plane + protected System control plane
 ```
@@ -25,6 +26,8 @@ The application Admin is metadata-driven rather than a raw-table editor: AdminRe
 Studio visual editors mutate the normal definition `spec` for Entity, View, Action, Policy, and AdminResource. Reference choices come from current draft definitions. The advanced JSON view reads and writes the same object, so there is no second visual metadata format and supported fields survive round trips. Validate returns compiler diagnostics, target schema, and migration preview before publish.
 
 Board and tree rendering are typed View presentations: the compiler verifies selected grouping, parent, order, title, and transition references before activation. The browser receives only normalized presentation metadata, reads rows through the declared View, and writes board movement through the declared Action.
+
+The Agent Protocol is an adapter boundary, not a second runtime. Its registry assigns ten versioned operations to Definition, Release, and Application Planes and checks process grants before invoking a handler. CLI translates existing flags into operation inputs; MCP translates JSON-RPC tool calls into the same inputs. Definition handlers call the compiler, Release handlers call the release lifecycle, and Application handlers call the active View or Action service with host-supplied request context. Neither transport owns application semantics or database access.
 
 Small `file` values enter only through bounded multipart requests. Action execution inserts immutable blob metadata/content and the referencing Entity value in one database transaction, while replacement and hard deletion remove the old blob in that transaction. Downloads first find a live compiled Entity reference and apply its read policy; client filenames are response metadata only and never storage paths.
 

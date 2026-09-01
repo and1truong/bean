@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -16,15 +15,15 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/beanruntime/bean/internal/agentprotocol"
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/bootstrap"
 	"github.com/beanruntime/bean/internal/compiler"
+	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/demoseed"
-	"github.com/beanruntime/bean/internal/expr"
-	"github.com/beanruntime/bean/internal/migration"
+	"github.com/beanruntime/bean/internal/mcpstdio"
 	"github.com/beanruntime/bean/internal/patterns"
-	"github.com/beanruntime/bean/internal/release"
 )
 
 const cliAPIVersion = "bean.cli/v1alpha1"
@@ -63,6 +62,12 @@ type validateResult struct {
 }
 
 func runAgentCommand(args []string, stdout, stderr io.Writer) (int, bool) {
+	if len(args) >= 2 && args[0] == "mcp" && args[1] == "serve" {
+		return agentMCPServe(args[2:], stdout, stderr), true
+	}
+	if len(args) >= 2 && args[0] == "agent" && args[1] == "call" {
+		return agentCall(args[2:], stdout, stderr), true
+	}
 	if len(args) > 0 && args[0] == "capabilities" {
 		return agentCapabilities(args[1:], stdout, stderr), true
 	}
@@ -103,6 +108,140 @@ func runAgentCommand(args []string, stdout, stderr io.Writer) (int, bool) {
 		return agentPackageBuild(args[1:], stdout, stderr), true
 	}
 	return 0, false
+}
+
+func agentMCPServe(args []string, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("mcp serve", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	allowed := flags.String("allow-plane", "definition", "comma-separated protocol planes")
+	userID := flags.String("user-id", "", "runtime user ID")
+	userEmail := flags.String("user-email", "", "runtime user email")
+	roles := flags.String("roles", "", "comma-separated runtime roles")
+	tenantID := flags.String("tenant-id", "", "runtime tenant ID")
+	requestID := flags.String("request-id", "bean-mcp", "runtime request ID")
+	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
+		message := "usage: bean mcp serve [--allow-plane PLANES]"
+		if err != nil {
+			message = err.Error()
+		}
+		fmt.Fprintln(stderr, message)
+		return exitUsage
+	}
+	planes, err := agentprotocol.ParsePlanes(*allowed)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitUsage
+	}
+	principal := agentprotocol.Principal{Planes: planes, Request: beanctx.Request{TenantID: *tenantID, RequestID: *requestID}}
+	roleList := splitNonEmpty(*roles)
+	if *userID != "" || *userEmail != "" || len(roleList) > 0 {
+		principal.Request.User = &beanctx.User{ID: *userID, Email: *userEmail, Roles: roleList}
+	}
+	server := mcpstdio.New(mcpstdio.Config{Service: agentprotocol.New(), Principal: principal, Version: version})
+	if err = server.Serve(context.Background(), os.Stdin, stdout); err != nil {
+		fmt.Fprintln(stderr, redactRuntimeMessage(err.Error()))
+		return exitRuntime
+	}
+	return exitOK
+}
+
+func agentCall(args []string, stdout, stderr io.Writer) int {
+	return agentCallService(agentprotocol.New(), args, stdout, stderr)
+}
+
+func agentCallService(service *agentprotocol.Service, args []string, stdout, stderr io.Writer) int {
+	args, jsonOutput := removeFlag(args, "--json")
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		return writeCommandFailure("agent.call", "usage: bean agent call OPERATION [--input request.json] [--allow-plane PLANES] [--json]", exitUsage, jsonOutput, stdout, stderr)
+	}
+	operation := args[0]
+	flags := flag.NewFlagSet("agent call", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	inputFile := flags.String("input", "", "JSON operation input file, or - for stdin")
+	allowed := flags.String("allow-plane", "definition,release,application", "comma-separated protocol planes")
+	userID := flags.String("user-id", "", "runtime user ID")
+	userEmail := flags.String("user-email", "", "runtime user email")
+	roles := flags.String("roles", "", "comma-separated runtime roles")
+	tenantID := flags.String("tenant-id", "", "runtime tenant ID")
+	requestID := flags.String("request-id", "bean-agent-cli", "runtime request ID")
+	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 {
+		message := "usage: bean agent call OPERATION [--input request.json] [--allow-plane PLANES] [--json]"
+		if err != nil {
+			message = err.Error()
+		}
+		return writeCommandFailure("agent.call", message, exitUsage, jsonOutput, stdout, stderr)
+	}
+	planes, err := agentprotocol.ParsePlanes(*allowed)
+	if err != nil {
+		return writeCommandFailure("agent.call", err.Error(), exitUsage, jsonOutput, stdout, stderr)
+	}
+	raw := json.RawMessage(`{}`)
+	if *inputFile != "" {
+		var encoded []byte
+		if *inputFile == "-" {
+			encoded, err = io.ReadAll(os.Stdin)
+		} else {
+			encoded, err = os.ReadFile(*inputFile)
+		}
+		if err != nil {
+			return writeRuntimeFailure("agent.call", err, jsonOutput, stdout, stderr)
+		}
+		raw = encoded
+	}
+	principal := agentprotocol.Principal{Planes: planes, Request: beanctx.Request{TenantID: *tenantID, RequestID: *requestID}}
+	roleList := splitNonEmpty(*roles)
+	if *userID != "" || *userEmail != "" || len(roleList) > 0 {
+		principal.Request.User = &beanctx.User{ID: *userID, Email: *userEmail, Roles: roleList}
+	}
+	outcome := service.Call(context.Background(), operation, raw, principal)
+	return writeProtocolOutcome("agent.call", outcome, jsonOutput, stdout, stderr)
+}
+
+func splitNonEmpty(value string) []string {
+	values := []string{}
+	for _, item := range strings.Split(value, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			values = append(values, item)
+		}
+	}
+	return values
+}
+
+func protocolInput(value any) json.RawMessage {
+	encoded, _ := json.Marshal(value)
+	return encoded
+}
+
+func callProtocol(operation string, input any) agentprotocol.Outcome {
+	return agentprotocol.New().Call(context.Background(), operation, protocolInput(input), agentprotocol.Principal{Planes: agentprotocol.AllPlanes()})
+}
+
+func writeProtocolOutcome(command string, outcome agentprotocol.Outcome, jsonOutput bool, stdout, stderr io.Writer) int {
+	if outcome.OK {
+		if jsonOutput {
+			writeEnvelope(stdout, cliEnvelope{APIVersion: cliAPIVersion, Command: command, OK: true, Result: outcome.Result, Diagnostics: []machineDiagnostic{}})
+		} else {
+			writePrettyJSON(stdout, outcome.Result)
+		}
+		return exitOK
+	}
+	diagnostics := machineDiagnostics(outcome.Diagnostics, ".")
+	exit := exitDefinition
+	if outcome.Error != nil {
+		diagnostics = append(diagnostics, machineDiagnostic{Code: outcome.Error.Code, Path: "protocol", Message: outcome.Error.Message})
+		exit = exitRuntime
+		if outcome.Error.Code == "BEAN-P1001" || outcome.Error.Code == "BEAN-P1002" || outcome.Error.Code == "BEAN-P1003" {
+			exit = exitUsage
+		}
+	}
+	if jsonOutput {
+		writeEnvelope(stdout, cliEnvelope{APIVersion: cliAPIVersion, Command: command, OK: false, Diagnostics: diagnostics})
+	} else {
+		for _, diagnostic := range diagnostics {
+			fmt.Fprintln(stderr, diagnostic.Message)
+		}
+	}
+	return exit
 }
 
 func agentPatternInspect(args []string, stdout, stderr io.Writer) int {
@@ -188,7 +327,14 @@ func agentCapabilities(args []string, stdout, stderr io.Writer) int {
 	if len(args) != 0 {
 		return writeCommandFailure("capabilities", "capabilities accepts no arguments", exitUsage, jsonOutput, stdout, stderr)
 	}
-	result := compiler.AgentCapabilities(cliAPIVersion)
+	outcome := callProtocol("bean.definition.capabilities", struct{}{})
+	if !outcome.OK {
+		return writeProtocolOutcome("capabilities", outcome, jsonOutput, stdout, stderr)
+	}
+	result, ok := outcome.Result.(compiler.Capabilities)
+	if !ok {
+		return writeRuntimeFailure("capabilities", fmt.Errorf("invalid capabilities result"), jsonOutput, stdout, stderr)
+	}
 	if jsonOutput {
 		writeEnvelope(stdout, cliEnvelope{APIVersion: cliAPIVersion, Command: "capabilities", OK: true, Result: result, Diagnostics: []machineDiagnostic{}})
 	} else {
@@ -208,19 +354,25 @@ func agentSchema(args []string, stdout, stderr io.Writer) int {
 	if len(args) > 1 {
 		return writeCommandFailure("schema", "usage: bean schema [Kind] [--json]", exitUsage, jsonOutput, stdout, stderr)
 	}
-	schemas := compiler.DefinitionSchemas()
-	all := map[string]map[string]any{"Bean": compiler.ManifestSchema()}
-	for kind, schema := range schemas {
-		all[kind] = schema
-	}
+	kind := ""
 	if len(args) == 1 {
-		schema, exists := all[args[0]]
-		if !exists {
-			return writeDefinitionFailure("schema", definition.Diagnostic{Code: "BEAN-E1101", Path: "kind", Message: "unsupported definition kind", Candidates: sortedSchemaNames(all)}, jsonOutput, stdout, stderr)
+		kind = args[0]
+	}
+	outcome := callProtocol("bean.definition.schema", map[string]any{"kind": kind})
+	if !outcome.OK {
+		return writeProtocolOutcome("schema", outcome, jsonOutput, stdout, stderr)
+	}
+	result, ok := outcome.Result.(map[string]any)
+	if !ok {
+		return writeRuntimeFailure("schema", fmt.Errorf("invalid schema result"), jsonOutput, stdout, stderr)
+	}
+	if kind != "" {
+		schema, ok := result["schema"].(map[string]any)
+		if !ok {
+			return writeRuntimeFailure("schema", fmt.Errorf("invalid schema result"), jsonOutput, stdout, stderr)
 		}
-		result := map[string]any{"kind": args[0], "schema": schema}
 		if outputDirectory != "" {
-			files, err := writeSchemaFiles(outputDirectory, map[string]map[string]any{args[0]: schema})
+			files, err := writeSchemaFiles(outputDirectory, map[string]map[string]any{kind: schema})
 			if err != nil {
 				return writeRuntimeFailure("schema", err, jsonOutput, stdout, stderr)
 			}
@@ -229,11 +381,14 @@ func agentSchema(args []string, stdout, stderr io.Writer) int {
 		if jsonOutput {
 			writeEnvelope(stdout, cliEnvelope{APIVersion: cliAPIVersion, Command: "schema", OK: true, Result: result, Diagnostics: []machineDiagnostic{}})
 		} else {
-			writePrettyJSON(stdout, schema)
+			writePrettyJSON(stdout, result["schema"])
 		}
 		return exitOK
 	}
-	result := map[string]any{"schemas": all}
+	all, ok := result["schemas"].(map[string]map[string]any)
+	if !ok {
+		return writeRuntimeFailure("schema", fmt.Errorf("invalid schemas result"), jsonOutput, stdout, stderr)
+	}
 	if outputDirectory != "" {
 		files, err := writeSchemaFiles(outputDirectory, all)
 		if err != nil {
@@ -264,22 +419,18 @@ func agentValidate(args []string, stdout, stderr io.Writer) int {
 		return writeCommandFailure("app.validate", message, exitUsage, jsonOutput, stdout, stderr)
 	}
 
-	bundle, diagnostics := validateSource(*filename)
-	if len(diagnostics) > 0 {
-		if jsonOutput {
-			writeEnvelope(stdout, cliEnvelope{APIVersion: cliAPIVersion, Command: "app.validate", OK: false, Diagnostics: machineDiagnostics(diagnostics, filepath.Dir(*filename))})
-		} else {
-			for _, diagnostic := range diagnostics {
-				fmt.Fprintln(stderr, diagnostic.Error())
-			}
-		}
-		return exitDefinition
+	outcome := callProtocol("bean.definition.validate", map[string]any{"file": *filename})
+	if !outcome.OK {
+		return writeProtocolOutcome("app.validate", outcome, jsonOutput, stdout, stderr)
 	}
-	result := validateResult{Name: bundle.Name, Definitions: len(bundle.Definitions), Checksum: bundleChecksum(bundle)}
+	var result validateResult
+	if err := decodeProtocolResult(outcome.Result, &result); err != nil {
+		return writeRuntimeFailure("app.validate", err, jsonOutput, stdout, stderr)
+	}
 	if jsonOutput {
 		writeEnvelope(stdout, cliEnvelope{APIVersion: cliAPIVersion, Command: "app.validate", OK: true, Result: result, Diagnostics: []machineDiagnostic{}})
 	} else {
-		fmt.Fprintf(stdout, "valid: %s — %d definitions\n", bundle.Name, len(bundle.Definitions))
+		fmt.Fprintf(stdout, "valid: %s — %d definitions\n", result.Name, result.Definitions)
 	}
 	return exitOK
 }
@@ -296,37 +447,13 @@ func agentInspect(args []string, stdout, stderr io.Writer) int {
 		}
 		return writeCommandFailure("app.inspect", message, exitUsage, jsonOutput, stdout, stderr)
 	}
-	bundle, diagnostics := validateSource(*filename)
-	if len(diagnostics) > 0 {
-		return writeSourceFailure("app.inspect", *filename, diagnostics, jsonOutput, stdout, stderr)
-	}
-	compiled := compiler.Compile("default", 1, bundle.Definitions)
-	inspectable := redactedApp(compiled.App)
-	result := map[string]any{"checksum": bundleChecksum(bundle), "appIRFormat": compiled.App.FormatVersion}
+	input := map[string]any{"file": *filename}
 	if flags.NArg() == 0 {
-		result["application"] = normalizedJSON(inspectable)
+		// Inspect the whole immutable AppIR.
 	} else {
-		kind, name := flags.Arg(0), flags.Arg(1)
-		value, references, exists := inspectedDefinition(inspectable, kind, name)
-		if !exists {
-			diagnostic := definition.Diagnostic{Code: "BEAN-E2001", Kind: kind, Name: name, Path: "definition", Message: "definition does not exist", Candidates: definitionNames(inspectable, kind)}
-			return writeDefinitionFailure("app.inspect", diagnostic, jsonOutput, stdout, stderr)
-		}
-		result["kind"], result["name"] = kind, name
-		result["definition"] = normalizedJSON(value)
-		result["references"] = references
+		input["kind"], input["name"] = flags.Arg(0), flags.Arg(1)
 	}
-	if jsonOutput {
-		writeEnvelope(stdout, cliEnvelope{APIVersion: cliAPIVersion, Command: "app.inspect", OK: true, Result: result, Diagnostics: []machineDiagnostic{}})
-	} else {
-		writePrettyJSON(stdout, result)
-	}
-	return exitOK
-}
-
-type migrationOutput struct {
-	Descriptions []string `json:"descriptions"`
-	Statements   []string `json:"statements"`
+	return writeProtocolOutcome("app.inspect", callProtocol("bean.definition.inspect", input), jsonOutput, stdout, stderr)
 }
 
 func agentPlan(args []string, stdout, stderr io.Writer) int {
@@ -334,31 +461,7 @@ func agentPlan(args []string, stdout, stderr io.Writer) int {
 	if parseExit != exitOK {
 		return parseExit
 	}
-	bundle, diagnostics := validateSource(filename)
-	if len(diagnostics) > 0 {
-		return writeSourceFailure("app.plan", filename, diagnostics, jsonOutput, stdout, stderr)
-	}
-	compiled, plan, _, err := previewCandidate(bundle, target)
-	if err != nil {
-		if isMigrationPlanError(err) {
-			return writeMigrationFailure("app.plan", err, jsonOutput, stdout, stderr)
-		}
-		return writeRuntimeFailure("app.plan", err, jsonOutput, stdout, stderr)
-	}
-	if len(compiled.Diagnostics) > 0 {
-		return writeSourceFailure("app.plan", filename, compiled.Diagnostics, jsonOutput, stdout, stderr)
-	}
-	result := map[string]any{
-		"checksum":    bundleChecksum(bundle),
-		"appIRFormat": compiled.App.FormatVersion,
-		"migration":   migrationOutput{Descriptions: nonNilStrings(plan.Descriptions), Statements: nonNilStrings(plan.Statements)},
-	}
-	if jsonOutput {
-		writeEnvelope(stdout, cliEnvelope{APIVersion: cliAPIVersion, Command: "app.plan", OK: true, Result: result, Diagnostics: []machineDiagnostic{}})
-	} else {
-		writePrettyJSON(stdout, result)
-	}
-	return exitOK
+	return writeProtocolOutcome("app.plan", callProtocol("bean.release.plan", map[string]any{"file": filename, "target": target}), jsonOutput, stdout, stderr)
 }
 
 func agentDiff(args []string, stdout, stderr io.Writer) int {
@@ -366,28 +469,7 @@ func agentDiff(args []string, stdout, stderr io.Writer) int {
 	if parseExit != exitOK {
 		return parseExit
 	}
-	bundle, diagnostics := validateSource(filename)
-	if len(diagnostics) > 0 {
-		return writeSourceFailure("app.diff", filename, diagnostics, jsonOutput, stdout, stderr)
-	}
-	compiled, _, current, err := previewCandidate(bundle, target)
-	if err != nil {
-		if isMigrationPlanError(err) {
-			return writeMigrationFailure("app.diff", err, jsonOutput, stdout, stderr)
-		}
-		return writeRuntimeFailure("app.diff", err, jsonOutput, stdout, stderr)
-	}
-	if len(compiled.Diagnostics) > 0 {
-		return writeSourceFailure("app.diff", filename, compiled.Diagnostics, jsonOutput, stdout, stderr)
-	}
-	changes := semanticDiff(current, compiled.App)
-	result := map[string]any{"checksum": bundleChecksum(bundle), "changes": changes}
-	if jsonOutput {
-		writeEnvelope(stdout, cliEnvelope{APIVersion: cliAPIVersion, Command: "app.diff", OK: true, Result: result, Diagnostics: []machineDiagnostic{}})
-	} else {
-		writePrettyJSON(stdout, result)
-	}
-	return exitOK
+	return writeProtocolOutcome("app.diff", callProtocol("bean.release.diff", map[string]any{"file": filename, "target": target}), jsonOutput, stdout, stderr)
 }
 
 func agentAppInit(args []string, stdout, stderr io.Writer) int {
@@ -447,36 +529,21 @@ func agentAppPublish(args []string, stdout, stderr io.Writer) int {
 		}
 		return writeCommandFailure("app.publish", message, exitUsage, jsonOutput, stdout, stderr)
 	}
-	bundle, diagnostics := validateSource(*filename)
-	if len(diagnostics) > 0 {
-		return writeSourceFailure("app.publish", *filename, diagnostics, jsonOutput, stdout, stderr)
-	}
 	target := databaseTarget(*database, *databaseURL)
-	runtime, err := bootstrap.OpenURL(context.Background(), target, false)
-	if err != nil {
+	outcome := callProtocol("bean.release.publish", map[string]any{"file": *filename, "target": target})
+	if !outcome.OK || jsonOutput {
+		return writeProtocolOutcome("app.publish", outcome, jsonOutput, stdout, stderr)
+	}
+	var result struct {
+		Release struct {
+			ID      string `json:"id"`
+			Version int    `json:"version"`
+		} `json:"release"`
+	}
+	if err := decodeProtocolResult(outcome.Result, &result); err != nil {
 		return writeRuntimeFailure("app.publish", err, jsonOutput, stdout, stderr)
 	}
-	defer runtime.DB.Close()
-	published, plan, publishDiagnostics, err := runtime.Store.PublishBundle(context.Background(), "default", bundle)
-	if err != nil {
-		if isMigrationPlanError(err) {
-			return writeMigrationFailure("app.publish", err, jsonOutput, stdout, stderr)
-		}
-		return writeRuntimeFailure("app.publish", err, jsonOutput, stdout, stderr)
-	}
-	if len(publishDiagnostics) > 0 {
-		return writeSourceFailure("app.publish", *filename, publishDiagnostics, jsonOutput, stdout, stderr)
-	}
-	result := map[string]any{
-		"checksum":  bundleChecksum(bundle),
-		"release":   map[string]any{"id": published.ID, "version": published.Version, "status": published.Status},
-		"migration": migrationOutput{Descriptions: nonNilStrings(plan.Descriptions), Statements: nonNilStrings(plan.Statements)},
-	}
-	if jsonOutput {
-		writeEnvelope(stdout, cliEnvelope{APIVersion: cliAPIVersion, Command: "app.publish", OK: true, Result: result, Diagnostics: []machineDiagnostic{}})
-	} else {
-		fmt.Fprintf(stdout, "published release %s version %d\n", published.ID, published.Version)
-	}
+	fmt.Fprintf(stdout, "published release %s version %d\n", result.Release.ID, result.Release.Version)
 	return exitOK
 }
 
@@ -499,61 +566,28 @@ func agentAppTest(args []string, stdout, stderr io.Writer) int {
 		}
 		return writeCommandFailure("app.test", message, exitUsage, jsonOutput, stdout, stderr)
 	}
-	bundle, diagnostics := validateSource(*filename)
-	if len(diagnostics) > 0 {
-		return writeSourceFailure("app.test", *filename, diagnostics, jsonOutput, stdout, stderr)
+	outcome := callProtocol("bean.release.test", map[string]any{"file": *filename})
+	if !outcome.OK || jsonOutput {
+		return writeProtocolOutcome("app.test", outcome, jsonOutput, stdout, stderr)
 	}
-	checks := []smokeCheck{{ID: "definition.load", Status: "passed"}, {ID: "compiler.validate", Status: "passed"}}
-	directory, err := os.MkdirTemp("", "bean-app-test-")
-	if err != nil {
+	var result struct {
+		Checks []smokeCheck `json:"checks"`
+	}
+	if err := decodeProtocolResult(outcome.Result, &result); err != nil {
 		return writeRuntimeFailure("app.test", err, jsonOutput, stdout, stderr)
 	}
-	defer os.RemoveAll(directory)
-	database := filepath.Join(directory, "test.db")
-	runtime, err := bootstrap.Open(context.Background(), database, false)
-	if err != nil {
-		return writeRuntimeFailure("app.test", err, jsonOutput, stdout, stderr)
-	}
-	compiled, _, err := runtime.Store.PreviewBundle(context.Background(), "default", bundle)
-	if err == nil && len(compiled.Diagnostics) == 0 {
-		checks = append(checks, smokeCheck{ID: "migration.plan", Status: "passed"})
-		err = runtime.Store.SaveBundleExact(context.Background(), "default", bundle)
-	}
-	if err == nil {
-		_, diagnostics, err = runtime.Store.Publish(context.Background(), "default")
-		if len(diagnostics) > 0 {
-			err = diagnostics[0]
-		}
-	}
-	if err == nil {
-		checks = append(checks, smokeCheck{ID: "release.publish", Status: "passed"})
-	}
-	closeErr := runtime.DB.Close()
-	if err == nil {
-		err = closeErr
-	}
-	if err == nil {
-		runtime, err = bootstrap.Open(context.Background(), database, false)
-		if err == nil {
-			if _, active := runtime.Kernel.Active(); !active {
-				err = fmt.Errorf("published application was not active after restart")
-			}
-			runtime.DB.Close()
-		}
-	}
-	if err != nil {
-		return writeRuntimeFailure("app.test", err, jsonOutput, stdout, stderr)
-	}
-	checks = append(checks, smokeCheck{ID: "runtime.restart", Status: "passed"})
-	result := map[string]any{"checksum": bundleChecksum(bundle), "checks": checks}
-	if jsonOutput {
-		writeEnvelope(stdout, cliEnvelope{APIVersion: cliAPIVersion, Command: "app.test", OK: true, Result: result, Diagnostics: []machineDiagnostic{}})
-	} else {
-		for _, check := range checks {
-			fmt.Fprintf(stdout, "%s: %s\n", check.ID, check.Status)
-		}
+	for _, check := range result.Checks {
+		fmt.Fprintf(stdout, "%s: %s\n", check.ID, check.Status)
 	}
 	return exitOK
+}
+
+func decodeProtocolResult(result any, target any) error {
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(encoded, target)
 }
 
 func parseSourceTarget(command string, args []string, stdout, stderr io.Writer) (string, string, bool, int) {
@@ -579,31 +613,6 @@ func parseSourceTarget(command string, args []string, stdout, stderr io.Writer) 
 		}
 	}
 	return *filename, target, jsonOutput, exitOK
-}
-
-func previewCandidate(bundle definition.Bundle, target string) (compiler.Result, migration.Plan, *appir.App, error) {
-	if target == "" {
-		compiled := compiler.Compile("default", 1, bundle.Definitions)
-		if len(compiled.Diagnostics) > 0 {
-			return compiled, migration.Plan{}, nil, nil
-		}
-		plan, err := migration.Build(migration.Schema{}, compiled.Schema)
-		if err != nil {
-			err = &release.MigrationPlanError{Err: err}
-		}
-		return compiled, plan, nil, err
-	}
-	runtime, err := bootstrap.OpenInspection(context.Background(), target)
-	if err != nil {
-		return compiler.Result{}, migration.Plan{}, nil, err
-	}
-	defer runtime.DB.Close()
-	compiled, plan, err := runtime.Store.PreviewBundle(context.Background(), "default", bundle)
-	if err != nil {
-		return compiled, plan, nil, err
-	}
-	current, err := runtime.Store.ActiveApp(context.Background(), "default")
-	return compiled, plan, current, err
 }
 
 func writeCommandFailure(command, message string, exit int, jsonOutput bool, stdout, stderr io.Writer) int {
@@ -647,16 +656,6 @@ func writeRuntimeFailure(command string, err error, jsonOutput bool, stdout, std
 		fmt.Fprintln(stderr, message)
 	}
 	return exitRuntime
-}
-
-func writeMigrationFailure(command string, err error, jsonOutput bool, stdout, stderr io.Writer) int {
-	diagnostic := definition.Diagnostic{Code: "BEAN-E2701", Kind: "Release", Name: "default", Path: "migration", Message: err.Error()}
-	return writeDefinitionFailure(command, diagnostic, jsonOutput, stdout, stderr)
-}
-
-func isMigrationPlanError(err error) bool {
-	var target *release.MigrationPlanError
-	return errors.As(err, &target)
 }
 
 func writeEnvelope(writer io.Writer, envelope cliEnvelope) {
@@ -779,355 +778,6 @@ func writeSchemaFiles(directory string, schemas map[string]map[string]any) ([]st
 		files = append(files, filepath.ToSlash(path))
 	}
 	return files, nil
-}
-
-func normalizedJSON(value any) any {
-	encoded, _ := json.Marshal(value)
-	var decoded any
-	_ = json.Unmarshal(encoded, &decoded)
-	return normalizeJSONKeys(decoded)
-}
-
-func normalizeJSONKeys(value any) any {
-	switch typed := value.(type) {
-	case map[string]any:
-		out := make(map[string]any, len(typed))
-		for key, item := range typed {
-			runes := []rune(key)
-			if len(runes) > 0 {
-				runes[0] = []rune(strings.ToLower(string(runes[0])))[0]
-			}
-			out[string(runes)] = normalizeJSONKeys(item)
-		}
-		return out
-	case []any:
-		out := make([]any, len(typed))
-		for index := range typed {
-			out[index] = normalizeJSONKeys(typed[index])
-		}
-		return out
-	default:
-		return value
-	}
-}
-
-type inspectedReference struct {
-	Path string `json:"path"`
-	Kind string `json:"kind"`
-	Name string `json:"name"`
-}
-
-func inspectedDefinition(app *appir.App, kind, name string) (any, []inspectedReference, bool) {
-	var value any
-	var exists bool
-	switch kind {
-	case "Entity":
-		value, exists = app.Entities[name]
-	case "View":
-		value, exists = app.Views[name]
-	case "Action":
-		value, exists = app.Actions[name]
-	case "Policy":
-		value, exists = app.Policies[name]
-	case "Filter":
-		value, exists = app.Filters[name]
-	case "Webform":
-		value, exists = app.Webforms[name]
-	case "Block":
-		value, exists = app.Blocks[name]
-	case "Panel":
-		value, exists = app.Panels[name]
-	case "Page":
-		value, exists = app.Pages[name]
-	case "Role":
-		value, exists = app.Roles[name]
-	case "Menu":
-		value, exists = app.Menus[name]
-	case "Job":
-		value, exists = app.Jobs[name]
-	case "AdminResource":
-		value, exists = app.AdminResources[name]
-	case "LocalRegistration":
-		if app.LocalRegistration != nil {
-			value, exists = *app.LocalRegistration, true
-		}
-	case "Theme":
-		if app.Theme != nil && app.Theme.Name == name {
-			value, exists = *app.Theme, true
-		}
-	case "DemoSeed":
-		if app.DemoSeed != nil && app.DemoSeed.Name == name {
-			value, exists = *app.DemoSeed, true
-		}
-	}
-	if !exists {
-		return nil, nil, false
-	}
-	return value, definitionReferences(app, kind, name), true
-}
-
-func definitionNames(app *appir.App, kind string) []string {
-	names := []string{}
-	appendMap := func(values any) {
-		value := reflect.ValueOf(values)
-		for _, key := range value.MapKeys() {
-			names = append(names, key.String())
-		}
-	}
-	switch kind {
-	case "Entity":
-		appendMap(app.Entities)
-	case "View":
-		appendMap(app.Views)
-	case "Action":
-		appendMap(app.Actions)
-	case "Policy":
-		appendMap(app.Policies)
-	case "Filter":
-		appendMap(app.Filters)
-	case "Webform":
-		appendMap(app.Webforms)
-	case "Block":
-		appendMap(app.Blocks)
-	case "Panel":
-		appendMap(app.Panels)
-	case "Page":
-		appendMap(app.Pages)
-	case "Role":
-		appendMap(app.Roles)
-	case "Menu":
-		appendMap(app.Menus)
-	case "Job":
-		appendMap(app.Jobs)
-	case "AdminResource":
-		appendMap(app.AdminResources)
-	case "Theme":
-		if app.Theme != nil {
-			names = append(names, app.Theme.Name)
-		}
-	case "DemoSeed":
-		if app.DemoSeed != nil {
-			names = append(names, app.DemoSeed.Name)
-		}
-	}
-	sort.Strings(names)
-	return names
-}
-
-func definitionReferences(app *appir.App, kind, name string) []inspectedReference {
-	references := []inspectedReference{}
-	add := func(path, targetKind, targetName string) {
-		if targetName != "" {
-			references = append(references, inspectedReference{Path: path, Kind: targetKind, Name: targetName})
-		}
-	}
-	switch kind {
-	case "Entity":
-		entity := app.Entities[name]
-		add("policy", "Policy", entity.Policy)
-		for index, field := range entity.Fields {
-			if field.Relation != nil {
-				add(fmt.Sprintf("fields.%d.relation.entity", index), "Entity", field.Relation.Entity)
-			}
-		}
-	case "View":
-		view := app.Views[name]
-		add("entity", "Entity", view.Entity)
-		add("policy", "Policy", view.Policy)
-		for path, filter := range view.FieldFilters {
-			add("fieldFilters."+path, "Filter", filter)
-		}
-		for index, relationship := range view.Relationships {
-			add(fmt.Sprintf("relationships.%d.entity", index), "Entity", relationship.Entity)
-		}
-	case "Action":
-		action := app.Actions[name]
-		add("entity", "Entity", action.Entity)
-		add("policy", "Policy", action.Policy)
-		add("defaultRole", "Role", action.DefaultRole)
-		for index, step := range action.Steps {
-			add(fmt.Sprintf("steps.%d.entity", index), "Entity", step.Entity)
-			add(fmt.Sprintf("steps.%d.view", index), "View", step.View)
-			add(fmt.Sprintf("steps.%d.job", index), "Job", step.Job)
-		}
-	case "Webform":
-		add("action", "Action", app.Webforms[name].Action)
-	case "Block":
-		block := app.Blocks[name]
-		add("view", "View", block.View)
-		add("entity", "Entity", block.Entity)
-		add("webform", "Webform", block.Webform)
-		add("action", "Action", block.Action)
-		add("menu", "Menu", block.Menu)
-		add("policy", "Policy", block.Policy)
-		add("resource", "AdminResource", block.Resource)
-		add("presentation.moveAction", "Action", block.Presentation.MoveAction)
-	case "Panel":
-		panel := app.Panels[name]
-		add("policy", "Policy", panel.Policy)
-		for regionIndex, region := range panel.Regions {
-			for blockIndex, block := range region.Blocks {
-				add(fmt.Sprintf("regions.%d.blocks.%d", regionIndex, blockIndex), "Block", block)
-			}
-		}
-	case "Page":
-		page := app.Pages[name]
-		add("panel", "Panel", page.Panel)
-		add("policy", "Policy", page.Policy)
-	case "Menu":
-		for index, item := range app.Menus[name].Items {
-			add(fmt.Sprintf("items.%d.policy", index), "Policy", item.Policy)
-		}
-	case "Job":
-		add("action", "Action", app.Jobs[name].Action)
-	case "AdminResource":
-		resource := app.AdminResources[name]
-		add("entity", "Entity", resource.Entity)
-		add("view", "View", resource.View)
-		add("createAction", "Action", resource.CreateAction)
-		add("updateAction", "Action", resource.UpdateAction)
-		add("deleteAction", "Action", resource.DeleteAction)
-		for index, action := range resource.Actions {
-			add(fmt.Sprintf("actions.%d", index), "Action", action)
-		}
-	case "LocalRegistration":
-		if app.LocalRegistration != nil {
-			add("action", "Action", app.LocalRegistration.Action)
-		}
-	}
-	sort.Slice(references, func(left, right int) bool {
-		if references[left].Path != references[right].Path {
-			return references[left].Path < references[right].Path
-		}
-		if references[left].Kind != references[right].Kind {
-			return references[left].Kind < references[right].Kind
-		}
-		return references[left].Name < references[right].Name
-	})
-	return references
-}
-
-type semanticChange struct {
-	Operation string `json:"operation"`
-	Path      string `json:"path"`
-	Before    any    `json:"before,omitempty"`
-	After     any    `json:"after,omitempty"`
-}
-
-func semanticDiff(current, candidate *appir.App) []semanticChange {
-	if current == nil {
-		current = appir.Empty()
-	}
-	left := redactedApp(current)
-	right := redactedApp(candidate)
-	for _, app := range []*appir.App{left, right} {
-		app.ReleaseID = ""
-		app.AppID = ""
-		app.Version = 0
-		app.OpenAPI = nil
-	}
-	changes := []semanticChange{}
-	diffValue("", normalizedJSON(left), normalizedJSON(right), &changes)
-	return changes
-}
-
-func redactedApp(source *appir.App) *appir.App {
-	redacted, _ := source.Clone()
-	for name, view := range redacted.Views {
-		redactExpression(view.Filter)
-		redactExpression(view.ContextFilter)
-		redacted.Views[name] = view
-	}
-	for name, action := range redacted.Actions {
-		for stepIndex := range action.Steps {
-			redactExpression(action.Steps[stepIndex].Where)
-			redactExpression(action.Steps[stepIndex].Condition)
-			for valueIndex := range action.Steps[stepIndex].Values {
-				value := &action.Steps[stepIndex].Values[valueIndex].Value
-				if value.Source == "literal" {
-					value.Literal = json.RawMessage(`"[REDACTED]"`)
-				}
-			}
-		}
-		redacted.Actions[name] = action
-	}
-	for name, policy := range redacted.Policies {
-		redactExpression(policy.Condition)
-		redacted.Policies[name] = policy
-	}
-	for name, webform := range redacted.Webforms {
-		redactFormExpressions(webform.Elements)
-		redacted.Webforms[name] = webform
-	}
-	return redacted
-}
-
-func redactExpression(expression *expr.Expr) {
-	if expression == nil {
-		return
-	}
-	for _, value := range []*expr.Value{expression.Left, expression.Right} {
-		if value != nil && value.Source == "literal" {
-			value.Literal = "[REDACTED]"
-		}
-	}
-	for index := range expression.Args {
-		redactExpression(&expression.Args[index])
-	}
-}
-
-func redactFormExpressions(elements []appir.FormElement) {
-	for index := range elements {
-		redactExpression(elements[index].Visible)
-		redactExpression(elements[index].RequiredWhen)
-		redactFormExpressions(elements[index].Children)
-	}
-}
-
-func diffValue(path string, before, after any, changes *[]semanticChange) {
-	leftMap, leftIsMap := before.(map[string]any)
-	rightMap, rightIsMap := after.(map[string]any)
-	if leftIsMap && rightIsMap {
-		keys := map[string]bool{}
-		for key := range leftMap {
-			keys[key] = true
-		}
-		for key := range rightMap {
-			keys[key] = true
-		}
-		ordered := make([]string, 0, len(keys))
-		for key := range keys {
-			ordered = append(ordered, key)
-		}
-		sort.Strings(ordered)
-		for _, key := range ordered {
-			childPath := key
-			if path != "" {
-				childPath = path + "." + key
-			}
-			left, leftExists := leftMap[key]
-			right, rightExists := rightMap[key]
-			switch {
-			case !leftExists:
-				*changes = append(*changes, semanticChange{Operation: "add", Path: childPath, After: right})
-			case !rightExists:
-				*changes = append(*changes, semanticChange{Operation: "remove", Path: childPath, Before: left})
-			default:
-				diffValue(childPath, left, right, changes)
-			}
-		}
-		return
-	}
-	if !reflect.DeepEqual(before, after) {
-		*changes = append(*changes, semanticChange{Operation: "change", Path: path, Before: before, After: after})
-	}
-}
-
-func nonNilStrings(values []string) []string {
-	if values == nil {
-		return []string{}
-	}
-	return values
 }
 
 func yamlScalar(value string) string {

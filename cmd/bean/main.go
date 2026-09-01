@@ -11,21 +11,20 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"sort"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/beanruntime/bean/examples"
 	"github.com/beanruntime/bean/internal/action"
+	"github.com/beanruntime/bean/internal/appsource"
 	"github.com/beanruntime/bean/internal/bootstrap"
-	"github.com/beanruntime/bean/internal/compiler"
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/demoseed"
 )
 
-const version = "0.7.0-alpha"
+const version = "0.8.0-alpha"
 
 func main() {
 	os.Exit(execute(os.Args[1:], os.Stdout, os.Stderr))
@@ -70,7 +69,7 @@ func run(args []string) error {
 	}
 }
 func usage() error {
-	return fmt.Errorf("usage: bean {init|serve|validate|publish|migrate|capabilities|schema|app init|app validate|app inspect|app plan|app diff|app publish|app test|app import|app export|user create|demo|demo seed|pattern inspect|package|package verify|version}")
+	return fmt.Errorf("usage: bean {init|serve|validate|publish|migrate|capabilities|schema|agent call|mcp serve|app init|app validate|app inspect|app plan|app diff|app publish|app test|app import|app export|user create|demo|demo seed|pattern inspect|package|package verify|version}")
 }
 func userCommand(args []string) error {
 	if len(args) == 0 || args[0] != "create" {
@@ -330,65 +329,7 @@ func loadValidSource(filename string, diagnosticsOut io.Writer) (definition.Bund
 }
 
 func validateSource(filename string) (definition.Bundle, []definition.Diagnostic) {
-	bundle, diagnostics, complete := definition.LoadFileForValidation(filename)
-	if complete {
-		diagnostics = mergeSourceDiagnostics(diagnostics, compiler.Compile("default", 1, bundle.Definitions).Diagnostics)
-	} else {
-		diagnostics = mergeSourceDiagnostics(diagnostics, compiler.CompileRecovered("default", 1, bundle.Definitions).Diagnostics)
-	}
-	definition.ClassifyDiagnostics(diagnostics)
-	sort.SliceStable(diagnostics, func(left, right int) bool {
-		a, b := diagnostics[left], diagnostics[right]
-		if a.Source.Path != b.Source.Path {
-			return a.Source.Path < b.Source.Path
-		}
-		if a.Source.Line != b.Source.Line {
-			return a.Source.Line < b.Source.Line
-		}
-		if a.Source.Column != b.Source.Column {
-			return a.Source.Column < b.Source.Column
-		}
-		if a.Kind != b.Kind {
-			return a.Kind < b.Kind
-		}
-		if a.Name != b.Name {
-			return a.Name < b.Name
-		}
-		return a.Path < b.Path
-	})
-	return bundle, diagnostics
-}
-
-func mergeSourceDiagnostics(loader, compiled []definition.Diagnostic) []definition.Diagnostic {
-	diagnostics := append([]definition.Diagnostic{}, loader...)
-	invalidAPIVersion := false
-	duplicates := map[string]bool{}
-	missingRequiredField := map[string]bool{}
-	for _, diagnostic := range loader {
-		if diagnostic.Path == "apiVersion" {
-			invalidAPIVersion = true
-		}
-		if diagnostic.Message == "is required" && (diagnostic.Path == "kind" || diagnostic.Path == "name") {
-			missingRequiredField[diagnosticSourceKey(diagnostic)+"/"+diagnostic.Path] = true
-		}
-		if diagnostic.Message == "duplicate definition" {
-			duplicates[diagnostic.Kind+"/"+diagnostic.Name] = true
-		}
-	}
-	for _, diagnostic := range compiled {
-		if invalidAPIVersion && diagnostic.Path == "apiVersion" ||
-			diagnostic.Path == "kind" && missingRequiredField[diagnosticSourceKey(diagnostic)+"/kind"] ||
-			diagnostic.Path == "metadata.name" && missingRequiredField[diagnosticSourceKey(diagnostic)+"/name"] ||
-			diagnostic.Message == "duplicate machine name" && duplicates[diagnostic.Kind+"/"+diagnostic.Name] {
-			continue
-		}
-		diagnostics = append(diagnostics, diagnostic)
-	}
-	return diagnostics
-}
-
-func diagnosticSourceKey(diagnostic definition.Diagnostic) string {
-	return fmt.Sprintf("%s:%d:%d", diagnostic.Source.Path, diagnostic.Source.Line, diagnostic.Source.Column)
+	return appsource.Validate(filename)
 }
 
 func demoCommand(args []string) error {

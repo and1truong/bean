@@ -14,49 +14,55 @@ import (
 const JSONSchemaVersion = "https://json-schema.org/draft/2020-12/schema"
 
 type Capabilities struct {
-	DefinitionAPIVersion string   `json:"definitionAPIVersion"`
-	CLIAPIVersion        string   `json:"cliAPIVersion"`
-	AppIRFormat          string   `json:"appIRFormat"`
-	DefinitionKinds      []string `json:"definitionKinds"`
-	FieldTypes           []string `json:"fieldTypes"`
-	ActionOperations     []string `json:"actionOperations"`
-	ActionSteps          []string `json:"actionSteps"`
-	BlockTypes           []string `json:"blockTypes"`
-	Presentations        []string `json:"presentations"`
-	DisplaySerializers   []string `json:"displaySerializers"`
-	PanelLayouts         []string `json:"panelLayouts"`
-	DatabaseBackends     []string `json:"databaseBackends"`
-	MaxViewLimit         int      `json:"maxViewLimit"`
-	MaxFileBytes         int      `json:"maxFileBytes"`
-	ThemePresets         []string `json:"themePresets"`
-	ThemeAccents         []string `json:"themeAccents"`
-	DemoSeedProfiles     []string `json:"demoSeedProfiles"`
+	DefinitionAPIVersion    string   `json:"definitionAPIVersion"`
+	CLIAPIVersion           string   `json:"cliAPIVersion"`
+	AgentProtocolAPIVersion string   `json:"agentProtocolAPIVersion,omitempty"`
+	AppIRFormat             string   `json:"appIRFormat"`
+	DefinitionKinds         []string `json:"definitionKinds"`
+	FieldTypes              []string `json:"fieldTypes"`
+	ActionOperations        []string `json:"actionOperations"`
+	ActionSteps             []string `json:"actionSteps"`
+	BlockTypes              []string `json:"blockTypes"`
+	Presentations           []string `json:"presentations"`
+	DisplaySerializers      []string `json:"displaySerializers"`
+	PanelLayouts            []string `json:"panelLayouts"`
+	DatabaseBackends        []string `json:"databaseBackends"`
+	MaxViewLimit            int      `json:"maxViewLimit"`
+	MaxFileBytes            int      `json:"maxFileBytes"`
+	ThemePresets            []string `json:"themePresets"`
+	ThemeAccents            []string `json:"themeAccents"`
+	DemoSeedProfiles        []string `json:"demoSeedProfiles"`
 }
 
 func AgentCapabilities(cliAPIVersion string) Capabilities {
+	return ProtocolCapabilities(cliAPIVersion, "")
+}
+
+func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabilities {
 	kinds := make([]string, 0, len(definition.Kinds))
 	for kind := range definition.Kinds {
 		kinds = append(kinds, kind)
 	}
 	sort.Strings(kinds)
 	return Capabilities{
-		DefinitionAPIVersion: definition.APIVersion,
-		CLIAPIVersion:        cliAPIVersion,
-		AppIRFormat:          appir.CurrentFormat,
-		DefinitionKinds:      kinds,
-		FieldTypes:           []string{"boolean", "date", "datetime", "decimal", "email", "enum", "file", "integer", "json", "money", "password", "relation", "richtext", "slug", "string", "text", "url", "uuid"},
-		ActionOperations:     []string{"create", "delete", "register_local_user", "transaction", "transition", "update"},
-		ActionSteps:          []string{"assert", "assert_no_overlap", "conditional_update", "create", "decrement", "delete", "emit", "load", "query", "return", "schedule", "transition", "update"},
-		BlockTypes:           []string{"action", "entity", "menu", "resource-list", "text", "view", "webform"},
-		Presentations:        []string{"board", "detail", "list", "metric", "timeline", "tree"},
-		DisplaySerializers:   []string{"csv", "json", "rss"},
-		PanelLayouts:         []string{"grid", "main-sidebar", "sidebar-main", "single-column", "two-column"},
-		DatabaseBackends:     []string{"postgresql", "sqlite"},
-		MaxViewLimit:         200,
-		MaxFileBytes:         5 << 20,
-		ThemePresets:         []string{"minimal", "professional", "warm"},
-		ThemeAccents:         []string{"amber", "blue", "emerald", "indigo", "rose", "slate", "violet"},
-		DemoSeedProfiles:     []string{"activities", "auto", "companies", "jobs", "notes", "people"},
+		DefinitionAPIVersion:    definition.APIVersion,
+		CLIAPIVersion:           cliAPIVersion,
+		AgentProtocolAPIVersion: agentProtocolAPIVersion,
+		AppIRFormat:             appir.CurrentFormat,
+		DefinitionKinds:         kinds,
+		FieldTypes:              []string{"boolean", "date", "datetime", "decimal", "email", "enum", "file", "integer", "json", "money", "password", "relation", "richtext", "slug", "string", "text", "url", "uuid"},
+		ActionOperations:        []string{"create", "delete", "register_local_user", "transaction", "transition", "update"},
+		ActionSteps:             []string{"assert", "assert_no_overlap", "conditional_update", "create", "decrement", "delete", "emit", "load", "query", "return", "schedule", "transition", "update"},
+		BlockTypes:              []string{"action", "entity", "menu", "resource-list", "text", "view", "webform"},
+		Presentations:           []string{"board", "detail", "list", "metric", "timeline", "tree"},
+		DisplaySerializers:      []string{"csv", "json", "rss"},
+		PanelLayouts:            []string{"grid", "main-sidebar", "sidebar-main", "single-column", "two-column"},
+		DatabaseBackends:        []string{"postgresql", "sqlite"},
+		MaxViewLimit:            200,
+		MaxFileBytes:            5 << 20,
+		ThemePresets:            []string{"minimal", "professional", "warm"},
+		ThemeAccents:            []string{"amber", "blue", "emerald", "indigo", "rose", "slate", "violet"},
+		DemoSeedProfiles:        []string{"activities", "auto", "companies", "jobs", "notes", "people"},
 	}
 }
 

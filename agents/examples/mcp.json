@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "bean": {
+      "command": "/absolute/path/to/bin/bean",
+      "args": [
+        "mcp",
+        "serve",
+        "--allow-plane",
+        "definition,release,application"
+      ]
+    }
+  }
+}

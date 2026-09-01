@@ -1,12 +1,15 @@
-# Bean v0.7 capability matrix
+# Bean v0.8 capability matrix
 
-`complete` means the v0.7 compiler/runtime pair has direct executable evidence. Bean remains alpha software and the limits below are part of the contract.
+`complete` means the v0.8 compiler/runtime pair has direct executable evidence. Bean remains alpha software and the limits below are part of the contract.
 
 | Area | Capability | Status | Direct evidence |
 | --- | --- | --- | --- |
 | Definitions/AppIR | Strict typed definitions, canonical compilation, immutable versioned activation | complete | compiler, definition, AppIR compatibility tests |
 | Agent CLI | Versioned JSON envelope, stable exits/codes/paths/candidates, schema/capability discovery | complete | CLI unit contracts and real-binary repair benchmark |
 | Agent release loop | Init, validate, inspect, side-effect-free plan/diff, exact-source publish, isolated lifecycle test | complete | CLI/release/non-mutation tests and `make test-blackbox` |
+| Agent Protocol | Ten provider-neutral operations across independently authorized Definition, Release, and Application Planes | complete | registry, handler, transport-parity, and plane-boundary tests |
+| MCP adapter | Current `2026-07-28` stdio discovery/tools plus maintained initialization-era compatibility | complete | framing, discovery, list/call, malformed request, EOF, and stdout-cleanliness tests |
+| Application Plane | Policy-preserving View-only reads and Action-only writes with host-owned identity | complete | SQLite/PostgreSQL owner/tenant and bypass-refusal contracts |
 | Canonical schemas | Draft 2020-12 manifest and per-kind schemas generated from compiler specification types | complete | maintained-example coverage and checked-in schema drift tests |
 | DBAL | Parameterized CRUD, predicates, joins, groups, aggregates, transactions, inspection, migrations | complete | reusable SQLite/PostgreSQL contract |
 | PostgreSQL | pgx backend selection, numbered parameters, SQLSTATE errors, Admin/Action/View HTTP parity | complete | `make test-postgres` against PostgreSQL 17 |
@@ -43,9 +46,10 @@
 - One Bean process and one active application per database are qualified. Clustering, multi-process writers, replicas, HA, and failover are not.
 - Migrations are additive. Destructive schema changes, data transformations, and automated rollback are rejected or deferred.
 - Outbox delivery is at-least-once. A crash after delivery but before acknowledgement can duplicate an effect.
-- v0.7 retains the v0.5 crash qualification assumption of a functioning filesystem or PostgreSQL service. Corruption, host loss, backup/restore, and point-in-time recovery are outside scope.
+- v0.8 retains the v0.5 crash qualification assumption of a functioning filesystem or PostgreSQL service. Corruption, host loss, backup/restore, and point-in-time recovery are outside scope.
 - The visual builder covers the core operational definition path; non-core page composition kinds use advanced JSON in this slice.
 - Tree presentation is bounded by the View maximum of 200 rows. File fields are bounded small attachments stored as base64 metadata content; external object storage, resumable transfer, scanning, and media processing are outside this slice.
 - SQLite/PostgreSQL parity is contract and workflow parity, not identical query plans or operational characteristics.
 - `bean package` deliberately targets local SQLite only. It does not create containers, installers, hosted previews, signatures, or a distribution channel.
+- MCP deliberately targets local stdio only. Streamable HTTP, hosted identity, OAuth, subscriptions, prompts, resources, sampling, and remote rate-limit infrastructure are outside v0.8.
 - External security review, load envelopes, SLOs, supply-chain signing, and production release certification remain future work.
