@@ -320,17 +320,24 @@ func transactionLifecycleInputs(app *appir.App, actionDefinition appir.Action, l
 	if transition == nil {
 		return "", "", false
 	}
+	entityField := false
+	for _, field := range app.Entities[lifecycle.Entity].Fields {
+		entityField = entityField || field.Name == "entity"
+	}
 	for _, assignment := range transition.Values {
-		if assignment.Field != "id" && assignment.Field != lifecycle.StateField && assignment.Field != "entity" {
-			return "", "", false
+		if assignment.Field == "id" {
+			continue
 		}
-		if assignment.Field == "entity" {
-			for _, field := range app.Entities[lifecycle.Entity].Fields {
-				if field.Name == "entity" {
-					return "", "", false
-				}
+		if assignment.Field == lifecycle.StateField {
+			if assignment.Field == "entity" && assignment.Value.Source == "literal" {
+				return "", "", false
 			}
+			continue
 		}
+		if assignment.Field == "entity" && assignment.Value.Source == "literal" && !entityField {
+			continue
+		}
+		return "", "", false
 	}
 	bindings := map[string]appir.ValueBinding{}
 	for _, assignment := range transition.Values {

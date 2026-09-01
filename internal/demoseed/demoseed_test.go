@@ -137,6 +137,31 @@ func TestLifecyclePlanningUsesTransactionActionEdges(t *testing.T) {
 	}
 }
 
+func TestLifecyclePlanningAllowsInputBoundEntityStateField(t *testing.T) {
+	app := appir.Empty()
+	app.Entities["item"] = appir.Entity{Name: "item", Fields: []appir.Field{{Name: "entity", Type: "enum", Required: true, Options: []string{"initial", "done"}}}}
+	app.Lifecycles["flow"] = appir.Lifecycle{
+		Name: "flow", Entity: "item", StateField: "entity", Initial: "initial",
+		Transitions: map[string][]string{"initial": {"done"}},
+	}
+	app.Actions["finish_item"] = appir.Action{
+		Name: "finish_item", Entity: "item", Operation: "transaction", Lifecycle: "flow",
+		Input: map[string]appir.Field{
+			"item_id":    {Name: "item_id", Type: "uuid", Required: true},
+			"next_state": {Name: "next_state", Type: "enum", Required: true, Options: []string{"initial", "done"}},
+		},
+		Steps: []appir.Step{{Op: "transition", Values: []appir.Assignment{
+			{Field: "id", Value: appir.ValueBinding{Source: "input", Path: "item_id"}},
+			{Field: "entity", Value: appir.ValueBinding{Source: "input", Path: "next_state"}},
+		}}},
+	}
+	plans, err := planLifecycleMoves(app, []Record{{Entity: "item", ID: "00000000-0000-4000-8000-000000000001", Values: map[string]any{"entity": "done"}}})
+	want := [][]lifecycleMove{{{Action: "finish_item", State: "done", IDInput: "item_id", StateInput: "next_state"}}}
+	if err != nil || !reflect.DeepEqual(plans, want) {
+		t.Fatalf("plans=%+v want=%+v err=%v", plans, want, err)
+	}
+}
+
 func TestLifecyclePlanningRejectsUnsafeTransactionActions(t *testing.T) {
 	lifecycle := appir.Lifecycle{
 		Name: "flow", Entity: "item", StateField: "status", Initial: "initial",

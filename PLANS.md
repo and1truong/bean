@@ -9,7 +9,7 @@ Status values: `pending`, `active`, `done`. A milestone is `done` only when its 
 | 2 | Policy-aware Lifecycle enforcement through Actions with safe publication and restart behavior | positive/negative Action, release, and crash contracts | done |
 | 3 | Convert ATS candidate and commerce order flows to the shared primitive | source validation plus independent application journeys | done |
 | 4 | Preserve legacy transition compatibility and SQLite/PostgreSQL parity | compatibility, CLI/MCP parity, backend, and bypass-refusal tests | done |
-| 5 | Documentation, version cut, terminal gates, CI, and clean reviewed PR | all gates, CI, and Codex review | active |
+| 5 | Documentation, version cut, terminal gates, CI, and clean reviewed PR | all gates, CI, and Codex review | done |
 
 ## Working rules
 
