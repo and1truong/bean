@@ -1247,12 +1247,22 @@ func validateActions(a *appir.App, _ *validationState) []definition.Diagnostic {
 
 func validateActionRules(a *appir.App, name string, action appir.Action) []definition.Diagnostic {
 	out := []definition.Diagnostic{}
+	derivedInputs := nameSet(keys(action.Derive))
+	if action.Operation == "register_local_user" && (action.When != "" || len(action.Derive) > 0) {
+		out = append(out, ruleConsumerDiagnostic("Action", name, "spec.when", "local registration does not accept Rule consumers"))
+		return out
+	}
 	if action.When != "" {
 		item, exists := a.Rules[action.When]
 		if !exists {
 			out = append(out, missingReferenceDiagnostic("Action", name, "spec.when", "Rule", action.When))
 		} else {
 			out = append(out, validateActionRuleBinding(name, "spec.when", action, item)...)
+			if action.Operation == "transaction" && rule.UsesSource(item.Expression, "this") {
+				if _, hasID := action.Input["id"]; !hasID {
+					out = append(out, ruleConsumerDiagnostic("Action", name, "spec.when", "record-aware transaction Rule requires an id input"))
+				}
+			}
 			if item.Result != rule.Boolean {
 				out = append(out, ruleConsumerDiagnostic("Action", name, "spec.when", "Action guard Rule must return boolean"))
 			}
@@ -1266,6 +1276,19 @@ func validateActionRules(a *appir.App, name string, action appir.Action) []defin
 			continue
 		}
 		out = append(out, validateActionRuleBinding(name, path, action, item)...)
+		if action.Operation == "create" && rule.UsesSource(item.Expression, "this") {
+			out = append(out, ruleConsumerDiagnostic("Action", name, path, "create derivation cannot reference a candidate before derives are complete"))
+		}
+		if action.Operation == "transaction" && rule.UsesSource(item.Expression, "this") {
+			if _, hasID := action.Input["id"]; !hasID {
+				out = append(out, ruleConsumerDiagnostic("Action", name, path, "record-aware transaction Rule requires an id input"))
+			}
+		}
+		for _, inputName := range rule.InputPaths(item.Expression) {
+			if derivedInputs[inputName] {
+				out = append(out, ruleConsumerDiagnostic("Action", name, path, "derived Rules cannot reference derived input "+inputName))
+			}
+		}
 		field, exists := action.Input[fieldName]
 		if !exists {
 			out = append(out, missingFieldDiagnostic("Action", name, path, fieldName, false))

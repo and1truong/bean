@@ -59,6 +59,7 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 	if a.Operation != "register_local_user" && !authorize(app, a.Policy, true, request, nil) {
 		return nil, &dbal.Error{Code: dbal.Conflict, Message: "Action is not permitted"}
 	}
+	input = copyValues(input)
 	if a.Operation == "create" {
 		var initialErr error
 		input, initialErr = applyLifecycleInitial(app, e, input)
@@ -66,16 +67,11 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 			return nil, initialErr
 		}
 	}
-	for inputName, definition := range a.Input {
-		value := input[inputName]
-		if definition.Type == "file" && value != nil {
-			if _, upload := value.(field.Upload); !upload {
-				return nil, &dbal.Error{Code: dbal.InvalidQuery, Message: inputName + " must be uploaded as multipart form data"}
-			}
-		}
-		if er := field.Validate(definition, value); er != nil {
-			return nil, &dbal.Error{Code: dbal.InvalidQuery, Message: er.Error()}
-		}
+	if err := rejectDerivedInput(a, input); err != nil {
+		return nil, err
+	}
+	if err := validateActionInput(a, input, false); err != nil {
+		return nil, err
 	}
 	for inputName := range input {
 		if strings.HasPrefix(inputName, "_") {
@@ -123,12 +119,14 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 		generatedIDIndex++
 		return id
 	}
+	baseInput := copyValues(input)
+	executionNow := s.now().Format(time.RFC3339Nano)
 	err := s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
 		generatedIDIndex = 0
-		if request.Values == nil {
-			request.Values = map[string]any{}
-		}
-		request.Values["now"] = s.now().Format(time.RFC3339Nano)
+		input = copyValues(baseInput)
+		request.Values = copyValues(request.Values)
+		now := executionNow
+		request.Values["now"] = now
 		result = nil
 		entityID = ""
 		changed = nil
@@ -142,8 +140,13 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 				return nil
 			}
 		}
-		if a.Policy != "" && (a.Operation == "update" || a.Operation == "delete" || a.Operation == "transition") {
+		var current dbal.Row
+		needsCurrent := a.Operation == "update" || a.Operation == "delete" || a.Operation == "transition" || a.Operation == "transaction" && actionUsesCurrentRecord(app, a)
+		if needsCurrent {
 			id := fmt.Sprint(input["id"])
+			if id == "" {
+				return &dbal.Error{Code: dbal.InvalidQuery, Message: "id is required"}
+			}
 			rows, x := tx.Select(ctx, dbal.Select{Table: e.Name, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id}, Limit: 1})
 			if x != nil {
 				return x
@@ -152,14 +155,30 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 				return &dbal.Error{Code: dbal.NotFound, Message: "record not found"}
 			}
 			hydrate(rows[0], e)
-			if !policy.Can(app.Policies[a.Policy], true, request, recordMap(rows[0])) {
+			current = rows[0]
+			if a.Policy != "" && !policy.Can(app.Policies[a.Policy], true, request, recordMap(current)) {
 				return &dbal.Error{Code: dbal.NotFound, Message: "record not found"}
 			}
+		}
+		var x error
+		input, x = applyActionDerivations(app, a, input, current, request)
+		if x != nil {
+			return x
+		}
+		if x = validateActionInput(a, input, true); x != nil {
+			return x
+		}
+		guardRecord := current
+		if a.Operation == "create" {
+			guardRecord = createRuleCandidate(e, input, request, createID, now)
+		}
+		if x = evaluateActionGuard(app, a, input, guardRecord, request); x != nil {
+			return x
 		}
 		var er error
 		switch a.Operation {
 		case "create":
-			result, er = s.create(ctx, tx, app, e, input, request, createID)
+			result, er = s.create(ctx, tx, app, e, input, request, createID, now)
 		case "update":
 			if lifecycle, exists := lifecycleForEntity(app, a.Entity); exists {
 				if _, supplied := input[lifecycle.StateField]; supplied {
@@ -178,9 +197,9 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 					return &dbal.Error{Code: dbal.Conflict, Message: "protected state requires a transition Action"}
 				}
 			}
-			result, er = update(ctx, tx, app, e, input, a, request, fmt.Sprint(request.Values["now"]), false)
+			result, er = update(ctx, tx, app, e, input, a, request, now, false)
 		case "transition":
-			result, er = update(ctx, tx, app, e, input, a, request, fmt.Sprint(request.Values["now"]), true)
+			result, er = update(ctx, tx, app, e, input, a, request, now, true)
 		case "delete":
 			result, er = remove(ctx, tx, e, input)
 		case "transaction":
@@ -283,7 +302,7 @@ func scopedIdempotencyKey(key string, request beanctx.Request) string {
 	scope := sha256.Sum256([]byte(principal))
 	return fmt.Sprintf("%x:%s", scope, key)
 }
-func (s Service) create(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.Entity, input map[string]any, c beanctx.Request, id string) (dbal.Row, error) {
+func (s Service) create(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.Entity, input map[string]any, c beanctx.Request, id, now string) (dbal.Row, error) {
 	input, initialErr := applyLifecycleInitial(app, e, input)
 	if initialErr != nil {
 		return nil, initialErr
@@ -315,7 +334,9 @@ func (s Service) create(ctx context.Context, tx dbal.Transaction, app *appir.App
 			values[f.Name] = stored
 		}
 	}
-	now := s.now().Format(time.RFC3339Nano)
+	if now == "" {
+		now = s.now().Format(time.RFC3339Nano)
+	}
 	if id == "" {
 		id = s.createID(e, input)
 	}
@@ -332,19 +353,25 @@ func (s Service) create(ctx context.Context, tx dbal.Transaction, app *appir.App
 		}
 		values["tenant_id"] = c.TenantID
 	}
+	row := dbal.Row{}
+	for name, value := range values {
+		row[name] = value
+	}
+	hydrate(row, e)
+	for _, f := range e.Fields {
+		if toMany(f) && input[f.Name] != nil {
+			row[f.Name] = input[f.Name]
+		}
+	}
+	if er := validateEntityRules(app, e, row, c); er != nil {
+		return nil, er
+	}
 	if _, er := tx.Insert(ctx, dbal.Insert{Table: e.Name, Values: values}); er != nil {
 		return nil, er
 	}
 	if er := syncRelations(ctx, tx, app, e, fmt.Sprint(values["id"]), input, c, false); er != nil {
 		return nil, er
 	}
-	for _, f := range e.Fields {
-		if toMany(f) && input[f.Name] != nil {
-			values[f.Name] = input[f.Name]
-		}
-	}
-	row := dbal.Row(values)
-	hydrate(row, e)
 	return row, nil
 }
 func update(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.Entity, input map[string]any, a appir.Action, c beanctx.Request, now string, transition bool) (dbal.Row, error) {
@@ -428,6 +455,22 @@ func update(ctx context.Context, tx dbal.Transaction, app *appir.App, e appir.En
 	version := toInt(row["version"])
 	values["version"] = version + 1
 	values["updated_at"] = now
+	candidate := dbal.Row{}
+	for name, value := range row {
+		candidate[name] = value
+	}
+	for name, value := range values {
+		candidate[name] = value
+	}
+	hydrate(candidate, e)
+	for _, f := range e.Fields {
+		if toMany(f) && input[f.Name] != nil {
+			candidate[f.Name] = input[f.Name]
+		}
+	}
+	if er = validateEntityRules(app, e, candidate, c); er != nil {
+		return nil, er
+	}
 	where := dbal.And(dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id}, dbal.Predicate{Op: dbal.OpEQ, Column: "version", Value: version})
 	if _, er = tx.Update(ctx, dbal.Update{Table: e.Name, Values: values, Where: where, ExpectedRows: 1}); er != nil {
 		return nil, er
@@ -512,7 +555,7 @@ func noOverlap(ctx context.Context, tx dbal.Transaction, entity string, cfg, inp
 	}
 	return nil
 }
-func decrement(ctx context.Context, tx dbal.Transaction, entity appir.Entity, cfg, input map[string]any, authorized func(dbal.Row) bool) error {
+func decrement(ctx context.Context, tx dbal.Transaction, entity appir.Entity, cfg, input map[string]any, authorized func(dbal.Row) bool, validate func(dbal.Row) error, now string) error {
 	fieldName := stringCfg(cfg, "field", "inventory")
 	idInput := stringCfg(cfg, "id_input", "id")
 	amountInput := stringCfg(cfg, "amount_input", "amount")
@@ -533,8 +576,18 @@ func decrement(ctx context.Context, tx dbal.Transaction, entity appir.Entity, cf
 		return &dbal.Error{Code: dbal.Conflict, Message: stringCfg(cfg, "message", "Insufficient quantity.")}
 	}
 	version := toInt(rows[0]["version"])
+	candidate := dbal.Row{}
+	for name, value := range rows[0] {
+		candidate[name] = value
+	}
+	candidate[fieldName] = current - amount
+	candidate["version"] = version + 1
+	candidate["updated_at"] = now
+	if err := validate(candidate); err != nil {
+		return err
+	}
 	where := dbal.And(dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: rows[0]["id"]}, dbal.Predicate{Op: dbal.OpEQ, Column: "version", Value: version})
-	_, e = tx.Update(ctx, dbal.Update{Table: entity.Name, Values: map[string]dbal.Value{fieldName: current - amount, "version": version + 1, "updated_at": time.Now().UTC().Format(time.RFC3339Nano)}, Where: where, ExpectedRows: 1})
+	_, e = tx.Update(ctx, dbal.Update{Table: entity.Name, Values: map[string]dbal.Value{fieldName: current - amount, "version": version + 1, "updated_at": now}, Where: where, ExpectedRows: 1})
 	return e
 }
 func resolveValues(values []appir.Assignment, input map[string]any, results map[string]any, c beanctx.Request) (map[string]any, error) {

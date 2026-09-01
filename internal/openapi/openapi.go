@@ -31,6 +31,9 @@ func Generate(a *appir.App) (json.RawMessage, error) {
 		required := []string{}
 		hasFile := false
 		for n, f := range actionDefinition.Input {
+			if _, derived := actionDefinition.Derive[n]; derived {
+				continue
+			}
 			definition := schema(f.Type)
 			if f.Type == "file" {
 				definition = map[string]any{"type": "string", "format": "binary"}

@@ -76,6 +76,9 @@ func TestRuleDiagnosticsAreStableAndFailClosed(t *testing.T) {
 		{"wrong invariant entity", func(defs []definition.Definition) {
 			defs[0].Spec["validations"] = map[string]any{"positive_total": "other_entity"}
 		}, "Entity", "spec.validations.positive_total", "BEAN-E2351"},
+		{"derive dependency", func(defs []definition.Definition) {
+			defs[3].Spec["derive"] = map[string]any{"amount": "calculated_total", "total": "calculated_total"}
+		}, "Action", "spec.derive.total", "BEAN-E2351"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
