@@ -99,6 +99,44 @@ func TestRunReachesGeneratedLifecycleStatesThroughActions(t *testing.T) {
 	}
 }
 
+func TestRunUsesServerDerivedCreateInputs(t *testing.T) {
+	ctx := context.Background()
+	database, err := sqlite.Open(filepath.Join(t.TempDir(), "rule-seed.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	runtime := kernel.New()
+	store := &release.Store{DB: database, Migrations: database, Kernel: runtime, OpenAPI: openapi.Generate}
+	if err = store.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "line"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "quantity", "type": "integer", "required": true}, map[string]any{"name": "total", "type": "money", "required": true}}}},
+		{APIVersion: definition.APIVersion, Kind: "Rule", Metadata: definition.Metadata{Name: "copy_total"}, Spec: map[string]any{"entity": "line", "result": "number", "input": map[string]any{"quantity": map[string]any{"type": "integer"}}, "expression": map[string]any{"source": "input", "path": "quantity"}}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "line_create"}, Spec: map[string]any{"entity": "line", "operation": "create", "derive": map[string]any{"total": "copy_total"}}},
+		{APIVersion: definition.APIVersion, Kind: "DemoSeed", Metadata: definition.Metadata{Name: "demo"}, Spec: map[string]any{"entities": map[string]any{"line": map[string]any{"count": 2}}}},
+	}
+	if err = store.SaveBundle(ctx, "default", definition.Bundle{Name: "rule seed", Definitions: definitions}); err != nil {
+		t.Fatal(err)
+	}
+	if _, diagnostics, publishErr := store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) != 0 {
+		t.Fatalf("publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	app, _ := runtime.Active()
+	generated, err := Generate(app, 42)
+	if err != nil || generated[0].Values["total"] != int64(10) && generated[0].Values["total"] != 10 {
+		t.Fatalf("generated=%v err=%v", generated, err)
+	}
+	if _, err = Run(ctx, database, app, 42); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := database.Select(ctx, dbal.Select{Table: "line", Columns: []string{"quantity", "total"}, OrderBy: []dbal.Order{{Column: "quantity"}}, Limit: 10})
+	if err != nil || len(rows) != 2 || rows[0]["quantity"] != rows[0]["total"] {
+		t.Fatalf("rows=%v err=%v", rows, err)
+	}
+}
+
 func TestLifecyclePlanningUsesOnlyExecutableActionEdges(t *testing.T) {
 	app := appir.Empty()
 	app.Lifecycles["flow"] = appir.Lifecycle{
