@@ -13,6 +13,7 @@ import (
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/demoseed"
+	"github.com/beanruntime/bean/internal/field"
 	"github.com/beanruntime/bean/internal/policy"
 )
 
@@ -123,10 +124,54 @@ func crudSuites(app *appir.App, records []demoseed.Record) []appir.TestSuite {
 				}
 				test.Expect = appir.TestExpectation{Result: raw(map[string]any{"id": record.ID}), Changes: []appir.TestMutation{change}, NoEvents: true}
 			}
+			if !crudInputSupported(action, test.Input) || !crudAuthorized(app, action, record, test.Context) {
+				continue
+			}
 			suites = append(suites, appir.TestSuite{Target: appir.TestTarget{Kind: "Action", Name: actionName}, Tests: []appir.TestCase{test}})
 		}
 	}
 	return suites
+}
+
+func crudInputSupported(action appir.Action, input map[string]any) bool {
+	for name, value := range input {
+		definition, declared := action.Input[name]
+		if !declared {
+			return false
+		}
+		if _, derived := action.Derive[name]; derived || field.Validate(definition, value) != nil {
+			return false
+		}
+	}
+	for name, definition := range action.Input {
+		if _, derived := action.Derive[name]; derived {
+			continue
+		}
+		if _, supplied := input[name]; !supplied && field.Validate(definition, nil) != nil {
+			return false
+		}
+	}
+	return true
+}
+
+func crudAuthorized(app *appir.App, action appir.Action, record demoseed.Record, context appir.TestContext) bool {
+	if action.Policy == "" {
+		return true
+	}
+	definition, exists := app.Policies[action.Policy]
+	if !exists {
+		return false
+	}
+	row := copyMap(record.Values)
+	row["id"] = record.ID
+	entity := app.Entities[record.Entity]
+	if entity.Owner {
+		row["owner_id"] = generatedActorID
+	}
+	if entity.Tenant {
+		row["tenant_id"] = generatedTenantID
+	}
+	return policy.Can(definition, true, request(context), row)
 }
 
 func crudFixtures(app *appir.App, records []demoseed.Record, target demoseed.Record, omitTarget bool) map[string][]map[string]any {
