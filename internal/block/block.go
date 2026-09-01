@@ -45,42 +45,14 @@ func Node(a *appir.App, b appir.Block, ctx map[string]any, c beanctx.Request) (r
 		inputs[name] = value
 	}
 	props["inputs"] = inputs
-	switch b.Type {
-	case "text":
-		props["text"] = b.Text
-	case "view":
-		props["view"] = b.View
-		props["presentation"] = b.Presentation
-		props["formattedFields"] = formattedFields(a, b)
-		props["fileFields"] = fileFields(a, b)
-	case "entity":
-		props["entity"] = b.Entity
-	case "webform":
-		props["webform"] = b.Webform
-		form := a.Webforms[b.Webform]
-		boundElements, err := bindFormElements(form.Elements, c)
-		if err != nil {
-			return render.Node{}, false, fmt.Errorf("render Webform conditions: %w", err)
-		}
-		form.Elements = boundElements
-		props["form"] = form
-	case "action":
-		props["action"] = b.Action
-	case "menu":
-		items := []appir.MenuItem{}
-		for _, item := range a.Menus[b.Menu].Items {
-			if item.Policy == "" || policy.Can(a.Policies[item.Policy], false, c, nil) {
-				items = append(items, item)
-			}
-		}
-		props["items"] = items
-	case "resource-list":
-		props["resource"] = b.Resource
-		props["view"] = b.View
-		props["filters"] = b.Filters
-		props["defaultFilters"] = b.DefaultFilters
+	capability, exists := capabilities.Lookup(b.Type)
+	if !exists {
+		return render.Node{Component: "UnknownBlock", Props: props}, true, nil
 	}
-	return render.Node{Component: component(b.Type), Props: props}, true, nil
+	if err := capability.BuildProperties(a, b, c, props); err != nil {
+		return render.Node{}, false, err
+	}
+	return render.Node{Component: capability.Component, Props: props}, true, nil
 }
 func bindFormElements(elements []appir.FormElement, c beanctx.Request) ([]appir.FormElement, error) {
 	bound := make([]appir.FormElement, len(elements))
@@ -150,24 +122,4 @@ func formattedFields(a *appir.App, b appir.Block) []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-func component(t string) string {
-	switch t {
-	case "text":
-		return "TextBlock"
-	case "view":
-		return "ViewBlock"
-	case "entity":
-		return "EntityBlock"
-	case "webform":
-		return "WebformBlock"
-	case "action":
-		return "ActionBlock"
-	case "menu":
-		return "MenuBlock"
-	case "resource-list":
-		return "ResourceListBlock"
-	}
-	return "UnknownBlock"
 }

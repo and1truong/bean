@@ -9,6 +9,7 @@ import (
 
 	"github.com/beanruntime/bean/internal/actionstep"
 	"github.com/beanruntime/bean/internal/appir"
+	blockcap "github.com/beanruntime/bean/internal/block"
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/expr"
@@ -1028,13 +1029,14 @@ func validate(a *appir.App) []definition.Diagnostic {
 		}
 	}
 	for name, block := range a.Blocks {
-		if !map[string]bool{"text": true, "view": true, "entity": true, "webform": true, "action": true, "menu": true, "resource-list": true}[block.Type] {
+		blockSpecification, registered := blockcap.Lookup(block.Type)
+		if !registered {
 			out = append(out, diagnostic("Block", name, "spec.type", "has no registered renderer"))
 		}
-		if block.Type == "resource-list" && block.Resource == "" {
+		if blockSpecification.RequiresResource && block.Resource == "" {
 			out = append(out, diagnostic("Block", name, "spec.resource", "is required"))
 		}
-		if block.Type == "resource-list" && (block.Policy == "" || !editorOnlyReadPolicy(a.Policies[block.Policy])) {
+		if blockSpecification.RequiresEditorReadPolicy && (block.Policy == "" || !editorOnlyReadPolicy(a.Policies[block.Policy])) {
 			out = append(out, diagnostic("Block", name, "spec.policy", "resource-list Block must be restricted to editor and administrator roles"))
 		}
 		refs := []struct{ kind, value string }{{"view", block.View}, {"entity", block.Entity}, {"webform", block.Webform}, {"action", block.Action}, {"resource", block.Resource}}
@@ -1059,7 +1061,7 @@ func validate(a *appir.App) []definition.Diagnostic {
 				out = append(out, diagnostic("Block", name, "spec."+ref.kind, "invalid Block input reference "+ref.value))
 			}
 		}
-		if block.Type == "view" && block.View != "" {
+		if blockSpecification.SupportsPresentation && block.View != "" {
 			out = append(out, validatePresentation(name, block, a)...)
 		}
 		if block.Menu != "" {
@@ -1092,19 +1094,25 @@ func validate(a *appir.App) []definition.Diagnostic {
 			}
 		}
 		var target map[string]appir.Field
-		if block.Type == "view" && block.View != "" {
-			target = a.Views[block.View].ExposedFilters
-		}
-		if block.Type == "webform" && block.Webform != "" {
-			formDefinition := a.Webforms[block.Webform]
-			target = a.Actions[formDefinition.Action].Input
-			for _, element := range formDefinition.Elements {
-				if _, bound := block.Bindings[element.Name]; bound {
-					out = append(out, diagnostic("Block", name, "spec.bindings."+element.Name, "cannot bind a field also rendered by the Webform"))
+		switch blockSpecification.InputTarget {
+		case blockcap.ViewInputTarget:
+			if block.View != "" {
+				target = a.Views[block.View].ExposedFilters
+			}
+		case blockcap.WebformInputTarget:
+			if block.Webform != "" {
+				formDefinition := a.Webforms[block.Webform]
+				target = a.Actions[formDefinition.Action].Input
+				for _, element := range formDefinition.Elements {
+					if _, bound := block.Bindings[element.Name]; bound {
+						out = append(out, diagnostic("Block", name, "spec.bindings."+element.Name, "cannot bind a field also rendered by the Webform"))
+					}
 				}
 			}
-		}
-		if block.Type == "resource-list" && block.Resource != "" {
+		case blockcap.ResourceInputTarget:
+			if block.Resource == "" {
+				break
+			}
 			resource := a.AdminResources[block.Resource]
 			target = a.Views[resource.View].ExposedFilters
 			resourceFilters := nameSet(resource.List.Filters)
@@ -1653,7 +1661,8 @@ func validateRegistrationPage(a *appir.App, route, actionName string) string {
 		for _, blockName := range region.Blocks {
 			blockDefinition := a.Blocks[blockName]
 			formDefinition := a.Webforms[blockDefinition.Webform]
-			if blockDefinition.Type != "webform" || formDefinition.Action != actionName {
+			specification, registered := blockcap.Lookup(blockDefinition.Type)
+			if !registered || specification.InputTarget != blockcap.WebformInputTarget || formDefinition.Action != actionName {
 				continue
 			}
 			found = true
@@ -1894,7 +1903,8 @@ func normalizeAdminResources(a *appir.App) {
 
 func normalizeResourceListBlocks(a *appir.App) {
 	for name, block := range a.Blocks {
-		if block.Type != "resource-list" {
+		specification, registered := blockcap.Lookup(block.Type)
+		if !registered || !specification.DerivesViewFromResource {
 			continue
 		}
 		if resource, ok := a.AdminResources[block.Resource]; ok {

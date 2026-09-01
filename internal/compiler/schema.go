@@ -8,6 +8,7 @@ import (
 
 	"github.com/beanruntime/bean/internal/actionstep"
 	"github.com/beanruntime/bean/internal/appir"
+	"github.com/beanruntime/bean/internal/block"
 	"github.com/beanruntime/bean/internal/definition"
 )
 
@@ -50,7 +51,7 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 		FieldTypes:              []string{"boolean", "date", "datetime", "decimal", "email", "enum", "file", "integer", "json", "money", "password", "relation", "richtext", "slug", "string", "text", "url", "uuid"},
 		ActionOperations:        []string{"create", "delete", "register_local_user", "transaction", "transition", "update"},
 		ActionSteps:             actionstep.Names(),
-		BlockTypes:              []string{"action", "entity", "menu", "resource-list", "text", "view", "webform"},
+		BlockTypes:              block.Names(),
 		Presentations:           []string{"board", "detail", "list", "metric", "timeline", "tree"},
 		DisplaySerializers:      []string{"csv", "json", "rss"},
 		PanelLayouts:            []string{"grid", "main-sidebar", "sidebar-main", "single-column", "two-column"},
