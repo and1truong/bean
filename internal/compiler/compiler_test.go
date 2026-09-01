@@ -218,6 +218,17 @@ func TestDemoSeedRejectsImpossibleUniqueValuesAndPartialVerificationView(t *test
 	}
 }
 
+func TestDemoSeedRejectsUnsupportedRequiredRelationTarget(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "account"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "secret", "type": "string", "unique": true, "sensitive": true}}}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "contact"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "account_key", "type": "relation", "required": true, "relation": map[string]any{"entity": "account", "kind": "many-to-one", "targetField": "secret"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "DemoSeed", Metadata: definition.Metadata{Name: "demo"}, Spec: map[string]any{"entities": map[string]any{"account": map[string]any{"count": 1}, "contact": map[string]any{"count": 1}}}},
+	}
+	if diagnostics := compiler.Compile("test", 1, definitions).Diagnostics; !hasDiagnostic(diagnostics, "demo", "spec.entities.contact") {
+		t.Fatalf("unsupported target accepted: %v", diagnostics)
+	}
+}
+
 func TestTimelineRequiresSelectedTimeField(t *testing.T) {
 	definitions := []definition.Definition{
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "activity"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}, map[string]any{"name": "occurred_at", "type": "datetime"}}}},
@@ -226,6 +237,18 @@ func TestTimelineRequiresSelectedTimeField(t *testing.T) {
 	}
 	if diagnostics := compiler.Compile("test", 1, definitions).Diagnostics; !hasDiagnostic(diagnostics, "timeline", "spec.presentation.timeField") {
 		t.Fatalf("unselected timeline time field accepted: %v", diagnostics)
+	}
+}
+
+func TestTimelineRejectsRedactedTimeField(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "activity"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}, map[string]any{"name": "occurred_at", "type": "datetime"}}}},
+		{APIVersion: definition.APIVersion, Kind: "Policy", Metadata: definition.Metadata{Name: "activity_policy"}, Spec: map[string]any{"redact": []any{"occurred_at"}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "activities"}, Spec: map[string]any{"entity": "activity", "policy": "activity_policy", "fields": []any{"id", "title", "occurred_at"}}},
+		{APIVersion: definition.APIVersion, Kind: "Block", Metadata: definition.Metadata{Name: "timeline"}, Spec: map[string]any{"type": "view", "view": "activities", "presentation": map[string]any{"mode": "timeline", "titleField": "title", "timeField": "occurred_at"}}},
+	}
+	if diagnostics := compiler.Compile("test", 1, definitions).Diagnostics; !hasDiagnostic(diagnostics, "timeline", "spec.presentation.timeField") {
+		t.Fatalf("redacted timeline time field accepted: %v", diagnostics)
 	}
 }
 

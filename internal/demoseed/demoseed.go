@@ -67,6 +67,9 @@ func Generate(app *appir.App, seed int64) ([]Record, error) {
 			generated[entityName] = append(generated[entityName], record)
 		}
 	}
+	if err := validateGeneratedUniqueness(app, records); err != nil {
+		return nil, err
+	}
 	return records, nil
 }
 
@@ -117,6 +120,13 @@ func Run(ctx context.Context, database dbal.Database, app *appir.App, seed int64
 			return Result{}, fmt.Errorf("seed %s: %w", record.Entity, err)
 		}
 	}
+	_, exact, err = inspectTarget(ctx, database, app, records, request)
+	if err != nil {
+		return Result{}, err
+	}
+	if !exact {
+		return Result{}, fmt.Errorf("seed Actions did not produce the generated dataset")
+	}
 	return result, nil
 }
 
@@ -131,18 +141,27 @@ func inspectTarget(ctx context.Context, database dbal.Database, app *appir.App, 
 	empty := true
 	views := view.Service{DB: database}
 	for entityName := range app.DemoSeed.Entities {
-		page, err := views.RunPage(ctx, app, entityName+"_list", view.Params{Limit: 200}, request)
-		if err != nil {
-			return false, false, fmt.Errorf("verify seeded View %s_list: %w", entityName, err)
+		rows := []dbal.Row{}
+		cursor := ""
+		for {
+			page, err := views.RunPage(ctx, app, entityName+"_list", view.Params{Limit: 200, Cursor: cursor}, request)
+			if err != nil {
+				return false, false, fmt.Errorf("verify seeded View %s_list: %w", entityName, err)
+			}
+			rows = append(rows, page.Rows...)
+			if page.NextCursor == "" {
+				break
+			}
+			cursor = page.NextCursor
 		}
-		if len(page.Rows) > 0 {
+		if len(rows) > 0 {
 			empty = false
 		}
-		if len(page.Rows) != len(expected[entityName]) {
+		if len(rows) != len(expected[entityName]) {
 			return empty, false, nil
 		}
 		entity := app.Entities[entityName]
-		for _, row := range page.Rows {
+		for _, row := range rows {
 			record, exists := expected[entityName][fmt.Sprint(row["id"])]
 			if !exists {
 				return empty, false, nil
@@ -159,6 +178,59 @@ func inspectTarget(ctx context.Context, database dbal.Database, app *appir.App, 
 		}
 	}
 	return empty, !empty, nil
+}
+
+func validateGeneratedUniqueness(app *appir.App, records []Record) error {
+	byEntity := map[string][]Record{}
+	for _, record := range records {
+		byEntity[record.Entity] = append(byEntity[record.Entity], record)
+	}
+	entityNames := make([]string, 0, len(byEntity))
+	for entityName := range byEntity {
+		entityNames = append(entityNames, entityName)
+	}
+	sort.Strings(entityNames)
+	for _, entityName := range entityNames {
+		entityRecords := byEntity[entityName]
+		entity := app.Entities[entityName]
+		constraints := append([][]string{}, entity.Unique...)
+		for _, field := range entity.Fields {
+			toMany := field.Relation != nil && (field.Relation.Kind == "one-to-many" || field.Relation.Kind == "many-to-many")
+			if field.Unique && !toMany || field.Relation != nil && field.Relation.Kind == "one-to-one" {
+				constraints = append(constraints, []string{field.Name})
+			}
+		}
+		for _, fields := range constraints {
+			if len(fields) == 0 {
+				continue
+			}
+			seen := map[string]bool{}
+			for _, record := range entityRecords {
+				values := make([]any, 0, len(fields))
+				complete := true
+				for _, fieldName := range fields {
+					value, exists := record.Values[fieldName]
+					if fieldName == "id" {
+						value, exists = record.ID, true
+					}
+					if !exists || value == nil {
+						complete = false
+						break
+					}
+					values = append(values, value)
+				}
+				if !complete {
+					continue
+				}
+				key := canonical(values)
+				if seen[key] {
+					return fmt.Errorf("generated values violate unique constraint %s(%s)", entityName, strings.Join(fields, ","))
+				}
+				seen[key] = true
+			}
+		}
+	}
+	return nil
 }
 
 func emptyValue(value any) bool {

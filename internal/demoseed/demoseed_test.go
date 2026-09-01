@@ -2,6 +2,7 @@ package demoseed
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/beanruntime/bean/internal/appir"
@@ -50,6 +51,26 @@ func TestGenerateUsesDeclaredRelationTargetField(t *testing.T) {
 	if records[2].Values["account_key"] != target || target == records[0].ID {
 		t.Fatalf("relation=%v target=%v record ID=%s", records[2].Values["account_key"], target, records[0].ID)
 	}
+}
+
+func TestGenerateRejectsRepeatedUniqueValuesBeforeSeeding(t *testing.T) {
+	t.Run("relation", func(t *testing.T) {
+		app := appir.Empty()
+		app.Entities["account"] = appir.Entity{Name: "account", Fields: []appir.Field{{Name: "name", Type: "string", Required: true}}}
+		app.Entities["contact"] = appir.Entity{Name: "contact", Fields: []appir.Field{{Name: "account_id", Type: "relation", Required: true, Unique: true, Relation: &appir.Relation{Entity: "account", Kind: "many-to-one", TargetField: "id"}}}}
+		app.DemoSeed = &appir.DemoSeed{Name: "demo", Entities: map[string]appir.DemoSeedEntity{"account": {Count: 2}, "contact": {Count: 3}}}
+		if _, err := Generate(app, 42); err == nil || !strings.Contains(err.Error(), "unique constraint contact(account_id)") {
+			t.Fatalf("error=%v", err)
+		}
+	})
+	t.Run("tuple", func(t *testing.T) {
+		app := appir.Empty()
+		app.Entities["sample"] = appir.Entity{Name: "sample", Fields: []appir.Field{{Name: "enabled", Type: "boolean", Required: true}, {Name: "state", Type: "enum", Required: true, Options: []string{"one", "two"}}}, Unique: [][]string{{"enabled", "state"}}}
+		app.DemoSeed = &appir.DemoSeed{Name: "demo", Entities: map[string]appir.DemoSeedEntity{"sample": {Count: 3}}}
+		if _, err := Generate(app, 42); err == nil || !strings.Contains(err.Error(), "unique constraint sample(enabled,state)") {
+			t.Fatalf("error=%v", err)
+		}
+	})
 }
 
 func TestGenerateCoversSupportedScalarTypesAndSkipsUnsafeFields(t *testing.T) {

@@ -629,6 +629,11 @@ func validate(a *appir.App) []definition.Diagnostic {
 				if field.Required && field.Relation != nil {
 					if _, seeded := a.DemoSeed.Entities[field.Relation.Entity]; !seeded {
 						out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path, "requires seeded relation Entity "+field.Relation.Entity))
+					} else if field.Relation.TargetField != "id" {
+						target, exists := entityFieldDefinition(a.Entities[field.Relation.Entity], field.Relation.TargetField)
+						if exists && (target.Sensitive || target.Type == "password" || target.Type == "file") {
+							out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path, "cannot generate relation target field "+field.Relation.Entity+"."+field.Relation.TargetField))
+						}
 					}
 				}
 				if field.Unique && field.Type == "boolean" && seed.Count > 2 {
@@ -1466,6 +1471,8 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 		field, exists := fieldDefinition(presentation.TimeField)
 		if presentation.TimeField == "" || !selected[presentation.TimeField] || !exists || field.Type != "date" && field.Type != "datetime" {
 			out = append(out, diagnostic("Block", name, "spec.presentation.timeField", "timeline requires a selected date or datetime field"))
+		} else if redacted[presentation.TimeField] {
+			out = append(out, diagnostic("Block", name, "spec.presentation.timeField", "must not be redacted by View policy "+viewDefinition.Policy))
 		}
 	}
 	if presentation.Mode == "board" {

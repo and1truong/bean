@@ -106,7 +106,7 @@ func TestAgentValidateJSONSuccessIsDeterministic(t *testing.T) {
 func TestAgentDemoSeedPublishesDeterministicDatasetThroughActions(t *testing.T) {
 	directory := t.TempDir()
 	manifest := filepath.Join(directory, "app.yaml")
-	source := "apiVersion: bean/v1alpha1\nname: Recruiting\n---\nkind: Entity\nname: candidate\nfields:\n  - {name: name, label: Name, type: string, required: true}\n  - {name: stage, label: Stage, type: enum, required: true, options: [applied, interview]}\n---\nkind: DemoSeed\nname: demo\nentities:\n  candidate: {count: 4, profile: people}\n"
+	source := "apiVersion: bean/v1alpha1\nname: Recruiting\n---\nkind: Entity\nname: candidate\nfields:\n  - {name: name, label: Name, type: string, required: true}\n  - {name: stage, label: Stage, type: enum, required: true, options: [applied, interview]}\n---\nkind: View\nname: candidate_list\nentity: candidate\nfields: [id, name, stage, created_at, updated_at, version]\ndefaultLimit: 2\nmaxLimit: 2\n---\nkind: DemoSeed\nname: demo\nentities:\n  candidate: {count: 4, profile: people}\n"
 	if err := os.WriteFile(manifest, []byte(source), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -178,6 +178,25 @@ func TestAgentDemoSeedPublishesDeterministicDatasetThroughActions(t *testing.T) 
 	}
 	if checksums[0] != checksums[1] {
 		t.Fatalf("checksums=%v", checksums)
+	}
+}
+
+func TestAgentDemoSeedVerifiesCustomCreateActionOutput(t *testing.T) {
+	directory := t.TempDir()
+	manifest := filepath.Join(directory, "app.yaml")
+	database := filepath.Join(directory, "bean.db")
+	source := "apiVersion: bean/v1alpha1\nname: Broken Seed\n---\nkind: Entity\nname: candidate\nfields:\n  - {name: name, type: string, required: true}\n---\nkind: Action\nname: candidate_create\nentity: candidate\noperation: transaction\ninput:\n  name: {type: string, required: true}\nsteps:\n  - {op: return}\n---\nkind: DemoSeed\nname: demo\nentities:\n  candidate: {count: 1, profile: people}\n"
+	if err := os.WriteFile(manifest, []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if exit := execute([]string{"app", "publish", "--file", manifest, "--db", database, "--json"}, &stdout, &stderr); exit != exitOK {
+		t.Fatalf("publish exit=%d stderr=%s stdout=%s", exit, stderr.String(), stdout.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if exit := execute([]string{"demo", "seed", "--file", manifest, "--db", database, "--json"}, &stdout, &stderr); exit != exitRuntime || !strings.Contains(stdout.String(), "did not produce") {
+		t.Fatalf("seed exit=%d stderr=%s stdout=%s", exit, stderr.String(), stdout.String())
 	}
 }
 
