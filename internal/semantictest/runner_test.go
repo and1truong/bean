@@ -4,10 +4,13 @@ import (
 	"context"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/beanruntime/bean/examples"
 	"github.com/beanruntime/bean/internal/definition"
+	"github.com/beanruntime/bean/internal/generatedtest"
+	"github.com/beanruntime/bean/internal/rule"
 	"github.com/beanruntime/bean/internal/semantictest"
 )
 
@@ -234,6 +237,69 @@ func TestMaintainedSuitesCatchSeededBehaviorDefects(t *testing.T) {
 	}
 }
 
+func TestGeneratedReplaysCatchSeededRuleAndConsumerDefects(t *testing.T) {
+	tests := []struct {
+		name        string
+		application string
+		mutate      func([]definition.Definition)
+	}{
+		{"calculation", "commerce", func(definitions []definition.Definition) {
+			findDefinition(t, definitions, "Rule", "order_item_total").Spec["expression"].(map[string]any)["op"] = "add"
+		}},
+		{"guard", "ats", func(definitions []definition.Definition) {
+			findDefinition(t, definitions, "Action", "move_candidate").Spec["when"] = ""
+		}},
+		{"validation", "booking", func(definitions []definition.Definition) {
+			findDefinition(t, definitions, "Entity", "booking").Spec["validations"] = map[string]any{}
+		}},
+		{"context", "booking", func(definitions []definition.Definition) {
+			tests := findDefinition(t, definitions, "TestSuite", "book_resource_contract").Spec["tests"].([]any)
+			tests[0].(map[string]any)["context"].(map[string]any)["time"] = "2026-09-02T10:00:00Z"
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			bundle, err := examples.Load(test.application)
+			if err != nil {
+				t.Fatal(err)
+			}
+			test.mutate(bundle.Definitions)
+			_, diagnostics, err := semantictest.RunGenerated(context.Background(), bundle, t.TempDir())
+			if err != nil || !hasGeneratedAssertionFailure(diagnostics) {
+				t.Fatalf("diagnostics=%v err=%v", diagnostics, err)
+			}
+		})
+	}
+
+	t.Run("resource limit", func(t *testing.T) {
+		piece := strings.Repeat("x", rule.MaxLiteralBytes-2)
+		args := make([]any, 5)
+		for index := range args {
+			args[index] = map[string]any{"source": "literal", "literal": piece}
+		}
+		definitions := []definition.Definition{
+			{APIVersion: definition.APIVersion, Kind: "Rule", Metadata: definition.Metadata{Name: "bounded_concat"}, Spec: map[string]any{"result": "string", "expression": map[string]any{"op": "concat", "args": args}}},
+			{APIVersion: definition.APIVersion, Kind: "TestSuite", Metadata: definition.Metadata{Name: "bounded_concat_contract"}, Spec: map[string]any{
+				"target": map[string]any{"kind": "Rule", "name": "bounded_concat"}, "tests": []any{map[string]any{"name": "rejects_large_result", "expect": map[string]any{"error": rule.CodeLimit}}},
+			}},
+		}
+		findDefinition(t, definitions, "Rule", "bounded_concat").Spec["expression"] = args[0]
+		_, diagnostics, err := semantictest.RunGenerated(context.Background(), definition.Bundle{Name: "Limit", Definitions: definitions}, t.TempDir())
+		if err != nil || !hasGeneratedAssertionFailure(diagnostics) {
+			t.Fatalf("diagnostics=%v err=%v", diagnostics, err)
+		}
+	})
+}
+
+func hasGeneratedAssertionFailure(diagnostics []definition.Diagnostic) bool {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Code == "BEAN-T1001" && strings.HasPrefix(diagnostic.Name, "generated_replay_") {
+			return true
+		}
+	}
+	return false
+}
+
 func TestActionSuiteCatchesSeededPermissionDefect(t *testing.T) {
 	definitions := actionSuiteDefinitions()
 	findDefinition(t, definitions, "Policy", "manager_write").Spec["writeRoles"] = []any{"viewer"}
@@ -241,6 +307,63 @@ func TestActionSuiteCatchesSeededPermissionDefect(t *testing.T) {
 	if err != nil || len(diagnostics) == 0 || diagnostics[0].Code != "BEAN-T1001" {
 		t.Fatalf("results=%+v diagnostics=%v err=%v", results, diagnostics, err)
 	}
+}
+
+func TestGeneratedNegativeCasesCatchSeededPolicyAndTransitionDefects(t *testing.T) {
+	t.Run("policy", func(t *testing.T) {
+		bundle := definition.Bundle{Name: "Policy", Definitions: actionSuiteDefinitions()}
+		materialized, origins, diagnostics := generatedtest.Materialize(bundle)
+		if len(diagnostics) != 0 || origins["generated_policy_ticket_close_contract"].Family != "policy" {
+			t.Fatalf("origins=%v diagnostics=%v", origins, diagnostics)
+		}
+		findDefinition(t, materialized.Definitions, "Policy", "manager_write").Spec["writeRoles"] = []any{}
+		_, diagnostics, err := semantictest.Run(context.Background(), materialized, t.TempDir())
+		if err != nil || !hasGeneratedFamilyFailure(diagnostics, "generated_policy_") {
+			t.Fatalf("diagnostics=%v err=%v", diagnostics, err)
+		}
+	})
+
+	t.Run("transition", func(t *testing.T) {
+		bundle, err := examples.Load("commerce")
+		if err != nil {
+			t.Fatal(err)
+		}
+		materialized, origins, diagnostics := generatedtest.Materialize(bundle)
+		if len(diagnostics) != 0 || origins["generated_transition_advance_order_contract"].Family != "transition" {
+			t.Fatalf("origins=%v diagnostics=%v", origins, diagnostics)
+		}
+		lifecycle := findDefinition(t, materialized.Definitions, "Lifecycle", "order_fulfillment")
+		lifecycle.Spec["transitions"].(map[string]any)["pending_payment"] = []any{"paid", "pending_payment"}
+		_, diagnostics, err = semantictest.Run(context.Background(), materialized, t.TempDir())
+		if err != nil || !hasGeneratedFamilyFailure(diagnostics, "generated_transition_") {
+			t.Fatalf("diagnostics=%v err=%v", diagnostics, err)
+		}
+	})
+}
+
+func TestGeneratedCRUDSuitesUseProductionActions(t *testing.T) {
+	bundle := definition.Bundle{Name: "CRUD", Definitions: []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "note"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string", "required": true}}}},
+		{APIVersion: definition.APIVersion, Kind: "DemoSeed", Metadata: definition.Metadata{Name: "demo"}, Spec: map[string]any{"entities": map[string]any{"note": map[string]any{"count": 1}}}},
+	}}
+	results, diagnostics, err := semantictest.RunGenerated(context.Background(), bundle, t.TempDir())
+	if err != nil || len(diagnostics) != 0 || len(results) != 3 {
+		t.Fatalf("results=%+v diagnostics=%v err=%v", results, diagnostics, err)
+	}
+	for _, result := range results {
+		if result.Status != "passed" || result.Evidence == nil || result.Evidence.Family != "crud" || len(result.Cases) != 1 || result.Cases[0].Status != "passed" {
+			t.Fatalf("result=%+v", result)
+		}
+	}
+}
+
+func hasGeneratedFamilyFailure(diagnostics []definition.Diagnostic, prefix string) bool {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Code == "BEAN-T1001" && strings.HasPrefix(diagnostic.Name, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func findDefinition(t *testing.T, definitions []definition.Definition, kind, name string) *definition.Definition {

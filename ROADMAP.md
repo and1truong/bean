@@ -74,7 +74,7 @@ Presentation remains a separately reported score so a technically correct but un
 
 ## Current engineering goal
 
-Bean v0.11 First-class Semantic Test Suites is active. The initial contract adds canonical metadata suites targeting stable Rule and Action identities, explicit fixtures and actor/tenant/time/ID/seed context, deterministic result/error/mutation/event/audit assertions, isolated execution through production paths, and machine-readable `app test` evidence. Generated tests, provider mocks, standalone test commands, and direct Policy/Lifecycle targets are deferred. The executable contract and milestones are in `GOAL.md` and `PLANS.md`.
+Bean v0.12 Generated Semantic and Rule Tests is active. It deterministically materializes ordinary TestSuite definitions from canonical AppIR, explicit suite expectations, and DemoSeed data; adds stable source-traced schema, binding, CRUD, route, and journey evidence; and exercises Policy and Lifecycle negatives through production Actions. Generation proves only declared semantics and representative boundaries—it does not invent business expectations. The executable contract and milestones are in `GOAL.md` and `PLANS.md`.
 
 ## Roadmap
 
@@ -86,8 +86,8 @@ Bean v0.11 First-class Semantic Test Suites is active. The initial contract adds
 | 3 | v0.8 | Agent Protocol, MCP adapter, and shipped agent guidance | complete |
 | 4 | v0.9 | First-class semantic model for common business structure | complete |
 | 5 | v0.10 | Deterministic Rule Expressions for local application logic | complete |
-| 6 | v0.11 | First-class Semantic Test Suites for Bean definitions | active |
-| 7 | v0.12 | Generated tests from semantic primitives and rules | planned |
+| 6 | v0.11 | First-class Semantic Test Suites for Bean definitions | complete |
+| 7 | v0.12 | Generated tests from semantic primitives and rules | active |
 | 8 | v0.13 | Typed extension boundary for external effects | planned |
 | 9 | v1.0 | Qualification of one explicit production envelope | planned |
 | 10 | post-v1.0 | Bean Cloud preview environments | exploratory |

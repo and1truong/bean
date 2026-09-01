@@ -20,6 +20,7 @@ import (
 	"github.com/beanruntime/bean/internal/compiler"
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/definition"
+	"github.com/beanruntime/bean/internal/generatedtest"
 	"github.com/beanruntime/bean/internal/migration"
 	"github.com/beanruntime/bean/internal/release"
 	"github.com/beanruntime/bean/internal/semantictest"
@@ -63,8 +64,10 @@ type migrationOutput struct {
 }
 
 type smokeCheck struct {
-	ID     string `json:"id"`
-	Status string `json:"status"`
+	ID       string            `json:"id"`
+	Status   string            `json:"status"`
+	Source   *appir.TestTarget `json:"source,omitempty"`
+	Evidence map[string]any    `json:"evidence,omitempty"`
 }
 
 func (s *Service) capabilities(_ context.Context, raw json.RawMessage, _ Principal) Outcome {
@@ -261,24 +264,41 @@ func (s *Service) test(ctx context.Context, raw json.RawMessage, _ Principal) Ou
 	if err == nil {
 		err = closeErr
 	}
+	journeyChecks := []generatedtest.Check{}
+	journeyDiagnostics := []definition.Diagnostic{}
 	if err == nil {
 		runtime, err = bootstrap.Open(ctx, database, false)
 		if err == nil {
-			if _, active := runtime.Kernel.Active(); !active {
+			activeApp, active := runtime.Kernel.Active()
+			if !active {
 				err = fmt.Errorf("published application was not active after restart")
+			} else {
+				journeyChecks, journeyDiagnostics = generatedtest.JourneyChecks(ctx, activeApp, runtime.HTTP.Handler())
 			}
-			runtime.DB.Close()
+			closeErr = runtime.DB.Close()
+			if err == nil {
+				err = closeErr
+			}
 		}
 	}
 	if err != nil {
 		return operationError(err)
 	}
 	checks = append(checks, smokeCheck{ID: "runtime.restart", Status: "passed"})
-	suites, testDiagnostics, err := semantictest.Run(ctx, bundle, directory)
+	for _, check := range generatedtest.StructuralChecks(bundle, compiled.App) {
+		source := check.Source
+		checks = append(checks, smokeCheck{ID: check.ID, Status: check.Status, Source: &source, Evidence: check.Evidence})
+	}
+	for _, check := range journeyChecks {
+		source := check.Source
+		checks = append(checks, smokeCheck{ID: check.ID, Status: check.Status, Source: &source, Evidence: check.Evidence})
+	}
+	suites, testDiagnostics, err := semantictest.RunGenerated(ctx, bundle, directory)
 	if err != nil {
 		return operationError(err)
 	}
 	result := map[string]any{"checksum": bundleChecksum(bundle), "checks": checks, "suites": suites}
+	testDiagnostics = append(journeyDiagnostics, testDiagnostics...)
 	if len(testDiagnostics) > 0 {
 		return Outcome{OK: false, Result: result, Diagnostics: testDiagnostics}
 	}

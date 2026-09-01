@@ -126,3 +126,22 @@ tests:
         - {entity: order, id: 00000000-0000-4000-8000-000000000102, values: {status: pending_payment, payment_result: deterministic-success}}
       events:
         - {topic: order_placed, payload: {product_id: 00000000-0000-4000-8000-000000000101, quantity: 2}}
+---
+kind: TestSuite
+name: advance_order_contract
+target: {kind: Action, name: advance_order}
+tests:
+  - name: advances_pending_order
+    fixtures:
+      order:
+        - {id: 00000000-0000-4000-8000-000000000104, status: pending_payment}
+    context:
+      actor: {id: 00000000-0000-4000-8000-000000000103, roles: [administrator]}
+      time: "2026-09-01T10:00:00Z"
+      requestId: commerce-transition-test
+    input: {id: 00000000-0000-4000-8000-000000000104, status: paid}
+    expect:
+      result: {id: 00000000-0000-4000-8000-000000000104, status: paid}
+      changes:
+        - {entity: order, id: 00000000-0000-4000-8000-000000000104, values: {status: paid, version: 2}}
+      noEvents: true
