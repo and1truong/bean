@@ -74,7 +74,7 @@ Presentation remains a separately reported score so a technically correct but un
 
 ## Current engineering goal
 
-The structural-diagnostics and unified-execution-seams goal is complete. View reads, Action-step obligations, value sources, client rendering/writes, Definition kinds, and Agent Protocol operations now have one structural owner each while explicit control flow remains for closed algebras and compiler phases. The work added no public plugin SDK or roadmap application capability; Bean is ready for the planned v0.10 feature work.
+Bean v0.10 Deterministic Rule Expressions is active. The initial contract uses named, typed, canonical structured ASTs for Action guards, server-derived Action inputs, and Entity invariants. It deliberately excludes a text script parser, browser-only surfaces, computed read columns, generated tests, and external effects. The executable contract and milestones are in `GOAL.md` and `PLANS.md`.
 
 ## Roadmap
 
@@ -85,7 +85,7 @@ The structural-diagnostics and unified-execution-seams goal is complete. View re
 | 2 | v0.7 | Demo Factory for fast, populated, presentable local applications | complete |
 | 3 | v0.8 | Agent Protocol, MCP adapter, and shipped agent guidance | complete |
 | 4 | v0.9 | First-class semantic model for common business structure | complete |
-| 5 | v0.10 | Deterministic Rule Expressions for local application logic | planned |
+| 5 | v0.10 | Deterministic Rule Expressions for local application logic | active |
 | 6 | v0.11 | Generated tests from semantic primitives and rules | planned |
 | 7 | v0.12 | Typed extension boundary for external effects | planned |
 | 8 | v1.0 | Qualification of one explicit production envelope | planned |

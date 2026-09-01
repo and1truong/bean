@@ -2,6 +2,12 @@
 
 ## Current
 
+Bean v0.10 Deterministic Rule Expressions is active from structural-refactor merge `baeb61c`. Milestone 0 is complete and milestone 1 is active. The frozen contract uses a named Rule definition with a canonical structured AST, explicit typed sources, a small fixed operator set, and compile/runtime resource bounds. The first consumers are Action guards, simultaneous server-owned derived Action inputs, and Entity invariant predicates; three unrelated metadata-only applications will demonstrate computed/derived values, a record-aware guard, validation, and injected `context.now`.
+
+Rules refine local behavior but do not replace Entity, Lifecycle, Policy, View, or Action structure. Policy remains authoritative authorization; evaluation is side-effect-free and has no I/O, implicit clock/randomness, environment, SQL, modules, or mutable state. Text/infix syntax, browser visibility, computed read columns, generated tests, and external effects are intentionally deferred.
+
+## Structural contracts completed state
+
 The structural-contract and unified-execution-seam goal is complete. All milestones 0–9 are done without adding a public plugin platform or application-specific core behavior.
 
 Diagnostics now receive codes and non-serialized recovery facts structurally, with no production control flow that parses diagnostic or Go standard-library prose. Database and transactional reads share the View-owned engine, including Policy fallback, filtering, deterministic ordering, limit clamping, sanitization, redaction, and relation hydration. Action steps share one entity resolver and enforce declared read/write effects before handlers execute. A context-specific value-source owner now serves expressions, Actions, Blocks, Pages, compiler validation, and inspection and fails closed for unsupported sources.
