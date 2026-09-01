@@ -1,0 +1,35 @@
+{
+  "$id": "https://bean.build/schemas/theme.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "accent": {
+      "type": "string"
+    },
+    "apiVersion": {
+      "const": "bean/v1alpha1"
+    },
+    "displayName": {
+      "type": "string"
+    },
+    "kind": {
+      "const": "Theme"
+    },
+    "name": {
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "preset": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "name"
+  ],
+  "title": "Bean Theme definition",
+  "type": "object"
+}

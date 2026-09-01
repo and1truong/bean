@@ -28,6 +28,9 @@ type Capabilities struct {
 	DatabaseBackends     []string `json:"databaseBackends"`
 	MaxViewLimit         int      `json:"maxViewLimit"`
 	MaxFileBytes         int      `json:"maxFileBytes"`
+	ThemePresets         []string `json:"themePresets"`
+	ThemeAccents         []string `json:"themeAccents"`
+	DemoSeedProfiles     []string `json:"demoSeedProfiles"`
 }
 
 func AgentCapabilities(cliAPIVersion string) Capabilities {
@@ -45,12 +48,15 @@ func AgentCapabilities(cliAPIVersion string) Capabilities {
 		ActionOperations:     []string{"create", "delete", "register_local_user", "transaction", "transition", "update"},
 		ActionSteps:          []string{"assert", "assert_no_overlap", "conditional_update", "create", "decrement", "delete", "emit", "load", "query", "return", "schedule", "transition", "update"},
 		BlockTypes:           []string{"action", "entity", "menu", "resource-list", "text", "view", "webform"},
-		Presentations:        []string{"board", "detail", "list", "tree"},
+		Presentations:        []string{"board", "detail", "list", "metric", "timeline", "tree"},
 		DisplaySerializers:   []string{"csv", "json", "rss"},
 		PanelLayouts:         []string{"grid", "main-sidebar", "sidebar-main", "single-column", "two-column"},
 		DatabaseBackends:     []string{"postgresql", "sqlite"},
 		MaxViewLimit:         200,
 		MaxFileBytes:         5 << 20,
+		ThemePresets:         []string{"minimal", "professional", "warm"},
+		ThemeAccents:         []string{"amber", "blue", "emerald", "indigo", "rose", "slate", "violet"},
+		DemoSeedProfiles:     []string{"activities", "auto", "companies", "jobs", "notes", "people"},
 	}
 }
 
@@ -103,6 +109,8 @@ func specificationTypes() map[string]reflect.Type {
 		"Panel":             reflect.TypeOf(appir.Panel{}),
 		"Policy":            reflect.TypeOf(appir.Policy{}),
 		"Role":              reflect.TypeOf(appir.Role{}),
+		"Theme":             reflect.TypeOf(appir.Theme{}),
+		"DemoSeed":          reflect.TypeOf(appir.DemoSeed{}),
 		"View":              reflect.TypeOf(appir.View{}),
 		"Webform":           reflect.TypeOf(appir.Webform{}),
 	}

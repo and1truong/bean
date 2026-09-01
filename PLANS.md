@@ -1,31 +1,33 @@
-# Bean v0.6 agent-readable compiler plan
+# Bean v0.7 Demo Factory plan
 
 Status values: `pending`, `active`, `done`. A milestone is `done` only when its listed evidence passes.
 
 | Milestone | Deliverable | Evidence | Status |
 | --- | --- | --- | --- |
-| 0 | Freeze the CLI envelope, exit-status, diagnostic-code, schema, capability, inspect, plan, diff, publish, and test contracts | contract document, fixtures, and failing black-box tests | done |
-| 1 | Versioned JSON output and stable diagnostic taxonomy for existing validation/publication paths | CLI and compiler contract tests, including redaction and deterministic ordering | done |
-| 2 | Canonical JSON Schemas plus capability discovery generated from or checked against compiler vocabulary | all maintained examples validate; schema drift tests pass | done |
-| 3 | Source/application inspection and side-effect-free semantic plan/diff | compiler/release tests and database non-mutation evidence | done |
-| 4 | Unified `app init`, `app publish`, and isolated lifecycle `app test` loop | JSON-only black-box harness and repair benchmark | done |
-| 5 | Compatibility documentation and repository qualification | `make check` and `make build` | done |
+| 0 | Freeze Demo Factory source, pattern, seed, theme, package, and benchmark contracts | root goal and frozen ATS/CRM/tracker protocol | done |
+| 1 | Typed Theme plus generic Metric, Timeline, and public Search presentation | schema/capability/compiler, HTTP, React, and ATS browser tests | done |
+| 2 | Deterministic relation-aware fixture generator and `bean demo seed` | scalar/relation/cycle/replay/refusal tests and populated ATS evidence | done |
+| 3 | Inspectable catalog of ordinary-definition application patterns | catalog stability tests and independent compilation of every pattern | done |
+| 4 | Atomic, checksummed SQLite `bean package` output | restart, source-independence, tamper, failure-atomicity, and packaged-browser tests | done |
+| 5 | ATS/CRM/tracker prompt-suite qualification, documentation, and version cut | terminal gates plus fresh external-agent p50/p90 record | active |
 
 ## Working rules
 
-- Treat codes, paths, envelope fields, ordering, exit statuses, and redaction as public API.
-- Derive machine descriptions from compiler vocabulary where possible; do not maintain an unrelated second schema model.
-- Keep source-only commands database-free and make planning/diffing explicitly side-effect-free.
-- Preserve source-aware human diagnostics while adding structured output; do not regress existing CLI users.
-- Reuse the compiler, release, migration, AppIR, View, and Action services; CLI and future MCP must not fork behavior.
-- Do not add application primitives, agent-provider logic, MCP, hosting, or generated semantic tests in this goal.
-- Add failing black-box evidence before changing a public command contract and run the nearest test after every milestone.
+- Patterns expose ordinary definitions and always pass through schema and compiler validation; they never become hidden runtime macros.
+- Seed writes use Actions, verification reads use Views, and generated data never bypasses Policy or storage contracts.
+- Theme values come from closed compiler-known vocabularies; do not accept CSS or arbitrary frontend tokens.
+- Dashboard composes Page/Panel/Block; add only the missing Metric, Timeline, and Search presentation behavior.
+- Package only the current executable plus an activated SQLite database and manifest; do not add cloud, container, or installer machinery.
+- Treat JSON envelopes, diagnostics, ordering, checksums, seed output, and package manifests as machine contracts.
+- Add failing evidence before each public contract and run the nearest test after every milestone.
 - Keep `GOAL.md`, `ROADMAP.md`, and `docs/progress.md` current as milestones move.
 
 ## Terminal gates
 
 ```bash
 make check
+make test-crash
+make test-postgres
 make build
 ```
 

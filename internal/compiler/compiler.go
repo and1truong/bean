@@ -234,6 +234,39 @@ func compile(appID string, version int, defs []definition.Definition, validateGr
 				continue
 			}
 			a.LocalRegistration = &x
+		case "Theme":
+			var x appir.Theme
+			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
+				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
+				continue
+			}
+			x.Name = d.Metadata.Name
+			if a.Theme != nil {
+				r.Diagnostics = append(r.Diagnostics, diag(d, "metadata.name", "only one Theme definition is allowed"))
+				continue
+			}
+			if x.DisplayName == "" {
+				x.DisplayName = "Bean"
+			}
+			if x.Preset == "" {
+				x.Preset = "professional"
+			}
+			if x.Accent == "" {
+				x.Accent = "emerald"
+			}
+			a.Theme = &x
+		case "DemoSeed":
+			var x appir.DemoSeed
+			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
+				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
+				continue
+			}
+			x.Name = d.Metadata.Name
+			if a.DemoSeed != nil {
+				r.Diagnostics = append(r.Diagnostics, diag(d, "metadata.name", "only one DemoSeed definition is allowed"))
+				continue
+			}
+			a.DemoSeed = &x
 		}
 	}
 	unavailable := unavailableDefinitions(r.Diagnostics)
@@ -559,6 +592,58 @@ func diagnostic(kind, name, path, message string) definition.Diagnostic {
 func validate(a *appir.App) []definition.Diagnostic {
 	out := []definition.Diagnostic{}
 	routes := map[string]string{}
+	if a.Theme != nil {
+		if !map[string]bool{"minimal": true, "professional": true, "warm": true}[a.Theme.Preset] {
+			out = append(out, diagnostic("Theme", a.Theme.Name, "spec.preset", "has no registered theme preset"))
+		}
+		if !map[string]bool{"amber": true, "blue": true, "emerald": true, "indigo": true, "rose": true, "slate": true, "violet": true}[a.Theme.Accent] {
+			out = append(out, diagnostic("Theme", a.Theme.Name, "spec.accent", "has no registered theme accent"))
+		}
+	}
+	if a.DemoSeed != nil {
+		total := 0
+		profiles := map[string]bool{"activities": true, "auto": true, "companies": true, "jobs": true, "notes": true, "people": true}
+		for entityName, seed := range a.DemoSeed.Entities {
+			path := "spec.entities." + entityName
+			entity, exists := a.Entities[entityName]
+			if !exists {
+				out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path, "references missing Entity "+entityName))
+				continue
+			}
+			if seed.Count < 1 || seed.Count > 200 {
+				out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path+".count", "must be between 1 and 200"))
+			}
+			profile := seed.Profile
+			if profile == "" {
+				profile = "auto"
+				seed.Profile = profile
+				a.DemoSeed.Entities[entityName] = seed
+			}
+			if !profiles[profile] {
+				out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path+".profile", "has no registered demo seed profile"))
+			}
+			for _, field := range entity.Fields {
+				if field.Required && (field.Type == "file" || field.Type == "password" || field.Sensitive) {
+					out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path, "cannot generate required sensitive, password, or file field "+field.Name))
+				}
+				if field.Required && field.Relation != nil {
+					if _, seeded := a.DemoSeed.Entities[field.Relation.Entity]; !seeded {
+						out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path, "requires seeded relation Entity "+field.Relation.Entity))
+					}
+				}
+			}
+			total += seed.Count
+		}
+		if len(a.DemoSeed.Entities) == 0 {
+			out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, "spec.entities", "requires at least one seeded Entity"))
+		}
+		if total > 1000 {
+			out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, "spec.entities", "cannot generate more than 1000 records"))
+		}
+		if demoSeedRequiredRelationCycle(a) {
+			out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, "spec.entities", "required seeded relations contain a cycle"))
+		}
+	}
 	for name, filterDefinition := range a.Filters {
 		if len(filterDefinition.Steps) == 0 {
 			out = append(out, diagnostic("Filter", name, "spec.steps", "requires at least one filter step"))
@@ -1216,6 +1301,37 @@ func validate(a *appir.App) []definition.Diagnostic {
 	return out
 }
 
+func demoSeedRequiredRelationCycle(a *appir.App) bool {
+	visiting, visited := map[string]bool{}, map[string]bool{}
+	var visit func(string) bool
+	visit = func(name string) bool {
+		if visiting[name] {
+			return true
+		}
+		if visited[name] {
+			return false
+		}
+		visiting[name] = true
+		for _, field := range a.Entities[name].Fields {
+			if !field.Required || field.Relation == nil {
+				continue
+			}
+			if _, seeded := a.DemoSeed.Entities[field.Relation.Entity]; seeded && visit(field.Relation.Entity) {
+				return true
+			}
+		}
+		delete(visiting, name)
+		visited[name] = true
+		return false
+	}
+	for name := range a.DemoSeed.Entities {
+		if _, exists := a.Entities[name]; exists && visit(name) {
+			return true
+		}
+	}
+	return false
+}
+
 func recordFields(expression *expr.Expr) []string {
 	if expression == nil {
 		return nil
@@ -1239,15 +1355,22 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 		return nil
 	}
 	out := []definition.Diagnostic{}
-	if !map[string]bool{"list": true, "detail": true, "board": true, "tree": true}[presentation.Mode] {
+	if !map[string]bool{"list": true, "detail": true, "board": true, "tree": true, "metric": true, "timeline": true}[presentation.Mode] {
 		return []definition.Diagnostic{diagnostic("Block", name, "spec.presentation.mode", "has no registered presentation renderer")}
 	}
 	viewDefinition := a.Views[block.View]
 	entity := a.Entities[viewDefinition.Entity]
 	selected := nameSet(viewDefinition.Fields)
+	aggregates := map[string]bool{}
+	for _, aggregate := range viewDefinition.Aggregates {
+		selected[aggregate.Alias] = true
+		aggregates[aggregate.Alias] = true
+	}
 	fieldDefinition := func(fieldName string) (appir.Field, bool) {
-		if fieldName == "id" {
-			return appir.Field{Name: "id", Type: "uuid"}, true
+		for _, systemField := range []appir.Field{{Name: "id", Type: "uuid"}, {Name: "created_at", Type: "datetime"}, {Name: "updated_at", Type: "datetime"}, {Name: "version", Type: "integer"}} {
+			if fieldName == systemField.Name {
+				return systemField, true
+			}
 		}
 		for _, candidate := range entity.Fields {
 			if candidate.Name == fieldName {
@@ -1258,10 +1381,6 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 	}
 	redacted := nameSet(a.Policies[viewDefinition.Policy].Redact)
 	if presentation.Mode == "board" || presentation.Mode == "tree" {
-		aggregates := map[string]bool{}
-		for _, aggregate := range viewDefinition.Aggregates {
-			aggregates[aggregate.Alias] = true
-		}
 		for _, sortDefinition := range viewDefinition.Sort {
 			if aggregates[sortDefinition.Field] {
 				out = append(out, diagnostic("Block", name, "spec.presentation.mode", "board and tree presentations do not support aggregate-sorted Views"))
@@ -1293,8 +1412,37 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 		if fieldName != "" && !selected[fieldName] {
 			out = append(out, diagnostic("Block", name, "spec.presentation."+path, "must be selected by View "+block.View))
 		}
-		if (presentation.Mode == "board" || presentation.Mode == "tree") && fieldName != "" && redacted[fieldName] && path != "bodyField" {
+		if (presentation.Mode == "board" || presentation.Mode == "tree" || presentation.Mode == "timeline") && fieldName != "" && redacted[fieldName] && path != "bodyField" {
 			out = append(out, diagnostic("Block", name, "spec.presentation."+path, "must not be redacted by View policy "+viewDefinition.Policy))
+		}
+	}
+	searchable := map[string]bool{"email": true, "richtext": true, "slug": true, "string": true, "text": true, "url": true}
+	for index, fieldName := range presentation.SearchFields {
+		field, exists := fieldDefinition(fieldName)
+		path := fmt.Sprintf("spec.presentation.searchFields.%d", index)
+		if !selected[fieldName] {
+			out = append(out, diagnostic("Block", name, path, "must be selected by View "+block.View))
+		} else if !exists || !searchable[field.Type] {
+			out = append(out, diagnostic("Block", name, path, "must reference a searchable text field"))
+		} else if redacted[fieldName] {
+			out = append(out, diagnostic("Block", name, path, "must not be redacted by View policy "+viewDefinition.Policy))
+		}
+	}
+	if presentation.Mode == "metric" {
+		if presentation.MetricField == "" || !aggregates[presentation.MetricField] {
+			out = append(out, diagnostic("Block", name, "spec.presentation.metricField", "metric requires a selected aggregate alias"))
+		}
+		if len(presentation.SearchFields) > 0 {
+			out = append(out, diagnostic("Block", name, "spec.presentation.searchFields", "metric does not support search"))
+		}
+	}
+	if presentation.Mode == "timeline" {
+		if presentation.TitleField == "" {
+			out = append(out, diagnostic("Block", name, "spec.presentation.titleField", "timeline requires a selected title field"))
+		}
+		field, exists := fieldDefinition(presentation.TimeField)
+		if presentation.TimeField == "" || !exists || field.Type != "date" && field.Type != "datetime" {
+			out = append(out, diagnostic("Block", name, "spec.presentation.timeField", "timeline requires a selected date or datetime field"))
 		}
 	}
 	if presentation.Mode == "board" {

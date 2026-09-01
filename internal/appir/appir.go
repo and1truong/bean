@@ -120,7 +120,8 @@ type Block struct {
 type ViewPresentation struct {
 	Mode, TitleField, BodyField, LinkRoute, LinkField, EmptyState string
 	GroupField, OrderField, ParentField, MoveAction               string
-	MetaFields, RichTextFields, Columns                           []string
+	MetricField, MetricLabel, TimeField                           string
+	MetaFields, RichTextFields, Columns, SearchFields             []string
 }
 type Region struct {
 	Name   string
@@ -148,6 +149,17 @@ type Menu struct {
 }
 type MenuItem struct{ Label, Route, Policy string }
 type Job struct{ Name, Action string }
+type Theme struct {
+	Name, DisplayName, Preset, Accent string
+}
+type DemoSeedEntity struct {
+	Count   int
+	Profile string
+}
+type DemoSeed struct {
+	Name     string
+	Entities map[string]DemoSeedEntity
+}
 type AdminList struct {
 	Columns, Search, Filters []string
 	Sort                     []Sort
@@ -181,6 +193,8 @@ type App struct {
 	Filters           map[string]Filter
 	AdminResources    map[string]AdminResource
 	LocalRegistration *LocalRegistration
+	Theme             *Theme
+	DemoSeed          *DemoSeed
 	OpenAPI           json.RawMessage
 }
 

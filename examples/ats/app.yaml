@@ -1,0 +1,198 @@
+apiVersion: bean/v1alpha1
+name: Applicant Tracker
+---
+kind: Theme
+name: default
+displayName: Acme Recruiting
+preset: professional
+accent: indigo
+---
+kind: Policy
+name: public_access
+---
+kind: Entity
+name: job
+label: Job
+policy: public_access
+fields:
+  - {name: title, label: Title, type: string, required: true}
+  - {name: department, label: Department, type: string, required: true}
+  - {name: location, label: Location, type: string}
+---
+kind: Entity
+name: candidate
+label: Candidate
+policy: public_access
+fields:
+  - {name: job_id, label: Job, type: relation, required: true, relation: {entity: job, kind: many-to-one, targetField: id}}
+  - {name: name, label: Name, type: string, required: true}
+  - {name: email, label: Email, type: email, required: true, unique: true}
+  - {name: stage, label: Stage, type: enum, required: true, options: [applied, screen, interview, offer, hired, rejected]}
+  - {name: applied_at, label: Applied, type: datetime, required: true}
+  - {name: summary, label: Summary, type: text}
+---
+kind: Entity
+name: note
+label: Note
+policy: public_access
+fields:
+  - {name: candidate_id, label: Candidate, type: relation, required: true, relation: {entity: candidate, kind: many-to-one, targetField: id}}
+  - {name: body, label: Body, type: text, required: true}
+---
+kind: Entity
+name: activity
+label: Activity
+policy: public_access
+fields:
+  - {name: candidate_id, label: Candidate, type: relation, required: true, relation: {entity: candidate, kind: many-to-one, targetField: id}}
+  - {name: subject, label: Subject, type: string, required: true}
+  - {name: detail, label: Detail, type: text}
+  - {name: occurred_at, label: Occurred, type: datetime, required: true}
+---
+kind: Action
+name: move_candidate
+entity: candidate
+operation: transition
+policy: public_access
+stateField: stage
+transitions:
+  applied: [screen, rejected]
+  screen: [interview, rejected]
+  interview: [offer, rejected]
+  offer: [hired, rejected]
+---
+kind: View
+name: candidate_pipeline
+entity: candidate
+policy: public_access
+fields: [id, job_id, name, email, stage, applied_at, summary]
+sort:
+  - {field: applied_at, desc: true}
+---
+kind: View
+name: candidate_detail
+entity: candidate
+policy: public_access
+fields: [id, job_id, name, email, stage, applied_at, summary]
+exposedFilters:
+  id: {name: id, type: uuid, required: true}
+---
+kind: View
+name: candidate_total
+entity: candidate
+policy: public_access
+aggregates:
+  - {function: count, field: id, alias: candidate_count}
+---
+kind: View
+name: recent_activity
+entity: activity
+policy: public_access
+fields: [id, candidate_id, subject, detail, occurred_at]
+sort:
+  - {field: occurred_at, desc: true}
+---
+kind: Block
+name: candidate_metric
+type: view
+view: candidate_total
+presentation:
+  mode: metric
+  metricField: candidate_count
+  metricLabel: Active candidates
+---
+kind: Block
+name: candidate_search
+type: view
+view: candidate_pipeline
+presentation:
+  mode: list
+  titleField: name
+  bodyField: summary
+  metaFields: [email, stage, applied_at]
+  searchFields: [name, email, summary]
+  linkRoute: /candidates/:id
+  linkField: id
+  emptyState: No candidates match this search.
+---
+kind: Block
+name: candidate_board
+type: view
+view: candidate_pipeline
+presentation:
+  mode: board
+  titleField: name
+  groupField: stage
+  columns: [applied, screen, interview, offer, hired, rejected]
+  moveAction: move_candidate
+  metaFields: [email, applied_at]
+  linkRoute: /candidates/:id
+  linkField: id
+---
+kind: Block
+name: activity_timeline
+type: view
+view: recent_activity
+presentation:
+  mode: timeline
+  titleField: subject
+  bodyField: detail
+  timeField: occurred_at
+---
+kind: Block
+name: candidate_summary
+type: view
+view: candidate_detail
+inputs:
+  id: {type: uuid, required: true}
+bindings:
+  id: {source: context, name: id, required: true}
+presentation:
+  mode: detail
+  titleField: name
+  bodyField: summary
+  metaFields: [email, stage, applied_at]
+---
+kind: Menu
+name: main_navigation
+items:
+  - {label: Pipeline, route: /}
+---
+kind: Block
+name: main_menu
+type: menu
+menu: main_navigation
+---
+kind: Panel
+name: home_panel
+layout: single-column
+regions:
+  - {name: main, blocks: [main_menu, candidate_metric, candidate_search, candidate_board, activity_timeline]}
+---
+kind: Panel
+name: candidate_panel
+layout: single-column
+regions:
+  - {name: main, blocks: [main_menu, candidate_summary]}
+---
+kind: Page
+name: home
+route: /
+title: Recruiting pipeline
+panel: home_panel
+---
+kind: Page
+name: candidate
+route: /candidates/:id
+title: Candidate
+panel: candidate_panel
+context:
+  id: {source: route, name: id, required: true}
+---
+kind: DemoSeed
+name: credible_demo
+entities:
+  job: {count: 4, profile: jobs}
+  candidate: {count: 18, profile: people}
+  note: {count: 24, profile: notes}
+  activity: {count: 30, profile: activities}

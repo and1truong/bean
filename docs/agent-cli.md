@@ -2,6 +2,17 @@
 
 Bean v0.6 exposes the compiler and release lifecycle as a provider-neutral command contract. An agent does not need to inspect Bean source or parse human prose.
 
+v0.7 retains that contract and adds deterministic Demo Factory commands:
+
+```bash
+bean pattern inspect workflow_resource --json
+bean demo seed --file ./app.yaml --db ./demo.db --seed 42 --json
+bean package --file ./app.yaml --output ./dist/demo --seed 42 --json
+bean package verify --dir ./dist/demo --json
+```
+
+Pattern inspection returns required capabilities plus ordinary definitions; it does not install behavior. Demo seeding requires the same definitions to be active, writes through generated create Actions, and accepts a replay only when View reads match the generated dataset. Packaging is SQLite-only, stages and restart-checks the package before replacing an existing Bean package, and records source, dataset, executable, and database checksums in `bean.package/v1alpha1`.
+
 ## Supported loop
 
 ```bash

@@ -1,6 +1,20 @@
 apiVersion: bean/v1alpha1
 name: CRM
 ---
+kind: Theme
+name: default
+displayName: Acme CRM
+preset: professional
+accent: emerald
+---
+kind: DemoSeed
+name: credible_demo
+entities:
+  company: {count: 12, profile: companies}
+  contact: {count: 40, profile: people}
+  deal: {count: 28, profile: auto}
+  activity: {count: 36, profile: activities}
+---
 kind: Entity
 name: company
 fields:

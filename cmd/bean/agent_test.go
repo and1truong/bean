@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/bootstrap"
 	"github.com/beanruntime/bean/internal/compiler"
+	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/expr"
 )
 
@@ -101,6 +103,72 @@ func TestAgentValidateJSONSuccessIsDeterministic(t *testing.T) {
 	}
 }
 
+func TestAgentDemoSeedPublishesDeterministicDatasetThroughActions(t *testing.T) {
+	directory := t.TempDir()
+	manifest := filepath.Join(directory, "app.yaml")
+	source := "apiVersion: bean/v1alpha1\nname: Recruiting\n---\nkind: Entity\nname: candidate\nfields:\n  - {name: name, label: Name, type: string, required: true}\n  - {name: stage, label: Stage, type: enum, required: true, options: [applied, interview]}\n---\nkind: DemoSeed\nname: demo\nentities:\n  candidate: {count: 4, profile: people}\n"
+	if err := os.WriteFile(manifest, []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	checksums := []string{}
+	for index := 0; index < 2; index++ {
+		database := filepath.Join(directory, fmt.Sprintf("bean-%d.db", index))
+		var stdout, stderr bytes.Buffer
+		if exit := execute([]string{"app", "publish", "--file", manifest, "--db", database, "--json"}, &stdout, &stderr); exit != exitOK {
+			t.Fatalf("publish exit=%d stderr=%s stdout=%s", exit, stderr.String(), stdout.String())
+		}
+		stdout.Reset()
+		stderr.Reset()
+		if exit := execute([]string{"demo", "seed", "--file", manifest, "--db", database, "--seed", "42", "--json"}, &stdout, &stderr); exit != exitOK {
+			t.Fatalf("seed exit=%d stderr=%s stdout=%s", exit, stderr.String(), stdout.String())
+		}
+		var envelope struct {
+			OK     bool `json:"ok"`
+			Result struct {
+				Records  int    `json:"records"`
+				Checksum string `json:"checksum"`
+			} `json:"result"`
+		}
+		if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil || !envelope.OK || envelope.Result.Records != 4 || envelope.Result.Checksum == "" {
+			t.Fatalf("seed result err=%v value=%#v output=%s", err, envelope, stdout.String())
+		}
+		checksums = append(checksums, envelope.Result.Checksum)
+		runtime, err := bootstrap.Open(context.Background(), database, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows, err := runtime.DB.Select(context.Background(), dbal.Select{Table: "candidate"})
+		if err != nil || len(rows) != 4 {
+			t.Fatalf("rows=%d err=%v", len(rows), err)
+		}
+		runtime.DB.Close()
+		stdout.Reset()
+		stderr.Reset()
+		if exit := execute([]string{"demo", "seed", "--file", manifest, "--db", database, "--seed", "42", "--json"}, &stdout, &stderr); exit != exitOK {
+			t.Fatalf("idempotent seed exit=%d stderr=%s stdout=%s", exit, stderr.String(), stdout.String())
+		}
+		if index == 0 {
+			runtime, err = bootstrap.Open(context.Background(), database, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = runtime.DB.Update(context.Background(), dbal.Update{Table: "candidate", Values: map[string]dbal.Value{"name": "tampered"}, Where: dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: rows[0]["id"]}, ExpectedRows: 1})
+			runtime.DB.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			stdout.Reset()
+			stderr.Reset()
+			if exit := execute([]string{"demo", "seed", "--file", manifest, "--db", database, "--seed", "42", "--json"}, &stdout, &stderr); exit != exitRuntime || !strings.Contains(stdout.String(), "does not match") {
+				t.Fatalf("unsafe reseed exit=%d stderr=%s stdout=%s", exit, stderr.String(), stdout.String())
+			}
+		}
+	}
+	if checksums[0] != checksums[1] {
+		t.Fatalf("checksums=%v", checksums)
+	}
+}
+
 func TestAgentCapabilitiesAndSchemaAreSelfDescribing(t *testing.T) {
 	for _, test := range []struct {
 		args    []string
@@ -151,6 +219,83 @@ func TestAgentCapabilitiesAndSchemaAreSelfDescribing(t *testing.T) {
 				t.Fatalf("non-deterministic repeat exit=%d stderr=%s\nfirst=%s\nsecond=%s", exit, stderr.String(), firstOutput, stdout.String())
 			}
 		})
+	}
+}
+
+func TestAgentPatternInspectReturnsOrdinaryDefinitions(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if exit := execute([]string{"pattern", "inspect", "workflow_resource", "--json"}, &stdout, &stderr); exit != exitOK {
+		t.Fatalf("exit=%d stderr=%s stdout=%s", exit, stderr.String(), stdout.String())
+	}
+	var envelope struct {
+		OK     bool `json:"ok"`
+		Result struct {
+			Name         string   `json:"name"`
+			Definitions  []any    `json:"definitions"`
+			Capabilities []string `json:"requiredCapabilities"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil || !envelope.OK || envelope.Result.Name != "workflow_resource" || len(envelope.Result.Definitions) == 0 || len(envelope.Result.Capabilities) == 0 {
+		t.Fatalf("err=%v envelope=%#v output=%s", err, envelope, stdout.String())
+	}
+}
+
+func TestAgentPackageIsVerifiableAndSourceIndependent(t *testing.T) {
+	directory := t.TempDir()
+	manifest := filepath.Join(directory, "app.yaml")
+	source := "apiVersion: bean/v1alpha1\nname: Packaged\n---\nkind: Entity\nname: item\nfields:\n  - {name: enabled, label: Enabled, type: boolean, required: true}\n---\nkind: DemoSeed\nname: demo\nentities:\n  item: {count: 3, profile: auto}\n"
+	if err := os.WriteFile(manifest, []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(directory, "dist", "demo")
+	var stdout, stderr bytes.Buffer
+	if exit := execute([]string{"package", "--file", manifest, "--output", output, "--seed", "42", "--json"}, &stdout, &stderr); exit != exitOK {
+		t.Fatalf("package exit=%d stderr=%s stdout=%s", exit, stderr.String(), stdout.String())
+	}
+	for _, name := range []string{"bean", "bean.db", "manifest.json"} {
+		if _, err := os.Stat(filepath.Join(output, name)); err != nil {
+			t.Fatalf("missing %s: %v", name, err)
+		}
+	}
+	packageManifestBefore, err := os.ReadFile(filepath.Join(output, "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken := filepath.Join(directory, "broken.yaml")
+	if err = os.WriteFile(broken, []byte("apiVersion: bean/v1alpha1\nname: Broken\n---\nkind: Missing\nname: broken\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if exit := execute([]string{"package", "--file", broken, "--output", output, "--json"}, &stdout, &stderr); exit != exitDefinition {
+		t.Fatalf("invalid replacement exit=%d stderr=%s stdout=%s", exit, stderr.String(), stdout.String())
+	}
+	packageManifestAfter, err := os.ReadFile(filepath.Join(output, "manifest.json"))
+	if err != nil || !bytes.Equal(packageManifestBefore, packageManifestAfter) {
+		t.Fatalf("failed package changed destination: err=%v", err)
+	}
+	if err := os.Remove(manifest); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if exit := execute([]string{"package", "verify", "--dir", output, "--json"}, &stdout, &stderr); exit != exitOK {
+		t.Fatalf("verify exit=%d stderr=%s stdout=%s", exit, stderr.String(), stdout.String())
+	}
+	file, err := os.OpenFile(filepath.Join(output, "bean"), os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = file.Write([]byte("tampered")); err != nil {
+		t.Fatal(err)
+	}
+	if err = file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if exit := execute([]string{"package", "verify", "--dir", output, "--json"}, &stdout, &stderr); exit != exitRuntime || !strings.Contains(stdout.String(), "checksum mismatch") {
+		t.Fatalf("tampered verify exit=%d stderr=%s stdout=%s", exit, stderr.String(), stdout.String())
 	}
 }
 

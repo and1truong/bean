@@ -48,6 +48,15 @@
   --sidebar-ring: #3b7d59;
 }
 
+[data-accent="indigo"] { --primary: #4338ca; --ring: #6366f1; --accent: #e0e7ff; --accent-foreground: #312e81; --chart-1: #4338ca; --chart-2: #6366f1; }
+[data-accent="blue"] { --primary: #1d4ed8; --ring: #3b82f6; --accent: #dbeafe; --accent-foreground: #1e3a8a; --chart-1: #1d4ed8; --chart-2: #3b82f6; }
+[data-accent="violet"] { --primary: #6d28d9; --ring: #8b5cf6; --accent: #ede9fe; --accent-foreground: #4c1d95; --chart-1: #6d28d9; --chart-2: #8b5cf6; }
+[data-accent="amber"] { --primary: #b45309; --ring: #d97706; --accent: #fef3c7; --accent-foreground: #78350f; --chart-1: #b45309; --chart-2: #d97706; }
+[data-accent="rose"] { --primary: #be123c; --ring: #e11d48; --accent: #ffe4e6; --accent-foreground: #881337; --chart-1: #be123c; --chart-2: #e11d48; }
+[data-accent="slate"] { --primary: #334155; --ring: #64748b; --accent: #e2e8f0; --accent-foreground: #1e293b; --chart-1: #334155; --chart-2: #64748b; }
+[data-preset="minimal"] { --background: #ffffff; --muted: #f8fafc; --border: #e2e8f0; --radius: 0.25rem; }
+[data-preset="warm"] { --background: #fffbeb; --foreground: #292524; --card: #fffdf5; --muted: #fef3c7; --border: #ead9b0; --radius: 0.875rem; }
+
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: "Geist Variable", sans-serif;
