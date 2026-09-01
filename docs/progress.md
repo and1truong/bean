@@ -2,7 +2,9 @@
 
 ## Current
 
-Bean v0.10 Deterministic Rule Expressions is active from structural-refactor merge `baeb61c`. Milestone 0 is complete and milestone 1 is active. The frozen contract uses a named Rule definition with a canonical structured AST, explicit typed sources, a small fixed operator set, and compile/runtime resource bounds. The first consumers are Action guards, simultaneous server-owned derived Action inputs, and Entity invariant predicates; three unrelated metadata-only applications will demonstrate computed/derived values, a record-aware guard, validation, and injected `context.now`.
+Bean v0.10 Deterministic Rule Expressions is active from structural-refactor merge `baeb61c`. Milestones 0–1 are complete and milestone 2 is active. The frozen contract uses a named Rule definition with a canonical structured AST, explicit typed sources, a small fixed operator set, and compile/runtime resource bounds. The Rule core now checks and evaluates every accepted operator and source, preserves exact integer arithmetic, compares typed dates/datetimes, short-circuits deterministically, returns coded failures, and enforces 128-node, depth-16, 4 KiB literal, and 16 KiB value limits. Replay, forbidden vocabulary, shape, arity, typing, missing-value, divide-by-zero, and all resource-limit contracts pass with the repository-wide Go suite.
+
+The first consumers remain Action guards, simultaneous server-owned derived Action inputs, and Entity invariant predicates; three unrelated metadata-only applications will demonstrate computed/derived values, a record-aware guard, validation, and injected `context.now`.
 
 Rules refine local behavior but do not replace Entity, Lifecycle, Policy, View, or Action structure. Policy remains authoritative authorization; evaluation is side-effect-free and has no I/O, implicit clock/randomness, environment, SQL, modules, or mutable state. Text/infix syntax, browser visibility, computed read columns, generated tests, and external effects are intentionally deferred.
 
