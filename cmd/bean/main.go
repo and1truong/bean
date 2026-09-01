@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -23,13 +24,21 @@ import (
 	"github.com/beanruntime/bean/internal/definition"
 )
 
-const version = "0.5.0-alpha"
+const version = "0.6.0-alpha"
 
 func main() {
-	if e := run(os.Args[1:]); e != nil {
-		slog.Error("command failed", "error", e)
-		os.Exit(1)
+	os.Exit(execute(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+func execute(args []string, stdout, stderr io.Writer) int {
+	if exit, handled := runAgentCommand(args, stdout, stderr); handled {
+		return exit
 	}
+	if e := run(args); e != nil {
+		fmt.Fprintln(stderr, "command failed:", e)
+		return exitRuntime
+	}
+	return exitOK
 }
 func run(args []string) error {
 	if len(args) == 0 {
@@ -60,7 +69,7 @@ func run(args []string) error {
 	}
 }
 func usage() error {
-	return fmt.Errorf("usage: bean {init|serve|validate|publish|migrate|app validate|app import|app export|user create|demo|version}")
+	return fmt.Errorf("usage: bean {init|serve|validate|publish|migrate|capabilities|schema|app init|app validate|app inspect|app plan|app diff|app publish|app test|app import|app export|user create|demo|version}")
 }
 func userCommand(args []string) error {
 	if len(args) == 0 || args[0] != "create" {
@@ -231,7 +240,7 @@ func migrateCommand(args []string) error {
 }
 func appCommand(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: bean app {validate|import|export}")
+		return fmt.Errorf("usage: bean app {init|validate|inspect|plan|diff|publish|test|import|export}")
 	}
 	switch args[0] {
 	case "validate":
@@ -305,12 +314,7 @@ func importBundle(db string, bundle definition.Bundle) error {
 }
 
 func loadValidSource(filename string, diagnosticsOut io.Writer) (definition.Bundle, error) {
-	bundle, diagnostics, complete := definition.LoadFileForValidation(filename)
-	if complete {
-		diagnostics = mergeSourceDiagnostics(diagnostics, compiler.Compile("default", 1, bundle.Definitions).Diagnostics)
-	} else {
-		diagnostics = mergeSourceDiagnostics(diagnostics, compiler.CompileRecovered("default", 1, bundle.Definitions).Diagnostics)
-	}
+	bundle, diagnostics := validateSource(filename)
 	if len(diagnostics) == 0 {
 		return bundle, nil
 	}
@@ -322,6 +326,36 @@ func loadValidSource(filename string, diagnosticsOut io.Writer) (definition.Bund
 		label = "error"
 	}
 	return bundle, fmt.Errorf("application source is invalid (%d %s)", len(diagnostics), label)
+}
+
+func validateSource(filename string) (definition.Bundle, []definition.Diagnostic) {
+	bundle, diagnostics, complete := definition.LoadFileForValidation(filename)
+	if complete {
+		diagnostics = mergeSourceDiagnostics(diagnostics, compiler.Compile("default", 1, bundle.Definitions).Diagnostics)
+	} else {
+		diagnostics = mergeSourceDiagnostics(diagnostics, compiler.CompileRecovered("default", 1, bundle.Definitions).Diagnostics)
+	}
+	definition.ClassifyDiagnostics(diagnostics)
+	sort.SliceStable(diagnostics, func(left, right int) bool {
+		a, b := diagnostics[left], diagnostics[right]
+		if a.Source.Path != b.Source.Path {
+			return a.Source.Path < b.Source.Path
+		}
+		if a.Source.Line != b.Source.Line {
+			return a.Source.Line < b.Source.Line
+		}
+		if a.Source.Column != b.Source.Column {
+			return a.Source.Column < b.Source.Column
+		}
+		if a.Kind != b.Kind {
+			return a.Kind < b.Kind
+		}
+		if a.Name != b.Name {
+			return a.Name < b.Name
+		}
+		return a.Path < b.Path
+	})
+	return bundle, diagnostics
 }
 
 func mergeSourceDiagnostics(loader, compiled []definition.Diagnostic) []definition.Diagnostic {

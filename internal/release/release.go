@@ -3,6 +3,7 @@ package release
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -32,6 +33,11 @@ type Published struct {
 	CreatedAt   string `json:"createdAt"`
 	ActivatedAt string `json:"activatedAt"`
 }
+
+type MigrationPlanError struct{ Err error }
+
+func (e *MigrationPlanError) Error() string { return e.Err.Error() }
+func (e *MigrationPlanError) Unwrap() error { return e.Err }
 
 func (s *Store) Initialize(ctx context.Context) error {
 	if err := s.Migrations.ExecuteMigration(ctx, migration.MetadataSchema()); err != nil {
@@ -99,8 +105,77 @@ func (s *Store) SaveBundle(ctx context.Context, appID string, b definition.Bundl
 	}
 	return nil
 }
+
+// SaveBundleExact replaces the current draft definition set with the supplied
+// valid bundle. Historical active releases retain their immutable AppIR and
+// checksums; removed draft revisions are not part of the runtime contract.
+func (s *Store) SaveBundleExact(ctx context.Context, appID string, b definition.Bundle) error {
+	for _, d := range b.Definitions {
+		if diagnostics := definition.ValidateEnvelope(d); len(diagnostics) > 0 {
+			return diagnostics[0]
+		}
+	}
+	return s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
+		return saveBundleExact(ctx, tx, appID, b)
+	})
+}
+
+func saveBundleExact(ctx context.Context, tx dbal.Transaction, appID string, b definition.Bundle) error {
+	apps, err := tx.Select(ctx, dbal.Select{Table: "bean_app", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: appID}, Limit: 1})
+	if err != nil {
+		return err
+	}
+	if len(apps) == 0 {
+		if _, err = tx.Insert(ctx, dbal.Insert{Table: "bean_app", Values: map[string]dbal.Value{"id": appID, "name": b.Name, "created_at": time.Now().UTC().Format(time.RFC3339Nano)}}); err != nil {
+			return err
+		}
+	}
+	rows, err := tx.Select(ctx, dbal.Select{Table: "bean_definition", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "app_id", Value: appID}, OrderBy: []dbal.Order{{Column: "kind"}, {Column: "namespace"}, {Column: "name"}}})
+	if err != nil {
+		return err
+	}
+	existing := map[string]dbal.Row{}
+	for _, row := range rows {
+		key := fmt.Sprint(row["kind"]) + "/" + fmt.Sprint(row["namespace"]) + "/" + fmt.Sprint(row["name"])
+		existing[key] = row
+	}
+	for _, d := range b.Definitions {
+		namespace := d.Metadata.Namespace
+		if namespace == "" {
+			namespace = "default"
+		}
+		key := d.Kind + "/" + namespace + "/" + d.Metadata.Name
+		row, exists := existing[key]
+		id, revision := uid.New(), 1
+		if exists {
+			id = fmt.Sprint(row["id"])
+			revision = int(asInt(row["current_revision"])) + 1
+			if _, err = tx.Update(ctx, dbal.Update{Table: "bean_definition", Values: map[string]dbal.Value{"current_revision": revision}, Where: dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id}, ExpectedRows: 1}); err != nil {
+				return err
+			}
+		} else if _, err = tx.Insert(ctx, dbal.Insert{Table: "bean_definition", Values: map[string]dbal.Value{"id": id, "app_id": appID, "kind": d.Kind, "namespace": namespace, "name": d.Metadata.Name, "current_revision": revision}}); err != nil {
+			return err
+		}
+		body, _ := json.Marshal(d)
+		checksum, _ := definition.Checksum(d)
+		if _, err = tx.Insert(ctx, dbal.Insert{Table: "bean_definition_revision", Values: map[string]dbal.Value{"definition_id": id, "revision": revision, "checksum": checksum, "body": string(body), "created_at": time.Now().UTC().Format(time.RFC3339Nano)}}); err != nil {
+			return err
+		}
+		delete(existing, key)
+	}
+	for _, row := range existing {
+		id := row["id"]
+		if _, err = tx.Delete(ctx, dbal.Delete{Table: "bean_definition_revision", Where: dbal.Predicate{Op: dbal.OpEQ, Column: "definition_id", Value: id}}); err != nil {
+			return err
+		}
+		if _, err = tx.Delete(ctx, dbal.Delete{Table: "bean_definition", Where: dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id}, ExpectedRows: 1}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 func (s *Store) Draft(ctx context.Context, appID string) ([]definition.Definition, error) {
-	rows, e := s.DB.Select(ctx, dbal.Select{Table: "bean_definition", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "app_id", Value: appID}, OrderBy: []dbal.Order{{Column: "kind"}, {Column: "name"}}, Limit: 200})
+	rows, e := s.DB.Select(ctx, dbal.Select{Table: "bean_definition", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "app_id", Value: appID}, OrderBy: []dbal.Order{{Column: "kind"}, {Column: "namespace"}, {Column: "name"}}})
 	if e != nil {
 		return nil, e
 	}
@@ -144,25 +219,102 @@ func (s *Store) Preview(ctx context.Context, appID string) (compiler.Result, mig
 		old = schemaOf(current)
 	}
 	plan, err := migration.Build(old, result.Schema)
+	if err != nil {
+		return result, plan, &MigrationPlanError{Err: err}
+	}
+	return result, plan, nil
+}
+
+// PreviewBundle compiles and plans source definitions without changing draft,
+// schema, release, or activation state.
+func (s *Store) PreviewBundle(ctx context.Context, appID string, bundle definition.Bundle) (compiler.Result, migration.Plan, error) {
+	result, plan, _, err := s.previewBundle(ctx, appID, bundle)
 	return result, plan, err
 }
-func (s *Store) Publish(ctx context.Context, appID string) (Published, []definition.Diagnostic, error) {
-	r, e := s.Validate(ctx, appID)
-	if e != nil {
-		return Published{}, nil, e
+
+func (s *Store) previewBundle(ctx context.Context, appID string, bundle definition.Bundle) (compiler.Result, migration.Plan, *appir.App, error) {
+	result := compiler.Compile(appID, s.nextVersion(ctx, appID), bundle.Definitions)
+	if len(result.Diagnostics) > 0 {
+		return result, migration.Plan{}, nil, nil
 	}
-	if len(r.Diagnostics) > 0 {
-		return Published{}, r.Diagnostics, nil
+	current, err := s.activeApp(ctx, appID)
+	if err != nil {
+		return result, migration.Plan{}, nil, err
 	}
-	current, _ := s.activeApp(ctx, appID)
 	var old migration.Schema
 	if current != nil {
 		old = schemaOf(current)
 	}
-	plan, e := migration.Build(old, r.Schema)
-	if e != nil {
-		return Published{}, []definition.Diagnostic{{Kind: "Release", Name: appID, Path: "migration", Message: e.Error()}}, nil
+	plan, err := migration.Build(old, result.Schema)
+	if err != nil {
+		return result, plan, current, &MigrationPlanError{Err: err}
 	}
+	return result, plan, current, nil
+}
+
+func (s *Store) ActiveApp(ctx context.Context, appID string) (*appir.App, error) {
+	return s.activeApp(ctx, appID)
+}
+func (s *Store) Publish(ctx context.Context, appID string) (Published, []definition.Diagnostic, error) {
+	definitions, err := s.Draft(ctx, appID)
+	if err != nil {
+		return Published{}, nil, err
+	}
+	bundle := definition.Bundle{Definitions: definitions}
+	r, plan, current, err := s.previewBundle(ctx, appID, bundle)
+	if err != nil {
+		var migrationError *MigrationPlanError
+		if errors.As(err, &migrationError) {
+			return Published{}, []definition.Diagnostic{{Kind: "Release", Name: appID, Path: "migration", Message: err.Error()}}, nil
+		}
+		return Published{}, nil, err
+	}
+	if len(r.Diagnostics) > 0 {
+		return Published{}, r.Diagnostics, nil
+	}
+	return s.publishCandidate(ctx, appID, r, plan, current, definitions, nil)
+}
+
+// PublishBundle publishes the supplied candidate directly. It never re-reads
+// the shared draft after validation, and activation uses a compare-and-swap on
+// the active release so a concurrent publisher fails instead of activating a
+// different bundle or reporting a mismatched checksum/plan.
+func (s *Store) PublishBundle(ctx context.Context, appID string, bundle definition.Bundle) (Published, migration.Plan, []definition.Diagnostic, error) {
+	r, plan, current, err := s.previewBundle(ctx, appID, bundle)
+	if err != nil {
+		return Published{}, plan, nil, err
+	}
+	if len(r.Diagnostics) > 0 {
+		return Published{}, plan, r.Diagnostics, nil
+	}
+	published, diagnostics, err := s.publishCandidate(ctx, appID, r, plan, current, bundle.Definitions, &bundle)
+	return published, plan, diagnostics, err
+}
+
+func (s *Store) publishCandidate(ctx context.Context, appID string, r compiler.Result, plan migration.Plan, current *appir.App, definitions []definition.Definition, bundle *definition.Bundle) (Published, []definition.Diagnostic, error) {
+	locker, ok := s.DB.(dbal.PublicationLocker)
+	if !ok {
+		return Published{}, nil, fmt.Errorf("database does not support serialized publication")
+	}
+	var published Published
+	var diagnostics []definition.Diagnostic
+	err := locker.WithPublicationLock(ctx, appID, func() error {
+		var err error
+		published, diagnostics, err = s.publishCandidateLocked(ctx, appID, r, plan, current, definitions, bundle)
+		return err
+	})
+	return published, diagnostics, err
+}
+
+func (s *Store) publishCandidateLocked(ctx context.Context, appID string, r compiler.Result, plan migration.Plan, current *appir.App, definitions []definition.Definition, bundle *definition.Bundle) (Published, []definition.Diagnostic, error) {
+	active, err := s.activeApp(ctx, appID)
+	if err != nil {
+		return Published{}, nil, err
+	}
+	if (current == nil) != (active == nil) || current != nil && current.ReleaseID != active.ReleaseID {
+		return Published{}, nil, &dbal.Error{Code: dbal.Conflict, Message: "active release changed during publication"}
+	}
+	var e error
 	applyPlan := plan
 	if s.Inspector != nil {
 		applyPlan, e = migration.Reconcile(ctx, s.Inspector, plan)
@@ -181,8 +333,7 @@ func (s *Store) Publish(ctx context.Context, appID string) (Published, []definit
 	appJSON, _ := json.Marshal(r.App)
 	planJSON, _ := json.Marshal(plan)
 	checksums := map[string]string{}
-	defs, _ := s.Draft(ctx, appID)
-	for _, d := range defs {
+	for _, d := range definitions {
 		k := d.Kind + "/" + d.Metadata.Name
 		checksums[k], _ = definition.Checksum(d)
 	}
@@ -193,34 +344,53 @@ func (s *Store) Publish(ctx context.Context, appID string) (Published, []definit
 	}
 	fault.Point("release.after_migration")
 	e = s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
-		active := dbal.And(dbal.Predicate{Op: dbal.OpEQ, Column: "app_id", Value: appID}, dbal.Predicate{Op: dbal.OpEQ, Column: "status", Value: "active"})
-		if _, e := tx.Update(ctx, dbal.Update{Table: "bean_release", Values: map[string]dbal.Value{"status": "inactive"}, Where: active}); e != nil {
-			return e
+		if bundle != nil {
+			if e := saveBundleExact(ctx, tx, appID, *bundle); e != nil {
+				return e
+			}
 		}
 		if _, e := tx.Insert(ctx, dbal.Insert{Table: "bean_release", Values: map[string]dbal.Value{"id": id, "app_id": appID, "version": r.App.Version, "checksums": string(checkJSON), "app_ir": string(appJSON), "migration_plan": string(planJSON), "openapi": string(r.App.OpenAPI), "created_at": now, "activated_at": now, "status": "active"}}); e != nil {
 			return e
+		}
+		if current == nil {
+			rows, e := tx.Select(ctx, dbal.Select{Table: "bean_active_release", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "app_id", Value: appID}, Limit: 1})
+			if e != nil {
+				return e
+			}
+			if len(rows) != 0 {
+				return &dbal.Error{Code: dbal.Conflict, Message: "active release changed during publication"}
+			}
+			if _, e = tx.Insert(ctx, dbal.Insert{Table: "bean_active_release", Values: map[string]dbal.Value{"app_id": appID, "release_id": id}}); e != nil {
+				return e
+			}
+		} else {
+			active := dbal.And(dbal.Predicate{Op: dbal.OpEQ, Column: "app_id", Value: appID}, dbal.Predicate{Op: dbal.OpEQ, Column: "release_id", Value: current.ReleaseID})
+			if _, e := tx.Update(ctx, dbal.Update{Table: "bean_active_release", Values: map[string]dbal.Value{"release_id": id}, Where: active, ExpectedRows: 1}); e != nil {
+				return e
+			}
+			if _, e := tx.Update(ctx, dbal.Update{Table: "bean_release", Values: map[string]dbal.Value{"status": "inactive"}, Where: dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: current.ReleaseID}, ExpectedRows: 1}); e != nil {
+				return e
+			}
 		}
 		for sequence, description := range plan.Descriptions {
 			if _, e := tx.Insert(ctx, dbal.Insert{Table: "bean_schema_migration", Values: map[string]dbal.Value{"release_id": id, "sequence": sequence, "description": description, "applied_at": now}}); e != nil {
 				return e
 			}
 		}
-		rows, e := tx.Select(ctx, dbal.Select{Table: "bean_active_release", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "app_id", Value: appID}, Limit: 1})
-		if e != nil {
-			return e
-		}
-		if len(rows) == 0 {
-			_, e = tx.Insert(ctx, dbal.Insert{Table: "bean_active_release", Values: map[string]dbal.Value{"app_id": appID, "release_id": id}})
-		} else {
-			_, e = tx.Update(ctx, dbal.Update{Table: "bean_active_release", Values: map[string]dbal.Value{"release_id": id}, Where: dbal.Predicate{Op: dbal.OpEQ, Column: "app_id", Value: appID}, ExpectedRows: 1})
-		}
-		return e
+		return nil
 	})
 	if e != nil {
 		return Published{}, nil, e
 	}
 	fault.Point("release.after_activation_commit")
-	if e = s.Kernel.Activate(r.App); e != nil {
+	active, e = s.activeApp(ctx, appID)
+	if e != nil {
+		return Published{}, nil, e
+	}
+	if active == nil {
+		return Published{}, nil, fmt.Errorf("published release is not active")
+	}
+	if e = s.Kernel.Activate(active); e != nil {
 		return Published{}, nil, e
 	}
 	return Published{ID: id, Version: r.App.Version, Status: "active", CreatedAt: now, ActivatedAt: now}, nil, nil

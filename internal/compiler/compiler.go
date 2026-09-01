@@ -47,7 +47,11 @@ func CompileRecovered(appID string, version int, defs []definition.Definition) R
 }
 
 func compile(appID string, version int, defs []definition.Definition, validateGraph bool) (r Result) {
-	defer func() { definition.LocateDiagnostics(defs, r.Diagnostics) }()
+	defer func() {
+		enrichDiagnosticCandidates(r.App, r.Diagnostics)
+		definition.ClassifyDiagnostics(r.Diagnostics)
+		definition.LocateDiagnostics(defs, r.Diagnostics)
+	}()
 	a := appir.Empty()
 	a.AppID = appID
 	a.Version = version
@@ -269,6 +273,129 @@ func compile(appID string, version int, defs []definition.Definition, validateGr
 	}
 	sort.Slice(r.Schema.Entities, func(i, j int) bool { return r.Schema.Entities[i].Name < r.Schema.Entities[j].Name })
 	return r
+}
+
+func enrichDiagnosticCandidates(app *appir.App, diagnostics []definition.Diagnostic) {
+	if app == nil {
+		return
+	}
+	for index := range diagnostics {
+		if len(diagnostics[index].Candidates) > 0 {
+			continue
+		}
+		message := diagnostics[index].Message
+		const unknownFieldPrefix = `json: unknown field "`
+		if strings.HasPrefix(message, unknownFieldPrefix) {
+			unknown := strings.TrimSuffix(strings.TrimPrefix(message, unknownFieldPrefix), `"`)
+			if properties, ok := SchemaProperties(DefinitionSchemas()[diagnostics[index].Kind]); ok {
+				names := make([]string, 0, len(properties))
+				for name := range properties {
+					if name != "apiVersion" && name != "kind" && name != "name" && name != "namespace" {
+						names = append(names, name)
+					}
+				}
+				diagnostics[index].Candidates = closest(unknown, names)
+			}
+		}
+		for prefix, names := range map[string][]string{
+			"references missing Entity ": keys(app.Entities),
+			"references missing View ":   keys(app.Views),
+			"references missing Action ": keys(app.Actions),
+			"references missing Policy ": keys(app.Policies),
+			"references missing Role ":   keys(app.Roles),
+			"references missing Filter ": keys(app.Filters),
+			"references missing Block ":  keys(app.Blocks),
+			"references missing Panel ":  keys(app.Panels),
+			"references missing Menu ":   keys(app.Menus),
+			"references missing Job ":    keys(app.Jobs),
+		} {
+			if strings.HasPrefix(message, prefix) {
+				diagnostics[index].Candidates = closest(strings.TrimPrefix(message, prefix), names)
+				break
+			}
+		}
+		if len(diagnostics[index].Candidates) == 0 && strings.Contains(message, "missing field ") {
+			wanted := message[strings.LastIndex(message, "missing field ")+len("missing field "):]
+			diagnostics[index].Candidates = closest(wanted, fieldsForDiagnostic(app, diagnostics[index]))
+		}
+	}
+}
+
+func keys[T any](values map[string]T) []string {
+	out := make([]string, 0, len(values))
+	for name := range values {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func fieldsForDiagnostic(app *appir.App, diagnostic definition.Diagnostic) []string {
+	entityName := ""
+	switch diagnostic.Kind {
+	case "View":
+		entityName = app.Views[diagnostic.Name].Entity
+	case "Action":
+		entityName = app.Actions[diagnostic.Name].Entity
+	case "AdminResource":
+		entityName = app.AdminResources[diagnostic.Name].Entity
+	case "Block":
+		entityName = app.Views[app.Blocks[diagnostic.Name].View].Entity
+	case "Entity":
+		entityName = diagnostic.Name
+	}
+	names := []string{"created_at", "id", "updated_at", "version"}
+	if entity, ok := app.Entities[entityName]; ok {
+		for _, field := range entity.Fields {
+			names = append(names, field.Name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+func closest(wanted string, available []string) []string {
+	type candidate struct {
+		name     string
+		distance int
+	}
+	ranked := make([]candidate, 0, len(available))
+	for _, name := range available {
+		ranked = append(ranked, candidate{name: name, distance: editDistance(wanted, name)})
+	}
+	sort.Slice(ranked, func(i, j int) bool {
+		if ranked[i].distance != ranked[j].distance {
+			return ranked[i].distance < ranked[j].distance
+		}
+		return ranked[i].name < ranked[j].name
+	})
+	if len(ranked) > 3 {
+		ranked = ranked[:3]
+	}
+	out := make([]string, len(ranked))
+	for index := range ranked {
+		out[index] = ranked[index].name
+	}
+	return out
+}
+
+func editDistance(left, right string) int {
+	previous := make([]int, len(right)+1)
+	for index := range previous {
+		previous[index] = index
+	}
+	for leftIndex, leftRune := range []rune(left) {
+		current := []int{leftIndex + 1}
+		for rightIndex, rightRune := range []rune(right) {
+			cost := 0
+			if leftRune != rightRune {
+				cost = 1
+			}
+			current = append(current, min(current[rightIndex]+1, previous[rightIndex+1]+1, previous[rightIndex]+cost))
+		}
+		previous = current
+	}
+	return previous[len(previous)-1]
 }
 func diag(d definition.Definition, path, msg string) definition.Diagnostic {
 	return definition.Diagnostic{Kind: d.Kind, Name: d.Metadata.Name, Path: path, Message: msg}
@@ -657,6 +784,47 @@ func validate(a *appir.App) []definition.Diagnostic {
 		}
 		if !allowedActions[action.Operation] {
 			out = append(out, diagnostic("Action", name, "spec.operation", "invalid Action operation"))
+		}
+		if action.Operation == "transition" {
+			stateField := action.StateField
+			if stateField == "" {
+				stateField = "status"
+			}
+			entity, entityExists := a.Entities[action.Entity]
+			state, stateExists := entityFieldDefinition(entity, stateField)
+			if entityExists && !stateExists {
+				d := diagnostic("Action", name, "spec.stateField", "references missing field "+stateField)
+				d.Code = "BEAN-E2201"
+				d.Candidates = closest(stateField, fieldsForDiagnostic(a, d))
+				out = append(out, d)
+			} else if stateExists && state.Type != "enum" {
+				d := diagnostic("Action", name, "spec.stateField", "transition state field must be an enum")
+				d.Code = "BEAN-E2201"
+				out = append(out, d)
+			} else if stateExists {
+				options := append([]string{}, state.Options...)
+				sort.Strings(options)
+				allowed := nameSet(options)
+				fromStates := make([]string, 0, len(action.Transitions))
+				for from := range action.Transitions {
+					fromStates = append(fromStates, from)
+				}
+				sort.Strings(fromStates)
+				for _, from := range fromStates {
+					if !allowed[from] {
+						d := diagnostic("Action", name, "spec.transitions."+from, "transition source is not an option of "+stateField)
+						d.Code, d.Candidates = "BEAN-E2201", options
+						out = append(out, d)
+					}
+					for index, target := range action.Transitions[from] {
+						if !allowed[target] {
+							d := diagnostic("Action", name, fmt.Sprintf("spec.transitions.%s.%d", from, index), "transition target is not an option of "+stateField)
+							d.Code, d.Candidates = "BEAN-E2201", options
+							out = append(out, d)
+						}
+					}
+				}
+			}
 		}
 		if action.Policy != "" {
 			if _, ok := a.Policies[action.Policy]; !ok {
@@ -1496,6 +1664,15 @@ func fieldSet(e appir.Entity) map[string]bool {
 		m[f.Name] = true
 	}
 	return m
+}
+
+func entityFieldDefinition(entity appir.Entity, name string) (appir.Field, bool) {
+	for _, field := range entity.Fields {
+		if field.Name == name {
+			return field, true
+		}
+	}
+	return appir.Field{}, false
 }
 
 func nameSet(values []string) map[string]bool {

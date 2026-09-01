@@ -1,0 +1,55 @@
+{
+  "$defs": {
+    "github_com_beanruntime_bean_internal_appir_Region": {
+      "additionalProperties": false,
+      "properties": {
+        "blocks": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$id": "https://bean.build/schemas/panel.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "bean/v1alpha1"
+    },
+    "kind": {
+      "const": "Panel"
+    },
+    "layout": {
+      "type": "string"
+    },
+    "name": {
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "policy": {
+      "type": "string"
+    },
+    "regions": {
+      "items": {
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_Region"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "kind",
+    "name"
+  ],
+  "title": "Bean Panel definition",
+  "type": "object"
+}

@@ -1,0 +1,127 @@
+{
+  "$defs": {
+    "github_com_beanruntime_bean_internal_appir_AdminForm": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "readonly": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_AdminList": {
+      "additionalProperties": false,
+      "properties": {
+        "columns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "filters": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "pageSize": {
+          "type": "integer"
+        },
+        "search": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sort": {
+          "items": {
+            "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_Sort"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_Sort": {
+      "additionalProperties": false,
+      "properties": {
+        "desc": {
+          "type": "boolean"
+        },
+        "field": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$id": "https://bean.build/schemas/adminresource.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "actions": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "apiVersion": {
+      "const": "bean/v1alpha1"
+    },
+    "createAction": {
+      "type": "string"
+    },
+    "deleteAction": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "entity": {
+      "type": "string"
+    },
+    "form": {
+      "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_AdminForm"
+    },
+    "kind": {
+      "const": "AdminResource"
+    },
+    "label": {
+      "type": "string"
+    },
+    "labelField": {
+      "type": "string"
+    },
+    "list": {
+      "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_AdminList"
+    },
+    "name": {
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "updateAction": {
+      "type": "string"
+    },
+    "view": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "name"
+  ],
+  "title": "Bean AdminResource definition",
+  "type": "object"
+}

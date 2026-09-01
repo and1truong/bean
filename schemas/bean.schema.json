@@ -1,0 +1,27 @@
+{
+  "$id": "https://bean.build/schemas/bean.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "bean/v1alpha1"
+    },
+    "name": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "resources": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "apiVersion",
+    "name"
+  ],
+  "title": "Bean application manifest",
+  "type": "object"
+}

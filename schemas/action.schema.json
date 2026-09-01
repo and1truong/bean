@@ -1,0 +1,192 @@
+{
+  "$defs": {
+    "github_com_beanruntime_bean_internal_appir_Field": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "relation": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_Relation"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "sensitive": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": "string"
+        },
+        "unique": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_Relation": {
+      "additionalProperties": false,
+      "properties": {
+        "entity": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "targetField": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_compiler_stepSource": {
+      "additionalProperties": false,
+      "properties": {
+        "condition": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_expr_Expr"
+        },
+        "entity": {
+          "type": "string"
+        },
+        "event": {
+          "type": "string"
+        },
+        "job": {
+          "type": "string"
+        },
+        "op": {
+          "type": "string"
+        },
+        "result": {
+          "type": "string"
+        },
+        "stateField": {
+          "type": "string"
+        },
+        "values": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "view": {
+          "type": "string"
+        },
+        "where": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_expr_Expr"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_expr_Expr": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "items": {
+            "$ref": "#/$defs/github_com_beanruntime_bean_internal_expr_Expr"
+          },
+          "type": "array"
+        },
+        "left": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_expr_Value"
+        },
+        "op": {
+          "type": "string"
+        },
+        "right": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_expr_Value"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_expr_Value": {
+      "additionalProperties": false,
+      "properties": {
+        "literal": {},
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$id": "https://bean.build/schemas/action.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "bean/v1alpha1"
+    },
+    "confirm": {
+      "type": "string"
+    },
+    "defaultRole": {
+      "type": "string"
+    },
+    "entity": {
+      "type": "string"
+    },
+    "input": {
+      "additionalProperties": {
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_Field"
+      },
+      "type": "object"
+    },
+    "kind": {
+      "const": "Action"
+    },
+    "name": {
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "operation": {
+      "type": "string"
+    },
+    "output": {
+      "additionalProperties": {
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_Field"
+      },
+      "type": "object"
+    },
+    "policy": {
+      "type": "string"
+    },
+    "stateField": {
+      "type": "string"
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_compiler_stepSource"
+      },
+      "type": "array"
+    },
+    "transitions": {
+      "additionalProperties": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "type": "object"
+    }
+  },
+  "required": [
+    "kind",
+    "name"
+  ],
+  "title": "Bean Action definition",
+  "type": "object"
+}

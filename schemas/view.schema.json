@@ -1,0 +1,239 @@
+{
+  "$defs": {
+    "github_com_beanruntime_bean_internal_appir_Aggregate": {
+      "additionalProperties": false,
+      "properties": {
+        "alias": {
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
+        },
+        "function": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_Display": {
+      "additionalProperties": false,
+      "properties": {
+        "route": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_Field": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "relation": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_Relation"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "sensitive": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": "string"
+        },
+        "unique": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_Relation": {
+      "additionalProperties": false,
+      "properties": {
+        "entity": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "targetField": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_Sort": {
+      "additionalProperties": false,
+      "properties": {
+        "desc": {
+          "type": "boolean"
+        },
+        "field": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_ViewRelationship": {
+      "additionalProperties": false,
+      "properties": {
+        "entity": {
+          "type": "string"
+        },
+        "localField": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "relationField": {
+          "type": "string"
+        },
+        "targetField": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_expr_Expr": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "items": {
+            "$ref": "#/$defs/github_com_beanruntime_bean_internal_expr_Expr"
+          },
+          "type": "array"
+        },
+        "left": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_expr_Value"
+        },
+        "op": {
+          "type": "string"
+        },
+        "right": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_expr_Value"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_expr_Value": {
+      "additionalProperties": false,
+      "properties": {
+        "literal": {},
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$id": "https://bean.build/schemas/view.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "aggregates": {
+      "items": {
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_Aggregate"
+      },
+      "type": "array"
+    },
+    "apiVersion": {
+      "const": "bean/v1alpha1"
+    },
+    "contextFilter": {
+      "$ref": "#/$defs/github_com_beanruntime_bean_internal_expr_Expr"
+    },
+    "defaultLimit": {
+      "type": "integer"
+    },
+    "displays": {
+      "additionalProperties": {
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_Display"
+      },
+      "type": "object"
+    },
+    "entity": {
+      "type": "string"
+    },
+    "exposedFilters": {
+      "additionalProperties": {
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_Field"
+      },
+      "type": "object"
+    },
+    "fieldFilters": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "fields": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "filter": {
+      "$ref": "#/$defs/github_com_beanruntime_bean_internal_expr_Expr"
+    },
+    "groupBy": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "kind": {
+      "const": "View"
+    },
+    "maxLimit": {
+      "type": "integer"
+    },
+    "name": {
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "policy": {
+      "type": "string"
+    },
+    "relationships": {
+      "items": {
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ViewRelationship"
+      },
+      "type": "array"
+    },
+    "sort": {
+      "items": {
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_Sort"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "kind",
+    "name"
+  ],
+  "title": "Bean View definition",
+  "type": "object"
+}

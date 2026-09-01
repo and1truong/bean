@@ -93,3 +93,33 @@ func OpenURL(ctx context.Context, databaseURL string, secure bool) (*Runtime, er
 	}}
 	return &Runtime{DB: db, Kernel: k, Store: store, HTTP: server, Jobs: runner, Outbox: outbox}, nil
 }
+
+// OpenInspection opens an initialized Bean database without running metadata
+// initialization, upgrades, migrations, or other writes. It is used by
+// side-effect-free plan and diff commands.
+func OpenInspection(ctx context.Context, databaseURL string) (*Runtime, error) {
+	var db Database
+	var err error
+	switch {
+	case strings.HasPrefix(databaseURL, "postgres://"), strings.HasPrefix(databaseURL, "postgresql://"):
+		db, err = postgres.Open(databaseURL)
+	case strings.HasPrefix(databaseURL, "sqlite://"):
+		path := strings.TrimPrefix(databaseURL, "sqlite://")
+		if path == "" {
+			return nil, fmt.Errorf("SQLite database URL requires a path")
+		}
+		db, err = sqlite.OpenReadOnly(path)
+	default:
+		db, err = sqlite.OpenReadOnly(databaseURL)
+	}
+	if err != nil {
+		return nil, err
+	}
+	kernel := kernel.New()
+	store := &release.Store{DB: db, Migrations: db, Inspector: db, Kernel: kernel, OpenAPI: openapi.Generate}
+	if err = store.LoadActive(ctx, "default"); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return &Runtime{DB: db, Kernel: kernel, Store: store}, nil
+}

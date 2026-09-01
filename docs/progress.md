@@ -2,9 +2,32 @@
 
 ## Current
 
-Asana Lite is complete. The accepted slice is a local anonymous project/task application with generic status-board, arbitrary-depth tree, and transactional small-file attachment primitives; application behavior remains metadata-only under `examples/asana`.
+Bean v0.6 agent-readable compiler is complete. The real binary supports the full init/capabilities/schema/validate/inspect/plan/diff/publish/test loop with human output or a versioned `bean.cli/v1alpha1` JSON envelope.
 
-## Asana Lite
+Stable diagnostic families, source-relative paths, compiler-derived candidates, credential redaction, canonical generated schemas, normalized inspection, read-only target planning, semantic AppIR diff, exact-source draft replacement, atomic release activation, and isolated SQLite restart smoke tests have focused evidence. Draft 2020-12 validation accepts all nine maintained applications and rejects invalid manifest/definition shapes. The black-box applicant-tracking harness repairs unknown Entity, unknown field, and invalid transition defects without parsing English messages, then publishes and proves a zero-change diff.
+
+## v0.6 verification record
+
+- `make check` passes vet, frontend lint/typecheck and 24 React tests, all Go tests, focused contracts, fuzz-smoke, AppIR compatibility, JSON-only repair black-box, race, and 12/12 Playwright workflows.
+- `make test-crash` passes both supported publication crash/restart points with canonical application sources.
+- `make test-postgres` passes reusable PostgreSQL DBAL/HTTP contracts and the complete blog browser journey on PostgreSQL 17.
+- `make build` passes and `bin/bean version` reports `bean 0.6.0-alpha`.
+
+## Roadmap baseline
+
+- North Star: an agent publishes a credible prompt-defined demo with p50 under five minutes, p90 under ten minutes, no human modification after the initial prompt, and 100% of the required behavior rubric under a recorded benchmark protocol.
+- v0.6 establishes the deterministic machine contract; it does not embed an LLM or add MCP.
+- v0.7 builds the populated, themed, packageable Demo Factory after the machine contract is stable.
+- v0.8 adds a provider-neutral Agent Protocol with separate Definition, Release, and Application Planes; v0.9 begins evidence-driven semantic primitives with first-class `Lifecycle`.
+- v0.10 adds bounded, side-effect-free deterministic rules between first-class semantics and external effects.
+- v0.11 generates tests from semantic primitives and rules; v0.12 adds the typed extension boundary.
+- v1.0 qualifies one explicit envelope: a single Bean application process backed by managed PostgreSQL and external object storage.
+- Realtime infrastructure, a functions platform, broad OAuth, Redis/messaging abstractions, arbitrary visual design, Kubernetes machinery, and embedded AI chat remain deferred.
+- Bean owns application semantics; providers own infrastructure capabilities.
+
+## Asana Lite (completed)
+
+The accepted slice is a local anonymous project/task application with generic status-board, arbitrary-depth tree, and transactional small-file attachment primitives; application behavior remains metadata-only under `examples/asana`.
 
 - The generic `file` field accepts only bounded multipart input, persists base64 content plus safe metadata in the Action transaction, cleans replacement/hard-delete blobs, and policy-checks live references before download.
 - Compiler-validated `board` presentation groups enum states and invokes a same-Entity transition Action; `tree` presentation renders a selected many-to-one self relation with arbitrary-depth expand/collapse behavior.

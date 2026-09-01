@@ -1,0 +1,29 @@
+{
+  "$id": "https://bean.build/schemas/job.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "type": "string"
+    },
+    "apiVersion": {
+      "const": "bean/v1alpha1"
+    },
+    "kind": {
+      "const": "Job"
+    },
+    "name": {
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "name"
+  ],
+  "title": "Bean Job definition",
+  "type": "object"
+}

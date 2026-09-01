@@ -36,7 +36,8 @@ test-compatibility:
 	go test ./internal/appir ./internal/release -run 'Compatibility|Format'
 
 test-blackbox: build
-	@test "$$($(CURDIR)/bin/bean version)" = "bean 0.5.0-alpha"
+	@test "$$($(CURDIR)/bin/bean version)" = "bean 0.6.0-alpha"
+	BEAN_BINARY=$(CURDIR)/bin/bean go test ./internal/agenttest -count=1
 
 test-crash: build
 	BEAN_BINARY=$(CURDIR)/bin/bean go test ./internal/crashtest -count=1

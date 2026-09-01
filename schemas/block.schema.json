@@ -1,0 +1,197 @@
+{
+  "$defs": {
+    "github_com_beanruntime_bean_internal_appir_ContextBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_Field": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "relation": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_Relation"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "sensitive": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": "string"
+        },
+        "unique": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_Relation": {
+      "additionalProperties": false,
+      "properties": {
+        "entity": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "targetField": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_ViewPresentation": {
+      "additionalProperties": false,
+      "properties": {
+        "bodyField": {
+          "type": "string"
+        },
+        "columns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "emptyState": {
+          "type": "string"
+        },
+        "groupField": {
+          "type": "string"
+        },
+        "linkField": {
+          "type": "string"
+        },
+        "linkRoute": {
+          "type": "string"
+        },
+        "metaFields": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "moveAction": {
+          "type": "string"
+        },
+        "orderField": {
+          "type": "string"
+        },
+        "parentField": {
+          "type": "string"
+        },
+        "richTextFields": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "titleField": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$id": "https://bean.build/schemas/block.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "type": "string"
+    },
+    "apiVersion": {
+      "const": "bean/v1alpha1"
+    },
+    "bindings": {
+      "additionalProperties": {
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ContextBinding"
+      },
+      "type": "object"
+    },
+    "defaultFilters": {
+      "additionalProperties": {},
+      "type": "object"
+    },
+    "entity": {
+      "type": "string"
+    },
+    "filters": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "inputs": {
+      "additionalProperties": {
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_Field"
+      },
+      "type": "object"
+    },
+    "kind": {
+      "const": "Block"
+    },
+    "menu": {
+      "type": "string"
+    },
+    "name": {
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "policy": {
+      "type": "string"
+    },
+    "presentation": {
+      "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ViewPresentation"
+    },
+    "resource": {
+      "type": "string"
+    },
+    "text": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string"
+    },
+    "view": {
+      "type": "string"
+    },
+    "webform": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "name"
+  ],
+  "title": "Bean Block definition",
+  "type": "object"
+}

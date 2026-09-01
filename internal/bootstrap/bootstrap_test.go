@@ -10,9 +10,37 @@ import (
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/bootstrap"
 	"github.com/beanruntime/bean/internal/dbal"
+	"github.com/beanruntime/bean/internal/dbal/sqlite"
 	"github.com/beanruntime/bean/internal/event"
 	"github.com/beanruntime/bean/internal/job"
 )
+
+func TestInspectionOpenDoesNotInitializeDatabase(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "empty.db")
+	database, err := sqlite.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	database.Close()
+
+	if runtime, openErr := bootstrap.OpenInspection(ctx, path); openErr == nil {
+		runtime.DB.Close()
+		t.Fatal("inspection unexpectedly initialized an empty database")
+	}
+	database, err = sqlite.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	tables, err := database.Tables(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tables) != 0 {
+		t.Fatalf("inspection created tables: %v", tables)
+	}
+}
 
 func TestRuntimeOutboxRunnerDeliversCommittedEvents(t *testing.T) {
 	ctx := context.Background()

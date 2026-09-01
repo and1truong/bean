@@ -32,6 +32,19 @@ func Open(databaseURL string) (*DB, error) {
 
 func (d *DB) Close() error    { return d.db.Close() }
 func (d *DB) Dialect() string { return "postgres" }
+func (d *DB) WithPublicationLock(ctx context.Context, appID string, operation func() error) error {
+	connection, err := d.db.Conn(ctx)
+	if err != nil {
+		return translate(err)
+	}
+	defer connection.Close()
+	key := "bean-publication/" + appID
+	if _, err = connection.ExecContext(ctx, `SELECT pg_advisory_lock(hashtextextended($1, 0))`, key); err != nil {
+		return translate(err)
+	}
+	defer connection.ExecContext(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock(hashtextextended($1, 0))`, key)
+	return operation()
+}
 func (d *DB) Select(ctx context.Context, query dbal.Select) ([]dbal.Row, error) {
 	return selectRows(ctx, d.db, d.compiler, query)
 }
@@ -289,6 +302,8 @@ func translate(err error) error {
 	}
 	return &dbal.Error{Code: code, Message: "database operation failed", Cause: err}
 }
+
+var _ dbal.PublicationLocker = (*DB)(nil)
 
 func sortedKeys(input map[string]dbal.Value) []string {
 	keys := make([]string, 0, len(input))

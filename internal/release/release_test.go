@@ -2,15 +2,19 @@ package release_test
 
 import (
 	"context"
+	"fmt"
+	"path/filepath"
+	"sync/atomic"
+	"testing"
+
 	"github.com/beanruntime/bean/internal/appir"
+	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/dbal/sqlite"
 	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/kernel"
 	"github.com/beanruntime/bean/internal/migration"
 	"github.com/beanruntime/bean/internal/openapi"
 	"github.com/beanruntime/bean/internal/release"
-	"path/filepath"
-	"testing"
 )
 
 func TestStorageValidationAllowsLegacySQLiteBoolean(t *testing.T) {
@@ -90,4 +94,124 @@ func TestInvalidAndFailedReleaseCannotReplaceActive(t *testing.T) {
 		t.Fatal("failed migration replaced active")
 	}
 	_ = migration.Plan{}
+}
+
+func TestSaveBundleExactIsNotCappedAtTwoHundredDefinitions(t *testing.T) {
+	ctx := context.Background()
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "definitions.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := &release.Store{DB: db, Migrations: db, Kernel: kernel.New(), OpenAPI: openapi.Generate}
+	if err = store.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	definitions := make([]definition.Definition, 250)
+	for index := range definitions {
+		definitions[index] = definition.Definition{APIVersion: definition.APIVersion, Kind: "Role", Metadata: definition.Metadata{Name: fmt.Sprintf("role_%03d", index)}, Spec: map[string]any{"permissions": []any{}}}
+	}
+	if err = store.SaveBundleExact(ctx, "default", definition.Bundle{Name: "large", Definitions: definitions}); err != nil {
+		t.Fatal(err)
+	}
+	draft, err := store.Draft(ctx, "default")
+	if err != nil || len(draft) != len(definitions) {
+		t.Fatalf("draft definitions=%d err=%v", len(draft), err)
+	}
+	if err = store.SaveBundleExact(ctx, "default", definition.Bundle{Name: "small", Definitions: definitions[:1]}); err != nil {
+		t.Fatal(err)
+	}
+	draft, err = store.Draft(ctx, "default")
+	if err != nil || len(draft) != 1 || draft[0].Metadata.Name != "role_000" {
+		t.Fatalf("replacement=%#v err=%v", draft, err)
+	}
+}
+
+type previewBarrierDatabase struct {
+	*sqlite.DB
+	ready chan struct{}
+	start chan struct{}
+	calls atomic.Int32
+}
+
+func (b *previewBarrierDatabase) Select(ctx context.Context, query dbal.Select) ([]dbal.Row, error) {
+	if query.Table == "bean_active_release" && b.calls.Add(1) <= 2 {
+		b.ready <- struct{}{}
+		<-b.start
+	}
+	return b.DB.Select(ctx, query)
+}
+
+func TestConcurrentBundlePublishSerializesMigrationAndActivation(t *testing.T) {
+	ctx := context.Background()
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "concurrent.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	initializer := &release.Store{DB: db, Migrations: db, Kernel: kernel.New(), OpenAPI: openapi.Generate}
+	if err = initializer.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	barrier := &previewBarrierDatabase{DB: db, ready: make(chan struct{}, 2), start: make(chan struct{})}
+	store := &release.Store{DB: barrier, Migrations: db, Inspector: db, Kernel: kernel.New(), OpenAPI: openapi.Generate}
+	type outcome struct {
+		field     string
+		published release.Published
+		err       error
+	}
+	outcomes := make(chan outcome, 2)
+	for _, field := range []string{"alpha", "beta"} {
+		go func(field string) {
+			bundle := definition.Bundle{Name: field, Definitions: []definition.Definition{{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "record"}, Spec: map[string]any{"fields": []any{map[string]any{"name": field, "type": "string"}}}}}}
+			published, _, diagnostics, publishErr := store.PublishBundle(ctx, "default", bundle)
+			if len(diagnostics) > 0 {
+				publishErr = diagnostics[0]
+			}
+			outcomes <- outcome{field: field, published: published, err: publishErr}
+		}(field)
+	}
+	<-barrier.ready
+	<-barrier.ready
+	close(barrier.start)
+	results := []outcome{<-outcomes, <-outcomes}
+	var winner *outcome
+	for index := range results {
+		if results[index].err == nil {
+			if winner != nil {
+				t.Fatalf("both stale candidates published: %#v", results)
+			}
+			winner = &results[index]
+		}
+	}
+	if winner == nil {
+		t.Fatalf("no candidate published: %#v", results)
+	}
+	active, err := store.ActiveApp(ctx, "default")
+	if err != nil || active == nil || active.ReleaseID != winner.published.ID {
+		t.Fatalf("active=%#v winner=%#v err=%v", active, winner, err)
+	}
+	entity, exists := active.Entities["record"]
+	if !exists || len(entity.Fields) != 1 || entity.Fields[0].Name != winner.field {
+		t.Fatalf("winner %q does not match active entity %#v", winner.field, entity)
+	}
+	draft, err := store.Draft(ctx, "default")
+	if err != nil || len(draft) != 1 || draft[0].Metadata.Name != "record" {
+		t.Fatalf("draft=%#v winner=%#v err=%v", draft, winner, err)
+	}
+	columns, err := db.Columns(ctx, "record")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]bool{}
+	for _, column := range columns {
+		found[column.Name] = true
+	}
+	loser := "alpha"
+	if winner.field == "alpha" {
+		loser = "beta"
+	}
+	if !found[winner.field] || found[loser] {
+		t.Fatalf("physical columns %#v do not match winner %q", columns, winner.field)
+	}
 }

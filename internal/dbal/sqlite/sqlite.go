@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/url"
+	"path/filepath"
 	"strings"
 
 	"github.com/beanruntime/bean/internal/dbal"
@@ -11,8 +13,25 @@ import (
 )
 
 type DB struct {
-	db       *sql.DB
-	compiler Compiler
+	db                  *sql.DB
+	compiler            Compiler
+	publicationLockPath string
+}
+
+func OpenReadOnly(path string) (*DB, error) {
+	location := url.URL{Scheme: "file", Path: path}
+	dsn := location.String() + "?mode=ro&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
+	d, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, err
+	}
+	d.SetMaxOpenConns(1)
+	d.SetMaxIdleConns(1)
+	if err = d.Ping(); err != nil {
+		d.Close()
+		return nil, err
+	}
+	return &DB{db: d, publicationLockPath: lockPath(path)}, nil
 }
 
 func Open(path string) (*DB, error) {
@@ -31,7 +50,24 @@ func Open(path string) (*DB, error) {
 		d.Close()
 		return nil, err
 	}
-	return &DB{db: d}, nil
+	return &DB{db: d, publicationLockPath: lockPath(path)}, nil
+}
+
+func lockPath(databasePath string) string {
+	location := strings.SplitN(databasePath, "?", 2)[0]
+	if parsed, err := url.Parse(location); err == nil && parsed.Scheme == "file" {
+		location = parsed.Path
+		if location == "" {
+			location = parsed.Opaque
+		}
+	}
+	if absolute, err := filepath.Abs(location); err == nil {
+		location = absolute
+	}
+	if resolved, err := filepath.EvalSymlinks(location); err == nil {
+		location = resolved
+	}
+	return location + ".bean-publication.lock"
 }
 func (d *DB) Close() error    { return d.db.Close() }
 func (d *DB) Dialect() string { return "sqlite" }
@@ -280,3 +316,4 @@ func (d *DB) ExecuteMigration(ctx context.Context, statements []string) error {
 
 var _ dbal.Database = (*DB)(nil)
 var _ dbal.SchemaInspector = (*DB)(nil)
+var _ dbal.PublicationLocker = (*DB)(nil)
