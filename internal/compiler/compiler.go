@@ -1276,6 +1276,22 @@ func validateActionRules(a *appir.App, name string, action appir.Action) []defin
 			out = append(out, diagnostic)
 			continue
 		}
+		if action.Operation == "update" {
+			owned := false
+			for _, candidateName := range keys(a.Actions) {
+				candidate := a.Actions[candidateName]
+				if candidate.Entity == action.Entity && candidate.Operation == "transition" && candidate.Lifecycle == "" && fieldName == actionStateField(a, candidate) {
+					diagnostic := diagnostic("Action", name, path, "State is owned by transition Action "+candidateName)
+					diagnostic.Code = "BEAN-E2201"
+					out = append(out, diagnostic)
+					owned = true
+					break
+				}
+			}
+			if owned {
+				continue
+			}
+		}
 		item, exists := a.Rules[action.Derive[fieldName]]
 		if !exists {
 			out = append(out, missingReferenceDiagnostic("Action", name, path, "Rule", action.Derive[fieldName]))

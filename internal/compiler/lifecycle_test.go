@@ -133,6 +133,30 @@ func TestLifecycleSupportsPolicySpecificActionSubsetsAndTransactionSteps(t *test
 	}
 }
 
+func TestLegacyTransitionStateCannotBeDerivedByUpdate(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "candidate"}, Spec: map[string]any{"fields": []any{
+			map[string]any{"name": "stage", "type": "enum", "options": []any{"applied", "hired"}},
+		}}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "move_candidate"}, Spec: map[string]any{
+			"entity": "candidate", "operation": "transition", "stateField": "stage", "transitions": map[string]any{"applied": []any{"hired"}},
+		}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "update_candidate"}, Spec: map[string]any{
+			"entity": "candidate", "operation": "update", "derive": map[string]any{"stage": "initial_stage"},
+		}},
+		{APIVersion: definition.APIVersion, Kind: "Rule", Metadata: definition.Metadata{Name: "initial_stage"}, Spec: map[string]any{
+			"result": "string", "expression": map[string]any{"source": "literal", "literal": "applied"},
+		}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Kind == "Action" && diagnostic.Name == "update_candidate" && diagnostic.Path == "spec.derive.stage" && diagnostic.Code == "BEAN-E2201" {
+			return
+		}
+	}
+	t.Fatalf("legacy transition state derivation accepted: %v", diagnostics)
+}
+
 func lifecycleDefinitions() []definition.Definition {
 	return []definition.Definition{
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "candidate"}, Spec: map[string]any{"fields": []any{

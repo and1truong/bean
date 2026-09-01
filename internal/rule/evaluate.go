@@ -195,6 +195,11 @@ func valuesEqual(left, right any) bool {
 	if leftIsInteger && rightIsInteger {
 		return leftInteger == rightInteger
 	}
+	leftRational, leftIsRational := rationalValue(left)
+	rightRational, rightIsRational := rationalValue(right)
+	if leftIsRational && rightIsRational {
+		return leftRational.Cmp(rightRational) == 0
+	}
 	leftNumber, _, leftNumeric := numeric(left)
 	rightNumber, _, rightNumeric := numeric(right)
 	if leftNumeric && rightNumeric {
@@ -229,6 +234,11 @@ func ordered(left, right any, operator, path string) (bool, error) {
 			comparison = 1
 		}
 		return compareResult(comparison, operator), nil
+	}
+	leftRational, leftIsRational := rationalValue(left)
+	rightRational, rightIsRational := rationalValue(right)
+	if leftIsRational && rightIsRational {
+		return compareResult(leftRational.Cmp(rightRational), operator), nil
 	}
 	leftNumber, _, leftOK := numeric(left)
 	rightNumber, _, rightOK := numeric(right)
@@ -350,22 +360,55 @@ func integerValue(value any) (int64, bool) {
 			return int64(typed), true
 		}
 	case json.Number:
-		if integer, err := typed.Int64(); err == nil {
-			return integer, true
-		}
-		text := typed.String()
-		if index := strings.IndexAny(text, "eE"); index >= 0 {
-			exponent, err := strconv.Atoi(text[index+1:])
-			if err != nil || exponent < -64 || exponent > 64 {
-				return 0, false
-			}
-		}
-		rational, ok := new(big.Rat).SetString(text)
+		rational, ok := rationalValue(typed)
 		if ok && rational.IsInt() && rational.Num().IsInt64() {
 			return rational.Num().Int64(), true
 		}
 	}
 	return 0, false
+}
+
+func rationalValue(value any) (*big.Rat, bool) {
+	switch typed := value.(type) {
+	case int:
+		return new(big.Rat).SetInt64(int64(typed)), true
+	case int8:
+		return new(big.Rat).SetInt64(int64(typed)), true
+	case int16:
+		return new(big.Rat).SetInt64(int64(typed)), true
+	case int32:
+		return new(big.Rat).SetInt64(int64(typed)), true
+	case int64:
+		return new(big.Rat).SetInt64(typed), true
+	case uint:
+		return new(big.Rat).SetInt(new(big.Int).SetUint64(uint64(typed))), true
+	case uint8:
+		return new(big.Rat).SetInt64(int64(typed)), true
+	case uint16:
+		return new(big.Rat).SetInt64(int64(typed)), true
+	case uint32:
+		return new(big.Rat).SetInt64(int64(typed)), true
+	case uint64:
+		return new(big.Rat).SetInt(new(big.Int).SetUint64(typed)), true
+	case float32:
+		rational := new(big.Rat).SetFloat64(float64(typed))
+		return rational, rational != nil
+	case float64:
+		rational := new(big.Rat).SetFloat64(typed)
+		return rational, rational != nil
+	case json.Number:
+		text := typed.String()
+		if index := strings.IndexAny(text, "eE"); index >= 0 {
+			exponent, err := strconv.Atoi(text[index+1:])
+			if err != nil || exponent < -64 || exponent > 64 {
+				return nil, false
+			}
+		}
+		rational, ok := new(big.Rat).SetString(text)
+		return rational, ok
+	default:
+		return nil, false
+	}
 }
 
 func numeric(value any) (float64, bool, bool) {

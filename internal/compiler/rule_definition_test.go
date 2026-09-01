@@ -65,6 +65,7 @@ func TestRuleDiagnosticsAreStableAndFailClosed(t *testing.T) {
 		{"missing entity", func(defs []definition.Definition) { defs[1].Spec["entity"] = "missing" }, "Rule", "spec.entity", "BEAN-E2001"},
 		{"unknown operator", func(defs []definition.Definition) { defs[1].Spec["expression"].(map[string]any)["op"] = "execute" }, "Rule", "spec.expression.op", "BEAN-E2351"},
 		{"unknown input", func(defs []definition.Definition) { defs[2].Spec["expression"].(map[string]any)["path"] = "missing" }, "Rule", "spec.expression.path", "BEAN-E2351"},
+		{"empty leaf args", func(defs []definition.Definition) { defs[2].Spec["expression"].(map[string]any)["args"] = []any{} }, "Rule", "spec.expression", "BEAN-E2351"},
 		{"result mismatch", func(defs []definition.Definition) { defs[1].Spec["result"] = "string" }, "Rule", "spec.result", "BEAN-E2351"},
 		{"forbidden input", func(defs []definition.Definition) {
 			defs[2].Spec["input"].(map[string]any)["amount"].(map[string]any)["type"] = "password"

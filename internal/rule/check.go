@@ -38,7 +38,7 @@ func checkStructure(expression Expression) error {
 			if current.Source == "" {
 				return ruleError(CodeShape, path, "value node requires a source")
 			}
-			if len(current.Args) > 0 {
+			if current.Args != nil {
 				return ruleError(CodeShape, path, "value node cannot contain arguments")
 			}
 			if !validSource(current.Source) {

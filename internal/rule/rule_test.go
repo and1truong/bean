@@ -177,7 +177,7 @@ func TestNumericComparisonsPreserveIntegerPrecision(t *testing.T) {
 			t.Fatalf("expression=%s value=%v err=%v want=%v", test.expression.Op, got, err, test.want)
 		}
 	}
-	for _, decimal := range []json.Number{"9007199254740992.0", "9.007199254740992e15"} {
+	for _, decimal := range []json.Number{"9007199254740992.0", "9.007199254740992e15", "9007199254740992.5"} {
 		environment := rule.Environment{Input: map[string]any{"left": decimal, "right": right}}
 		for _, test := range []struct {
 			expression rule.Expression
