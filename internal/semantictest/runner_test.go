@@ -89,6 +89,24 @@ func TestActionSuiteSeedProducesReplayableIDsAndLeavesNoState(t *testing.T) {
 	}
 }
 
+func TestActionSuiteCanAssertSoftDeletedRows(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "document"}, Spec: map[string]any{"softDelete": true}},
+		{APIVersion: definition.APIVersion, Kind: "TestSuite", Metadata: definition.Metadata{Name: "document_delete_contract"}, Spec: map[string]any{
+			"target": map[string]any{"kind": "Action", "name": "document_delete"},
+			"tests": []any{map[string]any{
+				"name": "records_injected_delete_time", "fixtures": map[string]any{"document": []any{map[string]any{"id": ticketID}}},
+				"context": map[string]any{"actor": map[string]any{"roles": []any{"administrator"}}, "time": fixedNow}, "input": map[string]any{"id": ticketID},
+				"expect": map[string]any{"changes": []any{map[string]any{"entity": "document", "id": ticketID, "values": map[string]any{"deleted_at": fixedNow}}}},
+			}},
+		}},
+	}
+	results, diagnostics, err := semantictest.Run(context.Background(), definition.Bundle{Name: "Soft delete", Definitions: definitions}, t.TempDir())
+	if err != nil || len(diagnostics) != 0 || len(results) != 1 || results[0].Status != "passed" {
+		t.Fatalf("results=%+v diagnostics=%v err=%v", results, diagnostics, err)
+	}
+}
+
 func TestAssertionFailuresAreStableAndDoNotExposeValues(t *testing.T) {
 	definitions := ruleSuiteDefinitions()
 	tests := definitions[1].Spec["tests"].([]any)

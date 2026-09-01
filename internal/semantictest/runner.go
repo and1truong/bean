@@ -238,7 +238,11 @@ func fixtureDependenciesReady(record fixtureRecord, all, inserted map[string]boo
 		if item.Type != "relation" || item.Relation == nil || item.Relation.Kind == "one-to-many" || item.Relation.Kind == "many-to-many" {
 			continue
 		}
-		value := fmt.Sprint(record.row[item.Name])
+		raw := record.row[item.Name]
+		if raw == nil {
+			continue
+		}
+		value := fmt.Sprint(raw)
 		targetField := item.Relation.TargetField
 		if targetField == "" {
 			targetField = "id"
@@ -426,7 +430,10 @@ func semanticRows(ctx context.Context, database dbal.Database, app *appir.App, e
 	request := beanctx.Request{User: &beanctx.User{ID: "semantic-test-runner", Roles: []string{"administrator"}}}
 	rows := []dbal.Row{}
 	for offset := 0; ; offset += 200 {
-		result, err := (view.Service{DB: database}).RunPage(ctx, &viewApp, viewName, view.Params{RecordID: recordID, Limit: 200, Offset: offset}, request)
+		result, err := view.ReadPage(ctx, database, &viewApp, viewName, view.ReadOptions{
+			Params:         view.Params{RecordID: recordID, Limit: 200, Offset: offset},
+			IncludeDeleted: true,
+		}, request)
 		if err != nil {
 			return nil, err
 		}

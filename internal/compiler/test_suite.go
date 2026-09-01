@@ -138,6 +138,7 @@ func validateTestCase(app *appir.App, suite appir.TestSuite, test appir.TestCase
 			out = append(out, validateFixtureRelations(suite.Name, entity, row, fixtureValues, fixturePath)...)
 		}
 	}
+	out = append(out, validateFixtureCycles(app, suite.Name, test.Fixtures, fixtureValues, path+".fixtures")...)
 	if fixtureCount > testsuite.MaxFixtures {
 		out = append(out, testSuiteDiagnostic(suite.Name, path+".fixtures", fmt.Sprintf("exceeds %d fixture records", testsuite.MaxFixtures)))
 	}
@@ -169,6 +170,65 @@ func validateTestCase(app *appir.App, suite appir.TestSuite, test appir.TestCase
 		out = append(out, validateActionTestCase(app, suite, test, path)...)
 	}
 	return out
+}
+
+type testFixtureRecord struct {
+	entity appir.Entity
+	row    map[string]any
+}
+
+func validateFixtureCycles(app *appir.App, suiteName string, fixtures map[string][]map[string]any, all map[string]bool, path string) []definition.Diagnostic {
+	pending := []testFixtureRecord{}
+	for _, entityName := range keys(fixtures) {
+		entity, exists := app.Entities[entityName]
+		if !exists {
+			continue
+		}
+		for _, row := range fixtures[entityName] {
+			pending = append(pending, testFixtureRecord{entity: entity, row: row})
+		}
+	}
+	inserted := map[string]bool{}
+	for len(pending) > 0 {
+		progress := false
+		remaining := pending[:0]
+		for _, record := range pending {
+			if !testFixtureDependenciesReady(record, all, inserted) {
+				remaining = append(remaining, record)
+				continue
+			}
+			for fieldName, value := range record.row {
+				inserted[record.entity.Name+"/"+fieldName+"/"+fmt.Sprint(value)] = true
+			}
+			progress = true
+		}
+		if !progress {
+			return []definition.Diagnostic{testSuiteDiagnostic(suiteName, path, "fixture relations contain a cycle")}
+		}
+		pending = remaining
+	}
+	return nil
+}
+
+func testFixtureDependenciesReady(record testFixtureRecord, all, inserted map[string]bool) bool {
+	for _, item := range record.entity.Fields {
+		if item.Type != "relation" || item.Relation == nil || item.Relation.Kind == "one-to-many" || item.Relation.Kind == "many-to-many" {
+			continue
+		}
+		value := record.row[item.Name]
+		if value == nil {
+			continue
+		}
+		targetField := item.Relation.TargetField
+		if targetField == "" {
+			targetField = "id"
+		}
+		key := item.Relation.Entity + "/" + targetField + "/" + fmt.Sprint(value)
+		if all[key] && !inserted[key] {
+			return false
+		}
+	}
+	return true
 }
 
 func validateFixtureRelations(suiteName string, entity appir.Entity, row map[string]any, fixtureValues map[string]bool, path string) []definition.Diagnostic {

@@ -123,6 +123,19 @@ func TestActionTestSuiteRequiresOneAssertionButNotAResult(t *testing.T) {
 	assertTestSuiteDiagnostic(t, compiler.Compile("test", 1, definitions).Diagnostics, "spec.tests.0.expect")
 }
 
+func TestTestSuiteRejectsCyclicFixtureRelations(t *testing.T) {
+	const id = "00000000-0000-4000-8000-000000000001"
+	definitions := semanticSuiteDefinitions()
+	definitions[0].Spec["fields"] = []any{
+		map[string]any{"name": "quantity", "type": "integer", "required": true},
+		map[string]any{"name": "parent_id", "type": "relation", "relation": map[string]any{"entity": "order", "kind": "many-to-one", "targetField": "id"}},
+	}
+	definitions[2].Spec["tests"].([]any)[0].(map[string]any)["fixtures"] = map[string]any{
+		"order": []any{map[string]any{"id": id, "quantity": 1, "parent_id": id}},
+	}
+	assertTestSuiteDiagnostic(t, compiler.Compile("test", 1, definitions).Diagnostics, "spec.tests.0.fixtures")
+}
+
 func actionAssertionSuiteDefinitions() []definition.Definition {
 	const id = "00000000-0000-4000-8000-000000000001"
 	return []definition.Definition{
