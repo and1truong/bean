@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/big"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -349,8 +350,20 @@ func integerValue(value any) (int64, bool) {
 			return int64(typed), true
 		}
 	case json.Number:
-		integer, err := typed.Int64()
-		return integer, err == nil
+		if integer, err := typed.Int64(); err == nil {
+			return integer, true
+		}
+		text := typed.String()
+		if index := strings.IndexAny(text, "eE"); index >= 0 {
+			exponent, err := strconv.Atoi(text[index+1:])
+			if err != nil || exponent < -64 || exponent > 64 {
+				return 0, false
+			}
+		}
+		rational, ok := new(big.Rat).SetString(text)
+		if ok && rational.IsInt() && rational.Num().IsInt64() {
+			return rational.Num().Int64(), true
+		}
 	}
 	return 0, false
 }

@@ -74,6 +74,11 @@ func TestLifecycleDiagnosticsAreStable(t *testing.T) {
 		{"missing lifecycle", func(defs []definition.Definition) { defs[2].Spec["lifecycle"] = "missing" }, "Action", "spec.lifecycle", "BEAN-E2201"},
 		{"unbound transition", func(defs []definition.Definition) { delete(defs[2].Spec, "lifecycle") }, "Action", "spec.lifecycle", "BEAN-E2201"},
 		{"duplicated state field", func(defs []definition.Definition) { defs[2].Spec["stateField"] = "stage" }, "Action", "spec.stateField", "BEAN-E2201"},
+		{"derived state field", func(defs []definition.Definition) {
+			defs[2].Spec["operation"] = "create"
+			delete(defs[2].Spec, "lifecycle")
+			defs[2].Spec["derive"] = map[string]any{"stage": "initial_stage"}
+		}, "Action", "spec.derive.stage", "BEAN-E2201"},
 		{"transaction update bypass", func(defs []definition.Definition) {
 			defs[2].Spec = map[string]any{
 				"entity": "candidate", "operation": "transaction", "lifecycle": "candidate_pipeline",
@@ -139,6 +144,9 @@ func lifecycleDefinitions() []definition.Definition {
 		}},
 		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "move_candidate"}, Spec: map[string]any{
 			"entity": "candidate", "operation": "transition", "lifecycle": "candidate_pipeline",
+		}},
+		{APIVersion: definition.APIVersion, Kind: "Rule", Metadata: definition.Metadata{Name: "initial_stage"}, Spec: map[string]any{
+			"result": "string", "expression": map[string]any{"source": "literal", "literal": "applied"},
 		}},
 	}
 }

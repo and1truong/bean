@@ -58,8 +58,13 @@ func checkStructure(expression Expression) error {
 				if len(current.Literal) > MaxLiteralBytes {
 					return ruleError(CodeLimit, path+".literal", fmt.Sprintf("rule literal exceeds %d bytes", MaxLiteralBytes))
 				}
-			} else if current.Path == "" {
-				return ruleError(CodeShape, path+".path", "rule source path is required")
+			} else {
+				if len(current.Literal) > 0 {
+					return ruleError(CodeShape, path+".literal", "non-literal source cannot contain a literal value")
+				}
+				if current.Path == "" {
+					return ruleError(CodeShape, path+".path", "rule source path is required")
+				}
 			}
 		}
 		for index, argument := range current.Args {

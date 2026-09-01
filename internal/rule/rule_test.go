@@ -78,6 +78,7 @@ func TestCheckRejectsUnknownAndIncompatibleExpressions(t *testing.T) {
 		{name: "type", expression: op("add", literal("one"), literal(2)), code: rule.CodeType},
 		{name: "shape", expression: rule.Expression{Op: "upper", Source: "input", Path: "quantity", Args: []rule.Expression{literal("x")}}, code: rule.CodeShape},
 		{name: "missing literal", expression: rule.Expression{Source: "literal"}, code: rule.CodeShape},
+		{name: "literal on input", expression: rule.Expression{Source: "input", Path: "quantity", Literal: json.RawMessage("1")}, code: rule.CodeShape},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -174,6 +175,21 @@ func TestNumericComparisonsPreserveIntegerPrecision(t *testing.T) {
 		got, err := rule.Evaluate(test.expression, environment)
 		if err != nil || got != test.want {
 			t.Fatalf("expression=%s value=%v err=%v want=%v", test.expression.Op, got, err, test.want)
+		}
+	}
+	for _, decimal := range []json.Number{"9007199254740992.0", "9.007199254740992e15"} {
+		environment := rule.Environment{Input: map[string]any{"left": decimal, "right": right}}
+		for _, test := range []struct {
+			expression rule.Expression
+			want       bool
+		}{
+			{expression: op("eq", source("input", "left"), source("input", "right")), want: false},
+			{expression: op("lt", source("input", "left"), source("input", "right")), want: true},
+		} {
+			got, err := rule.Evaluate(test.expression, environment)
+			if err != nil || got != test.want {
+				t.Fatalf("decimal=%s expression=%s value=%v err=%v want=%v", decimal, test.expression.Op, got, err, test.want)
+			}
 		}
 	}
 }

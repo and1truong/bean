@@ -1270,6 +1270,12 @@ func validateActionRules(a *appir.App, name string, action appir.Action) []defin
 	}
 	for _, fieldName := range keys(action.Derive) {
 		path := "spec.derive." + fieldName
+		if lifecycle, exists := lifecycleForEntity(a, action.Entity); exists && fieldName == lifecycle.StateField {
+			diagnostic := diagnostic("Action", name, path, "Lifecycle state is owned by "+lifecycle.Name)
+			diagnostic.Code = "BEAN-E2201"
+			out = append(out, diagnostic)
+			continue
+		}
 		item, exists := a.Rules[action.Derive[fieldName]]
 		if !exists {
 			out = append(out, missingReferenceDiagnostic("Action", name, path, "Rule", action.Derive[fieldName]))
