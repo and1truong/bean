@@ -115,7 +115,7 @@ func runIsolatedCase(ctx context.Context, bundle definition.Bundle, suiteName st
 		}
 		result, executionErr = actions.Execute(caseCtx, app, suite.Target.Name, test.Input, request)
 	}
-	return assertCase(caseCtx, runtime.DB, app, suite, test, before, result, executionErr), nil
+	return assertCase(ctx, runtime.DB, app, suite, test, before, result, executionErr), nil
 }
 
 func executeRule(target appir.Rule, test appir.TestCase, request beanctx.Request) (any, error) {
@@ -280,7 +280,9 @@ func insertFixture(ctx context.Context, database dbal.Database, entity appir.Ent
 	return err
 }
 
-func assertCase(ctx context.Context, database dbal.Database, app *appir.App, suite appir.TestSuite, test appir.TestCase, before map[string][]dbal.Row, result any, executionErr error) []definition.Diagnostic {
+func assertCase(parentCtx context.Context, database dbal.Database, app *appir.App, suite appir.TestSuite, test appir.TestCase, before map[string][]dbal.Row, result any, executionErr error) []definition.Diagnostic {
+	ctx, cancel := context.WithTimeout(parentCtx, testsuite.CaseTimeoutSec*time.Second)
+	defer cancel()
 	out := []definition.Diagnostic{}
 	base := "tests." + test.Name + ".expect"
 	actualCode := errorCode(executionErr)

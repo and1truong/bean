@@ -167,6 +167,29 @@ func TestTestSuiteRejectsDuplicateFixtureUniqueValues(t *testing.T) {
 	}
 }
 
+func TestActionTestSuiteValidatesMutationIdentityAndSystemFields(t *testing.T) {
+	definitions := actionAssertionSuiteDefinitions()
+	change := definitions[2].Spec["tests"].([]any)[0].(map[string]any)["expect"].(map[string]any)["changes"].([]any)[0].(map[string]any)
+	change["id"] = "not-a-uuid"
+	assertTestSuiteDiagnostic(t, compiler.Compile("test", 1, definitions).Diagnostics, "spec.tests.0.expect.changes.0.id")
+
+	for _, test := range []struct {
+		name  string
+		value any
+	}{
+		{"owner_id", "00000000-0000-4000-8000-000000000002"},
+		{"tenant_id", "00000000-0000-4000-8000-000000000003"},
+		{"deleted_at", "2026-09-01T10:00:00Z"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			definitions := actionAssertionSuiteDefinitions()
+			change := definitions[2].Spec["tests"].([]any)[0].(map[string]any)["expect"].(map[string]any)["changes"].([]any)[0].(map[string]any)
+			change["values"].(map[string]any)[test.name] = test.value
+			assertTestSuiteDiagnosticCode(t, compiler.Compile("test", 1, definitions).Diagnostics, "spec.tests.0.expect.changes.0.values."+test.name, "BEAN-E2101")
+		})
+	}
+}
+
 func actionAssertionSuiteDefinitions() []definition.Definition {
 	const id = "00000000-0000-4000-8000-000000000001"
 	return []definition.Definition{
@@ -183,13 +206,17 @@ func actionAssertionSuiteDefinitions() []definition.Definition {
 }
 
 func assertTestSuiteDiagnostic(t *testing.T, diagnostics []definition.Diagnostic, path string) {
+	assertTestSuiteDiagnosticCode(t, diagnostics, path, "BEAN-E2851")
+}
+
+func assertTestSuiteDiagnosticCode(t *testing.T, diagnostics []definition.Diagnostic, path, code string) {
 	t.Helper()
 	for _, diagnostic := range diagnostics {
-		if diagnostic.Code == "BEAN-E2851" && diagnostic.Path == path {
+		if diagnostic.Code == code && diagnostic.Path == path {
 			return
 		}
 	}
-	t.Fatalf("missing TestSuite diagnostic at %s: %v", path, diagnostics)
+	t.Fatalf("missing %s TestSuite diagnostic at %s: %v", code, path, diagnostics)
 }
 
 func semanticSuiteDefinitions() []definition.Definition {

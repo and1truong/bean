@@ -369,7 +369,10 @@ func validateFixture(app *appir.App, suiteName string, entity appir.Entity, row 
 		if !supplied {
 			continue
 		}
-		item, _ := testFieldDefinition(entity, name)
+		item, exists := testFieldDefinition(entity, name)
+		if !exists {
+			continue
+		}
 		if err := field.Validate(item, value); err != nil {
 			out = append(out, testSuiteDiagnostic(suiteName, path+"."+name, err.Error()))
 		}
@@ -471,6 +474,8 @@ func validateActionTestCase(app *appir.App, suite appir.TestSuite, test appir.Te
 		}
 		if change.ID == "" {
 			out = append(out, requiredDiagnostic("TestSuite", suite.Name, changePath+".id", "is required"))
+		} else if err := field.Validate(appir.Field{Name: "id", Type: "uuid"}, change.ID); err != nil {
+			out = append(out, testSuiteDiagnostic(suite.Name, changePath+".id", err.Error()))
 		}
 		out = append(out, validatePartialRecord(suite.Name, entity, change.Values, changePath+".values")...)
 	}
@@ -533,10 +538,16 @@ func testFieldDefinition(entity appir.Entity, name string) (appir.Field, bool) {
 		return item, true
 	}
 	switch name {
-	case "id", "owner_id", "tenant_id":
+	case "id":
 		return appir.Field{Name: name, Type: "uuid"}, true
-	case "created_at", "updated_at", "deleted_at":
+	case "owner_id":
+		return appir.Field{Name: name, Type: "uuid"}, entity.Owner
+	case "tenant_id":
+		return appir.Field{Name: name, Type: "uuid"}, entity.Tenant
+	case "created_at", "updated_at":
 		return appir.Field{Name: name, Type: "datetime"}, true
+	case "deleted_at":
+		return appir.Field{Name: name, Type: "datetime"}, entity.SoftDelete
 	case "version":
 		return appir.Field{Name: name, Type: "integer"}, true
 	default:
