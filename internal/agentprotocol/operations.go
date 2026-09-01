@@ -22,6 +22,7 @@ import (
 	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/migration"
 	"github.com/beanruntime/bean/internal/release"
+	"github.com/beanruntime/bean/internal/semantictest"
 	"github.com/beanruntime/bean/internal/view"
 )
 
@@ -273,7 +274,17 @@ func (s *Service) test(ctx context.Context, raw json.RawMessage, _ Principal) Ou
 		return operationError(err)
 	}
 	checks = append(checks, smokeCheck{ID: "runtime.restart", Status: "passed"})
-	return success(map[string]any{"checksum": bundleChecksum(bundle), "checks": checks})
+	suites, testDiagnostics, err := semantictest.Run(ctx, bundle, directory)
+	if err != nil {
+		return operationError(err)
+	}
+	result := map[string]any{"checksum": bundleChecksum(bundle), "checks": checks, "suites": suites}
+	if len(testDiagnostics) > 0 {
+		return Outcome{OK: false, Result: result, Diagnostics: testDiagnostics}
+	}
+	checks = append(checks, smokeCheck{ID: "semantic.suites", Status: "passed"})
+	result["checks"] = checks
+	return success(result)
 }
 
 func (s *Service) query(ctx context.Context, raw json.RawMessage, principal Principal) Outcome {

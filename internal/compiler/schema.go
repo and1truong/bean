@@ -13,6 +13,7 @@ import (
 	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/field"
 	"github.com/beanruntime/bean/internal/rule"
+	"github.com/beanruntime/bean/internal/testsuite"
 )
 
 const JSONSchemaVersion = "https://json-schema.org/draft/2020-12/schema"
@@ -43,6 +44,11 @@ type Capabilities struct {
 	MaxRuleDepth            int      `json:"maxRuleDepth"`
 	MaxRuleLiteralBytes     int      `json:"maxRuleLiteralBytes"`
 	MaxRuleValueBytes       int      `json:"maxRuleValueBytes"`
+	TestSuiteTargets        []string `json:"testSuiteTargets"`
+	MaxTestSuites           int      `json:"maxTestSuites"`
+	MaxTestCases            int      `json:"maxTestCases"`
+	MaxTestFixtures         int      `json:"maxTestFixtures"`
+	MaxTestSuiteBytes       int      `json:"maxTestSuiteBytes"`
 }
 
 func AgentCapabilities(cliAPIVersion string) Capabilities {
@@ -76,6 +82,11 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 		MaxRuleDepth:            rule.MaxDepth,
 		MaxRuleLiteralBytes:     rule.MaxLiteralBytes,
 		MaxRuleValueBytes:       rule.MaxValueBytes,
+		TestSuiteTargets:        append([]string{}, testsuite.TargetKinds...),
+		MaxTestSuites:           testsuite.MaxSuites,
+		MaxTestCases:            testsuite.MaxCases,
+		MaxTestFixtures:         testsuite.MaxFixtures,
+		MaxTestSuiteBytes:       testsuite.MaxEncodedSize,
 	}
 }
 
@@ -160,6 +171,17 @@ func definitionSchema(kind string, specification reflect.Type) map[string]any {
 			expressionProperties := expression["properties"].(map[string]any)
 			expressionProperties["op"] = map[string]any{"type": "string", "enum": rule.Operators()}
 			expressionProperties["source"] = map[string]any{"type": "string", "enum": rule.Sources()}
+		}
+	}
+	if kind == "TestSuite" {
+		document["required"] = []string{"kind", "name", "target", "tests"}
+		for name, raw := range builder.definitions {
+			if !strings.HasSuffix(name, "internal_appir_TestTarget") {
+				continue
+			}
+			target := raw.(map[string]any)
+			target["required"] = []string{"kind", "name"}
+			target["properties"].(map[string]any)["kind"] = map[string]any{"type": "string", "enum": testsuite.TargetKinds}
 		}
 	}
 	return document

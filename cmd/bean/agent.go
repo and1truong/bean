@@ -235,7 +235,7 @@ func writeProtocolOutcome(command string, outcome agentprotocol.Outcome, jsonOut
 		}
 	}
 	if jsonOutput {
-		writeEnvelope(stdout, cliEnvelope{APIVersion: cliAPIVersion, Command: command, OK: false, Diagnostics: diagnostics})
+		writeEnvelope(stdout, cliEnvelope{APIVersion: cliAPIVersion, Command: command, OK: false, Result: outcome.Result, Diagnostics: diagnostics})
 	} else {
 		for _, diagnostic := range diagnostics {
 			fmt.Fprintln(stderr, diagnostic.Message)
@@ -572,12 +572,24 @@ func agentAppTest(args []string, stdout, stderr io.Writer) int {
 	}
 	var result struct {
 		Checks []smokeCheck `json:"checks"`
+		Suites []struct {
+			ID    string `json:"id"`
+			Cases []struct {
+				ID     string `json:"id"`
+				Status string `json:"status"`
+			} `json:"cases"`
+		} `json:"suites"`
 	}
 	if err := decodeProtocolResult(outcome.Result, &result); err != nil {
 		return writeRuntimeFailure("app.test", err, jsonOutput, stdout, stderr)
 	}
 	for _, check := range result.Checks {
 		fmt.Fprintf(stdout, "%s: %s\n", check.ID, check.Status)
+	}
+	for _, suite := range result.Suites {
+		for _, test := range suite.Cases {
+			fmt.Fprintf(stdout, "%s: %s\n", test.ID, test.Status)
+		}
 	}
 	return exitOK
 }

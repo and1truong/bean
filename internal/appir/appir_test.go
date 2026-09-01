@@ -74,4 +74,20 @@ func TestRuleRequiresV3Format(t *testing.T) {
 	if err := app.ValidateFormat(); err == nil {
 		t.Fatal("v2 AppIR accepted Rule semantics that a v0.9 runtime would discard")
 	}
+	app.FormatVersion = appir.RuleFormat
+	if err := app.ValidateFormat(); err != nil {
+		t.Fatalf("v3 AppIR rejected Rule semantics: %v", err)
+	}
+}
+
+func TestTestSuiteRequiresV4Format(t *testing.T) {
+	app := appir.Empty()
+	app.TestSuites["always"] = appir.TestSuite{Name: "always", Target: appir.TestTarget{Kind: "Rule", Name: "always"}}
+	if err := app.ValidateFormat(); err != nil {
+		t.Fatal(err)
+	}
+	app.FormatVersion = appir.RuleFormat
+	if err := app.ValidateFormat(); err == nil {
+		t.Fatal("v3 AppIR accepted TestSuite semantics that a v0.10 runtime would discard")
+	}
 }

@@ -69,6 +69,35 @@ func TestRuleInspectionReferencesRedactionAndSemanticDiff(t *testing.T) {
 	}
 }
 
+func TestTestSuiteInspectionReferencesRedactionAndSemanticDiff(t *testing.T) {
+	definitions := ruleProtocolDefinitions(t)
+	definitions = append(definitions, definition.Definition{APIVersion: definition.APIVersion, Kind: "TestSuite", Metadata: definition.Metadata{Name: "minimum_total_contract"}, Spec: map[string]any{
+		"target": map[string]any{"kind": "Rule", "name": "minimum_total"},
+		"tests":  []any{map[string]any{"name": "allows_large_total", "this": map[string]any{"total": 1234568}, "expect": map[string]any{"result": true}}},
+	}})
+	app := compiler.Compile("test", 1, definitions).App
+	value, references, exists := compiler.InspectDefinition(app, "TestSuite", "minimum_total_contract")
+	if !exists || value == nil || !hasReference(references, "target.name", "Rule", "minimum_total") {
+		t.Fatalf("value=%+v references=%+v", value, references)
+	}
+	redacted, _ := json.Marshal(agentprotocol.RedactedApp(app))
+	if strings.Contains(string(redacted), "1234568") || !strings.Contains(string(redacted), "REDACTED") {
+		t.Fatalf("redacted=%s", redacted)
+	}
+	candidate, _ := app.Clone()
+	suite := candidate.TestSuites["minimum_total_contract"]
+	suite.Tests[0].Expect.Result = json.RawMessage("false")
+	candidate.TestSuites["minimum_total_contract"] = suite
+	changes := agentprotocol.SemanticDiff(app, candidate)
+	found := false
+	for _, change := range changes {
+		found = found || strings.HasPrefix(change.Path, "testSuites.minimum_total_contract.tests")
+	}
+	if !found {
+		t.Fatalf("changes=%+v", changes)
+	}
+}
+
 func ruleProtocolDefinitions(t *testing.T) []definition.Definition {
 	t.Helper()
 	return []definition.Definition{

@@ -1,0 +1,233 @@
+{
+  "$defs": {
+    "github_com_beanruntime_bean_internal_appir_TestActor": {
+      "additionalProperties": false,
+      "properties": {
+        "displayName": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "roles": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_TestAudit": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "actorId": {
+          "type": "string"
+        },
+        "changed": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "entity": {
+          "type": "string"
+        },
+        "entityId": {
+          "type": "string"
+        },
+        "success": {
+          "type": "boolean"
+        },
+        "tenantId": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_TestCase": {
+      "additionalProperties": false,
+      "properties": {
+        "context": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_TestContext"
+        },
+        "expect": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_TestExpectation"
+        },
+        "fixtures": {
+          "additionalProperties": {
+            "items": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "type": "object"
+        },
+        "input": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "this": {
+          "additionalProperties": {},
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_TestContext": {
+      "additionalProperties": false,
+      "properties": {
+        "actor": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_TestActor"
+        },
+        "ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "tenant": {
+          "type": "string"
+        },
+        "time": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_TestEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "payload": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "topic": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_TestExpectation": {
+      "additionalProperties": false,
+      "properties": {
+        "audit": {
+          "items": {
+            "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_TestAudit"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_TestMutation"
+          },
+          "type": "array"
+        },
+        "error": {
+          "type": "string"
+        },
+        "events": {
+          "items": {
+            "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_TestEvent"
+          },
+          "type": "array"
+        },
+        "noChanges": {
+          "type": "boolean"
+        },
+        "noEvents": {
+          "type": "boolean"
+        },
+        "result": {}
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_TestMutation": {
+      "additionalProperties": false,
+      "properties": {
+        "entity": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "values": {
+          "additionalProperties": {},
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_TestTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "Action",
+            "Rule"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://bean.build/schemas/testsuite.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "bean/v1alpha1"
+    },
+    "kind": {
+      "const": "TestSuite"
+    },
+    "name": {
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "target": {
+      "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_TestTarget"
+    },
+    "tests": {
+      "items": {
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_TestCase"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "kind",
+    "name",
+    "target",
+    "tests"
+  ],
+  "title": "Bean TestSuite definition",
+  "type": "object"
+}

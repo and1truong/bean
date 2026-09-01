@@ -75,6 +75,19 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 	}
 	ruleKind.FieldEntity = func(app *appir.App, name string) string { return app.Rules[name].Entity }
 	ruleKind.ReferenceCandidates = true
+	testSuite := mappedDefinitionKind(appir.TestSuite{}, func(app *appir.App) map[string]appir.TestSuite { return app.TestSuites }, func(name string, value *appir.TestSuite) {
+		value.Name = name
+		for index := range value.Tests {
+			if value.Tests[index].Fixtures == nil {
+				value.Tests[index].Fixtures = map[string][]map[string]any{}
+			}
+			if value.Tests[index].Input == nil {
+				value.Tests[index].Input = map[string]any{}
+			}
+		}
+	})
+	testSuite.References = testSuiteReferences
+	testSuite.ReferenceCandidates = true
 	policy := mappedDefinitionKind(appir.Policy{}, func(app *appir.App) map[string]appir.Policy { return app.Policies }, nameValue[appir.Policy](func(value *appir.Policy, name string) { value.Name = name }))
 	policy.ReferenceCandidates = true
 	filter := mappedDefinitionKind(appir.Filter{}, func(app *appir.App) map[string]appir.Filter { return app.Filters }, nameValue[appir.Filter](func(value *appir.Filter, name string) { value.Name = name }))
@@ -124,6 +137,7 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 	action.Validate = validateActions
 	lifecycle.Validate = validateLifecycles
 	ruleKind.Validate = validateRules
+	testSuite.Validate = validateTestSuites
 	policy.Validate = validatePolicies
 	filter.Validate = validateFilters
 	webform.Validate = validateWebforms
@@ -155,10 +169,25 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 		registry.Entry[definitionKind]{Name: "Policy", Value: policy},
 		registry.Entry[definitionKind]{Name: "Role", Value: role},
 		registry.Entry[definitionKind]{Name: "Rule", Value: ruleKind},
+		registry.Entry[definitionKind]{Name: "TestSuite", Value: testSuite},
 		registry.Entry[definitionKind]{Name: "Theme", Value: theme},
 		registry.Entry[definitionKind]{Name: "View", Value: view},
 		registry.Entry[definitionKind]{Name: "Webform", Value: webform},
 	)
+}
+
+func testSuiteReferences(app *appir.App, name string) []DefinitionReference {
+	suite := app.TestSuites[name]
+	out := []DefinitionReference{reference("target.name", suite.Target.Kind, suite.Target.Name)}
+	for caseIndex, test := range suite.Tests {
+		for _, entityName := range keys(test.Fixtures) {
+			out = append(out, reference(fmt.Sprintf("tests.%d.fixtures.%s", caseIndex, entityName), "Entity", entityName))
+		}
+		for changeIndex, change := range test.Expect.Changes {
+			out = append(out, reference(fmt.Sprintf("tests.%d.expect.changes.%d.entity", caseIndex, changeIndex), "Entity", change.Entity))
+		}
+	}
+	return references(out...)
 }
 
 func noDefinitionNormalization(*appir.App)                                        {}

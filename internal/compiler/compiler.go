@@ -85,11 +85,12 @@ func compile(appID string, version int, defs []definition.Definition, validateGr
 	for name, entity := range a.Entities {
 		generate(a, name, entity)
 	}
-	for _, kind := range []string{"Action", "AdminResource", "Block"} {
+	for _, kind := range []string{"Action", "AdminResource", "Block", "TestSuite"} {
 		registered, _ := definitionKindRegistry().Lookup(kind)
 		registered.Normalize(a)
 	}
 	validationDiagnostics := suppressUnavailableDependencies(validate(a), unavailable)
+	canonicalizeTestSuiteCases(a)
 	if !validateGraph {
 		validationDiagnostics = suppressMissingDependencies(validationDiagnostics)
 	}
@@ -453,6 +454,8 @@ func diagnosticRule(kind, path string) definition.DiagnosticRule {
 		return definition.RuleMigration
 	case kind == "Theme" || kind == "DemoSeed":
 		return definition.RuleFixture
+	case kind == "TestSuite":
+		return definition.RuleTestSuite
 	case strings.Contains(strings.ToLower(path), "field"):
 		return definition.RuleMissingField
 	default:
@@ -526,7 +529,7 @@ type validationState struct {
 func validate(a *appir.App) []definition.Diagnostic {
 	state := &validationState{routes: map[string]string{}}
 	out := []definition.Diagnostic{}
-	for _, kind := range []string{"Theme", "DemoSeed", "Filter", "View", "Entity", "Lifecycle", "Rule", "Action", "Webform", "Policy", "Block", "LocalRegistration", "Panel", "Page", "Job", "Menu", "AdminResource", "Role"} {
+	for _, kind := range []string{"Theme", "DemoSeed", "Filter", "View", "Entity", "Lifecycle", "Rule", "Action", "TestSuite", "Webform", "Policy", "Block", "LocalRegistration", "Panel", "Page", "Job", "Menu", "AdminResource", "Role"} {
 		registered, _ := definitionKindRegistry().Lookup(kind)
 		out = append(out, registered.Validate(a, state)...)
 	}
