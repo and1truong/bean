@@ -129,10 +129,8 @@ func staticAnonymousPage(app *appir.App, item appir.Page) bool {
 			if !exists || !anonymousPolicy(app, block.Policy) {
 				return false
 			}
-			for _, input := range block.Inputs {
-				if input.Required {
-					return false
-				}
+			if len(block.Inputs) > 0 {
+				return false
 			}
 		}
 	}

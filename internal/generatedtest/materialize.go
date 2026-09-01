@@ -343,6 +343,9 @@ func policyDenialCases(app *appir.App, action appir.Action, cases []appir.TestCa
 }
 
 func invalidTransitionCases(app *appir.App, action appir.Action, cases []appir.TestCase) []appir.TestCase {
+	if action.When != "" {
+		return nil
+	}
 	lifecycle, exists := app.Lifecycles[action.Lifecycle]
 	if !exists || action.Operation != "transition" {
 		return nil

@@ -113,6 +113,9 @@ func TestMaterializeGeneratesPolicyDenialAndInvalidTransitionCases(t *testing.T)
 	if _, exists := compiled.App.TestSuites["generated_policy_close_ticket_contract"]; exists {
 		t.Fatal("Policy-negative case was generated with a confounding Action guard")
 	}
+	if _, exists := compiled.App.TestSuites["generated_transition_close_ticket_contract"]; exists {
+		t.Fatal("transition-negative case was generated with a confounding Action guard")
+	}
 }
 
 func TestMaterializeGeneratesDemoSeedCRUDSuites(t *testing.T) {
