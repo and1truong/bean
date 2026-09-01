@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/beanruntime/bean/examples"
+	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/bootstrap"
 	"github.com/beanruntime/bean/internal/compiler"
 )
@@ -375,6 +376,38 @@ func TestRuntimeFailuresRedactDatabaseCredentials(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "REDACTED") || stderr.Len() != 0 {
 		t.Fatalf("redaction output stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+func TestInspectionAndDiffRedactActionLiterals(t *testing.T) {
+	application := appir.Empty()
+	application.Actions["call_service"] = appir.Action{
+		Name: "call_service",
+		Steps: []appir.Step{{
+			Op: "return",
+			Values: []appir.Assignment{{
+				Field: "api_key",
+				Value: appir.ValueBinding{Source: "literal", Literal: json.RawMessage(`"super-secret"`)},
+			}},
+		}},
+	}
+	inspectable := redactedApp(application)
+	definition, _, exists := inspectedDefinition(inspectable, "Action", "call_service")
+	if !exists {
+		t.Fatal("redacted Action is not inspectable")
+	}
+	inspection, err := json.Marshal(definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	diff, err := json.Marshal(semanticDiff(appir.Empty(), application))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, output := range map[string][]byte{"inspection": inspection, "diff": diff} {
+		if bytes.Contains(output, []byte("super-secret")) || !bytes.Contains(output, []byte("[REDACTED]")) {
+			t.Fatalf("%s leaked or omitted redaction: %s", name, output)
+		}
 	}
 }
 

@@ -9,6 +9,7 @@ func TestClassifyDiagnosticsAssignsPublicCodes(t *testing.T) {
 		{Kind: "Action", Path: "spec.transitions", Message: "invalid Action operation"},
 		{Path: "name", Message: "duplicate definition"},
 		{Kind: "Page", Path: "spec.route", Message: "must start with /"},
+		{Kind: "Page", Path: "spec.route", Message: "duplicates route used by home"},
 	}
 	ClassifyDiagnostics(diagnostics)
 	for _, diagnostic := range diagnostics {
@@ -21,5 +22,8 @@ func TestClassifyDiagnosticsAssignsPublicCodes(t *testing.T) {
 	}
 	if diagnostics[1].Code != "BEAN-E2001" {
 		t.Fatalf("unknown reference code = %q", diagnostics[1].Code)
+	}
+	if diagnostics[5].Code != "BEAN-E2601" {
+		t.Fatalf("duplicate Page route code = %q", diagnostics[5].Code)
 	}
 }

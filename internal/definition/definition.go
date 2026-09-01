@@ -68,6 +68,8 @@ func DiagnosticCode(d Diagnostic) string {
 	path := strings.ToLower(d.Path)
 	kind := strings.ToLower(d.Kind)
 	switch {
+	case kind == "page" && path == "spec.route":
+		return "BEAN-E2601"
 	case strings.Contains(message, "unknown field") || message == "unknown manifest field":
 		return "BEAN-E1002"
 	case strings.Contains(message, "duplicate") || strings.Contains(message, "listed more than once"):

@@ -208,14 +208,15 @@ func agentInspect(args []string, stdout, stderr io.Writer) int {
 		return writeSourceFailure("app.inspect", *filename, diagnostics, jsonOutput, stdout, stderr)
 	}
 	compiled := compiler.Compile("default", 1, bundle.Definitions)
+	inspectable := redactedApp(compiled.App)
 	result := map[string]any{"checksum": bundleChecksum(bundle), "appIRFormat": compiled.App.FormatVersion}
 	if flags.NArg() == 0 {
-		result["application"] = normalizedJSON(compiled.App)
+		result["application"] = normalizedJSON(inspectable)
 	} else {
 		kind, name := flags.Arg(0), flags.Arg(1)
-		value, references, exists := inspectedDefinition(compiled.App, kind, name)
+		value, references, exists := inspectedDefinition(inspectable, kind, name)
 		if !exists {
-			diagnostic := definition.Diagnostic{Code: "BEAN-E2001", Kind: kind, Name: name, Path: "definition", Message: "definition does not exist", Candidates: definitionNames(compiled.App, kind)}
+			diagnostic := definition.Diagnostic{Code: "BEAN-E2001", Kind: kind, Name: name, Path: "definition", Message: "definition does not exist", Candidates: definitionNames(inspectable, kind)}
 			return writeDefinitionFailure("app.inspect", diagnostic, jsonOutput, stdout, stderr)
 		}
 		result["kind"], result["name"] = kind, name
@@ -363,21 +364,11 @@ func agentAppPublish(args []string, stdout, stderr io.Writer) int {
 		return writeRuntimeFailure("app.publish", err, jsonOutput, stdout, stderr)
 	}
 	defer runtime.DB.Close()
-	compiled, plan, err := runtime.Store.PreviewBundle(context.Background(), "default", bundle)
+	published, plan, publishDiagnostics, err := runtime.Store.PublishBundle(context.Background(), "default", bundle)
 	if err != nil {
 		if isMigrationPlanError(err) {
 			return writeMigrationFailure("app.publish", err, jsonOutput, stdout, stderr)
 		}
-		return writeRuntimeFailure("app.publish", err, jsonOutput, stdout, stderr)
-	}
-	if len(compiled.Diagnostics) > 0 {
-		return writeSourceFailure("app.publish", *filename, compiled.Diagnostics, jsonOutput, stdout, stderr)
-	}
-	if err = runtime.Store.SaveBundleExact(context.Background(), "default", bundle); err != nil {
-		return writeRuntimeFailure("app.publish", err, jsonOutput, stdout, stderr)
-	}
-	published, publishDiagnostics, err := runtime.Store.Publish(context.Background(), "default")
-	if err != nil {
 		return writeRuntimeFailure("app.publish", err, jsonOutput, stdout, stderr)
 	}
 	if len(publishDiagnostics) > 0 {
@@ -918,8 +909,8 @@ func semanticDiff(current, candidate *appir.App) []semanticChange {
 	if current == nil {
 		current = appir.Empty()
 	}
-	left, _ := current.Clone()
-	right, _ := candidate.Clone()
+	left := redactedApp(current)
+	right := redactedApp(candidate)
 	for _, app := range []*appir.App{left, right} {
 		app.ReleaseID = ""
 		app.AppID = ""
@@ -929,6 +920,22 @@ func semanticDiff(current, candidate *appir.App) []semanticChange {
 	changes := []semanticChange{}
 	diffValue("", normalizedJSON(left), normalizedJSON(right), &changes)
 	return changes
+}
+
+func redactedApp(source *appir.App) *appir.App {
+	redacted, _ := source.Clone()
+	for name, action := range redacted.Actions {
+		for stepIndex := range action.Steps {
+			for valueIndex := range action.Steps[stepIndex].Values {
+				value := &action.Steps[stepIndex].Values[valueIndex].Value
+				if value.Source == "literal" {
+					value.Literal = json.RawMessage(`"[REDACTED]"`)
+				}
+			}
+		}
+		redacted.Actions[name] = action
+	}
+	return redacted
 }
 
 func diffValue(path string, before, after any, changes *[]semanticChange) {
