@@ -49,17 +49,23 @@ fields:
   - {name: detail, label: Detail, type: text}
   - {name: occurred_at, label: Occurred, type: datetime, required: true}
 ---
-kind: Action
-name: move_candidate
+kind: Lifecycle
+name: candidate_pipeline
 entity: candidate
-operation: transition
-policy: public_access
 stateField: stage
+initial: applied
 transitions:
   applied: [screen, rejected]
   screen: [interview, rejected]
   interview: [offer, rejected]
   offer: [hired, rejected]
+---
+kind: Action
+name: move_candidate
+entity: candidate
+operation: transition
+policy: public_access
+lifecycle: candidate_pipeline
 ---
 kind: View
 name: candidate_pipeline

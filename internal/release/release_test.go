@@ -96,6 +96,44 @@ func TestInvalidAndFailedReleaseCannotReplaceActive(t *testing.T) {
 	_ = migration.Plan{}
 }
 
+func TestLifecyclePublicationIsAdditiveAndSurvivesReload(t *testing.T) {
+	ctx := context.Background()
+	database, err := sqlite.Open(filepath.Join(t.TempDir(), "lifecycle-release.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	runtime := kernel.New()
+	store := &release.Store{DB: database, Migrations: database, Inspector: database, Kernel: runtime, OpenAPI: openapi.Generate}
+	if err = store.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	entity := definition.Definition{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "order"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "status", "type": "enum", "required": true, "options": []any{"pending", "paid"}}}}}
+	if _, _, diagnostics, publishErr := store.PublishBundle(ctx, "default", definition.Bundle{Name: "before lifecycle", Definitions: []definition.Definition{entity}}); publishErr != nil || len(diagnostics) != 0 {
+		t.Fatalf("initial publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	lifecycle := definition.Definition{APIVersion: definition.APIVersion, Kind: "Lifecycle", Metadata: definition.Metadata{Name: "order_payment"}, Spec: map[string]any{"entity": "order", "initial": "pending", "transitions": map[string]any{"pending": []any{"paid"}}}}
+	action := definition.Definition{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "pay_order"}, Spec: map[string]any{"entity": "order", "operation": "transition", "lifecycle": "order_payment"}}
+	bundle := definition.Bundle{Name: "with lifecycle", Definitions: []definition.Definition{entity, lifecycle, action}}
+	_, plan, err := store.PreviewBundle(ctx, "default", bundle)
+	if err != nil || len(plan.Statements) != 0 || len(plan.Descriptions) != 0 {
+		t.Fatalf("Lifecycle produced physical migration: plan=%+v err=%v", plan, err)
+	}
+	published, _, diagnostics, err := store.PublishBundle(ctx, "default", bundle)
+	if err != nil || len(diagnostics) != 0 {
+		t.Fatalf("publish=%v diagnostics=%v", err, diagnostics)
+	}
+	reloadedKernel := kernel.New()
+	reloaded := &release.Store{DB: database, Migrations: database, Inspector: database, Kernel: reloadedKernel, OpenAPI: openapi.Generate}
+	if err = reloaded.LoadActive(ctx, "default"); err != nil {
+		t.Fatal(err)
+	}
+	active, exists := reloadedKernel.Active()
+	if !exists || active.ReleaseID != published.ID || active.Lifecycles["order_payment"].Initial != "pending" || active.Actions["pay_order"].Lifecycle != "order_payment" {
+		t.Fatalf("active=%+v", active)
+	}
+}
+
 func TestSaveBundleExactIsNotCappedAtTwoHundredDefinitions(t *testing.T) {
 	ctx := context.Background()
 	db, err := sqlite.Open(filepath.Join(t.TempDir(), "definitions.db"))

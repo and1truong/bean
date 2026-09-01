@@ -86,7 +86,7 @@ describe('public rendering',()=>{
     const fetchMock=vi.fn(async(input:string|URL|Request,init?:RequestInit)=>{
       const path=String(input)
       if(path.includes('/api/system/session'))return response({authenticated:false})
-      if(path.includes('/api/system/manifest'))return response({authNavigation:false,actions:{move_task:{Transitions:{todo:['in_progress'],in_progress:['done'],done:[]}}}})
+      if(path.includes('/api/system/manifest'))return response({authNavigation:false,actions:{move_task:{Lifecycle:'task_flow'}},lifecycles:{task_flow:{Name:'task_flow',Entity:'task',StateField:'status',Initial:'todo',Transitions:{todo:['in_progress'],in_progress:['done'],done:[]}}}})
       if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[
         {component:'ViewBlock',props:{name:'board',view:'roots',formattedFields:[],fileFields:[],presentation:{Mode:'board',TitleField:'title',BodyField:'description',GroupField:'status',OrderField:'position',MoveAction:'move_task',Columns:['todo','in_progress','done']}}},
         {component:'ViewBlock',props:{name:'tree',view:'tree',formattedFields:[],fileFields:[],presentation:{Mode:'tree',TitleField:'title',ParentField:'parent_id',OrderField:'position',LinkRoute:'/tasks/:id'}}},

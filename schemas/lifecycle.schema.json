@@ -1,0 +1,44 @@
+{
+  "$id": "https://bean.build/schemas/lifecycle.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "bean/v1alpha1"
+    },
+    "entity": {
+      "type": "string"
+    },
+    "initial": {
+      "type": "string"
+    },
+    "kind": {
+      "const": "Lifecycle"
+    },
+    "name": {
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "stateField": {
+      "type": "string"
+    },
+    "transitions": {
+      "additionalProperties": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "type": "object"
+    }
+  },
+  "required": [
+    "kind",
+    "name"
+  ],
+  "title": "Bean Lifecycle definition",
+  "type": "object"
+}

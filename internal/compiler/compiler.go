@@ -24,6 +24,7 @@ type Result struct {
 }
 type actionSource struct {
 	Entity, Operation, Policy, StateField string
+	Lifecycle                             string
 	DefaultRole, Confirm                  string
 	Input                                 map[string]appir.Field
 	Output                                map[string]appir.Field
@@ -117,7 +118,7 @@ func compile(appID string, version int, defs []definition.Definition, validateGr
 				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
 				continue
 			}
-			x := appir.Action{Name: d.Metadata.Name, Entity: source.Entity, Operation: source.Operation, Policy: source.Policy, StateField: source.StateField, DefaultRole: source.DefaultRole, Confirm: source.Confirm, Input: source.Input, Output: source.Output, Transitions: source.Transitions}
+			x := appir.Action{Name: d.Metadata.Name, Entity: source.Entity, Operation: source.Operation, Policy: source.Policy, Lifecycle: source.Lifecycle, StateField: source.StateField, DefaultRole: source.DefaultRole, Confirm: source.Confirm, Input: source.Input, Output: source.Output, Transitions: source.Transitions}
 			for inputName, input := range x.Input {
 				if input.Name == "" {
 					input.Name = inputName
@@ -143,6 +144,17 @@ func compile(appID string, version int, defs []definition.Definition, validateGr
 				x.Steps = append(x.Steps, compiled)
 			}
 			a.Actions[x.Name] = x
+		case "Lifecycle":
+			var x appir.Lifecycle
+			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
+				r.Diagnostics = append(r.Diagnostics, diag(d, "spec", e.Error()))
+				continue
+			}
+			x.Name = d.Metadata.Name
+			if x.StateField == "" {
+				x.StateField = "status"
+			}
+			a.Lifecycles[x.Name] = x
 		case "Policy":
 			var x appir.Policy
 			if e := definition.DecodeSpec(d.Spec, &x); e != nil {
@@ -331,16 +343,17 @@ func enrichDiagnosticCandidates(app *appir.App, diagnostics []definition.Diagnos
 			}
 		}
 		for prefix, names := range map[string][]string{
-			"references missing Entity ": keys(app.Entities),
-			"references missing View ":   keys(app.Views),
-			"references missing Action ": keys(app.Actions),
-			"references missing Policy ": keys(app.Policies),
-			"references missing Role ":   keys(app.Roles),
-			"references missing Filter ": keys(app.Filters),
-			"references missing Block ":  keys(app.Blocks),
-			"references missing Panel ":  keys(app.Panels),
-			"references missing Menu ":   keys(app.Menus),
-			"references missing Job ":    keys(app.Jobs),
+			"references missing Entity ":    keys(app.Entities),
+			"references missing Lifecycle ": keys(app.Lifecycles),
+			"references missing View ":      keys(app.Views),
+			"references missing Action ":    keys(app.Actions),
+			"references missing Policy ":    keys(app.Policies),
+			"references missing Role ":      keys(app.Roles),
+			"references missing Filter ":    keys(app.Filters),
+			"references missing Block ":     keys(app.Blocks),
+			"references missing Panel ":     keys(app.Panels),
+			"references missing Menu ":      keys(app.Menus),
+			"references missing Job ":       keys(app.Jobs),
 		} {
 			if strings.HasPrefix(message, prefix) {
 				diagnostics[index].Candidates = closest(strings.TrimPrefix(message, prefix), names)
@@ -370,6 +383,8 @@ func fieldsForDiagnostic(app *appir.App, diagnostic definition.Diagnostic) []str
 		entityName = app.Views[diagnostic.Name].Entity
 	case "Action":
 		entityName = app.Actions[diagnostic.Name].Entity
+	case "Lifecycle":
+		entityName = app.Lifecycles[diagnostic.Name].Entity
 	case "AdminResource":
 		entityName = app.AdminResources[diagnostic.Name].Entity
 	case "Block":
@@ -529,21 +544,24 @@ func normalizeActions(a *appir.App) {
 		}
 		if action.Operation == "create" {
 			for _, field := range entity.Fields {
+				if lifecycle, ok := lifecycleForEntity(a, entity.Name); ok && lifecycle.Initial != "" && field.Name == lifecycle.StateField {
+					field.Required = false
+				}
 				action.Input[field.Name] = field
 			}
 		} else {
 			action.Input["id"] = appir.Field{Name: "id", Type: "uuid", Required: true}
 			if action.Operation == "update" {
 				for _, field := range entity.Fields {
+					if lifecycle, ok := lifecycleForEntity(a, entity.Name); ok && field.Name == lifecycle.StateField {
+						continue
+					}
 					field.Required = false
 					action.Input[field.Name] = field
 				}
 			}
 			if action.Operation == "transition" {
-				stateField := action.StateField
-				if stateField == "" {
-					stateField = "status"
-				}
+				stateField := actionStateField(a, action)
 				for _, field := range entity.Fields {
 					if field.Name == stateField {
 						field.Required = true
@@ -578,6 +596,41 @@ func normalizeOutput(action *appir.Action, entity appir.Entity) {
 	action.Output["updated_at"] = appir.Field{Name: "updated_at", Type: "datetime"}
 	action.Output["version"] = appir.Field{Name: "version", Type: "integer"}
 }
+func lifecycleForEntity(app *appir.App, entity string) (appir.Lifecycle, bool) {
+	for _, name := range keys(app.Lifecycles) {
+		lifecycle := app.Lifecycles[name]
+		if lifecycle.Entity == entity {
+			return lifecycle, true
+		}
+	}
+	return appir.Lifecycle{}, false
+}
+func actionStateField(app *appir.App, action appir.Action) string {
+	if lifecycle, ok := app.Lifecycles[action.Lifecycle]; ok {
+		return lifecycle.StateField
+	}
+	if action.StateField != "" {
+		return action.StateField
+	}
+	return "status"
+}
+func validateActionTransitionSubset(name string, subset, canonical map[string][]string) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
+	for _, from := range keys(subset) {
+		for index, target := range subset[from] {
+			allowed := false
+			for _, candidate := range canonical[from] {
+				allowed = allowed || candidate == target
+			}
+			if !allowed {
+				diagnostic := diagnostic("Action", name, fmt.Sprintf("spec.transitions.%s.%d", from, index), "transition edge is not declared by the selected Lifecycle")
+				diagnostic.Code = "BEAN-E2201"
+				out = append(out, diagnostic)
+			}
+		}
+	}
+	return out
+}
 func assignment(step appir.Step, name string) (appir.ValueBinding, bool) {
 	for _, value := range step.Values {
 		if value.Field == name {
@@ -588,6 +641,11 @@ func assignment(step appir.Step, name string) (appir.ValueBinding, bool) {
 }
 func diagnostic(kind, name, path, message string) definition.Diagnostic {
 	return definition.Diagnostic{Kind: kind, Name: name, Path: path, Message: message}
+}
+func lifecycleDiagnostic(name, path, message string) definition.Diagnostic {
+	diagnostic := diagnostic("Lifecycle", name, path, message)
+	diagnostic.Code = "BEAN-E2202"
+	return diagnostic
 }
 func validate(a *appir.App) []definition.Diagnostic {
 	out := []definition.Diagnostic{}
@@ -872,6 +930,82 @@ func validate(a *appir.App) []definition.Diagnostic {
 			}
 		}
 	}
+	lifecycleEntities := map[string]string{}
+	for _, name := range keys(a.Lifecycles) {
+		lifecycle := a.Lifecycles[name]
+		entity, entityExists := a.Entities[lifecycle.Entity]
+		if !entityExists {
+			out = append(out, lifecycleDiagnostic(name, "spec.entity", "references missing Entity "+lifecycle.Entity))
+			continue
+		}
+		if existing := lifecycleEntities[lifecycle.Entity]; existing != "" {
+			out = append(out, lifecycleDiagnostic(name, "spec.entity", "duplicates Lifecycle "+existing+" for Entity "+lifecycle.Entity))
+		} else {
+			lifecycleEntities[lifecycle.Entity] = name
+		}
+		state, stateExists := entityFieldDefinition(entity, lifecycle.StateField)
+		if !stateExists {
+			diagnostic := lifecycleDiagnostic(name, "spec.stateField", "references missing field "+lifecycle.StateField)
+			diagnostic.Candidates = closest(lifecycle.StateField, fieldsForDiagnostic(a, diagnostic))
+			out = append(out, diagnostic)
+			continue
+		}
+		if state.Type != "enum" {
+			out = append(out, lifecycleDiagnostic(name, "spec.stateField", "Lifecycle state field must be an enum"))
+			continue
+		}
+		options := append([]string{}, state.Options...)
+		sort.Strings(options)
+		allowed := nameSet(options)
+		graphValid := allowed[lifecycle.Initial]
+		if lifecycle.Initial == "" {
+			out = append(out, lifecycleDiagnostic(name, "spec.initial", "is required"))
+		} else if !allowed[lifecycle.Initial] {
+			diagnostic := lifecycleDiagnostic(name, "spec.initial", "initial state is not an option of "+lifecycle.StateField)
+			diagnostic.Candidates = options
+			out = append(out, diagnostic)
+		}
+		for _, from := range keys(lifecycle.Transitions) {
+			if !allowed[from] {
+				graphValid = false
+				diagnostic := lifecycleDiagnostic(name, "spec.transitions."+from, "transition source is not an option of "+lifecycle.StateField)
+				diagnostic.Candidates = options
+				out = append(out, diagnostic)
+			}
+			seenTargets := map[string]bool{}
+			for index, target := range lifecycle.Transitions[from] {
+				path := fmt.Sprintf("spec.transitions.%s.%d", from, index)
+				if !allowed[target] {
+					graphValid = false
+					diagnostic := lifecycleDiagnostic(name, path, "transition target is not an option of "+lifecycle.StateField)
+					diagnostic.Candidates = options
+					out = append(out, diagnostic)
+				} else if seenTargets[target] {
+					out = append(out, lifecycleDiagnostic(name, path, "duplicates transition edge "+from+" -> "+target))
+				}
+				seenTargets[target] = true
+			}
+		}
+		if graphValid {
+			reachable := map[string]bool{lifecycle.Initial: true}
+			queue := []string{lifecycle.Initial}
+			for len(queue) > 0 {
+				from := queue[0]
+				queue = queue[1:]
+				for _, target := range lifecycle.Transitions[from] {
+					if !reachable[target] {
+						reachable[target] = true
+						queue = append(queue, target)
+					}
+				}
+			}
+			for _, state := range options {
+				if !reachable[state] {
+					out = append(out, lifecycleDiagnostic(name, "spec.transitions", "state "+state+" is unreachable from initial state "+lifecycle.Initial))
+				}
+			}
+		}
+	}
 	for name, action := range a.Actions {
 		if action.Operation == "register_local_user" {
 			if action.DefaultRole == "" {
@@ -887,11 +1021,41 @@ func validate(a *appir.App) []definition.Diagnostic {
 		if !allowedActions[action.Operation] {
 			out = append(out, diagnostic("Action", name, "spec.operation", "invalid Action operation"))
 		}
-		if action.Operation == "transition" {
-			stateField := action.StateField
-			if stateField == "" {
-				stateField = "status"
+		lifecycle, lifecycleExists := a.Lifecycles[action.Lifecycle]
+		entityLifecycle, entityHasLifecycle := lifecycleForEntity(a, action.Entity)
+		if entityHasLifecycle && action.Operation == "transition" && action.Lifecycle == "" {
+			diagnostic := diagnostic("Action", name, "spec.lifecycle", "transition Action must reference Lifecycle "+entityLifecycle.Name)
+			diagnostic.Code = "BEAN-E2201"
+			out = append(out, diagnostic)
+		}
+		if action.Lifecycle != "" {
+			if !lifecycleExists {
+				diagnostic := diagnostic("Action", name, "spec.lifecycle", "references missing Lifecycle "+action.Lifecycle)
+				diagnostic.Code = "BEAN-E2201"
+				out = append(out, diagnostic)
+			} else {
+				if lifecycle.Entity != action.Entity {
+					diagnostic := diagnostic("Action", name, "spec.lifecycle", "Lifecycle entity does not match Action entity")
+					diagnostic.Code = "BEAN-E2201"
+					out = append(out, diagnostic)
+				}
+				if action.StateField != "" {
+					diagnostic := diagnostic("Action", name, "spec.stateField", "stateField is owned by Lifecycle "+action.Lifecycle)
+					diagnostic.Code = "BEAN-E2201"
+					out = append(out, diagnostic)
+				}
+				if action.Operation != "transition" && action.Operation != "transaction" {
+					diagnostic := diagnostic("Action", name, "spec.lifecycle", "Lifecycle requires a transition or transaction Action")
+					diagnostic.Code = "BEAN-E2201"
+					out = append(out, diagnostic)
+				}
+				if action.Transitions != nil {
+					out = append(out, validateActionTransitionSubset(name, action.Transitions, lifecycle.Transitions)...)
+				}
 			}
+		}
+		if action.Operation == "transition" && action.Lifecycle == "" {
+			stateField := actionStateField(a, action)
 			entity, entityExists := a.Entities[action.Entity]
 			state, stateExists := entityFieldDefinition(entity, stateField)
 			if entityExists && !stateExists {
@@ -1007,6 +1171,20 @@ func validate(a *appir.App) []definition.Diagnostic {
 				for _, assignment := range step.Values {
 					if !allowedValues[assignment.Field] {
 						out = append(out, diagnostic("Action", name, path+".values."+assignment.Field, "is not used by the "+step.Op+" executor"))
+					}
+				}
+			}
+			if targetLifecycle, exists := lifecycleForEntity(a, entity); exists {
+				if step.Op == "transition" && action.Lifecycle != targetLifecycle.Name {
+					diagnostic := diagnostic("Action", name, path+".op", "transition step must use Lifecycle "+targetLifecycle.Name)
+					diagnostic.Code = "BEAN-E2201"
+					out = append(out, diagnostic)
+				}
+				if step.Op == "update" || step.Op == "conditional_update" {
+					if hasAssignment(step, targetLifecycle.StateField) {
+						diagnostic := diagnostic("Action", name, path+".values."+targetLifecycle.StateField, "Lifecycle state requires a transition step")
+						diagnostic.Code = "BEAN-E2201"
+						out = append(out, diagnostic)
 					}
 				}
 			}
@@ -1488,10 +1666,7 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 			}
 		}
 		action, exists := a.Actions[presentation.MoveAction]
-		stateField := action.StateField
-		if stateField == "" {
-			stateField = "status"
-		}
+		stateField := actionStateField(a, action)
 		if presentation.MoveAction == "" || !exists || action.Entity != viewDefinition.Entity || action.Operation != "transition" || stateField != presentation.GroupField {
 			out = append(out, diagnostic("Block", name, "spec.presentation.moveAction", "must reference a transition Action for the board entity and group field"))
 		} else {

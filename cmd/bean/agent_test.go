@@ -136,6 +136,74 @@ func TestCLIAndMCPExposeIdenticalSharedResultsForEveryOperation(t *testing.T) {
 	}
 }
 
+func TestCLIAndMCPExposeIdenticalLifecycleInspection(t *testing.T) {
+	directory := t.TempDir()
+	manifest := filepath.Join(directory, "app.yaml")
+	source := `apiVersion: bean/v1alpha1
+name: Lifecycle Transport
+---
+kind: Entity
+name: order
+fields:
+  - {name: status, type: enum, required: true, options: [pending, paid]}
+---
+kind: Lifecycle
+name: order_payment
+entity: order
+initial: pending
+transitions:
+  pending: [paid]
+---
+kind: Action
+name: pay_order
+entity: order
+operation: transition
+lifecycle: order_payment
+`
+	if err := os.WriteFile(manifest, []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	input := map[string]any{"file": manifest, "kind": "Lifecycle", "name": "order_payment"}
+	encoded, _ := json.Marshal(input)
+	inputFile := filepath.Join(directory, "request.json")
+	if err := os.WriteFile(inputFile, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service := agentprotocol.New()
+	var cliOut, cliErr bytes.Buffer
+	if exit := agentCallService(service, []string{"bean.definition.inspect", "--allow-plane", "definition", "--input", inputFile, "--json"}, &cliOut, &cliErr); exit != exitOK {
+		t.Fatalf("CLI exit=%d stdout=%s stderr=%s", exit, cliOut.String(), cliErr.String())
+	}
+	var cli testEnvelope
+	if err := json.Unmarshal(cliOut.Bytes(), &cli); err != nil {
+		t.Fatal(err)
+	}
+	request, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+		"params": map[string]any{
+			"name": "bean.definition.inspect", "arguments": input,
+			"_meta": map[string]any{"io.modelcontextprotocol/protocolVersion": mcpstdio.ProtocolVersion, "io.modelcontextprotocol/clientCapabilities": map[string]any{}},
+		},
+	})
+	var mcpOut bytes.Buffer
+	server := mcpstdio.New(mcpstdio.Config{Service: service, Principal: agentprotocol.Principal{Planes: map[agentprotocol.Plane]bool{agentprotocol.DefinitionPlane: true}}})
+	if err := server.Serve(context.Background(), bytes.NewReader(append(request, '\n')), &mcpOut); err != nil {
+		t.Fatal(err)
+	}
+	var mcp map[string]any
+	if err := json.Unmarshal(mcpOut.Bytes(), &mcp); err != nil {
+		t.Fatal(err)
+	}
+	structured := mcp["result"].(map[string]any)["structuredContent"]
+	if !reflect.DeepEqual(cli.Result, structured) {
+		t.Fatalf("CLI=%v MCP=%v", cli.Result, structured)
+	}
+	definition := cli.Result.(map[string]any)["definition"].(map[string]any)
+	if definition["entity"] != "order" || definition["initial"] != "pending" {
+		t.Fatalf("definition=%v", definition)
+	}
+}
+
 func TestGenericCLIAuthorizesEveryPlaneIndependently(t *testing.T) {
 	service := agentprotocol.New()
 	for _, item := range service.Operations(agentprotocol.Principal{Planes: agentprotocol.AllPlanes()}) {
@@ -408,7 +476,7 @@ func TestAgentCapabilitiesAndSchemaAreSelfDescribing(t *testing.T) {
 		assert  func(*testing.T, map[string]any)
 	}{
 		{args: []string{"capabilities", "--json"}, command: "capabilities", assert: func(t *testing.T, result map[string]any) {
-			if result["definitionAPIVersion"] != "bean/v1alpha1" || result["appIRFormat"] != "bean/appir/v1" {
+			if result["definitionAPIVersion"] != "bean/v1alpha1" || result["appIRFormat"] != "bean/appir/v2" {
 				t.Fatalf("capabilities = %#v", result)
 			}
 			if len(result["definitionKinds"].([]any)) < 10 || len(result["fieldTypes"].([]any)) < 10 {
@@ -734,7 +802,7 @@ func TestSchemaCanPublishCanonicalFiles(t *testing.T) {
 	if exit := execute([]string{"schema", "--output", directory, "--json"}, &stdout, &stderr); exit != exitOK {
 		t.Fatalf("exit=%d stderr=%s stdout=%s", exit, stderr.String(), stdout.String())
 	}
-	for _, name := range []string{"bean.schema.json", "entity.schema.json", "view.schema.json", "action.schema.json", "page.schema.json"} {
+	for _, name := range []string{"bean.schema.json", "entity.schema.json", "view.schema.json", "action.schema.json", "lifecycle.schema.json", "page.schema.json"} {
 		data, err := os.ReadFile(filepath.Join(directory, name))
 		if err != nil {
 			t.Fatal(err)

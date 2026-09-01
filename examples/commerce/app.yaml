@@ -29,6 +29,14 @@ fields:
   - {label: Unit price, name: unit_price, required: true, type: money}
 label: Order Item
 ---
+kind: Lifecycle
+name: order_fulfillment
+entity: order
+initial: pending_payment
+transitions:
+  pending_payment: [paid]
+  paid: [fulfilled]
+---
 kind: Action
 name: place_order
 entity: order
@@ -51,9 +59,7 @@ kind: Action
 name: advance_order
 entity: order
 operation: transition
-transitions:
-  paid: [fulfilled]
-  pending_payment: [paid]
+lifecycle: order_fulfillment
 ---
 kind: Webform
 name: checkout

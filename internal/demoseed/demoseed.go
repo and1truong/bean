@@ -14,6 +14,7 @@ import (
 	"github.com/beanruntime/bean/internal/appir"
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/dbal"
+	fieldpkg "github.com/beanruntime/bean/internal/field"
 	"github.com/beanruntime/bean/internal/view"
 )
 
@@ -21,6 +22,13 @@ type Record struct {
 	Entity string         `json:"entity"`
 	ID     string         `json:"id"`
 	Values map[string]any `json:"values"`
+}
+
+type lifecycleMove struct {
+	Action     string
+	State      string
+	IDInput    string
+	StateInput string
 }
 
 type Result struct {
@@ -100,6 +108,13 @@ func Run(ctx context.Context, database dbal.Database, app *appir.App, seed int64
 	if !empty {
 		return Result{}, fmt.Errorf("refusing to seed a non-empty target that does not match the generated dataset")
 	}
+	lifecyclePlans, err := planLifecycleMoves(app, records)
+	if err != nil {
+		return Result{}, err
+	}
+	if err = validateLifecycleTransitionUniqueness(app, records, lifecyclePlans, seed); err != nil {
+		return Result{}, err
+	}
 	ids := map[string][]string{}
 	for _, record := range records {
 		ids[record.Entity] = append(ids[record.Entity], record.ID)
@@ -118,8 +133,8 @@ func Run(ctx context.Context, database dbal.Database, app *appir.App, seed int64
 			return stableUUID(seed, "extra:"+entity.Name, index-len(ids[entity.Name]))
 		},
 	}
-	for _, record := range records {
-		if _, err = service.Execute(ctx, app, record.Entity+"_create", record.Values, request); err != nil {
+	for index, record := range records {
+		if err = seedRecord(ctx, service, app, record, lifecyclePlans[index], request); err != nil {
 			return Result{}, fmt.Errorf("seed %s: %w", record.Entity, err)
 		}
 	}
@@ -131,6 +146,254 @@ func Run(ctx context.Context, database dbal.Database, app *appir.App, seed int64
 		return Result{}, fmt.Errorf("seed Actions did not produce the generated dataset")
 	}
 	return result, nil
+}
+
+func planLifecycleMoves(app *appir.App, records []Record) ([][]lifecycleMove, error) {
+	plans := make([][]lifecycleMove, len(records))
+	for index, record := range records {
+		lifecycle, exists := demoLifecycleForEntity(app, record.Entity)
+		if !exists {
+			continue
+		}
+		desiredState := lifecycleDesiredState(lifecycle, record.Values)
+		if desiredState == lifecycle.Initial {
+			continue
+		}
+		path, executable := lifecycleExecutablePath(app, lifecycle, record.ID, desiredState)
+		if !executable {
+			return nil, fmt.Errorf("Lifecycle %s has no executable Action path from %s to generated state %s", lifecycle.Name, lifecycle.Initial, desiredState)
+		}
+		plans[index] = path
+	}
+	return plans, nil
+}
+
+func seedRecord(ctx context.Context, service action.Service, app *appir.App, record Record, moves []lifecycleMove, request beanctx.Request) error {
+	values := make(map[string]any, len(record.Values))
+	for name, value := range record.Values {
+		values[name] = value
+	}
+	lifecycle, hasLifecycle := demoLifecycleForEntity(app, record.Entity)
+	if hasLifecycle {
+		values[lifecycle.StateField] = lifecycle.Initial
+	}
+	created, err := service.Execute(ctx, app, record.Entity+"_create", values, request)
+	if err != nil || !hasLifecycle || len(moves) == 0 {
+		return err
+	}
+	for _, move := range moves {
+		input := map[string]any{"id": created["id"], lifecycle.StateField: move.State}
+		if move.IDInput != "" {
+			input = map[string]any{move.IDInput: created["id"]}
+			if move.StateInput != "" {
+				input[move.StateInput] = move.State
+			}
+		}
+		if _, err = service.Execute(ctx, app, move.Action, input, request); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func lifecycleDesiredState(lifecycle appir.Lifecycle, values map[string]any) string {
+	if desired := values[lifecycle.StateField]; desired != nil {
+		return fmt.Sprint(desired)
+	}
+	return lifecycle.Initial
+}
+
+func demoLifecycleForEntity(app *appir.App, entity string) (appir.Lifecycle, bool) {
+	names := make([]string, 0, len(app.Lifecycles))
+	for name := range app.Lifecycles {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if app.Lifecycles[name].Entity == entity {
+			return app.Lifecycles[name], true
+		}
+	}
+	return appir.Lifecycle{}, false
+}
+
+func lifecycleExecutablePath(app *appir.App, lifecycle appir.Lifecycle, recordID, target string) ([]lifecycleMove, bool) {
+	if target == lifecycle.Initial {
+		return []lifecycleMove{}, true
+	}
+	type predecessor struct {
+		state string
+		move  lifecycleMove
+	}
+	queue := []string{lifecycle.Initial}
+	previous := map[string]predecessor{lifecycle.Initial: {}}
+	for len(queue) > 0 {
+		from := queue[0]
+		queue = queue[1:]
+		next := append([]string{}, lifecycle.Transitions[from]...)
+		sort.Strings(next)
+		for _, state := range next {
+			if _, visited := previous[state]; visited {
+				continue
+			}
+			move, executable := lifecycleTransitionMove(app, lifecycle, recordID, from, state)
+			if !executable {
+				continue
+			}
+			previous[state] = predecessor{state: from, move: move}
+			if state == target {
+				path := []lifecycleMove{}
+				for current := state; current != lifecycle.Initial; {
+					edge := previous[current]
+					path = append(path, edge.move)
+					current = edge.state
+				}
+				for left, right := 0, len(path)-1; left < right; left, right = left+1, right-1 {
+					path[left], path[right] = path[right], path[left]
+				}
+				return path, true
+			}
+			queue = append(queue, state)
+		}
+	}
+	return nil, false
+}
+
+func lifecycleTransitionMove(app *appir.App, lifecycle appir.Lifecycle, recordID, from, target string) (lifecycleMove, bool) {
+	names := make([]string, 0, len(app.Actions))
+	for name := range app.Actions {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		actionDefinition := app.Actions[name]
+		if actionDefinition.Entity != lifecycle.Entity || actionDefinition.Lifecycle != lifecycle.Name || actionDefinition.Operation != "transition" && actionDefinition.Operation != "transaction" {
+			continue
+		}
+		transitions := lifecycle.Transitions
+		if actionDefinition.Transitions != nil {
+			transitions = actionDefinition.Transitions
+		}
+		allowed := false
+		for _, candidate := range transitions[from] {
+			allowed = allowed || candidate == target
+		}
+		if !allowed {
+			continue
+		}
+		if actionDefinition.Operation == "transaction" {
+			idInput, stateInput, compatible := transactionLifecycleInputs(app, actionDefinition, lifecycle, recordID, target)
+			if compatible {
+				return lifecycleMove{Action: name, State: target, IDInput: idInput, StateInput: stateInput}, true
+			}
+			continue
+		}
+		compatible := true
+		for inputName, input := range actionDefinition.Input {
+			if input.Required && inputName != "id" && inputName != lifecycle.StateField {
+				compatible = false
+			}
+		}
+		if compatible {
+			return lifecycleMove{Action: name, State: target}, true
+		}
+	}
+	return lifecycleMove{}, false
+}
+
+func transactionLifecycleInputs(app *appir.App, actionDefinition appir.Action, lifecycle appir.Lifecycle, recordID, target string) (string, string, bool) {
+	if len(actionDefinition.Steps) != 1 {
+		return "", "", false
+	}
+	var transition *appir.Step
+	for index := range actionDefinition.Steps {
+		step := &actionDefinition.Steps[index]
+		entity := transactionStepEntity(actionDefinition, *step)
+		if step.Op != "transition" || entity != lifecycle.Entity {
+			continue
+		}
+		if transition != nil {
+			return "", "", false
+		}
+		transition = step
+	}
+	if transition == nil {
+		return "", "", false
+	}
+	entityField := false
+	for _, field := range app.Entities[lifecycle.Entity].Fields {
+		entityField = entityField || field.Name == "entity"
+	}
+	for _, assignment := range transition.Values {
+		if assignment.Field == "id" {
+			continue
+		}
+		if assignment.Field == lifecycle.StateField {
+			if assignment.Field == "entity" && assignment.Value.Source == "literal" {
+				return "", "", false
+			}
+			continue
+		}
+		if assignment.Field == "entity" && assignment.Value.Source == "literal" && !entityField {
+			continue
+		}
+		return "", "", false
+	}
+	bindings := map[string]appir.ValueBinding{}
+	for _, assignment := range transition.Values {
+		bindings[assignment.Field] = assignment.Value
+	}
+	id := bindings["id"]
+	if id.Source != "input" || id.Path == "" {
+		return "", "", false
+	}
+	state := bindings[lifecycle.StateField]
+	stateInput := ""
+	switch state.Source {
+	case "input":
+		stateInput = state.Path
+		if stateInput == "" || stateInput == id.Path {
+			return "", "", false
+		}
+	case "literal":
+		var literal string
+		if json.Unmarshal(state.Literal, &literal) != nil || literal != target {
+			return "", "", false
+		}
+	default:
+		return "", "", false
+	}
+	for inputName, input := range actionDefinition.Input {
+		if input.Required && inputName != id.Path && inputName != stateInput {
+			return "", "", false
+		}
+	}
+	idDefinition, exists := actionDefinition.Input[id.Path]
+	if !exists || fieldpkg.Validate(idDefinition, recordID) != nil {
+		return "", "", false
+	}
+	if stateInput != "" {
+		stateDefinition, exists := actionDefinition.Input[stateInput]
+		if !exists || fieldpkg.Validate(stateDefinition, target) != nil {
+			return "", "", false
+		}
+	}
+	return id.Path, stateInput, true
+}
+
+func transactionStepEntity(actionDefinition appir.Action, step appir.Step) string {
+	entity := step.Entity
+	if entity == "" {
+		entity = actionDefinition.Entity
+	}
+	if entity == actionDefinition.Entity {
+		for _, assignment := range step.Values {
+			if assignment.Field == "entity" && assignment.Value.Source == "literal" {
+				_ = json.Unmarshal(assignment.Value.Literal, &entity)
+			}
+		}
+	}
+	return entity
 }
 
 func inspectTarget(ctx context.Context, database dbal.Database, app *appir.App, records []Record, request beanctx.Request, seed int64) (bool, bool, error) {
@@ -246,6 +509,54 @@ func verificationFields(entity appir.Entity) []string {
 }
 
 func validateGeneratedUniqueness(app *appir.App, records []Record, seed int64) error {
+	return validateRecordUniqueness(app, records, seed)
+}
+
+func validateLifecycleTransitionUniqueness(app *appir.App, records []Record, plans [][]lifecycleMove, seed int64) error {
+	type plannedRecord struct {
+		record Record
+		moves  []lifecycleMove
+	}
+	byEntity := map[string][]plannedRecord{}
+	for index, record := range records {
+		byEntity[record.Entity] = append(byEntity[record.Entity], plannedRecord{record: record, moves: plans[index]})
+	}
+	entityNames := make([]string, 0, len(byEntity))
+	for entityName := range byEntity {
+		entityNames = append(entityNames, entityName)
+	}
+	sort.Strings(entityNames)
+	for _, entityName := range entityNames {
+		lifecycle, exists := demoLifecycleForEntity(app, entityName)
+		if !exists {
+			continue
+		}
+		created := []Record{}
+		for _, planned := range byEntity[entityName] {
+			transient := planned.record
+			transient.Values = make(map[string]any, len(planned.record.Values))
+			for name, value := range planned.record.Values {
+				transient.Values[name] = value
+			}
+			transient.Values[lifecycle.StateField] = lifecycle.Initial
+			candidate := append(append([]Record{}, created...), transient)
+			if err := validateRecordUniqueness(app, candidate, seed); err != nil {
+				return fmt.Errorf("Lifecycle %s intermediate initial state: %w", lifecycle.Name, err)
+			}
+			for _, move := range planned.moves {
+				transient.Values[lifecycle.StateField] = move.State
+				candidate[len(candidate)-1] = transient
+				if err := validateRecordUniqueness(app, candidate, seed); err != nil {
+					return fmt.Errorf("Lifecycle %s intermediate transition state %s: %w", lifecycle.Name, move.State, err)
+				}
+			}
+			created = append(created, planned.record)
+		}
+	}
+	return nil
+}
+
+func validateRecordUniqueness(app *appir.App, records []Record, seed int64) error {
 	byEntity := map[string][]Record{}
 	for _, record := range records {
 		byEntity[record.Entity] = append(byEntity[record.Entity], record)
@@ -304,7 +615,13 @@ func generatedConstraintValue(app *appir.App, entityName string, record Record, 
 		value := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC).Add(time.Duration(seed%8760) * time.Hour).Format(time.RFC3339Nano)
 		return value, true
 	case "version":
-		return 1, true
+		version := 1
+		if lifecycle, exists := demoLifecycleForEntity(app, entityName); exists {
+			if path, executable := lifecycleExecutablePath(app, lifecycle, record.ID, lifecycleDesiredState(lifecycle, record.Values)); executable {
+				version += len(path)
+			}
+		}
+		return version, true
 	case "owner_id":
 		if entity.Owner {
 			return stableUUID(seed, "owner", 0), true
