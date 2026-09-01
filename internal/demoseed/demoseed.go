@@ -320,6 +320,11 @@ func transactionLifecycleInputs(actionDefinition appir.Action, lifecycle appir.L
 	if transition == nil {
 		return "", "", false
 	}
+	for _, assignment := range transition.Values {
+		if assignment.Field != "id" && assignment.Field != lifecycle.StateField && assignment.Field != "entity" {
+			return "", "", false
+		}
+	}
 	bindings := map[string]appir.ValueBinding{}
 	for _, assignment := range transition.Values {
 		bindings[assignment.Field] = assignment.Value

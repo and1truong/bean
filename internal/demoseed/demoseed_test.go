@@ -159,6 +159,12 @@ func TestLifecyclePlanningRejectsUnsafeTransactionActions(t *testing.T) {
 			action.Steps = append(append([]appir.Step{}, base.Steps...), appir.Step{Op: "create"})
 			return action
 		}(),
+		"extra field assignment": func() appir.Action {
+			action := base
+			action.Steps = append([]appir.Step{}, base.Steps...)
+			action.Steps[0].Values = append(action.Steps[0].Values, appir.Assignment{Field: "name", Value: appir.ValueBinding{Source: "literal", Literal: []byte(`"changed"`)}})
+			return action
+		}(),
 		"invalid id input": func() appir.Action {
 			action := base
 			action.Input = map[string]appir.Field{
