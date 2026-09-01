@@ -7,8 +7,8 @@ Status values: `pending`, `active`, `done`. A milestone is `done` only when its 
 | 0 | Freeze Extension metadata, after-commit transaction boundary, HTTP wire contract, host auth, retry/idempotency/failure semantics, TestSuite mocks, and exclusions | root goal and reference-fixture plan | done |
 | 1 | Canonical Extension Definition, AppIR format, schema, capabilities, inspect, references, diff, validation, and compatibility | compiler/schema/Agent Protocol/AppIR/release tests | done |
 | 2 | Transactional Action extension intents and bounded HTTP delivery | Policy/rollback/audit/idempotency plus HTTP timeout/retry/auth/output tests | done |
-| 3 | Offline typed provider mocks, interaction assertions, and metadata-only commerce slice | TestSuite runner and commerce source/restart/parity tests | active |
-| 4 | Documentation, v0.13 version cut, terminal gates, CI, review, and squash merge | all gates, CI, Codex review, merged PR | pending |
+| 3 | Offline typed provider mocks, interaction assertions, and metadata-only commerce slice | TestSuite runner and commerce source/restart/parity tests | done |
+| 4 | Documentation, v0.13 version cut, terminal gates, CI, review, and squash merge | all gates, CI, Codex review, merged PR | active |
 
 ## Working rules
 

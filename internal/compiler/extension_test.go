@@ -140,6 +140,68 @@ func TestTransactionActionRejectsInvalidExtensionBindings(t *testing.T) {
 	}
 }
 
+func TestActionTestSuiteValidatesExtensionMocksAndCalls(t *testing.T) {
+	definitions := extensionTestSuiteDefinitions()
+	if result := Compile("test", 1, definitions); len(result.Diagnostics) != 0 {
+		t.Fatalf("diagnostics=%v", result.Diagnostics)
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(map[string]any)
+		path   string
+	}{
+		{"unknown provider", func(test map[string]any) {
+			test["providers"] = map[string]any{"missing": []any{map[string]any{"output": map[string]any{"accepted": true}}}}
+		}, "spec.tests.0.providers.missing"},
+		{"invalid output", func(test map[string]any) {
+			test["providers"].(map[string]any)["order_notification"] = []any{map[string]any{"output": map[string]any{"accepted": "yes"}}}
+		}, "spec.tests.0.providers.order_notification.0.output"},
+		{"output and error", func(test map[string]any) {
+			test["providers"].(map[string]any)["order_notification"] = []any{map[string]any{"output": map[string]any{"accepted": true}, "error": beanextension.FailureTimeout}}
+		}, "spec.tests.0.providers.order_notification.0"},
+		{"unstable error", func(test map[string]any) {
+			test["providers"].(map[string]any)["order_notification"] = []any{map[string]any{"error": "network broke"}}
+		}, "spec.tests.0.providers.order_notification.0.error"},
+		{"wrong idempotency key", func(test map[string]any) {
+			test["expect"].(map[string]any)["providerCalls"].([]any)[0].(map[string]any)["idempotencyKey"] = "different"
+		}, "spec.tests.0.expect.providerCalls.0.idempotencyKey"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			definitions := extensionTestSuiteDefinitions()
+			caseDefinition := definitions[3].Spec["tests"].([]any)[0].(map[string]any)
+			test.mutate(caseDefinition)
+			result := Compile("test", 1, definitions)
+			for _, diagnostic := range result.Diagnostics {
+				if diagnostic.Kind == "TestSuite" && diagnostic.Path == test.path {
+					return
+				}
+			}
+			t.Fatalf("missing diagnostic at %s: %v", test.path, result.Diagnostics)
+		})
+	}
+}
+
+func extensionTestSuiteDefinitions() []definition.Definition {
+	const invocationID = "00000000-0000-4000-8000-000000000020"
+	return []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "order"}, Spec: map[string]any{}},
+		validExtensionDefinition(),
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "notify_order"}, Spec: map[string]any{
+			"entity": "order", "operation": "transaction", "input": map[string]any{"order_id": map[string]any{"type": "uuid", "required": true}},
+			"steps": []any{map[string]any{"op": "extension", "extension": "order_notification", "values": map[string]any{"order_id": "$input.order_id"}}},
+		}},
+		{APIVersion: definition.APIVersion, Kind: "TestSuite", Metadata: definition.Metadata{Name: "notification_contract"}, Spec: map[string]any{
+			"target": map[string]any{"kind": "Action", "name": "notify_order"}, "tests": []any{map[string]any{
+				"name": "notifies", "context": map[string]any{"time": "2026-09-01T10:00:00Z", "ids": []any{invocationID}}, "input": map[string]any{"order_id": invocationID},
+				"providers": map[string]any{"order_notification": []any{map[string]any{"output": map[string]any{"accepted": true}}}},
+				"expect":    map[string]any{"providerCalls": []any{map[string]any{"extension": "order_notification", "invocationId": invocationID, "idempotencyKey": invocationID, "input": map[string]any{"order_id": invocationID}}}},
+			}},
+		}},
+	}
+}
+
 func validExtensionDefinition() definition.Definition {
 	return definition.Definition{APIVersion: definition.APIVersion, Kind: "Extension", Metadata: definition.Metadata{Name: "order_notification"}, Spec: map[string]any{
 		"transport": "http", "endpoint": "https://provider.example/v1/orders",

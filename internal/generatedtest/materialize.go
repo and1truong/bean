@@ -337,6 +337,7 @@ func policyDenialCases(app *appir.App, action appir.Action, cases []appir.TestCa
 		}
 		test.Name = "deny_" + test.Name
 		test.Context = deniedContext
+		test.Providers = map[string][]appir.TestProviderResult{}
 		test.Expect = deniedExpectation()
 		out = append(out, test)
 	}
@@ -376,6 +377,7 @@ func invalidTransitionCases(app *appir.App, action appir.Action, cases []appir.T
 		test.Name = "invalid_" + test.Name
 		test.Input = copyMap(test.Input)
 		test.Input[lifecycle.StateField] = invalid
+		test.Providers = map[string][]appir.TestProviderResult{}
 		test.Expect = deniedExpectation()
 		out = append(out, test)
 	}

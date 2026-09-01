@@ -71,7 +71,7 @@ func (r Runner) RunOnce(ctx context.Context) error {
 	if limit <= 0 {
 		limit = 20
 	}
-	rows, err := r.DB.Select(ctx, dbal.Select{Table: "bean_outbox", Where: &due, OrderBy: []dbal.Order{{Column: "created_at"}}, Limit: limit})
+	rows, err := r.DB.Select(ctx, dbal.Select{Table: "bean_outbox", Where: &due, OrderBy: []dbal.Order{{Column: "created_at"}, {Column: "id"}}, Limit: limit})
 	if err != nil {
 		return err
 	}

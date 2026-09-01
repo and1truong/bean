@@ -84,6 +84,9 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 			if value.Tests[index].Input == nil {
 				value.Tests[index].Input = map[string]any{}
 			}
+			if value.Tests[index].Providers == nil {
+				value.Tests[index].Providers = map[string][]appir.TestProviderResult{}
+			}
 		}
 	})
 	testSuite.References = testSuiteReferences
@@ -211,6 +214,12 @@ func testSuiteReferences(app *appir.App, name string) []DefinitionReference {
 		}
 		for changeIndex, change := range test.Expect.Changes {
 			out = append(out, reference(fmt.Sprintf("tests.%d.expect.changes.%d.entity", caseIndex, changeIndex), "Entity", change.Entity))
+		}
+		for extensionName := range test.Providers {
+			out = append(out, reference(fmt.Sprintf("tests.%d.providers.%s", caseIndex, extensionName), "Extension", extensionName))
+		}
+		for callIndex, call := range test.Expect.ProviderCalls {
+			out = append(out, reference(fmt.Sprintf("tests.%d.expect.providerCalls.%d.extension", caseIndex, callIndex), "Extension", call.Extension))
 		}
 	}
 	return references(out...)

@@ -117,21 +117,33 @@ type TestMutation struct {
 	Absent bool           `json:"absent"`
 }
 type TestExpectation struct {
-	Result    json.RawMessage `json:"result"`
-	Error     string          `json:"error"`
-	Changes   []TestMutation  `json:"changes"`
-	Events    []TestEvent     `json:"events"`
-	Audit     []TestAudit     `json:"audit"`
-	NoChanges bool            `json:"noChanges"`
-	NoEvents  bool            `json:"noEvents"`
+	Result        json.RawMessage    `json:"result"`
+	Error         string             `json:"error"`
+	Changes       []TestMutation     `json:"changes"`
+	Events        []TestEvent        `json:"events"`
+	Audit         []TestAudit        `json:"audit"`
+	ProviderCalls []TestProviderCall `json:"providerCalls"`
+	NoChanges     bool               `json:"noChanges"`
+	NoEvents      bool               `json:"noEvents"`
+}
+type TestProviderResult struct {
+	Output map[string]any `json:"output"`
+	Error  string         `json:"error"`
+}
+type TestProviderCall struct {
+	Extension      string         `json:"extension"`
+	InvocationID   string         `json:"invocationId"`
+	IdempotencyKey string         `json:"idempotencyKey"`
+	Input          map[string]any `json:"input"`
 }
 type TestCase struct {
-	Name     string                      `json:"name"`
-	Fixtures map[string][]map[string]any `json:"fixtures"`
-	Input    map[string]any              `json:"input"`
-	This     map[string]any              `json:"this"`
-	Context  TestContext                 `json:"context"`
-	Expect   TestExpectation             `json:"expect"`
+	Name      string                          `json:"name"`
+	Fixtures  map[string][]map[string]any     `json:"fixtures"`
+	Input     map[string]any                  `json:"input"`
+	This      map[string]any                  `json:"this"`
+	Context   TestContext                     `json:"context"`
+	Providers map[string][]TestProviderResult `json:"providers"`
+	Expect    TestExpectation                 `json:"expect"`
 }
 type TestSuite struct {
 	Name   string     `json:"name"`

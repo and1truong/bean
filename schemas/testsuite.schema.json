@@ -77,6 +77,15 @@
         "name": {
           "type": "string"
         },
+        "providers": {
+          "additionalProperties": {
+            "items": {
+              "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_TestProviderResult"
+            },
+            "type": "array"
+          },
+          "type": "object"
+        },
         "this": {
           "additionalProperties": {},
           "type": "object"
@@ -154,6 +163,12 @@
         "noEvents": {
           "type": "boolean"
         },
+        "providerCalls": {
+          "items": {
+            "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_TestProviderCall"
+          },
+          "type": "array"
+        },
         "result": {}
       },
       "type": "object"
@@ -171,6 +186,38 @@
           "type": "string"
         },
         "values": {
+          "additionalProperties": {},
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_TestProviderCall": {
+      "additionalProperties": false,
+      "properties": {
+        "extension": {
+          "type": "string"
+        },
+        "idempotencyKey": {
+          "type": "string"
+        },
+        "input": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "invocationId": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_TestProviderResult": {
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "type": "string"
+        },
+        "output": {
           "additionalProperties": {},
           "type": "object"
         }
