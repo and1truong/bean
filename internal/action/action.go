@@ -107,7 +107,19 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 	if a.Operation == "create" {
 		createID = s.createID(e, input)
 	}
+	generatedIDs := []string{}
+	generatedIDIndex := 0
+	execution := s
+	execution.CreateID = func(entity appir.Entity, input map[string]any) string {
+		if generatedIDIndex == len(generatedIDs) {
+			generatedIDs = append(generatedIDs, s.createID(entity, input))
+		}
+		id := generatedIDs[generatedIDIndex]
+		generatedIDIndex++
+		return id
+	}
 	err := s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
+		generatedIDIndex = 0
 		if request.Values == nil {
 			request.Values = map[string]any{}
 		}
@@ -162,7 +174,7 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 		case "delete":
 			result, er = remove(ctx, tx, e, input)
 		case "transaction":
-			result, er = s.steps(ctx, tx, app, a, input, request)
+			result, er = execution.steps(ctx, tx, app, a, input, request)
 		case "register_local_user":
 			result, er = s.Auth.RegisterInTransaction(ctx, tx, fmt.Sprint(input["display_name"]), fmt.Sprint(input["email"]), fmt.Sprint(input["password"]), fmt.Sprint(input["password_confirmation"]), a.DefaultRole)
 		default:

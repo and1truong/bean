@@ -112,7 +112,10 @@ func Run(ctx context.Context, database dbal.Database, app *appir.App, seed int64
 		CreateID: func(entity appir.Entity, input map[string]any) string {
 			index := nextID[entity.Name]
 			nextID[entity.Name] = index + 1
-			return ids[entity.Name][index]
+			if index < len(ids[entity.Name]) {
+				return ids[entity.Name][index]
+			}
+			return stableUUID(seed, "extra:"+entity.Name, index-len(ids[entity.Name]))
 		},
 	}
 	for _, record := range records {
@@ -180,7 +183,7 @@ func inspectTarget(ctx context.Context, database dbal.Database, app *appir.App, 
 			}
 			for _, fieldName := range verificationFields(entity)[1:] {
 				value, generated := generatedConstraintValue(app, entityName, record, fieldName, seed)
-				if !generated && emptyValue(row[fieldName]) {
+				if !generated && omittedValueMatches(entity, fieldName, row[fieldName]) {
 					continue
 				}
 				if canonical(row[fieldName]) != canonical(value) {
@@ -319,12 +322,16 @@ func generatedConstraintValue(app *appir.App, entityName string, record Record, 
 	return value, exists
 }
 
-func emptyValue(value any) bool {
+func omittedValueMatches(entity appir.Entity, fieldName string, value any) bool {
 	if value == nil {
 		return true
 	}
-	if values, ok := value.([]any); ok {
-		return len(values) == 0
+	for _, field := range entity.Fields {
+		if field.Name != fieldName || field.Relation == nil || field.Relation.Kind != "one-to-many" && field.Relation.Kind != "many-to-many" {
+			continue
+		}
+		values, ok := value.([]any)
+		return ok && len(values) == 0
 	}
 	return false
 }

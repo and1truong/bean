@@ -200,6 +200,34 @@ func TestAgentDemoSeedVerifiesCustomCreateActionOutput(t *testing.T) {
 	}
 }
 
+func TestAgentDemoSeedAllocatesIDsForCustomCreateSteps(t *testing.T) {
+	directory := t.TempDir()
+	manifest := filepath.Join(directory, "app.yaml")
+	database := filepath.Join(directory, "bean.db")
+	source := "apiVersion: bean/v1alpha1\nname: Custom Seed\n---\nkind: Entity\nname: candidate\nfields:\n  - {name: name, type: string, required: true}\n---\nkind: Entity\nname: audit_note\nfields:\n  - {name: name, type: string, required: true}\n---\nkind: Action\nname: candidate_create\nentity: candidate\noperation: transaction\ninput:\n  name: {type: string, required: true}\nsteps:\n  - op: create\n    values:\n      name: $input.name\n  - op: create\n    entity: audit_note\n    values:\n      name: $input.name\n---\nkind: DemoSeed\nname: demo\nentities:\n  candidate: {count: 1, profile: people}\n"
+	if err := os.WriteFile(manifest, []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if exit := execute([]string{"app", "publish", "--file", manifest, "--db", database, "--json"}, &stdout, &stderr); exit != exitOK {
+		t.Fatalf("publish exit=%d stderr=%s stdout=%s", exit, stderr.String(), stdout.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if exit := execute([]string{"demo", "seed", "--file", manifest, "--db", database, "--seed", "42", "--json"}, &stdout, &stderr); exit != exitOK {
+		t.Fatalf("seed exit=%d stderr=%s stdout=%s", exit, stderr.String(), stdout.String())
+	}
+	runtime, err := bootstrap.Open(context.Background(), database, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.DB.Close()
+	rows, err := runtime.DB.Select(context.Background(), dbal.Select{Table: "audit_note"})
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("custom step rows=%v err=%v", rows, err)
+	}
+}
+
 func TestAgentDemoSeedInspectsAllPhysicalRowsBeforeWriting(t *testing.T) {
 	directory := t.TempDir()
 	manifest := filepath.Join(directory, "app.yaml")

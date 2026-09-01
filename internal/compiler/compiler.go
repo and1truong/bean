@@ -634,6 +634,8 @@ func validate(a *appir.App) []definition.Diagnostic {
 						target, exists := entityFieldDefinition(targetEntity, field.Relation.TargetField)
 						if exists && (target.Sensitive || target.Type == "password" || target.Type == "file") {
 							out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path, "cannot generate relation target field "+field.Relation.Entity+"."+field.Relation.TargetField))
+						} else if exists && target.Type != "uuid" {
+							out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path, "relation target field "+field.Relation.Entity+"."+field.Relation.TargetField+" must be uuid"))
 						} else if !exists && fieldSet(targetEntity)[field.Relation.TargetField] {
 							out = append(out, diagnostic("DemoSeed", a.DemoSeed.Name, path, "cannot generate relation target system field "+field.Relation.Entity+"."+field.Relation.TargetField))
 						}
@@ -1445,6 +1447,9 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 	if presentation.Mode == "metric" {
 		if presentation.MetricField == "" || !aggregates[presentation.MetricField] {
 			out = append(out, diagnostic("Block", name, "spec.presentation.metricField", "metric requires a selected aggregate alias"))
+		}
+		if len(viewDefinition.GroupBy) > 0 {
+			out = append(out, diagnostic("Block", name, "spec.presentation.metricField", "metric requires an ungrouped View"))
 		}
 		if len(presentation.SearchFields) > 0 {
 			out = append(out, diagnostic("Block", name, "spec.presentation.searchFields", "metric does not support search"))

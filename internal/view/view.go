@@ -115,7 +115,7 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 			if !available[name] {
 				return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "admin search field is not selected by the View"}
 			}
-			search = append(search, dbal.Predicate{Op: dbal.OpContains, Column: name, Value: params.Search})
+			search = append(search, dbal.Predicate{Op: dbal.OpContains, Column: qualify(name, v.Entity, joined), Value: params.Search})
 		}
 		if len(search) > 0 {
 			predicates = append(predicates, dbal.Or(search...))

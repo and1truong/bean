@@ -101,6 +101,22 @@ func TestVerificationAppBuildsUnrestrictedCompleteViews(t *testing.T) {
 	}
 }
 
+func TestOmittedValueOnlyAcceptsEmptySlicesForToManyRelations(t *testing.T) {
+	entity := appir.Entity{Fields: []appir.Field{
+		{Name: "metadata", Type: "json"},
+		{Name: "tags", Type: "relation", Relation: &appir.Relation{Kind: "many-to-many"}},
+	}}
+	if omittedValueMatches(entity, "metadata", []any{}) {
+		t.Fatal("empty JSON array matched an omitted value")
+	}
+	if !omittedValueMatches(entity, "metadata", nil) {
+		t.Fatal("null did not match an omitted optional value")
+	}
+	if !omittedValueMatches(entity, "tags", []any{}) {
+		t.Fatal("empty to-many relation did not match an omitted value")
+	}
+}
+
 func TestGenerateCoversSupportedScalarTypesAndSkipsUnsafeFields(t *testing.T) {
 	app := appir.Empty()
 	fields := []appir.Field{

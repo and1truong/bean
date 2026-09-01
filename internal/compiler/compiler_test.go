@@ -239,6 +239,28 @@ func TestDemoSeedRejectsRequiredRelationTargetingSystemField(t *testing.T) {
 	}
 }
 
+func TestDemoSeedRejectsRequiredRelationTargetingNonUUIDField(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "account"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "slug", "type": "slug", "unique": true}}}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "contact"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "account_slug", "type": "relation", "required": true, "relation": map[string]any{"entity": "account", "kind": "many-to-one", "targetField": "slug"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "DemoSeed", Metadata: definition.Metadata{Name: "demo"}, Spec: map[string]any{"entities": map[string]any{"account": map[string]any{"count": 1}, "contact": map[string]any{"count": 1}}}},
+	}
+	if diagnostics := compiler.Compile("test", 1, definitions).Diagnostics; !hasDiagnostic(diagnostics, "demo", "spec.entities.contact") {
+		t.Fatalf("non-UUID relation target accepted: %v", diagnostics)
+	}
+}
+
+func TestMetricRejectsGroupedView(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "candidate"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "stage", "type": "enum", "options": []any{"applied", "hired"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "candidate_metrics"}, Spec: map[string]any{"entity": "candidate", "fields": []any{"stage"}, "groupBy": []any{"stage"}, "aggregates": []any{map[string]any{"function": "count", "field": "id", "alias": "candidate_count"}}}},
+		{APIVersion: definition.APIVersion, Kind: "Block", Metadata: definition.Metadata{Name: "candidate_count"}, Spec: map[string]any{"type": "view", "view": "candidate_metrics", "presentation": map[string]any{"mode": "metric", "metricField": "candidate_count"}}},
+	}
+	if diagnostics := compiler.Compile("test", 1, definitions).Diagnostics; !hasDiagnostic(diagnostics, "candidate_count", "spec.presentation.metricField") {
+		t.Fatalf("grouped metric accepted: %v", diagnostics)
+	}
+}
+
 func TestTimelineRequiresSelectedTimeField(t *testing.T) {
 	definitions := []definition.Definition{
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "activity"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}, map[string]any{"name": "occurred_at", "type": "datetime"}}}},
