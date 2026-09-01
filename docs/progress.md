@@ -10,6 +10,8 @@ Semantic TestSuites now inject ordered typed provider responses or stable failur
 
 Commerce now declares the generic `order_notification` Extension in metadata. `place_order` atomically creates its order and notification intent, then its maintained TestSuite delivers through a typed offline mock while continuing to prove inventory mutation, order creation, and the public `order_placed` event. Direct and generated replay suites pass without network access. Arbitrary scripts, synchronous provider results, WASM/plugins, OAuth, new queue infrastructure, and provider-specific core behavior remain excluded.
 
+Local v0.13 qualification is green: `make check`, `make test-crash`, `make test-postgres`, and `make build` pass, including race detection, 30 frontend tests, 14/14 browser journeys, PostgreSQL application parity, crash/restart recovery, and `bean 0.13.0-alpha`. Milestone 4 remains active through remote CI, Codex review, and squash merge.
+
 ## v0.12 completed state
 
 Bean v0.12 Generated Semantic and Rule Tests is complete at squash merge `fbaa54a`. Generated runtime checks materialize as ordinary TestSuite definitions from compiler-validated AppIR, explicit expectations, and relation-complete DemoSeed data. Explicit expectations remain the oracle; generated Policy/Lifecycle negatives and CRUD mutations use Actions, verification reads use Views, and eligible route journeys use the production HTTP handler. Structural evidence covers schema, Rule, Policy, Lifecycle, and route contracts with stable source identities.
