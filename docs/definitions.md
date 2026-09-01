@@ -1,6 +1,6 @@
 # Definitions
 
-An application source starts with an `app.yaml` manifest containing `apiVersion: bean/v1alpha1`, the application name, and optional explicit local `resources`. Definition documents follow the manifest after `---`, or live in the listed resource files. Each definition has a top-level `kind`, machine `name`, optional `namespace`, and its kind-specific fields. Supported kinds are Entity, View, Action, Webform, Policy, Filter, Block, Panel, Page, Role, Menu, Job, AdminResource, and LocalRegistration.
+An application source starts with an `app.yaml` manifest containing `apiVersion: bean/v1alpha1`, the application name, and optional explicit local `resources`. Definition documents follow the manifest after `---`, or live in the listed resource files. Each definition has a top-level `kind`, machine `name`, optional `namespace`, and its kind-specific fields. Supported kinds include Entity, View, Action, Lifecycle, Rule, Extension, TestSuite, Webform, Policy, Filter, Block, Panel, Page, Role, Menu, Job, AdminResource, LocalRegistration, and DemoSeed.
 
 Compilation validates envelopes, names, fields, references, relation kinds, limits, Action steps, Panel regions, and route uniqueness. Diagnostics identify the source file, line, column, kind, name, field path, and a corrective message. Generated CRUD is emitted as Views and Actions inside AppIR.
 
@@ -102,6 +102,27 @@ fieldFilters: {body: markdown}
 `markdown` is the first supported step. It produces sanitized HTML: raw HTML, executable content, images, event attributes, and unsafe URL schemes are removed. Filtering occurs after policy redaction and is part of the View output contract for JSON, CSV, RSS, and Page rendering. Action input and output remain unformatted. Content Filters are distinct from View predicates and `exposedFilters`, which constrain database queries.
 
 ## Runtime durability
+
+An `Extension` declares one typed out-of-process HTTP effect. Transaction Actions bind its required input in an `extension` step; Bean stores the invocation with domain writes and delivers it only after commit. v0.13 accepts HTTPS endpoints, plus loopback HTTP for local development, with closed `network` permission and `external_write` effect vocabularies:
+
+```yaml
+kind: Extension
+name: order_notification
+transport: http
+endpoint: https://provider.example/orders
+input: {order_id: {type: uuid, required: true}}
+output: {accepted: {type: boolean, required: true}}
+permissions: [network]
+sideEffects: [external_write]
+authentication: bearer
+timeoutSeconds: 5
+retry: {maxAttempts: 3, delaySeconds: 60}
+idempotency: required
+transaction: after_commit
+failure: retry_then_fail
+```
+
+Bearer tokens are host configuration in `BEAN_EXTENSION_BEARER_TOKENS`, encoded as a JSON object from Extension name to token. They never belong in definitions. Redirects are refused, responses are limited to 1 MiB and validated against `output`, and one immutable invocation ID is sent as the idempotency key on every attempt. Provider output cannot feed a later Action step because delivery occurs outside the transaction.
 
 An Action mutation, its audit row, idempotency result, jobs, and outbox intents share the Action transaction. Idempotency keys are scoped to an Action and include a canonical input fingerprint; reusing a key with different input is a conflict. Jobs and outbox records use persistent pending/claimed/completed-or-failed states with leases, bounded attempts, scheduled retry, stale-claim recovery, and administrator retry/cancel controls. Delivery is at-least-once, so external consumers must deduplicate.
 

@@ -2,7 +2,7 @@
 
 - `cms`: draft/publish news with page, JSON, CSV, RSS, and scheduled publishing metadata.
 - `crm`: owned contacts, manager policy, activity, pipeline View, and audited transitions.
-- `commerce`: inventory, checkout Webform, transactional decrement, deterministic payment, and order transitions.
+- `commerce`: inventory, checkout Webform, transactional decrement, deterministic payment, order transitions, and an after-commit typed order-notification Extension with an offline provider contract test.
 - `tracker`: issues/comments, kanban View, transitions, and audit.
 - `booking`: overlap-safe booking, cancellation, calendar, and reminders.
 - `saas`: organisations, memberships, tenant-scoped projects, and automatic tenant predicates.
