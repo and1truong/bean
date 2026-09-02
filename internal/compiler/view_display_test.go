@@ -166,7 +166,7 @@ func TestViewExposedFilterDerivesTypeThroughShorthandRelationship(t *testing.T) 
 
 func TestResultTitleRequiresMandatoryUniqueBinding(t *testing.T) {
 	definitions := []definition.Definition{
-		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}, map[string]any{"name": "slug", "type": "string", "unique": true}}}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}, map[string]any{"name": "slug", "type": "string"}}, "unique": []any{[]any{"slug"}}}},
 		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "articles"}, Spec: map[string]any{
 			"entity": "article", "fields": []any{"id", "title", "slug"}, "exposedFilters": map[string]any{"slug": map[string]any{"field": "slug"}},
 			"displays": map[string]any{"detail": map[string]any{
@@ -187,6 +187,19 @@ func TestResultTitleRequiresMandatoryUniqueBinding(t *testing.T) {
 	diagnostics = compiler.Compile("test", 1, definitions).Diagnostics
 	if !hasViewDisplayDiagnostic(diagnostics, "View", "articles", "spec.displays.detail.title.field") {
 		t.Fatalf("non-equality unique binding diagnostics=%v", diagnostics)
+	}
+	definitions[0].Spec["unique"] = []any{[]any{"slug", "title"}}
+	definitions[1].Spec["exposedFilters"].(map[string]any)["slug"].(map[string]any)["operator"] = "eq"
+	diagnostics = compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasViewDisplayDiagnostic(diagnostics, "View", "articles", "spec.displays.detail.title.field") {
+		t.Fatalf("partially bound composite unique diagnostics=%v", diagnostics)
+	}
+	definitions[1].Spec["exposedFilters"].(map[string]any)["title"] = map[string]any{"field": "title"}
+	display := definitions[1].Spec["displays"].(map[string]any)["detail"].(map[string]any)
+	display["route"] = "/articles/:slug/:title"
+	display["bindings"].(map[string]any)["title"] = map[string]any{"source": "route", "name": "title", "required": true}
+	if diagnostics = compiler.Compile("test", 1, definitions).Diagnostics; len(diagnostics) != 0 {
+		t.Fatalf("fully bound composite unique diagnostics=%v", diagnostics)
 	}
 }
 
@@ -211,6 +224,29 @@ func TestResultTitleBlockRequiresMandatoryInput(t *testing.T) {
 	definitions[2].Spec["inputs"].(map[string]any)["slug"].(map[string]any)["required"] = true
 	if diagnostics = compiler.Compile("test", 1, definitions).Diagnostics; len(diagnostics) != 0 {
 		t.Fatalf("mandatory Block input diagnostics=%v", diagnostics)
+	}
+}
+
+func TestResultTitleRejectsRowMultiplyingRelationshipField(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "tag"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "name", "type": "string"}}}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"fields": []any{
+			map[string]any{"name": "title", "type": "string"},
+			map[string]any{"name": "tags", "type": "relation", "relation": map[string]any{"entity": "tag", "kind": "many-to-many", "targetField": "id"}},
+		}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "articles"}, Spec: map[string]any{
+			"entity": "article", "fields": []any{"id", "title", "tags.name"},
+			"relationships":  []any{map[string]any{"name": "tags", "relationField": "tags"}},
+			"exposedFilters": map[string]any{"id": map[string]any{"field": "id"}},
+			"displays": map[string]any{"detail": map[string]any{
+				"type": "page", "route": "/articles/:id", "bindings": map[string]any{"id": map[string]any{"source": "route", "name": "id", "required": true}},
+				"title": map[string]any{"field": "tags.name", "fallback": "Article"}, "renderer": map[string]any{"type": "detail", "titleField": "title"},
+			}},
+		}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasViewDisplayDiagnostic(diagnostics, "View", "articles", "spec.displays.detail.title.field") {
+		t.Fatalf("row-multiplying title diagnostics=%v", diagnostics)
 	}
 }
 

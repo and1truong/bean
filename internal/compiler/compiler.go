@@ -1011,17 +1011,18 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 		}
 		if !selected[display.Title.Field] || redacted[display.Title.Field] {
 			out = append(out, diagnostic("View", viewName, base+".title.field", "must reference a selected, visible field"))
+		} else if !stableViewField(display.Title.Field, entity, relationships, app) {
+			out = append(out, diagnostic("View", viewName, base+".title.field", "result title field may vary across rows for one base record"))
 		}
 		if display.Title.Fallback == "" {
 			out = append(out, requiredDiagnostic("View", viewName, base+".title.fallback", "is required for a result title"))
 		}
 		if display.Type == "page" {
-			singleRecord := false
+			mandatory := map[string]bool{}
 			for filterName, binding := range display.Bindings {
-				filter, exists := view.ExposedFilters[filterName]
-				singleRecord = singleRecord || exists && binding.Required && uniqueEqualityViewFilter(filterName, filter, entity)
+				mandatory[filterName] = binding.Required
 			}
-			if !singleRecord {
+			if !hasUniqueEqualityBindings(view, entity, mandatory) {
 				out = append(out, diagnostic("View", viewName, base+".title.field", "result title requires a mandatory equality binding to a unique filter"))
 			}
 		}
@@ -1847,13 +1848,11 @@ func validateBlocks(a *appir.App, _ *validationState) []definition.Diagnostic {
 					if display.Title.Field != "" {
 						viewDefinition := a.Views[block.View]
 						entity := a.Entities[viewDefinition.Entity]
-						singleRecord := false
+						mandatory := map[string]bool{}
 						for filterName := range block.Bindings {
-							filter, exposed := viewDefinition.ExposedFilters[filterName]
-							input, declared := block.Inputs[filterName]
-							singleRecord = singleRecord || exposed && declared && input.Required && uniqueEqualityViewFilter(filterName, filter, entity)
+							mandatory[filterName] = block.Inputs[filterName].Required
 						}
-						if !singleRecord {
+						if !hasUniqueEqualityBindings(viewDefinition, entity, mandatory) {
 							out = append(out, diagnostic("Block", name, "spec.display", "result title requires a mandatory Block input bound to a unique equality filter"))
 						}
 					}
@@ -2652,13 +2651,59 @@ func entityFieldDefinition(entity appir.Entity, name string) (appir.Field, bool)
 	return appir.Field{}, false
 }
 
-func uniqueEqualityViewFilter(name string, filter appir.ViewFilter, entity appir.Entity) bool {
-	if filter.Operator != "eq" {
+func hasUniqueEqualityBindings(view appir.View, entity appir.Entity, mandatory map[string]bool) bool {
+	bound := map[string]bool{}
+	for name, filter := range view.ExposedFilters {
+		if !mandatory[name] || filter.Operator != "eq" {
+			continue
+		}
+		target := filter.Target(name)
+		bound[target] = true
+		definition, exists := entityFieldDefinition(entity, target)
+		if target == "id" || exists && definition.Unique {
+			return true
+		}
+	}
+	for _, constraint := range entity.Unique {
+		allBound := len(constraint) > 0
+		for _, fieldName := range constraint {
+			allBound = allBound && bound[fieldName]
+		}
+		if allBound {
+			return true
+		}
+	}
+	return false
+}
+
+func stableViewField(name string, base appir.Entity, relationships map[string]appir.ViewRelationship, app *appir.App) bool {
+	parts := strings.Split(name, ".")
+	if len(parts) == 1 {
+		return true
+	}
+	relationship, exists := relationships[parts[0]]
+	if !exists {
 		return false
 	}
-	target := filter.Target(name)
-	definition, exists := entityFieldDefinition(entity, target)
-	return target == "id" || exists && definition.Unique
+	for _, field := range base.Fields {
+		if field.Name == relationship.RelationField && field.Relation != nil && (field.Relation.Kind == "one-to-many" || field.Relation.Kind == "many-to-many") {
+			return false
+		}
+	}
+	target := app.Entities[relationship.Entity]
+	if relationship.TargetField == "id" {
+		return true
+	}
+	definition, exists := entityFieldDefinition(target, relationship.TargetField)
+	if exists && definition.Unique {
+		return true
+	}
+	for _, constraint := range target.Unique {
+		if len(constraint) == 1 && constraint[0] == relationship.TargetField {
+			return true
+		}
+	}
+	return false
 }
 
 func nameSet(values []string) map[string]bool {
