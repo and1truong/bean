@@ -41,6 +41,9 @@ func ParseBearerTokens(raw string) (map[string]string, error) {
 	if err := decoder.Decode(&values); err != nil {
 		return nil, fmt.Errorf("%s must be a JSON object of Extension names to bearer tokens", BearerTokensEnvironment)
 	}
+	if values == nil {
+		return nil, fmt.Errorf("%s must be a JSON object of Extension names to bearer tokens", BearerTokensEnvironment)
+	}
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		return nil, fmt.Errorf("%s must contain one JSON object", BearerTokensEnvironment)
 	}

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/beanruntime/bean/internal/actionop"
@@ -615,8 +616,14 @@ func validateExtensionFields(name, group string, fields map[string]appir.Field) 
 
 func validExtensionEndpoint(raw string) bool {
 	parsed, err := url.ParseRequestURI(raw)
-	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+	if err != nil || parsed.Host == "" || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return false
+	}
+	if port := parsed.Port(); port != "" {
+		number, portErr := strconv.Atoi(port)
+		if portErr != nil || number < 1 || number > 65535 {
+			return false
+		}
 	}
 	if parsed.Scheme == "https" {
 		return true

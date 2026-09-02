@@ -77,6 +77,21 @@ func TestExtensionEndpointAllowsHTTPSAndLoopbackHTTPOnly(t *testing.T) {
 	}
 }
 
+func TestExtensionEndpointRejectsMissingHostOrInvalidPort(t *testing.T) {
+	for _, endpoint := range []string{"https://:443/callback", "https://provider.example:0/callback", "https://provider.example:65536/callback"} {
+		item := validExtensionDefinition()
+		item.Spec["endpoint"] = endpoint
+		result := Compile("test", 1, []definition.Definition{item})
+		found := false
+		for _, diagnostic := range result.Diagnostics {
+			found = found || diagnostic.Kind == "Extension" && diagnostic.Code == "BEAN-E2871" && diagnostic.Path == "spec.endpoint"
+		}
+		if !found {
+			t.Errorf("endpoint %s diagnostics=%v", endpoint, result.Diagnostics)
+		}
+	}
+}
+
 func TestTransactionActionBindsTypedExtensionInputs(t *testing.T) {
 	definitions := []definition.Definition{
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "order"}, Spec: map[string]any{}},

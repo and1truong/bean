@@ -170,7 +170,7 @@ func TestBearerTokenHostConfigurationIsStrictAndDoesNotEchoSecrets(t *testing.T)
 	if err != nil || tokens["notify"] != "secret-value" {
 		t.Fatalf("tokens=%v err=%v", tokens, err)
 	}
-	for _, invalid := range []string{`[]`, `{"notify":""}`, `{"notify":"secret"} trailing`} {
+	for _, invalid := range []string{`null`, `[]`, `{"notify":""}`, `{"notify":"secret"} trailing`} {
 		if _, err = extension.ParseBearerTokens(invalid); err == nil || strings.Contains(err.Error(), "secret") {
 			t.Fatalf("invalid=%q err=%v", invalid, err)
 		}
