@@ -74,7 +74,7 @@ Presentation remains a separately reported score so a technically correct but un
 
 ## Current engineering goal
 
-Bean v0.13 Typed Extension Boundary is active. It adds one metadata-declared, out-of-process HTTP contract for typed external effects. Authorized Actions atomically persist after-commit extension intents; bounded outbox delivery preserves stable invocation identity, retry, failure, audit, and Action idempotency semantics. Semantic TestSuites replace the same provider path with typed offline mocks and ordered interaction assertions. The executable contract and milestones are in `GOAL.md` and `PLANS.md`.
+Bean v0.13 Typed Extension Boundary is complete at squash merge `8a8c199`. It adds one metadata-declared, out-of-process HTTP contract for typed external effects. Authorized Actions atomically persist after-commit extension intents; bounded outbox delivery preserves stable invocation identity, retry, failure, audit, and Action idempotency semantics. Semantic TestSuites replace the same provider path with typed offline mocks and ordered interaction assertions. No successor phase is active; v1.0 remains planned and has not started.
 
 ## Roadmap
 
@@ -88,7 +88,7 @@ Bean v0.13 Typed Extension Boundary is active. It adds one metadata-declared, ou
 | 5 | v0.10 | Deterministic Rule Expressions for local application logic | complete |
 | 6 | v0.11 | First-class Semantic Test Suites for Bean definitions | complete |
 | 7 | v0.12 | Generated tests from semantic primitives and rules | complete |
-| 8 | v0.13 | Typed extension boundary for external effects | active |
+| 8 | v0.13 | Typed extension boundary for external effects | complete |
 | 9 | v1.0 | Qualification of one explicit production envelope | planned |
 | 10 | post-v1.0 | Bean Cloud preview environments | exploratory |
 | 11 | post-v1.0 | Composable application-pattern ecosystem | exploratory |

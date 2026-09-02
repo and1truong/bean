@@ -1,6 +1,6 @@
 # Goal: Bean v0.13 Typed Extension Boundary
 
-Status: active
+Status: complete
 
 Add one narrow, typed, out-of-process HTTP extension boundary for external effects. Applications declare the contract in metadata; Actions atomically persist extension invocations, and the existing outbox delivers them after commit without weakening Policy, audit, idempotency, or transaction guarantees. Semantic TestSuites replace delivery with typed mocks and assert interactions offline.
 
