@@ -54,7 +54,7 @@ type RenderProps={
   Panel:{layout?:string}
   Region:{name?:string}
   TextBlock:{text?:string}
-  ViewBlock:{name?:string;view?:string;display?:ViewDisplay;filters?:Record<string,ViewFilter>;fieldTypes?:Record<string,string>;presentation?:ViewPresentation;formattedFields?:string[];fileFields?:string[]}
+  ViewBlock:{name?:string;view?:string;display?:ViewDisplay;filters?:Record<string,ViewFilter>;fieldTypes?:Record<string,string>;presentation?:ViewPresentation;formattedFields?:string[];fileFields?:string[];maxRows?:number}
   EntityBlock:{name?:string;entity?:string;presentation?:ViewPresentation;formattedFields?:string[];fileFields?:string[]}
   ResourceListBlock:{name?:string;resource?:string;view?:string;filters?:string[];defaultFilters?:Record<string,any>}
   WebformBlock:{name?:string;webform?:string;form?:Manifest['webforms'][string]}
@@ -68,7 +68,7 @@ const nodeRenderers:{[K in RenderComponent]:NodeRenderer<K>}={
   Panel:(_props,children)=><StructuralNode component="Panel" children={children}/>,
   Region:(_props,children)=><StructuralNode component="Region" children={children}/>,
   TextBlock:props=><p>{props.text}</p>,
-  ViewBlock:props=><ViewBlock name={props.view||''} block={props.name||''} display={props.display} filters={props.filters||{}} fieldTypes={props.fieldTypes||{}} presentation={props.presentation||{}} formattedFields={props.formattedFields||[]} fileFields={props.fileFields||[]}/>,
+  ViewBlock:props=><ViewBlock name={props.view||''} block={props.name||''} display={props.display} filters={props.filters||{}} fieldTypes={props.fieldTypes||{}} presentation={props.presentation||{}} formattedFields={props.formattedFields||[]} fileFields={props.fileFields||[]} maxRows={props.maxRows}/>,
   EntityBlock:props=><ViewBlock name={(props.entity||'')+'_list'} block={props.name||''} presentation={props.presentation||{}} formattedFields={props.formattedFields||[]} fileFields={props.fileFields||[]}/>,
   ResourceListBlock:props=><ResourceListBlock resource={props.resource||''} view={props.view||''} block={props.name||''} filters={props.filters} defaultFilters={props.defaultFilters}/>,
   WebformBlock:props=><WebformBlock name={props.webform||''} block={props.name||''} renderedForm={props.form}/>,
@@ -83,12 +83,12 @@ function Renderer({node}:{node:Node}){
   return renderKnownNode(node.component,node.props||{},node.children)
 }
 
-type ViewBlockProps={name:string;block:string;display?:ViewDisplay;filters?:Record<string,ViewFilter>;fieldTypes?:Record<string,string>;presentation:ViewPresentation;formattedFields:string[];fileFields:string[]}
+type ViewBlockProps={name:string;block:string;display?:ViewDisplay;filters?:Record<string,ViewFilter>;fieldTypes?:Record<string,string>;presentation:ViewPresentation;formattedFields:string[];fileFields:string[];maxRows?:number}
 function ViewBlock(props:ViewBlockProps){
   const path=useLocation().pathname
   return <ViewBlockPage key={`${props.name}:${props.block}:${path}`} {...props} path={path}/>
 }
-function ViewBlockPage({name,block,display,filters={},fieldTypes={},presentation,formattedFields,fileFields,path}:ViewBlockProps&{path:string}){
+function ViewBlockPage({name,block,display,filters={},fieldTypes={},presentation,formattedFields,fileFields,maxRows,path}:ViewBlockProps&{path:string}){
 	const[cursors,setCursors]=useState<string[]>(['']);const cursor=cursors[cursors.length-1]
 	const[search,setSearch]=useState('');const[submittedSearch,setSubmittedSearch]=useState('')
 	const[urlParams,setURLParams]=useSearchParams();const controls=useMemo(()=>display?.Controls||[],[display?.Controls]);const pageDisplay=display?.Type==='page'
@@ -98,12 +98,13 @@ function ViewBlockPage({name,block,display,filters={},fieldTypes={},presentation
 	const urlState=urlParams.toString()
 	useEffect(()=>setControlValues(Object.fromEntries(controls.map(control=>{const value=urlParams.get(pageDisplay?control.Filter:block+'.'+control.Filter)??String(control.Default??'');return[control.Filter,controlInputValue(value,filters[control.Filter])]}))),[block,controls,filters,pageDisplay,urlParams,urlState])
 	const mode=display?.Renderer?.Type||presentation.Mode
+	const rowLimit=maxRows&&maxRows>0?maxRows:200
 	const renderer=display?.Renderer
 	const effectivePresentation:ViewPresentation=renderer?{Mode:renderer.Type,TitleField:renderer.TitleField,BodyField:renderer.BodyField,LinkRoute:renderer.LinkRoute,LinkField:renderer.LinkField,EmptyState:renderer.EmptyState||display.EmptyState,MetaFields:renderer.MetaFields,RichTextFields:renderer.RichTextFields,GroupField:renderer.GroupField,OrderField:renderer.OrderField,ParentField:renderer.ParentField,MoveAction:renderer.MoveAction,Columns:renderer.Columns,MetricField:renderer.MetricField,MetricLabel:renderer.MetricLabel,TimeField:renderer.TimeField,SearchFields:renderer.SearchFields}:presentation
-	const query=new URLSearchParams({_page:path});if(pageDisplay)query.set('_display',block);else query.set('_block',block);for(const control of controls)query.set(control.Filter,urlParams.get(parameter(control.Filter))??String(control.Default??''));if(mode==='board'||mode==='tree'||mode==='detail')query.set('limit','200');else if(display?.Pager?.PageSize)query.set('limit',String(display.Pager.PageSize));if(cursor)query.set('cursor',cursor);if(submittedSearch)query.set('q',submittedSearch)
+	const query=new URLSearchParams({_page:path});if(pageDisplay)query.set('_display',block);else query.set('_block',block);for(const control of controls)query.set(control.Filter,urlParams.get(parameter(control.Filter))??String(control.Default??''));if(mode==='board'||mode==='tree')query.set('limit','200');else if(mode==='detail')query.set('limit',String(rowLimit));else if(display?.Pager?.PageSize)query.set('limit',String(display.Pager.PageSize));if(cursor)query.set('cursor',cursor);if(submittedSearch)query.set('q',submittedSearch)
   const request='/api/views/'+name+'?'+query.toString()
-	const structured=mode==='board'||mode==='tree'||mode==='detail';const structuredLimitError='Detail, board, and tree Views support at most 200 rows.'
-  const result=useQuery({queryKey:['public-view',request],queryFn:async()=>{const first=await api<{data:Row[];nextCursor:string}>(request);if(!structured)return first;const data=[...first.data];if(data.length>200)throw new APIError(structuredLimitError);let nextCursor=first.nextCursor;while(nextCursor&&data.length<200){const nextQuery=new URLSearchParams(query);if(mode==='detail'){nextQuery.delete('cursor');nextQuery.set('offset',String(data.length))}else nextQuery.set('cursor',nextCursor);nextQuery.set('limit',String(200-data.length));const next=await api<{data:Row[];nextCursor:string}>('/api/views/'+name+'?'+nextQuery);data.push(...next.data);if(data.length>200)throw new APIError(structuredLimitError);nextCursor=next.nextCursor}if(nextCursor)throw new APIError(structuredLimitError);return {data,nextCursor:''}}})
+	const structured=mode==='board'||mode==='tree'||mode==='detail';const structuredLimit=mode==='detail'?rowLimit:200;const structuredLimitError=`This View display supports at most ${structuredLimit} rows.`
+  const result=useQuery({queryKey:['public-view',request],queryFn:async()=>{const first=await api<{data:Row[];nextCursor:string}>(request);if(!structured)return first;const data=[...first.data];if(data.length>structuredLimit||(mode==='detail'&&first.nextCursor))throw new APIError(structuredLimitError);if(mode==='detail')return {data,nextCursor:''};let nextCursor=first.nextCursor;while(nextCursor&&data.length<200){const nextQuery=new URLSearchParams(query);nextQuery.set('cursor',nextCursor);nextQuery.set('limit',String(200-data.length));const next=await api<{data:Row[];nextCursor:string}>('/api/views/'+name+'?'+nextQuery);data.push(...next.data);if(data.length>200)throw new APIError(structuredLimitError);nextCursor=next.nextCursor}if(nextCursor)throw new APIError(structuredLimitError);return {data,nextCursor:''}}})
 	const resolvedTitle=display?.Title?.Field?String(result.data?.data[0]?.[display.Title.Field]??display.Title.Fallback??''):display?.Title?.Text||''
 	useEffect(()=>{if(!(pageDisplay||display?.Title?.Field)||!resolvedTitle)return;const previous=document.title;document.title=resolvedTitle;return()=>{document.title=previous}},[display?.Title?.Field,pageDisplay,resolvedTitle])
 	let content:React.ReactNode

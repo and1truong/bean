@@ -70,15 +70,25 @@ func ResolveDisplayBindings(display appir.Display, route, query map[string]strin
 
 func DisplayPageNode(app *appir.App, match DisplayMatch) render.Node {
 	view := app.Views[match.View]
-	formatted := []string{}
+	trustedFormatted := map[string]bool{}
 	for fieldName := range view.FieldFilters {
+		trustedFormatted[fieldName] = true
+	}
+	for _, fieldName := range match.Display.Renderer.RichTextFields {
+		for _, definition := range app.Entities[view.Entity].Fields {
+			if definition.Name == fieldName && definition.Type == "richtext" {
+				trustedFormatted[fieldName] = true
+			}
+		}
+	}
+	formatted := make([]string, 0, len(trustedFormatted))
+	for fieldName := range trustedFormatted {
 		formatted = append(formatted, fieldName)
 	}
-	formatted = append(formatted, match.Display.Renderer.RichTextFields...)
 	sort.Strings(formatted)
 	props := map[string]any{
 		"name": match.Name, "view": match.View, "display": match.Display,
-		"filters": view.ExposedFilters, "fieldTypes": FieldTypes(app, view), "formattedFields": formatted, "fileFields": displayFileFields(app, view),
+		"filters": view.ExposedFilters, "fieldTypes": FieldTypes(app, view), "formattedFields": formatted, "fileFields": displayFileFields(app, view), "maxRows": view.MaxLimit,
 	}
 	return render.Node{Component: "Page", Children: []render.Node{{Component: "ViewBlock", Props: props}}}
 }

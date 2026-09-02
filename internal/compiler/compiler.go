@@ -946,6 +946,10 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 					out = append(out, diagnostic("View", name, "spec.displays."+displayName+".route", "serializer display route must be static"))
 					continue
 				}
+				if reservedServerRoute(display.Route) {
+					out = append(out, diagnostic("View", name, "spec.displays."+displayName+".route", "serializer display route overlaps a built-in server route"))
+					continue
+				}
 				if old := conflictingRoute(routes, display.Route); old != "" {
 					out = append(out, duplicateDiagnostic("View", name, "spec.displays."+displayName+".route", "overlaps route used by "+old))
 					continue
@@ -2211,6 +2215,10 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 	}
 	policyName := policy.EffectiveViewPolicyName(viewDefinition, entity)
 	redacted := nameSet(a.Policies[policyName].Redact)
+	relationships := map[string]appir.ViewRelationship{}
+	for _, relationship := range viewDefinition.Relationships {
+		relationships[relationship.Name] = relationship
+	}
 	if presentation.Mode == "board" || presentation.Mode == "tree" {
 		for _, sortDefinition := range viewDefinition.Sort {
 			if aggregates[sortDefinition.Field] {
@@ -2245,6 +2253,28 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 		}
 		if (presentation.Mode == "board" || presentation.Mode == "tree" || presentation.Mode == "timeline") && fieldName != "" && redacted[fieldName] && path != "bodyField" {
 			out = append(out, diagnostic("Block", name, "spec.presentation."+path, "must not be redacted by View policy "+policyName))
+		}
+	}
+	if presentation.Mode == "detail" {
+		for path, fieldName := range map[string]string{"titleField": presentation.TitleField, "bodyField": presentation.BodyField} {
+			if selected[fieldName] && !stableViewField(fieldName, entity, relationships, a) {
+				out = append(out, diagnostic("Block", name, "spec.presentation."+path, "detail field may vary across rows for one base record"))
+			}
+		}
+		for index, fieldName := range presentation.MetaFields {
+			path := fmt.Sprintf("spec.presentation.metaFields.%d", index)
+			if !selected[fieldName] {
+				out = append(out, diagnostic("Block", name, path, "must be selected by View "+block.View))
+			}
+		}
+	}
+	for index, fieldName := range presentation.RichTextFields {
+		definition, exists := fieldDefinition(fieldName)
+		path := fmt.Sprintf("spec.presentation.richTextFields.%d", index)
+		if !selected[fieldName] {
+			out = append(out, diagnostic("Block", name, path, "must be selected by View "+block.View))
+		} else if !exists || definition.Type != "richtext" {
+			out = append(out, diagnostic("Block", name, path, "must reference a sanitized richtext field"))
 		}
 	}
 	searchable := map[string]bool{"email": true, "richtext": true, "slug": true, "string": true, "text": true, "url": true}
@@ -2709,6 +2739,19 @@ func stableViewField(name string, base appir.Entity, relationships map[string]ap
 	}
 	for _, constraint := range target.Unique {
 		if len(constraint) == 1 && constraint[0] == relationship.TargetField {
+			return true
+		}
+	}
+	return false
+}
+
+func reservedServerRoute(route string) bool {
+	switch route {
+	case "/healthz", "/readyz", "/openapi.json", "/docs":
+		return true
+	}
+	for _, prefix := range []string{"/api/system", "/api/auth", "/api/views", "/api/files", "/api/actions", "/api/webforms", "/api/admin"} {
+		if route == prefix || strings.HasPrefix(route, prefix+"/") {
 			return true
 		}
 	}

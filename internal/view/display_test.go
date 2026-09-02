@@ -53,3 +53,14 @@ func TestFieldTypesIncludesEnabledSyntheticFields(t *testing.T) {
 		t.Fatalf("types=%v", types)
 	}
 }
+
+func TestDisplayPageNodeDoesNotTrustStringAsRichText(t *testing.T) {
+	app := appir.Empty()
+	app.Entities["article"] = appir.Entity{Name: "article", Fields: []appir.Field{{Name: "title", Type: "string"}}}
+	app.Views["articles"] = appir.View{Name: "articles", Entity: "article", Fields: []string{"id", "title"}}
+	match := DisplayMatch{View: "articles", Name: "detail", Display: appir.Display{Type: "page", Renderer: appir.ViewRenderer{Type: "detail", RichTextFields: []string{"title"}}}}
+	formatted := DisplayPageNode(app, match).Children[0].Props["formattedFields"].([]string)
+	if len(formatted) != 0 {
+		t.Fatalf("formattedFields=%v", formatted)
+	}
+}

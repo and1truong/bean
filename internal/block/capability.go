@@ -73,6 +73,7 @@ func viewProperties(app *appir.App, block appir.Block, _ beanctx.Request, props 
 		presentation = display.Renderer.Presentation()
 	}
 	props["presentation"] = presentation
+	props["maxRows"] = app.Views[block.View].MaxLimit
 	props["fieldTypes"] = beanview.FieldTypes(app, app.Views[block.View])
 	props["formattedFields"] = formattedFields(app, block)
 	props["fileFields"] = fileFields(app, block)
