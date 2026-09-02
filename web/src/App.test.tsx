@@ -416,7 +416,7 @@ describe('public rendering',()=>{
     const fetchMock=vi.fn(async(input:string|URL|Request)=>{
       const path=String(input)
       if(path.includes('/api/system/session'))return response({authenticated:false})
-      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'ViewBlock',props:{name:'index',view:'articles',formattedFields:[],fileFields:[],fieldTypes:{published_at:'datetime'},filters:{status:{Field:'status',Type:'enum',Options:['draft','published']}},display:{Type:'page',Description:'Browse articles.',Title:{Text:'Articles'},Renderer:{Type:'table',Fields:[{Field:'title',Label:'Article',LinkRoute:'/articles/:id'},{Field:'status',Label:'State'},{Field:'published_at',Label:'Published'}]},Controls:[{Filter:'status',Label:'Publication status',Widget:'select'}],Pager:{Type:'cursor',PageSize:1}}}}]}})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'ViewBlock',props:{name:'index',view:'articles',formattedFields:[],fileFields:[],fieldTypes:{published_at:'datetime'},filters:{status:{Field:'status',Type:'enum',Options:['draft','published']},published_after:{Field:'published_at',Type:'datetime'}},display:{Type:'page',Description:'Browse articles.',Title:{Text:'Articles'},Renderer:{Type:'table',Fields:[{Field:'title',Label:'Article',LinkRoute:'/articles/:id'},{Field:'status',Label:'State'},{Field:'published_at',Label:'Published'}]},Controls:[{Filter:'status',Label:'Publication status',Widget:'select'},{Filter:'published_after',Label:'Published after',Widget:'auto'}],Pager:{Type:'cursor',PageSize:1}}}}]}})
       if(path.includes('/api/views/articles')&&path.includes('cursor=next-page'))return response({data:[{id:'2',title:'Second article',status:'published'}],nextCursor:''})
       if(path.includes('/api/views/articles')&&path.includes('status=published'))return response({data:[{id:'2',title:'Published article',status:'published'}],nextCursor:''})
       if(path.includes('/api/views/articles'))return response({data:[{id:'1',title:'Draft article',status:'draft',published_at:'2026-01-02T10:00:00Z'}],nextCursor:'next-page'})
@@ -436,9 +436,14 @@ describe('public rendering',()=>{
     fireEvent.click(screen.getByRole('button',{name:'Previous'}))
     expect(await screen.findByText('Draft article')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Publication status'),{target:{value:'published'}})
+    const localDateTime='2026-01-02T10:30:00'
+    expect(screen.getByLabelText('Published after')).toHaveAttribute('type','datetime-local')
+    fireEvent.change(screen.getByLabelText('Published after'),{target:{value:localDateTime}})
     fireEvent.click(screen.getByRole('button',{name:'Apply'}))
     expect(await screen.findByText('Published article')).toBeInTheDocument()
     expect(fetchMock.mock.calls.some(([input])=>String(input).includes('_display=index')&&String(input).includes('status=published')&&String(input).includes('limit=1'))).toBe(true)
+    const filteredRequest=fetchMock.mock.calls.map(([input])=>String(input)).find(path=>path.includes('status=published')&&path.includes('published_after='))
+    expect(new URL(filteredRequest!,'http://bean').searchParams.get('published_after')).toBe(new Date(localDateTime).toISOString())
   })
 
   it('resolves a detail display heading and browser title from its result',async()=>{

@@ -141,6 +141,44 @@ func TestViewExposedFiltersDeriveScopedSystemFieldTypes(t *testing.T) {
 	}
 }
 
+func TestViewExposedFilterDerivesTypeThroughShorthandRelationship(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "category"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "name", "type": "string"}}}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"fields": []any{
+			map[string]any{"name": "title", "type": "string"},
+			map[string]any{"name": "category_id", "type": "relation", "relation": map[string]any{"entity": "category", "kind": "many-to-one", "targetField": "id"}},
+		}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "articles"}, Spec: map[string]any{
+			"entity": "article", "fields": []any{"id", "title", "category.name"},
+			"relationships":  []any{map[string]any{"name": "category", "relationField": "category_id"}},
+			"exposedFilters": map[string]any{"category_name": map[string]any{"field": "category.name", "operator": "contains"}},
+		}},
+	}
+	result := compiler.Compile("test", 1, definitions)
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("diagnostics=%v", result.Diagnostics)
+	}
+	filter := result.App.Views["articles"].ExposedFilters["category_name"]
+	if filter.Type != "string" || filter.Field != "category.name" {
+		t.Fatalf("filter=%+v", filter)
+	}
+}
+
+func TestUserAuthoredPrivateViewDisplayPrefixIsRejected(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "articles"}, Spec: map[string]any{
+			"entity": "article", "fields": []any{"id", "title"}, "displays": map[string]any{
+				"_unvalidated": map[string]any{"type": "page", "route": "/hidden", "renderer": map[string]any{"type": "future"}},
+			},
+		}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasViewDisplayDiagnostic(diagnostics, "View", "articles", "spec.displays._unvalidated") {
+		t.Fatalf("diagnostics=%v", diagnostics)
+	}
+}
+
 func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 	definitions := []definition.Definition{
 		{APIVersion: definition.APIVersion, Kind: "Policy", Metadata: definition.Metadata{Name: "redacted"}, Spec: map[string]any{"redact": []any{"status"}}},

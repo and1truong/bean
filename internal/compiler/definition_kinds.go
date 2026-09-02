@@ -40,6 +40,16 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 	entity.FieldEntity = func(_ *appir.App, name string) string { return name }
 	entity.ReferenceCandidates = true
 	view := mappedDefinitionKind(appir.View{}, func(app *appir.App) map[string]appir.View { return app.Views }, normalizeView)
+	compileView := view.Compile
+	view.Compile = func(app *appir.App, source definition.Definition) []definition.Diagnostic {
+		out := compileView(app, source)
+		for _, displayName := range keys(app.Views[source.Metadata.Name].Displays) {
+			if strings.HasPrefix(displayName, "_") {
+				out = append(out, diagnostic("View", source.Metadata.Name, "spec.displays."+displayName, "display names beginning with _ are reserved"))
+			}
+		}
+		return out
+	}
 	view.References = viewReferences
 	view.FieldEntity = func(app *appir.App, name string) string { return app.Views[name].Entity }
 	view.ReferenceCandidates = true
@@ -308,7 +318,11 @@ func normalizeViews(app *appir.App) {
 			continue
 		}
 		relationships := map[string]appir.ViewRelationship{}
-		for _, relationship := range view.Relationships {
+		for index, relationship := range view.Relationships {
+			if resolved, found := resolveViewRelationship(entity, relationship); found {
+				relationship = resolved
+				view.Relationships[index] = relationship
+			}
 			relationships[relationship.Name] = relationship
 		}
 		for filterName, filter := range view.ExposedFilters {

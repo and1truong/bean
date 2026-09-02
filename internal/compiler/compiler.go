@@ -786,19 +786,12 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 		for i, relationship := range v.Relationships {
 			path := fmt.Sprintf("spec.relationships.%d", i)
 			if relationship.RelationField != "" {
-				var relation *appir.Relation
-				for _, field := range e.Fields {
-					if field.Name == relationship.RelationField {
-						relation = field.Relation
-					}
-				}
-				if relation == nil {
+				resolved, found := resolveViewRelationship(e, relationship)
+				if !found {
 					out = append(out, invalidReferenceDiagnostic("View", name, path+".relationField", "references a field without relation storage"))
 					continue
 				}
-				relationship.Entity = relation.Entity
-				relationship.LocalField = relationship.RelationField
-				relationship.TargetField = relation.TargetField
+				relationship = resolved
 				v.Relationships[i] = relationship
 				a.Views[name] = v
 			}
@@ -2386,6 +2379,21 @@ func validViewField(name string, base map[string]bool, relationships map[string]
 func viewFieldType(name string, base appir.Entity, relationships map[string]appir.ViewRelationship, a *appir.App) (string, bool) {
 	definition, exists := viewFieldDefinition(name, base, relationships, a)
 	return definition.Type, exists
+}
+
+func resolveViewRelationship(entity appir.Entity, relationship appir.ViewRelationship) (appir.ViewRelationship, bool) {
+	if relationship.RelationField == "" {
+		return relationship, true
+	}
+	for _, field := range entity.Fields {
+		if field.Name == relationship.RelationField && field.Relation != nil {
+			relationship.Entity = field.Relation.Entity
+			relationship.LocalField = relationship.RelationField
+			relationship.TargetField = field.Relation.TargetField
+			return relationship, true
+		}
+	}
+	return relationship, false
 }
 
 func viewFieldDefinition(name string, base appir.Entity, relationships map[string]appir.ViewRelationship, a *appir.App) (appir.Field, bool) {
