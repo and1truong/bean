@@ -2,7 +2,7 @@ import {act,fireEvent,render,screen,waitFor} from '@testing-library/react'
 import {afterEach,describe,it,expect,vi} from 'vitest'
 import {MemoryRouter,useNavigate,type NavigateFunction} from 'react-router-dom'
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query'
-import App,{evaluate} from './App'
+import App,{controlInputValue,controlQueryValue,evaluate} from './App'
 describe('App',()=>{it('renders login',()=>{render(<QueryClientProvider client={new QueryClient()}><MemoryRouter initialEntries={['/login']}><App/></MemoryRouter></QueryClientProvider>);expect(screen.getByRole('heading',{name:'Sign in'})).toBeInTheDocument()})})
 
 describe('client expressions',()=>{
@@ -14,6 +14,14 @@ describe('client expressions',()=>{
     expect(evaluate(adult,{age:21})).toBe(true)
     expect(()=>evaluate({...adult,Right:{Source:'literal',Literal:'18'}},{})).toThrow('comparison requires numbers')
     expect(()=>evaluate({Op:'future',Left:{Source:'literal',Literal:true},Right:{Source:'literal',Literal:true}},{})).toThrow('unsupported client expression operator')
+  })
+})
+
+describe('View datetime controls',()=>{
+  it('preserves the original RFC3339 instant when the local control is unchanged',()=>{
+    const filter={Field:'published_at',Type:'datetime'}
+    const original='2026-11-01T06:30:00Z'
+    expect(controlQueryValue(controlInputValue(original,filter),filter,original)).toBe(original)
   })
 })
 
@@ -137,6 +145,20 @@ describe('public rendering',()=>{
     await waitFor(()=>expect(fetchMock.mock.calls.some(([input])=>String(input).includes('/api/actions/move_task'))).toBe(true))
     await waitFor(()=>expect(fetchMock.mock.calls.filter(([input])=>String(input).includes('_block=tree'))).toHaveLength(2))
     expect(screen.getByTestId('tree-view')).toContainElement(screen.getByRole('link',{name:'Grandchild C'}))
+  })
+
+  it('rejects a structured View response that exceeds 200 rows',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/manifest'))return response({authNavigation:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'ViewBlock',props:{name:'board',view:'tasks',formattedFields:[],fileFields:[],presentation:{Mode:'board',TitleField:'title',GroupField:'status',Columns:['todo']}}}})
+      if(path.includes('cursor=next'))return response({data:Array.from({length:100},(_,index)=>({id:'next-'+index,title:'Task',status:'todo'})),nextCursor:''})
+      if(path.includes('/api/views/tasks'))return response({data:Array.from({length:150},(_,index)=>({id:'first-'+index,title:'Task',status:'todo'})),nextCursor:'next'})
+      return response({})
+    }))
+    renderApp('/tasks')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Board and tree Views support at most 200 rows.')
   })
 
   it('submits file Webforms as multipart data',async()=>{

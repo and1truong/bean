@@ -164,6 +164,27 @@ func TestViewExposedFilterDerivesTypeThroughShorthandRelationship(t *testing.T) 
 	}
 }
 
+func TestResultTitleRequiresMandatoryUniqueBinding(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "articles"}, Spec: map[string]any{
+			"entity": "article", "fields": []any{"id", "title"}, "exposedFilters": map[string]any{"id": map[string]any{"field": "id"}},
+			"displays": map[string]any{"detail": map[string]any{
+				"type": "page", "route": "/articles/:id", "bindings": map[string]any{"id": map[string]any{"source": "route", "name": "id"}},
+				"title": map[string]any{"field": "title", "fallback": "Article"}, "renderer": map[string]any{"type": "detail", "titleField": "title"},
+			}},
+		}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasViewDisplayDiagnostic(diagnostics, "View", "articles", "spec.displays.detail.title.field") {
+		t.Fatalf("optional unique binding diagnostics=%v", diagnostics)
+	}
+	definitions[1].Spec["displays"].(map[string]any)["detail"].(map[string]any)["bindings"].(map[string]any)["id"].(map[string]any)["required"] = true
+	if diagnostics = compiler.Compile("test", 1, definitions).Diagnostics; len(diagnostics) != 0 {
+		t.Fatalf("mandatory unique binding diagnostics=%v", diagnostics)
+	}
+}
+
 func TestUserAuthoredPrivateViewDisplayPrefixIsRejected(t *testing.T) {
 	definitions := []definition.Definition{
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}}}},

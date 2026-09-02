@@ -40,3 +40,12 @@ func TestResolveDisplayBindingsUsesTrustedRouteValues(t *testing.T) {
 		t.Fatal("missing required route binding was accepted")
 	}
 }
+
+func TestFieldTypesIncludesEnabledSyntheticFields(t *testing.T) {
+	app := appir.Empty()
+	app.Entities["record"] = appir.Entity{Name: "record", Owner: true, Tenant: true, SoftDelete: true}
+	types := FieldTypes(app, appir.View{Entity: "record", Fields: []string{"owner_id", "tenant_id", "deleted_at"}})
+	if types["owner_id"] != "uuid" || types["tenant_id"] != "uuid" || types["deleted_at"] != "datetime" {
+		t.Fatalf("types=%v", types)
+	}
+}

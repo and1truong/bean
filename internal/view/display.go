@@ -99,6 +99,14 @@ func FieldTypes(app *appir.App, view appir.View) map[string]string {
 				out[name] = definition.Type
 			}
 		}
+		switch {
+		case fieldName == "owner_id" && entity.Owner:
+			out[name] = "uuid"
+		case fieldName == "tenant_id" && entity.Tenant:
+			out[name] = "uuid"
+		case fieldName == "deleted_at" && entity.SoftDelete:
+			out[name] = "datetime"
+		}
 	}
 	for _, aggregate := range view.Aggregates {
 		if strings.EqualFold(aggregate.Function, "count") {

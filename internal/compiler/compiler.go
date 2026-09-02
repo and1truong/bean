@@ -1017,11 +1017,11 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 		}
 		if display.Type == "page" {
 			singleRecord := false
-			for filterName := range display.Bindings {
+			for filterName, binding := range display.Bindings {
 				filter, exists := view.ExposedFilters[filterName]
 				target := filter.Target(filterName)
 				definition, fieldExists := entityFieldDefinition(entity, target)
-				singleRecord = singleRecord || exists && (target == "id" || fieldExists && definition.Unique)
+				singleRecord = singleRecord || exists && binding.Required && (target == "id" || fieldExists && definition.Unique)
 			}
 			if !singleRecord {
 				out = append(out, diagnostic("View", viewName, base+".title.field", "result title requires a unique bound filter"))
