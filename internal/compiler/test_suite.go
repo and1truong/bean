@@ -10,6 +10,7 @@ import (
 
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/definition"
+	beanextension "github.com/beanruntime/bean/internal/extension"
 	"github.com/beanruntime/bean/internal/field"
 	"github.com/beanruntime/bean/internal/rule"
 	"github.com/beanruntime/bean/internal/testsuite"
@@ -152,7 +153,7 @@ func validateTestCase(app *appir.App, suite appir.TestSuite, test appir.TestCase
 		if resultPresent && test.Expect.Error != "" {
 			out = append(out, testSuiteDiagnostic(suite.Name, path+".expect", "Action cases cannot combine result and error"))
 		}
-		if !resultPresent && test.Expect.Error == "" && len(test.Expect.Changes) == 0 && len(test.Expect.Events) == 0 && len(test.Expect.Audit) == 0 && !test.Expect.NoChanges && !test.Expect.NoEvents {
+		if !resultPresent && test.Expect.Error == "" && len(test.Expect.Changes) == 0 && len(test.Expect.Events) == 0 && len(test.Expect.Audit) == 0 && len(test.Expect.ProviderCalls) == 0 && !test.Expect.NoChanges && !test.Expect.NoEvents {
 			out = append(out, testSuiteDiagnostic(suite.Name, path+".expect", "Action cases must specify at least one assertion"))
 		}
 	}
@@ -447,7 +448,7 @@ func validateRuleTestCase(app *appir.App, suite appir.TestSuite, test appir.Test
 			out = append(out, testSuiteDiagnostic(suite.Name, path+".expect.result", "does not match target Rule result type"))
 		}
 	}
-	if len(test.Expect.Changes) > 0 || len(test.Expect.Events) > 0 || len(test.Expect.Audit) > 0 || test.Expect.NoChanges || test.Expect.NoEvents {
+	if len(test.Expect.Changes) > 0 || len(test.Expect.Events) > 0 || len(test.Expect.Audit) > 0 || len(test.Expect.ProviderCalls) > 0 || len(test.Providers) > 0 || test.Expect.NoChanges || test.Expect.NoEvents {
 		out = append(out, testSuiteDiagnostic(suite.Name, path+".expect", "Rule cases cannot assert Action side effects"))
 	}
 	return out
@@ -541,6 +542,67 @@ func validateActionTestCase(app *appir.App, suite appir.TestSuite, test appir.Te
 			out = append(out, requiredDiagnostic("TestSuite", suite.Name, fmt.Sprintf("%s.expect.events.%d.topic", path, index), "is required"))
 		}
 	}
+	out = append(out, validateProviderTestCase(app, suite, action, test, path)...)
+	return out
+}
+
+func validateProviderTestCase(app *appir.App, suite appir.TestSuite, action appir.Action, test appir.TestCase, path string) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
+	used := map[string]bool{}
+	for _, step := range action.Steps {
+		if step.Op == "extension" {
+			used[step.Extension] = true
+		}
+	}
+	failureCodes := nameSet([]string{beanextension.FailureAuthentication, beanextension.FailureContract, beanextension.FailureRedirect, beanextension.FailureResponse, beanextension.FailureTimeout, beanextension.FailureUnavailable})
+	for _, extensionName := range keys(test.Providers) {
+		results := test.Providers[extensionName]
+		definition, exists := app.Extensions[extensionName]
+		providerPath := path + ".providers." + extensionName
+		if !exists {
+			out = append(out, missingReferenceDiagnostic("TestSuite", suite.Name, providerPath, "Extension", extensionName))
+			continue
+		}
+		if !used[extensionName] {
+			out = append(out, testSuiteDiagnostic(suite.Name, providerPath, "target Action does not invoke this Extension"))
+		}
+		if len(results) == 0 {
+			out = append(out, requiredDiagnostic("TestSuite", suite.Name, providerPath, "requires at least one ordered provider result"))
+		}
+		for index, result := range results {
+			resultPath := fmt.Sprintf("%s.%d", providerPath, index)
+			hasOutput := result.Output != nil
+			if hasOutput == (result.Error != "") {
+				out = append(out, testSuiteDiagnostic(suite.Name, resultPath, "must specify exactly one of output or error"))
+			} else if hasOutput {
+				if err := beanextension.ValidateValues(definition.Output, result.Output); err != nil {
+					out = append(out, testSuiteDiagnostic(suite.Name, resultPath+".output", err.Error()))
+				}
+			} else if !failureCodes[result.Error] {
+				out = append(out, testSuiteDiagnostic(suite.Name, resultPath+".error", "is not a stable Extension failure code"))
+			}
+		}
+	}
+	for index, call := range test.Expect.ProviderCalls {
+		callPath := fmt.Sprintf("%s.expect.providerCalls.%d", path, index)
+		definition, exists := app.Extensions[call.Extension]
+		if !exists {
+			out = append(out, missingReferenceDiagnostic("TestSuite", suite.Name, callPath+".extension", "Extension", call.Extension))
+			continue
+		}
+		if !used[call.Extension] {
+			out = append(out, testSuiteDiagnostic(suite.Name, callPath+".extension", "target Action does not invoke this Extension"))
+		}
+		if err := field.Validate(appir.Field{Name: "invocationId", Type: "uuid", Required: true}, call.InvocationID); err != nil {
+			out = append(out, testSuiteDiagnostic(suite.Name, callPath+".invocationId", err.Error()))
+		}
+		if call.IdempotencyKey != call.InvocationID {
+			out = append(out, testSuiteDiagnostic(suite.Name, callPath+".idempotencyKey", "must equal the immutable invocation ID"))
+		}
+		if err := beanextension.ValidateValues(definition.Input, call.Input); err != nil {
+			out = append(out, testSuiteDiagnostic(suite.Name, callPath+".input", err.Error()))
+		}
+	}
 	return out
 }
 
@@ -551,6 +613,9 @@ func actionCreatedRecords(action appir.Action) int {
 	count := 0
 	for _, step := range action.Steps {
 		if step.Op == "create" {
+			count++
+		}
+		if step.Op == "extension" {
 			count++
 		}
 	}

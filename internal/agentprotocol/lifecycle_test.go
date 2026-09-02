@@ -76,6 +76,10 @@ func TestTestSuiteInspectionReferencesRedactionAndSemanticDiff(t *testing.T) {
 		"tests":  []any{map[string]any{"name": "allows_large_total", "this": map[string]any{"total": 1234568}, "context": map[string]any{"time": "2026-09-01T10:00:00Z", "seed": 42}, "expect": map[string]any{"result": true}}},
 	}})
 	app := compiler.Compile("test", 1, definitions).App
+	suiteWithProvider := app.TestSuites["minimum_total_contract"]
+	suiteWithProvider.Tests[0].Providers = map[string][]appir.TestProviderResult{"provider": {{Output: map[string]any{"token": "provider-secret"}}}}
+	suiteWithProvider.Tests[0].Expect.ProviderCalls = []appir.TestProviderCall{{Extension: "provider", InvocationID: "provider-invocation", IdempotencyKey: "provider-invocation", Input: map[string]any{"token": "provider-input"}}}
+	app.TestSuites["minimum_total_contract"] = suiteWithProvider
 	value, references, exists := compiler.InspectDefinition(app, "TestSuite", "minimum_total_contract")
 	if !exists || value == nil || !hasReference(references, "target.name", "Rule", "minimum_total") {
 		t.Fatalf("value=%+v references=%+v", value, references)
@@ -85,8 +89,11 @@ func TestTestSuiteInspectionReferencesRedactionAndSemanticDiff(t *testing.T) {
 	if redactedCase.Context.Time == "2026-09-01T10:00:00Z" || redactedCase.Context.Seed == nil || *redactedCase.Context.Seed == 42 {
 		t.Fatalf("redacted context=%+v", redactedCase.Context)
 	}
+	if redactedCase.Providers["provider"][0].Output["token"] == "provider-secret" || redactedCase.Expect.ProviderCalls[0].Input["token"] == "provider-input" || redactedCase.Expect.ProviderCalls[0].InvocationID == "provider-invocation" {
+		t.Fatalf("redacted provider case=%+v", redactedCase)
+	}
 	redacted, _ := json.Marshal(redactedApp)
-	if strings.Contains(string(redacted), "1234568") || !strings.Contains(string(redacted), "REDACTED") {
+	if strings.Contains(string(redacted), "1234568") || strings.Contains(string(redacted), "provider-secret") || strings.Contains(string(redacted), "provider-input") || !strings.Contains(string(redacted), "REDACTED") {
 		t.Fatalf("redacted=%s", redacted)
 	}
 	for _, mutate := range []func(*appir.TestCase){

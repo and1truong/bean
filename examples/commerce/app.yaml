@@ -58,6 +58,24 @@ transitions:
   pending_payment: [paid]
   paid: [fulfilled]
 ---
+kind: Extension
+name: order_notification
+transport: http
+endpoint: https://provider.example/orders
+input:
+  order_id: {required: true, type: uuid}
+  quantity: {required: true, type: integer}
+output:
+  accepted: {required: true, type: boolean}
+permissions: [network]
+sideEffects: [external_write]
+authentication: none
+timeoutSeconds: 5
+retry: {maxAttempts: 3, delaySeconds: 60}
+idempotency: required
+transaction: after_commit
+failure: retry_then_fail
+---
 kind: Action
 name: place_order
 entity: order
@@ -71,8 +89,14 @@ steps:
   - op: decrement
     values: {amount_input: quantity, entity: product, field: inventory, id_input: product_id, message: Product is out of stock.}
   - op: create
+    result: order
     values: {payment_result: deterministic-success, status: pending_payment}
-  - {event: order_placed, op: emit}
+  - event: order_placed
+    op: emit
+    values: {product_id: $input.product_id, quantity: $input.quantity}
+  - op: extension
+    extension: order_notification
+    values: {order_id: $result.order.id, quantity: $input.quantity}
   - op: return
     values: {payment: deterministic-success}
 ---
@@ -117,8 +141,11 @@ tests:
       actor: {id: 00000000-0000-4000-8000-000000000103, roles: [administrator]}
       time: "2026-09-01T10:00:00Z"
       requestId: commerce-test
-      ids: [00000000-0000-4000-8000-000000000102]
+      ids: [00000000-0000-4000-8000-000000000102, 00000000-0000-4000-8000-000000000105]
     input: {product_id: 00000000-0000-4000-8000-000000000101, quantity: 2}
+    providers:
+      order_notification:
+        - output: {accepted: true}
     expect:
       result: {payment: deterministic-success}
       changes:
@@ -126,6 +153,11 @@ tests:
         - {entity: order, id: 00000000-0000-4000-8000-000000000102, values: {status: pending_payment, payment_result: deterministic-success}}
       events:
         - {topic: order_placed, payload: {product_id: 00000000-0000-4000-8000-000000000101, quantity: 2}}
+      providerCalls:
+        - extension: order_notification
+          invocationId: 00000000-0000-4000-8000-000000000105
+          idempotencyKey: 00000000-0000-4000-8000-000000000105
+          input: {order_id: 00000000-0000-4000-8000-000000000102, quantity: 2}
 ---
 kind: TestSuite
 name: advance_order_contract

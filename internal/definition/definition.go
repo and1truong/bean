@@ -63,6 +63,7 @@ const (
 	RuleMigration        DiagnosticRule = "migration"
 	RuleFixture          DiagnosticRule = "fixture"
 	RuleTestSuite        DiagnosticRule = "test-suite"
+	RuleExtension        DiagnosticRule = "extension"
 	RuleGeneral          DiagnosticRule = "general"
 )
 
@@ -159,6 +160,8 @@ func codeForRule(rule DiagnosticRule) string {
 		return "BEAN-E2801"
 	case RuleTestSuite:
 		return "BEAN-E2851"
+	case RuleExtension:
+		return "BEAN-E2871"
 	default:
 		return "BEAN-E2900"
 	}
@@ -296,6 +299,7 @@ func DecodeSpec(spec map[string]any, target any) error {
 	}
 	decoder := json.NewDecoder(bytes.NewReader(b))
 	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
 	if e = decoder.Decode(target); e != nil {
 		return e
 	}

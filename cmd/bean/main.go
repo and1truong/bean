@@ -24,7 +24,7 @@ import (
 	"github.com/beanruntime/bean/internal/demoseed"
 )
 
-const version = "0.12.0-alpha"
+const version = "0.13.0-alpha"
 
 func main() {
 	os.Exit(execute(os.Args[1:], os.Stdout, os.Stderr))

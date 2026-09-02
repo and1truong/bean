@@ -190,7 +190,9 @@ func (s *Store) Draft(ctx context.Context, appID string) ([]definition.Definitio
 			return nil, fmt.Errorf("definition revision is missing")
 		}
 		var d definition.Definition
-		if e = json.Unmarshal([]byte(fmt.Sprint(rr[0]["body"])), &d); e != nil {
+		decoder := json.NewDecoder(strings.NewReader(fmt.Sprint(rr[0]["body"])))
+		decoder.UseNumber()
+		if e = decoder.Decode(&d); e != nil {
 			return nil, e
 		}
 		out = append(out, d)
@@ -481,12 +483,11 @@ func (s *Store) activeApp(ctx context.Context, appID string) (*appir.App, error)
 	if len(rr) == 0 {
 		return nil, fmt.Errorf("active release pointer references missing release %v", rows[0]["release_id"])
 	}
-	var a appir.App
-	e = json.Unmarshal([]byte(fmt.Sprint(rr[0]["app_ir"])), &a)
+	a, e := appir.Decode([]byte(fmt.Sprint(rr[0]["app_ir"])))
 	if e == nil {
 		e = a.ValidateFormat()
 	}
-	return &a, e
+	return a, e
 }
 func (s *Store) Releases(ctx context.Context, appID string) ([]Published, error) {
 	rows, e := s.DB.Select(ctx, dbal.Select{Table: "bean_release", Columns: []string{"id", "version", "status", "created_at", "activated_at"}, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "app_id", Value: appID}, OrderBy: []dbal.Order{{Column: "version", Desc: true}}, Limit: 200})

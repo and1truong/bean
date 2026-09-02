@@ -60,6 +60,9 @@
         "event": {
           "type": "string"
         },
+        "extension": {
+          "type": "string"
+        },
         "job": {
           "type": "string"
         },

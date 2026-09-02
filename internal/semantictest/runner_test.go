@@ -2,6 +2,7 @@ package semantictest_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"reflect"
 	"strings"
@@ -89,6 +90,71 @@ func TestActionSuiteSeedProducesReplayableIDsAndLeavesNoState(t *testing.T) {
 	entries, err := os.ReadDir(directory)
 	if err != nil || len(entries) != 0 {
 		t.Fatalf("semantic suite retained case state: entries=%v err=%v", entries, err)
+	}
+}
+
+func TestActionSuiteUsesOrderedOfflineExtensionMocks(t *testing.T) {
+	const firstInvocationID = "00000000-0000-4000-8000-000000000021"
+	const secondInvocationID = "00000000-0000-4000-8000-000000000020"
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "order"}, Spec: map[string]any{}},
+		{APIVersion: definition.APIVersion, Kind: "Extension", Metadata: definition.Metadata{Name: "order_notification"}, Spec: map[string]any{
+			"transport": "http", "endpoint": "https://provider.example/orders",
+			"input": map[string]any{"message": map[string]any{"type": "string", "required": true}}, "output": map[string]any{"accepted": map[string]any{"type": "boolean", "required": true}},
+			"permissions": []any{"network"}, "sideEffects": []any{"external_write"}, "authentication": "none", "timeoutSeconds": 5,
+			"retry": map[string]any{"maxAttempts": 3, "delaySeconds": 60}, "idempotency": "required", "transaction": "after_commit", "failure": "retry_then_fail",
+		}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "notify_order"}, Spec: map[string]any{
+			"entity": "order", "operation": "transaction", "input": map[string]any{"first": map[string]any{"type": "string", "required": true}, "second": map[string]any{"type": "string", "required": true}},
+			"steps": []any{
+				map[string]any{"op": "extension", "extension": "order_notification", "values": map[string]any{"message": "$input.first"}},
+				map[string]any{"op": "extension", "extension": "order_notification", "values": map[string]any{"message": "$input.second"}},
+			},
+		}},
+		{APIVersion: definition.APIVersion, Kind: "TestSuite", Metadata: definition.Metadata{Name: "notification_contract"}, Spec: map[string]any{
+			"target": map[string]any{"kind": "Action", "name": "notify_order"}, "tests": []any{map[string]any{
+				"name": "delivers_after_commit", "context": map[string]any{"actor": map[string]any{"roles": []any{"administrator"}}, "time": fixedNow, "ids": []any{firstInvocationID, secondInvocationID}},
+				"input": map[string]any{"first": "ready", "second": "sent"}, "providers": map[string]any{"order_notification": []any{map[string]any{"output": map[string]any{"accepted": true}}, map[string]any{"output": map[string]any{"accepted": false}}}},
+				"expect": map[string]any{"providerCalls": []any{
+					map[string]any{"extension": "order_notification", "invocationId": firstInvocationID, "idempotencyKey": firstInvocationID, "input": map[string]any{"message": "ready"}},
+					map[string]any{"extension": "order_notification", "invocationId": secondInvocationID, "idempotencyKey": secondInvocationID, "input": map[string]any{"message": "sent"}},
+				}},
+			}},
+		}},
+	}
+	actionSteps := definitions[2].Spec["steps"].([]any)
+	testCase := definitions[3].Spec["tests"].([]any)[0].(map[string]any)
+	contextIDs := testCase["context"].(map[string]any)["ids"].([]any)
+	providerResults := testCase["providers"].(map[string]any)["order_notification"].([]any)
+	providerCalls := testCase["expect"].(map[string]any)["providerCalls"].([]any)
+	for index := 2; index < 21; index++ {
+		invocationID := fmt.Sprintf("00000000-0000-4000-8000-%012d", 20+index)
+		actionSteps = append(actionSteps, map[string]any{"op": "extension", "extension": "order_notification", "values": map[string]any{"message": "$input.second"}})
+		contextIDs = append(contextIDs, invocationID)
+		providerResults = append(providerResults, map[string]any{"output": map[string]any{"accepted": true}})
+		providerCalls = append(providerCalls, map[string]any{"extension": "order_notification", "invocationId": invocationID, "idempotencyKey": invocationID, "input": map[string]any{"message": "sent"}})
+	}
+	definitions[2].Spec["steps"] = actionSteps
+	testCase["context"].(map[string]any)["ids"] = contextIDs
+	testCase["providers"].(map[string]any)["order_notification"] = providerResults
+	testCase["expect"].(map[string]any)["providerCalls"] = providerCalls
+	bundle := definition.Bundle{Name: "Extensions", Definitions: definitions}
+	results, diagnostics, err := semantictest.Run(context.Background(), bundle, t.TempDir())
+	if err != nil || len(diagnostics) != 0 || len(results) != 1 || results[0].Status != "passed" {
+		t.Fatalf("results=%+v diagnostics=%v err=%v", results, diagnostics, err)
+	}
+	repeated, repeatedDiagnostics, err := semantictest.Run(context.Background(), bundle, t.TempDir())
+	if err != nil || len(repeatedDiagnostics) != 0 || !reflect.DeepEqual(results, repeated) {
+		t.Fatalf("first=%+v repeated=%+v diagnostics=%v err=%v", results, repeated, repeatedDiagnostics, err)
+	}
+	testCase["providers"] = map[string]any{"order_notification": []any{map[string]any{"output": map[string]any{"accepted": true}}}}
+	failed, failureDiagnostics, err := semantictest.Run(context.Background(), bundle, t.TempDir())
+	if err != nil || len(failureDiagnostics) != 1 || failureDiagnostics[0].Code != "BEAN-T1001" || failureDiagnostics[0].Path != "tests.delivers_after_commit.providers" || failed[0].Status != "failed" {
+		t.Fatalf("results=%+v diagnostics=%v err=%v", failed, failureDiagnostics, err)
+	}
+	repeatedFailed, repeatedFailureDiagnostics, err := semantictest.Run(context.Background(), bundle, t.TempDir())
+	if err != nil || !reflect.DeepEqual(failed, repeatedFailed) || !reflect.DeepEqual(failureDiagnostics, repeatedFailureDiagnostics) {
+		t.Fatalf("first=%+v repeated=%+v first diagnostics=%v repeated diagnostics=%v err=%v", failed, repeatedFailed, failureDiagnostics, repeatedFailureDiagnostics, err)
 	}
 }
 

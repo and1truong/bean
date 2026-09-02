@@ -1,6 +1,7 @@
 package appir
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 
@@ -12,7 +13,8 @@ const (
 	LegacyFormat    = "bean/appir/v1"
 	LifecycleFormat = "bean/appir/v2"
 	RuleFormat      = "bean/appir/v3"
-	CurrentFormat   = "bean/appir/v4"
+	TestSuiteFormat = "bean/appir/v4"
+	CurrentFormat   = "bean/appir/v5"
 )
 
 type Field struct {
@@ -116,26 +118,50 @@ type TestMutation struct {
 	Absent bool           `json:"absent"`
 }
 type TestExpectation struct {
-	Result    json.RawMessage `json:"result"`
-	Error     string          `json:"error"`
-	Changes   []TestMutation  `json:"changes"`
-	Events    []TestEvent     `json:"events"`
-	Audit     []TestAudit     `json:"audit"`
-	NoChanges bool            `json:"noChanges"`
-	NoEvents  bool            `json:"noEvents"`
+	Result        json.RawMessage    `json:"result"`
+	Error         string             `json:"error"`
+	Changes       []TestMutation     `json:"changes"`
+	Events        []TestEvent        `json:"events"`
+	Audit         []TestAudit        `json:"audit"`
+	ProviderCalls []TestProviderCall `json:"providerCalls"`
+	NoChanges     bool               `json:"noChanges"`
+	NoEvents      bool               `json:"noEvents"`
+}
+type TestProviderResult struct {
+	Output map[string]any `json:"output"`
+	Error  string         `json:"error"`
+}
+type TestProviderCall struct {
+	Extension      string         `json:"extension"`
+	InvocationID   string         `json:"invocationId"`
+	IdempotencyKey string         `json:"idempotencyKey"`
+	Input          map[string]any `json:"input"`
 }
 type TestCase struct {
-	Name     string                      `json:"name"`
-	Fixtures map[string][]map[string]any `json:"fixtures"`
-	Input    map[string]any              `json:"input"`
-	This     map[string]any              `json:"this"`
-	Context  TestContext                 `json:"context"`
-	Expect   TestExpectation             `json:"expect"`
+	Name      string                          `json:"name"`
+	Fixtures  map[string][]map[string]any     `json:"fixtures"`
+	Input     map[string]any                  `json:"input"`
+	This      map[string]any                  `json:"this"`
+	Context   TestContext                     `json:"context"`
+	Providers map[string][]TestProviderResult `json:"providers"`
+	Expect    TestExpectation                 `json:"expect"`
 }
 type TestSuite struct {
 	Name   string     `json:"name"`
 	Target TestTarget `json:"target"`
 	Tests  []TestCase `json:"tests"`
+}
+type ExtensionRetry struct {
+	MaxAttempts  int
+	DelaySeconds int
+}
+type Extension struct {
+	Name, Transport, Endpoint, Authentication string
+	Idempotency, Transaction, Failure         string
+	Input, Output                             map[string]Field
+	Permissions, SideEffects                  []string
+	TimeoutSeconds                            int
+	Retry                                     ExtensionRetry
 }
 type Lifecycle struct {
 	Name, Entity, StateField, Initial string
@@ -146,6 +172,7 @@ type Step struct {
 	Op, Result string
 	Entity     string
 	View       string
+	Extension  string
 	StateField string
 	Values     []Assignment
 	Where      *expr.Expr
@@ -264,6 +291,7 @@ type App struct {
 	Lifecycles        map[string]Lifecycle
 	Rules             map[string]Rule
 	TestSuites        map[string]TestSuite
+	Extensions        map[string]Extension
 	Policies          map[string]Policy
 	Webforms          map[string]Webform
 	Blocks            map[string]Block
@@ -281,10 +309,10 @@ type App struct {
 }
 
 func Empty() *App {
-	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Rules: map[string]Rule{}, TestSuites: map[string]TestSuite{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
+	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Rules: map[string]Rule{}, TestSuites: map[string]TestSuite{}, Extensions: map[string]Extension{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
 }
 func (a *App) ValidateFormat() error {
-	if a.FormatVersion != LegacyFormat && a.FormatVersion != LifecycleFormat && a.FormatVersion != RuleFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != LegacyFormat && a.FormatVersion != LifecycleFormat && a.FormatVersion != RuleFormat && a.FormatVersion != TestSuiteFormat && a.FormatVersion != CurrentFormat {
 		return fmt.Errorf("unsupported AppIR format %q", a.FormatVersion)
 	}
 	if a.FormatVersion == LegacyFormat {
@@ -312,8 +340,27 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != CurrentFormat && len(a.TestSuites) > 0 {
+	if a.FormatVersion != TestSuiteFormat && a.FormatVersion != CurrentFormat && len(a.TestSuites) > 0 {
 		return fmt.Errorf("AppIR format %q cannot contain TestSuite definitions", a.FormatVersion)
+	}
+	if a.FormatVersion != CurrentFormat && len(a.Extensions) > 0 {
+		return fmt.Errorf("AppIR format %q cannot contain Extension definitions", a.FormatVersion)
+	}
+	if a.FormatVersion != CurrentFormat {
+		for _, action := range a.Actions {
+			for _, step := range action.Steps {
+				if step.Op == "extension" || step.Extension != "" {
+					return fmt.Errorf("AppIR format %q cannot contain Extension-bound Actions", a.FormatVersion)
+				}
+			}
+		}
+		for _, suite := range a.TestSuites {
+			for _, test := range suite.Tests {
+				if len(test.Providers) > 0 || len(test.Expect.ProviderCalls) > 0 {
+					return fmt.Errorf("AppIR format %q cannot contain Extension-bound TestSuites", a.FormatVersion)
+				}
+			}
+		}
 	}
 	return nil
 }
@@ -322,7 +369,13 @@ func (a *App) Clone() (*App, error) {
 	if e != nil {
 		return nil, e
 	}
+	return Decode(b)
+}
+
+func Decode(encoded []byte) (*App, error) {
 	var out App
-	e = json.Unmarshal(b, &out)
-	return &out, e
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.UseNumber()
+	err := decoder.Decode(&out)
+	return &out, err
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 
 	"github.com/beanruntime/bean/internal/action"
@@ -13,6 +14,7 @@ import (
 	"github.com/beanruntime/bean/internal/dbal/postgres"
 	"github.com/beanruntime/bean/internal/dbal/sqlite"
 	"github.com/beanruntime/bean/internal/event"
+	"github.com/beanruntime/bean/internal/extension"
 	"github.com/beanruntime/bean/internal/httpapi"
 	"github.com/beanruntime/bean/internal/job"
 	"github.com/beanruntime/bean/internal/kernel"
@@ -42,6 +44,19 @@ func Open(ctx context.Context, path string, secure bool) (*Runtime, error) {
 }
 
 func OpenURL(ctx context.Context, databaseURL string, secure bool) (*Runtime, error) {
+	bearer, err := extension.ParseBearerTokens(os.Getenv(extension.BearerTokensEnvironment))
+	if err != nil {
+		return nil, err
+	}
+	return OpenURLWithOptions(ctx, databaseURL, secure, Options{ExtensionBearerTokens: bearer})
+}
+
+type Options struct {
+	ExtensionProvider     extension.Provider
+	ExtensionBearerTokens map[string]string
+}
+
+func OpenURLWithOptions(ctx context.Context, databaseURL string, secure bool, options Options) (*Runtime, error) {
 	var db Database
 	var e error
 	switch {
@@ -87,7 +102,14 @@ func OpenURL(ctx context.Context, databaseURL string, secure bool) (*Runtime, er
 		_, e := actions.Execute(ctx, app, definition.Action, payload, beanctx.Request{User: &beanctx.User{ID: "system", Roles: []string{"administrator"}}, TenantID: tenantID, RequestID: "job:" + name})
 		return e
 	}}
-	outbox := event.Runner{DB: db, Deliver: func(ctx context.Context, topic string, _ map[string]any) error {
+	provider := options.ExtensionProvider
+	if provider == nil {
+		provider = extension.NewHTTPProvider(nil, options.ExtensionBearerTokens)
+	}
+	outbox := event.Runner{DB: db, Deliver: func(ctx context.Context, topic string, payload map[string]any) error {
+		if extension.IsTopic(topic) {
+			return extension.Deliver(ctx, provider, topic, payload)
+		}
 		slog.InfoContext(ctx, "Bean event delivered", "topic", topic)
 		return nil
 	}}

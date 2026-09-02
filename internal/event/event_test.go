@@ -2,6 +2,7 @@ package event_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -12,6 +13,37 @@ import (
 	"github.com/beanruntime/bean/internal/event"
 	"github.com/beanruntime/bean/internal/migration"
 )
+
+func TestOutboxDeliveryPreservesIntegerPrecision(t *testing.T) {
+	ctx := context.Background()
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "outbox-integer.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err = db.ExecuteMigration(ctx, migration.MetadataSchema()); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)
+	if err = db.Transaction(ctx, func(tx dbal.Transaction) error {
+		_, enqueueErr := event.Enqueue(ctx, tx, "integer", map[string]any{"sequence": int64(9007199254740993)}, event.Options{CreatedAt: now})
+		return enqueueErr
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var sequence any
+	runner := event.Runner{DB: db, Now: func() time.Time { return now }, Deliver: func(_ context.Context, _ string, payload map[string]any) error {
+		sequence = payload["sequence"]
+		return nil
+	}}
+	if err = runner.RunOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	number, ok := sequence.(json.Number)
+	if !ok || number.String() != "9007199254740993" {
+		t.Fatalf("sequence=%v (%T)", sequence, sequence)
+	}
+}
 
 func TestOutboxDeliveryRetriesAndBecomesTerminal(t *testing.T) {
 	ctx := context.Background()
@@ -48,5 +80,40 @@ func TestOutboxDeliveryRetriesAndBecomesTerminal(t *testing.T) {
 	rows, err = db.Select(ctx, dbal.Select{Table: "bean_outbox", Limit: 1})
 	if err != nil || rows[0]["status"] != "failed" || rows[0]["attempts"] != int64(2) || calls != 2 {
 		t.Fatalf("rows=%v calls=%d err=%v", rows, calls, err)
+	}
+}
+
+type permanentDeliveryError struct{}
+
+func (permanentDeliveryError) Error() string   { return "permanent" }
+func (permanentDeliveryError) Retryable() bool { return false }
+
+func TestOutboxHonorsEnqueuePolicyAndPermanentFailure(t *testing.T) {
+	ctx := context.Background()
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "outbox-policy.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err = db.ExecuteMigration(ctx, migration.MetadataSchema()); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)
+	if err = db.Transaction(ctx, func(tx dbal.Transaction) error {
+		id, enqueueErr := event.Enqueue(ctx, tx, "extension.notify", map[string]any{"message": "hello"}, event.Options{ID: "invocation-1", RetryDelay: 7 * time.Second, MaxAttempts: 4, CreatedAt: now})
+		if id != "invocation-1" {
+			t.Fatalf("id=%s", id)
+		}
+		return enqueueErr
+	}); err != nil {
+		t.Fatal(err)
+	}
+	runner := event.Runner{DB: db, Now: func() time.Time { return now }, Deliver: func(context.Context, string, map[string]any) error { return permanentDeliveryError{} }}
+	if err = runner.RunOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := db.Select(ctx, dbal.Select{Table: "bean_outbox", Limit: 1})
+	if err != nil || len(rows) != 1 || rows[0]["id"] != "invocation-1" || rows[0]["retry_delay"] != int64(7) || rows[0]["max_attempts"] != int64(4) || rows[0]["attempts"] != int64(1) || rows[0]["status"] != "failed" || rows[0]["last_error"] != "permanent" {
+		t.Fatalf("rows=%v err=%v", rows, err)
 	}
 }

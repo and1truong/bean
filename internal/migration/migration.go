@@ -329,7 +329,7 @@ func MetadataSchema() []string {
 		`CREATE TABLE IF NOT EXISTS bean_user (id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,display_name TEXT,password_hash TEXT NOT NULL,roles TEXT NOT NULL,tenant_id TEXT,created_at TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS bean_session (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,csrf_token TEXT NOT NULL,expires_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES bean_user(id) ON DELETE CASCADE)`,
 		`CREATE TABLE IF NOT EXISTS bean_audit (id TEXT PRIMARY KEY,at TEXT NOT NULL,request_id TEXT,user_id TEXT,tenant_id TEXT,action TEXT NOT NULL,entity_type TEXT,entity_id TEXT,changed_fields TEXT,success INTEGER NOT NULL,error TEXT)`,
-		`CREATE TABLE IF NOT EXISTS bean_outbox (id TEXT PRIMARY KEY,topic TEXT NOT NULL,payload TEXT NOT NULL,created_at TEXT NOT NULL,delivered_at TEXT,status TEXT NOT NULL,attempts INTEGER NOT NULL,retry_delay INTEGER NOT NULL,max_attempts INTEGER NOT NULL,last_error TEXT,claim_token TEXT,claimed_at TEXT,next_attempt_at TEXT)`,
+		`CREATE TABLE IF NOT EXISTS bean_outbox (id TEXT PRIMARY KEY,topic TEXT NOT NULL,payload TEXT NOT NULL,created_at TEXT NOT NULL,sequence INTEGER NOT NULL,delivered_at TEXT,status TEXT NOT NULL,attempts INTEGER NOT NULL,retry_delay INTEGER NOT NULL,max_attempts INTEGER NOT NULL,last_error TEXT,claim_token TEXT,claimed_at TEXT,next_attempt_at TEXT)`,
 		`CREATE TABLE IF NOT EXISTS bean_job (id TEXT PRIMARY KEY,name TEXT NOT NULL,run_at TEXT NOT NULL,status TEXT NOT NULL,payload TEXT NOT NULL,attempts INTEGER NOT NULL,retry_delay INTEGER NOT NULL,last_error TEXT,completed_at TEXT,claim_token TEXT,claimed_at TEXT,next_attempt_at TEXT,max_attempts INTEGER NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS bean_idempotency (action TEXT NOT NULL,key TEXT NOT NULL,input_hash TEXT NOT NULL,result TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(action,key))`,
 		`CREATE TABLE IF NOT EXISTS bean_blob (id TEXT PRIMARY KEY,file_name TEXT NOT NULL,content_type TEXT NOT NULL,size INTEGER NOT NULL,content TEXT NOT NULL,created_at TEXT NOT NULL)`,
@@ -352,6 +352,7 @@ func UpgradeMetadata(ctx context.Context, inspector Inspector, executor Executor
 			{"max_attempts", `ALTER TABLE "bean_job" ADD COLUMN "max_attempts" INTEGER NOT NULL DEFAULT 5`},
 		},
 		"bean_outbox": {
+			{"sequence", `ALTER TABLE "bean_outbox" ADD COLUMN "sequence" INTEGER NOT NULL DEFAULT 0`},
 			{"status", `ALTER TABLE "bean_outbox" ADD COLUMN "status" TEXT NOT NULL DEFAULT 'pending'`},
 			{"attempts", `ALTER TABLE "bean_outbox" ADD COLUMN "attempts" INTEGER NOT NULL DEFAULT 0`},
 			{"retry_delay", `ALTER TABLE "bean_outbox" ADD COLUMN "retry_delay" INTEGER NOT NULL DEFAULT 60`},

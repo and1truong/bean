@@ -86,6 +86,12 @@ func RedactedApp(source *appir.App) *appir.App {
 				test.Context.IDs[index] = redactTestString(test.Context.IDs[index])
 			}
 			test.Context.Seed = redactTestSeed(test.Context.Seed)
+			for extensionName, results := range test.Providers {
+				for index := range results {
+					results[index].Output = redactTestMap(results[index].Output)
+				}
+				test.Providers[extensionName] = results
+			}
 			if len(test.Expect.Result) > 0 {
 				var value any
 				if json.Unmarshal(test.Expect.Result, &value) == nil {
@@ -103,6 +109,12 @@ func RedactedApp(source *appir.App) *appir.App {
 				test.Expect.Audit[index].ActorID = redactTestString(test.Expect.Audit[index].ActorID)
 				test.Expect.Audit[index].TenantID = redactTestString(test.Expect.Audit[index].TenantID)
 				test.Expect.Audit[index].EntityID = redactTestString(test.Expect.Audit[index].EntityID)
+			}
+			for index := range test.Expect.ProviderCalls {
+				call := &test.Expect.ProviderCalls[index]
+				call.InvocationID = redactTestString(call.InvocationID)
+				call.IdempotencyKey = redactTestString(call.IdempotencyKey)
+				call.Input = redactTestMap(call.Input)
 			}
 		}
 		redacted.TestSuites[name] = suite

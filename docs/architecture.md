@@ -10,6 +10,8 @@ YAML / typed visual Studio -> canonical definitions -> validation
 Lifecycle -> canonical state graph -> Policy-aware Action transition
 Rule -> canonical typed AST -> bounded I/O-free evaluation
                          -> Action guard / derived input / Entity invariant
+Extension -> typed Action binding -> transactional outbox intent
+                                -> bounded after-commit HTTP provider
 
 HTTP -> Context/Policy -> View reads / Action writes -> typed DBAL
                                                    -> SQLite adapter
@@ -24,6 +26,8 @@ Definitions, revisions, release AppIR, and the active pointer are persisted. Nor
 SQLite uses foreign keys, WAL, `synchronous=FULL`, and a bounded busy timeout. PostgreSQL uses pgx through `database/sql`, numbered parameters, information-schema inspection, transactional migrations, and SQLSTATE-based portable errors. Backend-specific SQL is confined to DBAL and migration adapters. The supported v0.4 deployment is one Bean process; clustering and simultaneous application writers are not qualified.
 
 Actions own validation, authorization, domain writes, optimistic checks, audit, outbox intents, jobs, and idempotency in one database transaction. A Lifecycle owns the initial state and canonical transition graph for one Entity enum field. Create Actions inject the initial state, generic updates cannot write the field, and bound transition Actions may expose the whole graph or a compiler-checked subset. Policies are evaluated before any Rule guard. Derived Action inputs are server-owned, evaluate simultaneously from the original input, and use one injected context across transaction retries; Entity invariants evaluate the final typed candidate immediately before persistence. Rules can deny or derive but cannot authorize, query, mutate, perform I/O, read ambient time, or bypass the Action boundary. An idempotency record stores the canonical client-input hash and result. Jobs and outbox records are claimed with persisted tokens and timestamps, executed outside the claim transaction, and finalized only by the current token owner. Expired claims return to pending. A crash after an external delivery but before finalization can duplicate it, so delivery is explicitly at-least-once.
+
+An Extension is immutable typed metadata for one HTTP endpoint, not an in-process plugin. Its Action step validates and stores input, one stable invocation ID, and the originating canonical Extension contract in the same transaction as domain mutation and audit. The existing outbox delivers that pinned contract after commit with bounded timeout, response size, retry count, and fixed delay, even if a newer release becomes active first. Host bearer configuration is resolved at delivery time and never enters AppIR. TestSuites replace only the provider implementation: they still execute the production Action and outbox paths, then compare ordered typed calls offline.
 
 The application Admin is metadata-driven rather than a raw-table editor: AdminResources select a compiled View, CRUD Actions, list/form fields, and domain Actions. Its shadcn Table and form components preserve server-driven query and mutation semantics rather than introducing a client-side data model. The separate System section exposes only curated operational columns. User-role changes and eligible queue retry/cancel mutations require administrator authentication, CSRF, confirmation in the UI, affected-row checks, and audit records; password hashes and session secrets are never selected.
 

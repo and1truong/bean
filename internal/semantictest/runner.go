@@ -21,6 +21,8 @@ import (
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/definition"
+	"github.com/beanruntime/bean/internal/event"
+	beanextension "github.com/beanruntime/bean/internal/extension"
 	"github.com/beanruntime/bean/internal/field"
 	"github.com/beanruntime/bean/internal/generatedtest"
 	"github.com/beanruntime/bean/internal/rule"
@@ -129,6 +131,7 @@ func runIsolatedCase(ctx context.Context, bundle definition.Bundle, suiteName st
 	request := requestContext(test.Context)
 	var result any
 	var executionErr error
+	provider := newTestProvider(test.Providers)
 	if suite.Target.Kind == "Rule" {
 		result, executionErr = executeRule(app.Rules[suite.Target.Name], test, request)
 	} else {
@@ -137,8 +140,22 @@ func runIsolatedCase(ctx context.Context, bundle definition.Bundle, suiteName st
 			return nil, serviceErr
 		}
 		result, executionErr = actions.Execute(caseCtx, app, suite.Target.Name, test.Input, request)
+		now, parseErr := time.Parse(time.RFC3339Nano, test.Context.Time)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		runner := event.Runner{DB: runtime.DB, BatchSize: len(app.Actions[suite.Target.Name].Steps), Now: func() time.Time { return now }, Deliver: func(deliveryCtx context.Context, topic string, payload map[string]any) error {
+			if !beanextension.IsTopic(topic) {
+				return nil
+			}
+			return beanextension.Deliver(deliveryCtx, provider, topic, payload)
+		}}
+		if err = runner.RunOnce(caseCtx); err != nil {
+			return nil, err
+		}
+		provider.finish()
 	}
-	return assertCase(ctx, runtime.DB, app, suite, test, before, result, executionErr), nil
+	return assertCase(ctx, runtime.DB, app, suite, test, before, result, executionErr, provider), nil
 }
 
 func executeRule(target appir.Rule, test appir.TestCase, request beanctx.Request) (any, error) {
@@ -163,19 +180,64 @@ func actionService(database dbal.Database, context appir.TestContext) (action.Se
 	}
 	ids := append([]string{}, context.IDs...)
 	index := 0
+	nextID := func() string {
+		var id string
+		if index < len(ids) {
+			id = ids[index]
+		} else if context.Seed != nil {
+			id = seededID(*context.Seed, index-len(ids))
+		}
+		index++
+		return id
+	}
 	return action.Service{
 		DB: database, Auth: auth.Service{DB: database}, Now: func() time.Time { return now },
 		CreateID: func(appir.Entity, map[string]any) string {
-			var id string
-			if index < len(ids) {
-				id = ids[index]
-			} else if context.Seed != nil {
-				id = seededID(*context.Seed, index-len(ids))
-			}
-			index++
-			return id
+			return nextID()
 		},
+		CreateInvocationID: nextID,
 	}, nil
+}
+
+type testProvider struct {
+	results  map[string][]appir.TestProviderResult
+	calls    []appir.TestProviderCall
+	failures []string
+}
+
+func newTestProvider(definitions map[string][]appir.TestProviderResult) *testProvider {
+	results := make(map[string][]appir.TestProviderResult, len(definitions))
+	for name, values := range definitions {
+		results[name] = append([]appir.TestProviderResult{}, values...)
+	}
+	return &testProvider{results: results, calls: []appir.TestProviderCall{}, failures: []string{}}
+}
+
+func (p *testProvider) Call(_ context.Context, _ appir.Extension, invocation beanextension.Invocation) (map[string]any, error) {
+	p.calls = append(p.calls, appir.TestProviderCall{
+		Extension: invocation.Extension, InvocationID: invocation.InvocationID,
+		IdempotencyKey: invocation.IdempotencyKey, Input: invocation.Input,
+	})
+	results := p.results[invocation.Extension]
+	if len(results) == 0 {
+		p.failures = append(p.failures, "unexpected call to "+invocation.Extension)
+		return nil, &beanextension.DeliveryFailure{Code: beanextension.FailureContract}
+	}
+	result := results[0]
+	p.results[invocation.Extension] = results[1:]
+	if result.Error != "" {
+		retryable := result.Error == beanextension.FailureUnavailable || result.Error == beanextension.FailureTimeout
+		return nil, &beanextension.DeliveryFailure{Code: result.Error, CanRetry: retryable}
+	}
+	return result.Output, nil
+}
+
+func (p *testProvider) finish() {
+	for _, name := range sortedKeys(p.results) {
+		if count := len(p.results[name]); count > 0 {
+			p.failures = append(p.failures, fmt.Sprintf("%d unused result(s) for %s", count, name))
+		}
+	}
 }
 
 func seededID(seed int64, index int) string {
@@ -303,7 +365,7 @@ func insertFixture(ctx context.Context, database dbal.Database, entity appir.Ent
 	return err
 }
 
-func assertCase(parentCtx context.Context, database dbal.Database, app *appir.App, suite appir.TestSuite, test appir.TestCase, before map[string][]dbal.Row, result any, executionErr error) []definition.Diagnostic {
+func assertCase(parentCtx context.Context, database dbal.Database, app *appir.App, suite appir.TestSuite, test appir.TestCase, before map[string][]dbal.Row, result any, executionErr error, provider *testProvider) []definition.Diagnostic {
 	ctx, cancel := context.WithTimeout(parentCtx, testsuite.CaseTimeoutSec*time.Second)
 	defer cancel()
 	out := []definition.Diagnostic{}
@@ -346,6 +408,12 @@ func assertCase(parentCtx context.Context, database dbal.Database, app *appir.Ap
 	}
 	out = append(out, assertEvents(ctx, database, suite.Name, base, test.Expect)...)
 	out = append(out, assertAudit(ctx, database, suite.Name, base, test.Expect.Audit)...)
+	if len(provider.failures) > 0 {
+		out = append(out, assertionDiagnostic(suite.Name, "tests."+test.Name+".providers", "all provider results consumed exactly once", provider.failures))
+	}
+	if (len(test.Expect.ProviderCalls) > 0 || len(provider.calls) > 0) && !equalJSON(test.Expect.ProviderCalls, provider.calls) {
+		out = append(out, assertionDiagnostic(suite.Name, base+".providerCalls", test.Expect.ProviderCalls, provider.calls))
+	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out
 }
@@ -360,6 +428,9 @@ func assertEvents(ctx context.Context, database dbal.Database, suiteName, base s
 	}
 	actual := make([]appir.TestEvent, 0, len(rows))
 	for _, row := range rows {
+		if beanextension.IsTopic(fmt.Sprint(row["topic"])) {
+			continue
+		}
 		payload := map[string]any{}
 		_ = json.Unmarshal([]byte(fmt.Sprint(row["payload"])), &payload)
 		actual = append(actual, appir.TestEvent{Topic: fmt.Sprint(row["topic"]), Payload: payload})

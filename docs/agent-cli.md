@@ -2,7 +2,7 @@
 
 Bean v0.6 exposes the compiler and release lifecycle as a provider-neutral command contract. An agent does not need to inspect Bean source or parse human prose.
 
-v0.12 retains the v0.8 generic one-to-one adapter over the shared `bean.agent/v1alpha1` dispatcher and adds generated semantic-test evidence without changing the transport envelope:
+v0.13 retains the v0.8 generic one-to-one adapter over the shared `bean.agent/v1alpha1` dispatcher and adds typed Extension definitions and offline provider-call evidence without changing the transport envelope:
 
 ```bash
 bean agent call bean.definition.validate --input request.json --json
@@ -102,6 +102,7 @@ Codes and structured fields are the compatibility interface. Human messages may 
 | `BEAN-E2601` | invalid Page route contract |
 | `BEAN-E2701` | unsafe or incompatible migration contract |
 | `BEAN-E2851` | invalid TestSuite target, case, fixture, context, assertion, or bound |
+| `BEAN-E2871` | invalid Extension contract, Action binding, timeout, retry, endpoint, or closed vocabulary |
 | `BEAN-E2900` | other typed definition semantic failure |
 | `BEAN-T1001` | failed semantic TestSuite assertion |
 | `BEAN-T1101` | explicit TestSuite uses the reserved generated identity prefix |
@@ -114,13 +115,13 @@ Sensitive inputs, file bytes, secrets, passwords, and database credentials are e
 
 ## Schemas and capabilities
 
-`bean capabilities --json` reports definition/API versions, definition kinds, semantic primitives, field types, Action operations and steps, Block types, presentations, serializers, layouts, database backends, and hard limits. `semanticPrimitives` contains `Lifecycle` and `Rule`; `ruleOperators`, `ruleSources`, and the node/depth/literal/value limits expose the closed evaluator contract. `testSuiteTargets` and the suite/case/fixture/encoded-byte limits expose the bounds shared by explicit and generated TestSuites.
+`bean capabilities --json` reports definition/API versions, definition kinds, semantic primitives, field types, Action operations and steps, Block types, presentations, serializers, layouts, database backends, and hard limits. `semanticPrimitives` contains `Lifecycle` and `Rule`; `ruleOperators`, `ruleSources`, and the node/depth/literal/value limits expose the closed evaluator contract. `testSuiteTargets` and the suite/case/fixture/encoded-byte limits expose the bounds shared by explicit and generated TestSuites. Extension capability fields expose the single `http` transport, `none`/`bearer` authentication, closed permission/effect vocabularies, stable failure categories, and timeout/attempt/delay/response bounds.
 
 `bean schema [Kind] --json` returns canonical Draft 2020-12 JSON Schema. `bean schema --output ./schemas` writes `bean.schema.json` and one lower-case file per definition kind. The checked-in [schemas](../schemas) directory is generated from the same Go specification types used by compiler decoding; tests fail if those files drift or stop covering a maintained example.
 
 JSON Schema describes document shape and rejects unknown properties. Cross-definition references and semantic constraints remain compiler responsibilities and are visible through diagnostics, capabilities, and `app inspect`.
 
-v0.12 retains `bean/appir/v4`; generated suites are test-time ordinary v4 TestSuite definitions and do not change stored application semantics. The runtime still loads `bean/appir/v1` releases without Lifecycle, Rule, or TestSuite semantics; `bean/appir/v2` releases with Lifecycle but without Rules or TestSuites; and `bean/appir/v3` releases with Rules but without TestSuites. Rule definitions and Rule-bound consumers remain invalid under v1/v2; TestSuites are invalid under v1/v2/v3.
+v0.13 stores Extension semantics in `bean/appir/v5`. The runtime still loads `bean/appir/v1` releases without Lifecycle, Rule, TestSuite, or Extension semantics; `bean/appir/v2` releases with Lifecycle only; `bean/appir/v3` releases with Rules but without TestSuites; and `bean/appir/v4` releases with TestSuites but without Extensions. Rule definitions and Rule-bound consumers remain invalid under v1/v2; TestSuites are invalid under v1/v2/v3; Extensions and Extension-bound Actions are invalid under v1-v4.
 
 ## Inspection, plan, and diff
 

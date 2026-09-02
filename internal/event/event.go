@@ -3,7 +3,9 @@ package event
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/beanruntime/bean/internal/dbal"
@@ -12,13 +14,42 @@ import (
 )
 
 func Emit(ctx context.Context, tx dbal.Transaction, topic string, payload any) error {
+	_, err := Enqueue(ctx, tx, topic, payload, Options{})
+	return err
+}
+
+type Options struct {
+	ID          string
+	RetryDelay  time.Duration
+	MaxAttempts int
+	CreatedAt   time.Time
+	Sequence    int
+}
+
+func Enqueue(ctx context.Context, tx dbal.Transaction, topic string, payload any, options Options) (string, error) {
 	b, e := json.Marshal(payload)
 	if e != nil {
-		return e
+		return "", e
 	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	_, e = tx.Insert(ctx, dbal.Insert{Table: "bean_outbox", Values: map[string]dbal.Value{"id": uid.New(), "topic": topic, "payload": string(b), "created_at": now, "status": "pending", "attempts": 0, "retry_delay": 60, "max_attempts": 10, "next_attempt_at": now}})
-	return e
+	id := options.ID
+	if id == "" {
+		id = uid.New()
+	}
+	createdAt := options.CreatedAt.UTC()
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	}
+	retryDelay := int(options.RetryDelay / time.Second)
+	if retryDelay <= 0 {
+		retryDelay = 60
+	}
+	maxAttempts := options.MaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = 10
+	}
+	now := createdAt.Format(time.RFC3339Nano)
+	_, e = tx.Insert(ctx, dbal.Insert{Table: "bean_outbox", Values: map[string]dbal.Value{"id": id, "topic": topic, "payload": string(b), "created_at": now, "sequence": options.Sequence, "status": "pending", "attempts": 0, "retry_delay": retryDelay, "max_attempts": maxAttempts, "next_attempt_at": now}})
+	return id, e
 }
 
 type Runner struct {
@@ -42,7 +73,7 @@ func (r Runner) RunOnce(ctx context.Context) error {
 	if limit <= 0 {
 		limit = 20
 	}
-	rows, err := r.DB.Select(ctx, dbal.Select{Table: "bean_outbox", Where: &due, OrderBy: []dbal.Order{{Column: "created_at"}}, Limit: limit})
+	rows, err := r.DB.Select(ctx, dbal.Select{Table: "bean_outbox", Where: &due, OrderBy: []dbal.Order{{Column: "created_at"}, {Column: "sequence"}, {Column: "id"}}, Limit: limit})
 	if err != nil {
 		return err
 	}
@@ -69,7 +100,9 @@ func (r Runner) run(ctx context.Context, row dbal.Row, now time.Time) error {
 	}
 	fault.Point("outbox.after_claim")
 	payload := map[string]any{}
-	if err = json.Unmarshal([]byte(fmt.Sprint(row["payload"])), &payload); err == nil {
+	decoder := json.NewDecoder(strings.NewReader(fmt.Sprint(row["payload"])))
+	decoder.UseNumber()
+	if err = decoder.Decode(&payload); err == nil {
 		err = r.Deliver(ctx, fmt.Sprint(row["topic"]), payload)
 	}
 	fault.Point("outbox.after_delivery")
@@ -79,7 +112,7 @@ func (r Runner) run(ctx context.Context, row dbal.Row, now time.Time) error {
 		values["status"] = "delivered"
 		values["delivered_at"] = stamp(r.now())
 		values["last_error"] = nil
-	} else if attempts >= number(row["max_attempts"]) {
+	} else if !retryable(err) || attempts >= number(row["max_attempts"]) {
 		values["status"] = "failed"
 		values["last_error"] = err.Error()
 	} else {
@@ -94,6 +127,15 @@ func (r Runner) run(ctx context.Context, row dbal.Row, now time.Time) error {
 	)
 	_, updateErr := r.DB.Update(ctx, dbal.Update{Table: "bean_outbox", Values: values, Where: owned, ExpectedRows: 1})
 	return updateErr
+}
+
+type retryableFailure interface {
+	Retryable() bool
+}
+
+func retryable(err error) bool {
+	var classified retryableFailure
+	return !errors.As(err, &classified) || classified.Retryable()
 }
 
 func (r Runner) recoverStale(ctx context.Context, now time.Time) error {

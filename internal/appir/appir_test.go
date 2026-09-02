@@ -34,6 +34,32 @@ func TestRejectsUnsupportedFormat(t *testing.T) {
 	}
 }
 
+func TestCloneAndDecodePreserveProviderMockIntegerPrecision(t *testing.T) {
+	app := appir.Empty()
+	app.TestSuites["notify"] = appir.TestSuite{Name: "notify", Tests: []appir.TestCase{{Providers: map[string][]appir.TestProviderResult{
+		"provider": {{Output: map[string]any{"sequence": json.Number("9007199254740993")}}},
+	}}}}
+	clone, err := app.Clone()
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := appir.Decode(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, candidate := range map[string]*appir.App{"clone": clone, "decode": decoded} {
+		sequence := candidate.TestSuites["notify"].Tests[0].Providers["provider"][0].Output["sequence"]
+		number, ok := sequence.(json.Number)
+		if !ok || number.String() != "9007199254740993" {
+			t.Fatalf("%s sequence=%v (%T)", name, sequence, sequence)
+		}
+	}
+}
+
 func TestLifecycleRequiresV2Format(t *testing.T) {
 	app := appir.Empty()
 	app.Lifecycles["order_fulfillment"] = appir.Lifecycle{
@@ -89,5 +115,34 @@ func TestTestSuiteRequiresV4Format(t *testing.T) {
 	app.FormatVersion = appir.RuleFormat
 	if err := app.ValidateFormat(); err == nil {
 		t.Fatal("v3 AppIR accepted TestSuite semantics that a v0.10 runtime would discard")
+	}
+	app.FormatVersion = appir.TestSuiteFormat
+	if err := app.ValidateFormat(); err != nil {
+		t.Fatalf("v4 AppIR rejected TestSuite semantics: %v", err)
+	}
+}
+
+func TestExtensionRequiresV5Format(t *testing.T) {
+	app := appir.Empty()
+	app.Extensions["notify"] = appir.Extension{Name: "notify", Transport: "http"}
+	if err := app.ValidateFormat(); err != nil {
+		t.Fatal(err)
+	}
+	app.FormatVersion = appir.TestSuiteFormat
+	if err := app.ValidateFormat(); err == nil {
+		t.Fatal("v4 AppIR accepted Extension semantics that a v0.12 runtime would discard")
+	}
+
+	app = appir.Empty()
+	app.FormatVersion = appir.TestSuiteFormat
+	app.Actions["notify"] = appir.Action{Name: "notify", Steps: []appir.Step{{Op: "extension", Extension: "notify"}}}
+	if err := app.ValidateFormat(); err == nil {
+		t.Fatal("v4 AppIR accepted an Extension-bound Action")
+	}
+
+	app.Actions = map[string]appir.Action{}
+	app.TestSuites["notify"] = appir.TestSuite{Name: "notify", Tests: []appir.TestCase{{Providers: map[string][]appir.TestProviderResult{"notify": {{Output: map[string]any{}}}}}}}
+	if err := app.ValidateFormat(); err == nil {
+		t.Fatal("v4 AppIR accepted an Extension-bound TestSuite")
 	}
 }

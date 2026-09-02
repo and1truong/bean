@@ -11,6 +11,7 @@ import (
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/block"
 	"github.com/beanruntime/bean/internal/definition"
+	beanextension "github.com/beanruntime/bean/internal/extension"
 	"github.com/beanruntime/bean/internal/field"
 	"github.com/beanruntime/bean/internal/rule"
 	"github.com/beanruntime/bean/internal/testsuite"
@@ -49,6 +50,17 @@ type Capabilities struct {
 	MaxTestCases            int      `json:"maxTestCases"`
 	MaxTestFixtures         int      `json:"maxTestFixtures"`
 	MaxTestSuiteBytes       int      `json:"maxTestSuiteBytes"`
+	ExtensionTransports     []string `json:"extensionTransports"`
+	ExtensionPermissions    []string `json:"extensionPermissions"`
+	ExtensionSideEffects    []string `json:"extensionSideEffects"`
+	ExtensionAuthentication []string `json:"extensionAuthentication"`
+	ExtensionIdempotency    []string `json:"extensionIdempotency"`
+	ExtensionTransactions   []string `json:"extensionTransactions"`
+	ExtensionFailures       []string `json:"extensionFailures"`
+	MaxExtensionTimeout     int      `json:"maxExtensionTimeoutSeconds"`
+	MaxExtensionAttempts    int      `json:"maxExtensionAttempts"`
+	MaxExtensionDelay       int      `json:"maxExtensionDelaySeconds"`
+	MaxExtensionResponse    int      `json:"maxExtensionResponseBytes"`
 }
 
 func AgentCapabilities(cliAPIVersion string) Capabilities {
@@ -87,6 +99,17 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 		MaxTestCases:            testsuite.MaxCases,
 		MaxTestFixtures:         testsuite.MaxFixtures,
 		MaxTestSuiteBytes:       testsuite.MaxEncodedSize,
+		ExtensionTransports:     beanextension.Transports(),
+		ExtensionPermissions:    beanextension.Permissions(),
+		ExtensionSideEffects:    beanextension.SideEffects(),
+		ExtensionAuthentication: beanextension.Authentications(),
+		ExtensionIdempotency:    beanextension.IdempotencyModes(),
+		ExtensionTransactions:   beanextension.TransactionModes(),
+		ExtensionFailures:       beanextension.FailureModes(),
+		MaxExtensionTimeout:     beanextension.MaxTimeoutSeconds,
+		MaxExtensionAttempts:    beanextension.MaxAttempts,
+		MaxExtensionDelay:       beanextension.MaxDelaySeconds,
+		MaxExtensionResponse:    beanextension.MaxResponseBytes,
 	}
 }
 
@@ -182,6 +205,29 @@ func definitionSchema(kind string, specification reflect.Type) map[string]any {
 			target := raw.(map[string]any)
 			target["required"] = []string{"kind", "name"}
 			target["properties"].(map[string]any)["kind"] = map[string]any{"type": "string", "enum": testsuite.TargetKinds}
+		}
+	}
+	if kind == "Extension" {
+		document["required"] = []string{"kind", "name", "transport", "endpoint", "input", "output", "permissions", "sideEffects", "authentication", "timeoutSeconds", "retry", "idempotency", "transaction", "failure"}
+		properties["transport"] = map[string]any{"type": "string", "enum": beanextension.Transports()}
+		properties["permissions"] = map[string]any{"type": "array", "items": map[string]any{"type": "string", "enum": beanextension.Permissions()}, "minItems": 1, "maxItems": 1, "uniqueItems": true}
+		properties["sideEffects"] = map[string]any{"type": "array", "items": map[string]any{"type": "string", "enum": beanextension.SideEffects()}, "minItems": 1, "maxItems": 1, "uniqueItems": true}
+		properties["authentication"] = map[string]any{"type": "string", "enum": beanextension.Authentications()}
+		properties["timeoutSeconds"] = map[string]any{"type": "integer", "minimum": beanextension.MinTimeoutSeconds, "maximum": beanextension.MaxTimeoutSeconds}
+		properties["idempotency"] = map[string]any{"type": "string", "enum": beanextension.IdempotencyModes()}
+		properties["transaction"] = map[string]any{"type": "string", "enum": beanextension.TransactionModes()}
+		properties["failure"] = map[string]any{"type": "string", "enum": beanextension.FailureModes()}
+		for name, raw := range builder.definitions {
+			schema := raw.(map[string]any)
+			schemaProperties := schema["properties"].(map[string]any)
+			switch {
+			case strings.HasSuffix(name, "internal_appir_ExtensionRetry"):
+				schema["required"] = []string{"maxAttempts", "delaySeconds"}
+				schemaProperties["maxAttempts"] = map[string]any{"type": "integer", "minimum": beanextension.MinAttempts, "maximum": beanextension.MaxAttempts}
+				schemaProperties["delaySeconds"] = map[string]any{"type": "integer", "minimum": beanextension.MinDelaySeconds, "maximum": beanextension.MaxDelaySeconds}
+			case strings.HasSuffix(name, "internal_appir_Field"):
+				schemaProperties["type"] = map[string]any{"type": "string", "enum": []string{"boolean", "date", "datetime", "decimal", "email", "enum", "integer", "json", "money", "slug", "string", "text", "url", "uuid"}}
+			}
 		}
 	}
 	return document

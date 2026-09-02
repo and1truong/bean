@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/beanruntime/bean/internal/actionop"
@@ -15,6 +18,7 @@ import (
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/expr"
+	beanextension "github.com/beanruntime/bean/internal/extension"
 	"github.com/beanruntime/bean/internal/field"
 	"github.com/beanruntime/bean/internal/migration"
 	"github.com/beanruntime/bean/internal/page"
@@ -40,9 +44,9 @@ type actionSource struct {
 	Derive                                map[string]string
 }
 type stepSource struct {
-	Op, Result, Entity, View, StateField, Event, Job string
-	Values                                           map[string]any
-	Where, Condition                                 *expr.Expr
+	Op, Result, Entity, View, Extension, StateField, Event, Job string
+	Values                                                      map[string]any
+	Where, Condition                                            *expr.Expr
 }
 
 func Compile(appID string, version int, defs []definition.Definition) Result {
@@ -456,6 +460,8 @@ func diagnosticRule(kind, path string) definition.DiagnosticRule {
 		return definition.RuleFixture
 	case kind == "TestSuite":
 		return definition.RuleTestSuite
+	case kind == "Extension":
+		return definition.RuleExtension
 	case strings.Contains(strings.ToLower(path), "field"):
 		return definition.RuleMissingField
 	default:
@@ -529,11 +535,120 @@ type validationState struct {
 func validate(a *appir.App) []definition.Diagnostic {
 	state := &validationState{routes: map[string]string{}}
 	out := []definition.Diagnostic{}
-	for _, kind := range []string{"Theme", "DemoSeed", "Filter", "View", "Entity", "Lifecycle", "Rule", "Action", "TestSuite", "Webform", "Policy", "Block", "LocalRegistration", "Panel", "Page", "Job", "Menu", "AdminResource", "Role"} {
+	for _, kind := range []string{"Theme", "DemoSeed", "Filter", "View", "Entity", "Lifecycle", "Rule", "Extension", "Action", "TestSuite", "Webform", "Policy", "Block", "LocalRegistration", "Panel", "Page", "Job", "Menu", "AdminResource", "Role"} {
 		registered, _ := definitionKindRegistry().Lookup(kind)
 		out = append(out, registered.Validate(a, state)...)
 	}
 	return out
+}
+
+func validateExtensions(a *appir.App, _ *validationState) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
+	for _, name := range keys(a.Extensions) {
+		item := a.Extensions[name]
+		values := []struct {
+			path    string
+			actual  string
+			allowed []string
+		}{
+			{"spec.transport", item.Transport, beanextension.Transports()},
+			{"spec.authentication", item.Authentication, beanextension.Authentications()},
+			{"spec.idempotency", item.Idempotency, beanextension.IdempotencyModes()},
+			{"spec.transaction", item.Transaction, beanextension.TransactionModes()},
+			{"spec.failure", item.Failure, beanextension.FailureModes()},
+		}
+		for _, value := range values {
+			if !nameSet(value.allowed)[value.actual] {
+				out = append(out, extensionDiagnostic(name, value.path, "has no supported Extension value"))
+			}
+		}
+		if !validExtensionEndpoint(item.Endpoint) {
+			out = append(out, extensionDiagnostic(name, "spec.endpoint", "must be an absolute HTTPS URL or loopback HTTP URL without credentials, query, or fragment"))
+		}
+		if !sameStrings(item.Permissions, beanextension.Permissions()) {
+			out = append(out, extensionDiagnostic(name, "spec.permissions", "must declare exactly the supported network permission"))
+		}
+		if !sameStrings(item.SideEffects, beanextension.SideEffects()) {
+			out = append(out, extensionDiagnostic(name, "spec.sideEffects", "must declare exactly the supported external-write side effect"))
+		}
+		if item.TimeoutSeconds < beanextension.MinTimeoutSeconds || item.TimeoutSeconds > beanextension.MaxTimeoutSeconds {
+			out = append(out, extensionDiagnostic(name, "spec.timeoutSeconds", fmt.Sprintf("must be between %d and %d", beanextension.MinTimeoutSeconds, beanextension.MaxTimeoutSeconds)))
+		}
+		if item.Retry.MaxAttempts < beanextension.MinAttempts || item.Retry.MaxAttempts > beanextension.MaxAttempts {
+			out = append(out, extensionDiagnostic(name, "spec.retry.maxAttempts", fmt.Sprintf("must be between %d and %d", beanextension.MinAttempts, beanextension.MaxAttempts)))
+		}
+		if item.Retry.DelaySeconds < beanextension.MinDelaySeconds || item.Retry.DelaySeconds > beanextension.MaxDelaySeconds {
+			out = append(out, extensionDiagnostic(name, "spec.retry.delaySeconds", fmt.Sprintf("must be between %d and %d", beanextension.MinDelaySeconds, beanextension.MaxDelaySeconds)))
+		}
+		out = append(out, validateExtensionFields(name, "input", item.Input)...)
+		out = append(out, validateExtensionFields(name, "output", item.Output)...)
+	}
+	return out
+}
+
+func validateExtensionFields(name, group string, fields map[string]appir.Field) []definition.Diagnostic {
+	if len(fields) == 0 {
+		return []definition.Diagnostic{extensionDiagnostic(name, "spec."+group, "requires at least one typed field")}
+	}
+	out := []definition.Diagnostic{}
+	allowedTypes := nameSet([]string{"boolean", "date", "datetime", "decimal", "email", "enum", "integer", "json", "money", "slug", "string", "text", "url", "uuid"})
+	for _, fieldName := range keys(fields) {
+		item := fields[fieldName]
+		path := "spec." + group + "." + fieldName
+		if !testCaseName.MatchString(fieldName) || item.Name != fieldName {
+			out = append(out, extensionDiagnostic(name, path+".name", "must match its machine-name key"))
+		}
+		if !allowedTypes[item.Type] {
+			out = append(out, extensionDiagnostic(name, path+".type", "has no portable Extension field type"))
+		}
+		if item.Sensitive || item.Unique || item.Relation != nil {
+			out = append(out, extensionDiagnostic(name, path, "cannot declare sensitive, unique, or relation storage semantics"))
+		}
+		if item.Type == "enum" && len(item.Options) == 0 {
+			out = append(out, extensionDiagnostic(name, path+".options", "enum requires at least one option"))
+		}
+		if item.Type != "enum" && len(item.Options) > 0 {
+			out = append(out, extensionDiagnostic(name, path+".options", "options are only valid for enum fields"))
+		}
+	}
+	return out
+}
+
+func validExtensionEndpoint(raw string) bool {
+	parsed, err := url.ParseRequestURI(raw)
+	if err != nil || parsed.Host == "" || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return false
+	}
+	if port := parsed.Port(); port != "" {
+		number, portErr := strconv.Atoi(port)
+		if portErr != nil || number < 1 || number > 65535 {
+			return false
+		}
+	}
+	if parsed.Scheme == "https" {
+		return true
+	}
+	if parsed.Scheme != "http" {
+		return false
+	}
+	host := parsed.Hostname()
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func sameStrings(left, right []string) bool {
+	return strings.Join(left, "\x00") == strings.Join(right, "\x00")
+}
+
+func extensionDiagnostic(name, path, message string) definition.Diagnostic {
+	return definition.NewDiagnostic(definition.RuleExtension, "Extension", name, path, message)
+}
+
+func actionExtensionDiagnostic(name, path, message string) definition.Diagnostic {
+	return definition.NewDiagnostic(definition.RuleExtension, "Action", name, path, message)
 }
 
 func validateTheme(a *appir.App, _ *validationState) []definition.Diagnostic {
@@ -1149,6 +1264,7 @@ func validateActions(a *appir.App, _ *validationState) []definition.Diagnostic {
 			out = append(out, diagnostic("Action", name, "spec.steps", "steps are only valid for transaction Actions"))
 		}
 		results := map[string]bool{}
+		resultEntities := map[string]appir.Entity{}
 		for i, step := range action.Steps {
 			path := fmt.Sprintf("spec.steps.%d", i)
 			stepSpecification, registered := actionstep.Lookup(step.Op)
@@ -1181,6 +1297,14 @@ func validateActions(a *appir.App, _ *validationState) []definition.Diagnostic {
 				results[step.Result] = true
 			}
 			entity := actionstep.EntityName(action, step)
+			if step.Result != "" {
+				switch step.Op {
+				case "create", "load", "update", "conditional_update", "transition", "delete":
+					if target, exists := a.Entities[entity]; exists {
+						resultEntities[step.Result] = target
+					}
+				}
+			}
 			if stepSpecification.UsesEntity {
 				if _, ok := a.Entities[entity]; !ok {
 					out = append(out, missingReferenceDiagnostic("Action", name, path+".entity", "Entity", entity))
@@ -1239,6 +1363,100 @@ func validateActions(a *appir.App, _ *validationState) []definition.Diagnostic {
 			}
 			if stepSpecification.RequiresEvent && step.Event == "" {
 				out = append(out, requiredDiagnostic("Action", name, path+".event", "is required"))
+			}
+			if stepSpecification.RequiresEvent && strings.HasPrefix(step.Event, beanextension.TopicPrefix) {
+				out = append(out, actionExtensionDiagnostic(name, path+".event", "uses the reserved Extension topic prefix"))
+			}
+			if stepSpecification.RequiresExtension {
+				extensionDefinition, exists := a.Extensions[step.Extension]
+				if !exists {
+					out = append(out, missingReferenceDiagnostic("Action", name, path+".extension", "Extension", step.Extension))
+				} else {
+					assigned := map[string]bool{}
+					for _, item := range step.Values {
+						assigned[item.Field] = true
+						fieldDefinition, declared := extensionDefinition.Input[item.Field]
+						if !declared {
+							out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "Action binds undeclared Extension input"))
+							continue
+						}
+						validateTypedSource := func(source appir.Field) {
+							if source.Type != fieldDefinition.Type {
+								out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "bound value type does not match Extension input"))
+							}
+							if source.Type == "enum" && fieldDefinition.Type == "enum" {
+								allowed := map[string]bool{}
+								for _, option := range fieldDefinition.Options {
+									allowed[option] = true
+								}
+								for _, option := range source.Options {
+									if !allowed[option] {
+										out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "bound enum options exceed Extension input options"))
+										break
+									}
+								}
+							}
+							if fieldDefinition.Required && !source.Required {
+								out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "optional value cannot bind required Extension input"))
+							}
+						}
+						switch item.Value.Source {
+						case valuesource.Input:
+							if actionInput, exists := action.Input[item.Value.Path]; exists {
+								validateTypedSource(actionInput)
+							}
+						case valuesource.Result:
+							parts := strings.Split(item.Value.Path, ".")
+							if len(parts) >= 1 && results[parts[0]] {
+								var source appir.Field
+								found := false
+								if len(parts) == 2 {
+									if resultEntity, exists := resultEntities[parts[0]]; exists {
+										source, found = entityFieldDefinition(resultEntity, parts[1])
+										if !found {
+											switch parts[1] {
+											case "id":
+												source, found = appir.Field{Name: "id", Type: "uuid", Required: true}, true
+											case "created_at", "updated_at":
+												source, found = appir.Field{Name: parts[1], Type: "datetime", Required: true}, true
+											case "version":
+												source, found = appir.Field{Name: "version", Type: "integer", Required: true}, true
+											}
+										}
+									}
+								}
+								if found {
+									validateTypedSource(source)
+								} else {
+									out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "step result has no statically typed Extension value"))
+								}
+							}
+						case valuesource.Literal:
+						default:
+							out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "Extension input source has no static type contract"))
+						}
+						if valuesource.IsLiteral(item.Value.Source) {
+							var value any
+							decoder := json.NewDecoder(strings.NewReader(string(item.Value.Literal)))
+							decoder.UseNumber()
+							if err := decoder.Decode(&value); err != nil {
+								out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "literal does not match Extension input type"))
+								continue
+							}
+							if beanextension.ValidateValues(map[string]appir.Field{item.Field: fieldDefinition}, map[string]any{item.Field: value}) != nil {
+								out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "literal does not match Extension input type"))
+							}
+						}
+					}
+					for inputName, inputDefinition := range extensionDefinition.Input {
+						if inputDefinition.Required && !assigned[inputName] {
+							out = append(out, actionExtensionDiagnostic(name, path+".values."+inputName, "required Extension input is not bound"))
+						}
+					}
+				}
+				if step.Result != "" {
+					out = append(out, actionExtensionDiagnostic(name, path+".result", "after-commit Extension output cannot be used by the Action transaction"))
+				}
 			}
 			if stepSpecification.OutputValues {
 				for _, assignment := range step.Values {
