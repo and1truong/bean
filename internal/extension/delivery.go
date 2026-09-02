@@ -80,7 +80,7 @@ type DeliveryFailure struct {
 func (e *DeliveryFailure) Error() string   { return e.Code }
 func (e *DeliveryFailure) Retryable() bool { return e.CanRetry }
 
-func Enqueue(ctx context.Context, tx dbal.Transaction, definition appir.Extension, input map[string]any, invocationID string, createdAt time.Time) error {
+func Enqueue(ctx context.Context, tx dbal.Transaction, definition appir.Extension, input map[string]any, invocationID string, createdAt time.Time, sequence int) error {
 	if invocationID == "" {
 		return fmt.Errorf("Extension invocation ID is required")
 	}
@@ -90,7 +90,7 @@ func Enqueue(ctx context.Context, tx dbal.Transaction, definition appir.Extensio
 	invocation := Invocation{APIVersion: APIVersion, Extension: definition.Name, InvocationID: invocationID, IdempotencyKey: invocationID, Input: input}
 	_, err := event.Enqueue(ctx, tx, TopicPrefix+definition.Name, intent{Invocation: invocation, Contract: definition}, event.Options{
 		ID: invocationID, RetryDelay: time.Duration(definition.Retry.DelaySeconds) * time.Second,
-		MaxAttempts: definition.Retry.MaxAttempts, CreatedAt: createdAt,
+		MaxAttempts: definition.Retry.MaxAttempts, CreatedAt: createdAt, Sequence: sequence,
 	})
 	return err
 }

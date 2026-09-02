@@ -94,8 +94,8 @@ func TestActionSuiteSeedProducesReplayableIDsAndLeavesNoState(t *testing.T) {
 }
 
 func TestActionSuiteUsesOrderedOfflineExtensionMocks(t *testing.T) {
-	const firstInvocationID = "00000000-0000-4000-8000-000000000020"
-	const secondInvocationID = "00000000-0000-4000-8000-000000000021"
+	const firstInvocationID = "00000000-0000-4000-8000-000000000021"
+	const secondInvocationID = "00000000-0000-4000-8000-000000000020"
 	definitions := []definition.Definition{
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "order"}, Spec: map[string]any{}},
 		{APIVersion: definition.APIVersion, Kind: "Extension", Metadata: definition.Metadata{Name: "order_notification"}, Spec: map[string]any{

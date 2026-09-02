@@ -23,6 +23,7 @@ type Options struct {
 	RetryDelay  time.Duration
 	MaxAttempts int
 	CreatedAt   time.Time
+	Sequence    int
 }
 
 func Enqueue(ctx context.Context, tx dbal.Transaction, topic string, payload any, options Options) (string, error) {
@@ -47,7 +48,7 @@ func Enqueue(ctx context.Context, tx dbal.Transaction, topic string, payload any
 		maxAttempts = 10
 	}
 	now := createdAt.Format(time.RFC3339Nano)
-	_, e = tx.Insert(ctx, dbal.Insert{Table: "bean_outbox", Values: map[string]dbal.Value{"id": id, "topic": topic, "payload": string(b), "created_at": now, "status": "pending", "attempts": 0, "retry_delay": retryDelay, "max_attempts": maxAttempts, "next_attempt_at": now}})
+	_, e = tx.Insert(ctx, dbal.Insert{Table: "bean_outbox", Values: map[string]dbal.Value{"id": id, "topic": topic, "payload": string(b), "created_at": now, "sequence": options.Sequence, "status": "pending", "attempts": 0, "retry_delay": retryDelay, "max_attempts": maxAttempts, "next_attempt_at": now}})
 	return id, e
 }
 
@@ -72,7 +73,7 @@ func (r Runner) RunOnce(ctx context.Context) error {
 	if limit <= 0 {
 		limit = 20
 	}
-	rows, err := r.DB.Select(ctx, dbal.Select{Table: "bean_outbox", Where: &due, OrderBy: []dbal.Order{{Column: "created_at"}, {Column: "id"}}, Limit: limit})
+	rows, err := r.DB.Select(ctx, dbal.Select{Table: "bean_outbox", Where: &due, OrderBy: []dbal.Order{{Column: "created_at"}, {Column: "sequence"}, {Column: "id"}}, Limit: limit})
 	if err != nil {
 		return err
 	}

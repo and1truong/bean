@@ -30,6 +30,7 @@ type stepExecution struct {
 	results       map[string]any
 	bindings      map[string]any
 	output        dbal.Row
+	position      int
 }
 
 type stepOutcome struct {
@@ -61,7 +62,7 @@ var stepHandlers = registry.Must(
 func (s Service) steps(ctx context.Context, tx dbal.Transaction, app *appir.App, actionDefinition appir.Action, input map[string]any, request beanctx.Request) (dbal.Row, error) {
 	var output dbal.Row
 	results := map[string]any{}
-	for _, step := range actionDefinition.Steps {
+	for position, step := range actionDefinition.Steps {
 		handler, exists := stepHandlers.Lookup(step.Op)
 		specification, declared := actionstep.Lookup(step.Op)
 		if !exists || !declared {
@@ -69,7 +70,7 @@ func (s Service) steps(ctx context.Context, tx dbal.Transaction, app *appir.App,
 		}
 		outcome, err := handler(stepExecution{
 			service: s, ctx: ctx, tx: tx, app: app, action: actionDefinition, step: step, specification: specification,
-			input: input, request: request, results: results, bindings: bindingInput(input, results), output: output,
+			input: input, request: request, results: results, bindings: bindingInput(input, results), output: output, position: position,
 		})
 		if err != nil {
 			return nil, err
@@ -307,7 +308,7 @@ func executeExtensionStep(execution stepExecution) (stepOutcome, error) {
 	if err != nil {
 		return stepOutcome{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "Extension invocation time is invalid"}
 	}
-	if err = extension.Enqueue(execution.ctx, execution.tx, definition, values, execution.service.createInvocationID(), createdAt); err != nil {
+	if err = extension.Enqueue(execution.ctx, execution.tx, definition, values, execution.service.createInvocationID(), createdAt, execution.position); err != nil {
 		return stepOutcome{}, &dbal.Error{Code: dbal.InvalidQuery, Message: err.Error()}
 	}
 	return stepOutcome{}, nil
