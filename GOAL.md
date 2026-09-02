@@ -71,7 +71,7 @@ The same Extension definition, typed input, invocation identity, and provider co
 - Arbitrary inline JavaScript, SQL, React, Lua, WASM, shell, filesystem, process, dynamic module, and direct database capabilities remain unsupported.
 - The binary reports `bean 0.13.0-alpha`.
 - `make check`, `make test-crash`, `make test-postgres`, and `make build` pass.
-- The latest PR commit has a clean Codex review, all actionable threads are resolved, CI passes, and the PR is squash merged.
+- The latest PR commit has a clean Codex review and green CI, or the ten-review limit is reached with every final finding addressed, all threads resolved, and final validation and CI green; the PR is squash merged.
 
 ## Explicit non-goals
 
