@@ -1019,12 +1019,10 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 			singleRecord := false
 			for filterName, binding := range display.Bindings {
 				filter, exists := view.ExposedFilters[filterName]
-				target := filter.Target(filterName)
-				definition, fieldExists := entityFieldDefinition(entity, target)
-				singleRecord = singleRecord || exists && binding.Required && (target == "id" || fieldExists && definition.Unique)
+				singleRecord = singleRecord || exists && binding.Required && uniqueEqualityViewFilter(filterName, filter, entity)
 			}
 			if !singleRecord {
-				out = append(out, diagnostic("View", viewName, base+".title.field", "result title requires a unique bound filter"))
+				out = append(out, diagnostic("View", viewName, base+".title.field", "result title requires a mandatory equality binding to a unique filter"))
 			}
 		}
 	}
@@ -1852,12 +1850,11 @@ func validateBlocks(a *appir.App, _ *validationState) []definition.Diagnostic {
 						singleRecord := false
 						for filterName := range block.Bindings {
 							filter, exposed := viewDefinition.ExposedFilters[filterName]
-							target := filter.Target(filterName)
-							definition, fieldExists := entityFieldDefinition(entity, target)
-							singleRecord = singleRecord || exposed && (target == "id" || fieldExists && definition.Unique)
+							input, declared := block.Inputs[filterName]
+							singleRecord = singleRecord || exposed && declared && input.Required && uniqueEqualityViewFilter(filterName, filter, entity)
 						}
 						if !singleRecord {
-							out = append(out, diagnostic("Block", name, "spec.display", "result title requires a unique bound View filter"))
+							out = append(out, diagnostic("Block", name, "spec.display", "result title requires a mandatory Block input bound to a unique equality filter"))
 						}
 					}
 					for index, control := range display.Controls {
@@ -2653,6 +2650,15 @@ func entityFieldDefinition(entity appir.Entity, name string) (appir.Field, bool)
 		}
 	}
 	return appir.Field{}, false
+}
+
+func uniqueEqualityViewFilter(name string, filter appir.ViewFilter, entity appir.Entity) bool {
+	if filter.Operator != "eq" {
+		return false
+	}
+	target := filter.Target(name)
+	definition, exists := entityFieldDefinition(entity, target)
+	return target == "id" || exists && definition.Unique
 }
 
 func nameSet(values []string) map[string]bool {
