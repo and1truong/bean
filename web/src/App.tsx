@@ -6,6 +6,7 @@ import {callAction,encodeInput,runActionBatch} from './action-client'
 import {Admin,ResourceListBlock} from './Admin'
 import {Studio} from './Studio'
 import {Explore} from './Explore'
+import {ContentBlock,SequenceView} from './Sequence'
 import {ErrorAlert,Field,LoadingState,Page,PageHeader,SectionCard,StatusAlert} from '@/components/bean'
 import {Button} from '@/components/ui/button'
 import {Card,CardContent,CardDescription,CardHeader,CardTitle} from '@/components/ui/card'
@@ -38,7 +39,7 @@ function Login(){
   return <Shell><Page narrow><Card><CardHeader><CardTitle><h1 className="text-2xl">Sign in</h1></CardTitle><CardDescription>Access your Bean application.</CardDescription></CardHeader><CardContent><form className="space-y-4" onSubmit={submit}><Field id="login-email" label="Email"><Input id="login-email" data-testid="email" type="email" required value={email} onChange={event=>setEmail(event.target.value)}/></Field><Field id="login-password" label="Password"><Input id="login-password" data-testid="password" type="password" required value={password} onChange={event=>setPassword(event.target.value)}/></Field>{error&&<ErrorAlert error={error}/>}<Button className="w-full" data-testid="login" type="submit">Sign in</Button></form></CardContent></Card></Page></Shell>
 }
 
-function Shell({children}:{children:React.ReactNode}){
+function Shell({children,chrome=true}:{children:React.ReactNode;chrome?:boolean}){
   const loc=useLocation();const nav=useNavigate();const qc=useQueryClient();const currentPath=useContext(CurrentPath);const logoutStarted=useRef(false)
   const session=useQuery({queryKey:['session'],queryFn:()=>api<Session>('/api/system/session')})
   const manifest=useQuery({queryKey:['manifest'],queryFn:()=>api<Manifest>('/api/system/manifest')})
@@ -48,7 +49,7 @@ function Shell({children}:{children:React.ReactNode}){
 	const theme=manifest.data?.theme
   const logout=useMutation({mutationFn:async()=>{const path=loc.pathname;const result=await api<{protected?:boolean}>('/api/auth/logout?path='+encodeURIComponent(path),{method:'POST',body:'{}'});return {path,protected:path.startsWith('/admin')||path.startsWith('/studio')||path.startsWith('/explore')||result.protected===true}},onSuccess:async result=>{sessionStorage.removeItem('bean_csrf');await qc.resetQueries();const routeChanged=currentPath?.current!==result.path;logoutStarted.current=false;if(result.protected||routeChanged)nav('/',{replace:true})},onError:()=>{logoutStarted.current=false}})
   const stopNavigation=(event:React.MouseEvent)=>{if(logoutStarted.current||logout.isPending)event.preventDefault()}
-  return <div className="min-h-screen bg-background" data-testid="application-shell" data-preset={theme?.Preset||'professional'} data-accent={theme?.Accent||'emerald'}><header className="border-b bg-primary text-primary-foreground"><div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"><Link className="text-lg font-semibold tracking-tight" to="/" aria-disabled={logout.isPending} onClick={stopNavigation}>{theme?.DisplayName||'Bean'}</Link><nav className="flex flex-wrap items-center gap-1" aria-label="Primary navigation">{editor&&<Button variant="ghost" disabled={logout.isPending} asChild><Link to="/admin" aria-disabled={logout.isPending} onClick={stopNavigation}>Admin</Link></Button>}{administrator&&<Button variant="ghost" disabled={logout.isPending} asChild><Link to="/explore" aria-disabled={logout.isPending} onClick={stopNavigation}>Explore</Link></Button>}{administrator&&<Button variant="ghost" disabled={logout.isPending} asChild><Link to="/studio" aria-disabled={logout.isPending} onClick={stopNavigation}>Studio</Link></Button>}{session.data?.authenticated?<Button variant="ghost" onClick={()=>{logoutStarted.current=true;logout.mutate()}} disabled={logout.isPending}>Sign out</Button>:manifest.data?.authNavigation!==false?<>{manifest.data?.localRegistration?.Route&&<Button variant="ghost" asChild><Link to={manifest.data.localRegistration.Route}>Sign up</Link></Button>}<Button variant="secondary" asChild><Link to={'/login?next='+encodeURIComponent(loc.pathname)}>Sign in</Link></Button></>:null}</nav></div></header>{children}</div>
+  return <div className="min-h-screen bg-background" data-testid="application-shell" data-preset={theme?.Preset||'professional'} data-accent={theme?.Accent||'emerald'}>{chrome&&<header className="border-b bg-primary text-primary-foreground"><div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"><Link className="text-lg font-semibold tracking-tight" to="/" aria-disabled={logout.isPending} onClick={stopNavigation}>{theme?.DisplayName||'Bean'}</Link><nav className="flex flex-wrap items-center gap-1" aria-label="Primary navigation">{editor&&<Button variant="ghost" disabled={logout.isPending} asChild><Link to="/admin" aria-disabled={logout.isPending} onClick={stopNavigation}>Admin</Link></Button>}{administrator&&<Button variant="ghost" disabled={logout.isPending} asChild><Link to="/explore" aria-disabled={logout.isPending} onClick={stopNavigation}>Explore</Link></Button>}{administrator&&<Button variant="ghost" disabled={logout.isPending} asChild><Link to="/studio" aria-disabled={logout.isPending} onClick={stopNavigation}>Studio</Link></Button>}{session.data?.authenticated?<Button variant="ghost" onClick={()=>{logoutStarted.current=true;logout.mutate()}} disabled={logout.isPending}>Sign out</Button>:manifest.data?.authNavigation!==false?<>{manifest.data?.localRegistration?.Route&&<Button variant="ghost" asChild><Link to={manifest.data.localRegistration.Route}>Sign up</Link></Button>}<Button variant="secondary" asChild><Link to={'/login?next='+encodeURIComponent(loc.pathname)}>Sign in</Link></Button></>:null}</nav></div></header>}{children}</div>
 }
 
 type RenderProps={
@@ -56,6 +57,8 @@ type RenderProps={
   Panel:{layout?:string}
   Region:{name?:string}
   TextBlock:{text?:string}
+  ContentBlock:{content?:import('./api').ContentElement[]}
+  Sequence:{title?:string;description?:string;profile?:string;aspectRatio?:string;protected?:boolean}
   ViewBlock:{name?:string;view?:string;display?:ViewDisplay;displayName?:string;displays?:Record<string,ViewDisplay>;filters?:Record<string,ViewFilter>;pageFilters?:Record<string,string>;fieldTypes?:Record<string,string>;presentation?:ViewPresentation;searchFields?:string[];formattedFields?:string[];fileFields?:string[];maxRows?:number}
   EntityBlock:{name?:string;entity?:string;presentation?:ViewPresentation;formattedFields?:string[];fileFields?:string[]}
   ResourceListBlock:{name?:string;resource?:string;view?:string;filters?:string[];defaultFilters?:Record<string,any>}
@@ -67,9 +70,11 @@ type RenderComponent=keyof RenderProps
 type NodeRenderer<K extends RenderComponent>=(props:RenderProps[K],children?:Node[])=>React.ReactNode
 const nodeRenderers:{[K in RenderComponent]:NodeRenderer<K>}={
   Page:(props,children)=><PageNode title={props.title} description={props.description} filters={props.filters||{}} children={children}/>,
-  Panel:(_props,children)=><StructuralNode component="Panel" children={children}/>,
-  Region:(_props,children)=><StructuralNode component="Region" children={children}/>,
+  Panel:(props,children)=><StructuralNode component="Panel" layout={props.layout} children={children}/>,
+  Region:(props,children)=><StructuralNode component="Region" name={props.name} children={children}/>,
   TextBlock:props=><p>{props.text}</p>,
+  ContentBlock:props=><ContentBlock content={props.content||[]}/>,
+  Sequence:(props,children)=><SequenceView {...props} children={children} renderNode={node=><Renderer node={node}/>}/>,
   ViewBlock:props=><ViewBlock name={props.view||''} block={props.name||''} display={props.display} displayName={props.displayName} displays={props.displays} filters={props.filters||{}} pageFilters={props.pageFilters||noPageFilters} fieldTypes={props.fieldTypes||{}} presentation={props.presentation||{}} searchFields={props.searchFields||[]} formattedFields={props.formattedFields||[]} fileFields={props.fileFields||[]} maxRows={props.maxRows}/>,
   EntityBlock:props=><ViewBlock name={(props.entity||'')+'_list'} block={props.name||''} presentation={props.presentation||{}} formattedFields={props.formattedFields||[]} fileFields={props.fileFields||[]}/>,
   ResourceListBlock:props=><ResourceListBlock resource={props.resource||''} view={props.view||''} block={props.name||''} filters={props.filters} defaultFilters={props.defaultFilters}/>,
@@ -79,7 +84,7 @@ const nodeRenderers:{[K in RenderComponent]:NodeRenderer<K>}={
 }
 function isRenderComponent(value:string):value is RenderComponent{return Object.hasOwn(nodeRenderers,value)}
 function renderKnownNode(component:RenderComponent,props:Record<string,any>,children?:Node[]){const renderer=nodeRenderers[component] as NodeRenderer<RenderComponent>;return renderer(props,children)}
-function StructuralNode({component,title,children}:{component:'Page'|'Panel'|'Region';title?:string;children?:Node[]}){useEffect(()=>{if(component!=='Page'||!title)return;const previous=document.title;document.title=title;return()=>{document.title=previous}},[component,title]);return <section className="space-y-4" data-component={component}>{title&&<h2 className="font-heading text-2xl font-semibold">{title}</h2>}{children?.map((child,index)=><Renderer key={index} node={child}/>)}</section>}
+function StructuralNode({component,title,layout,name,children}:{component:'Page'|'Panel'|'Region';title?:string;layout?:string;name?:string;children?:Node[]}){useEffect(()=>{if(component!=='Page'||!title)return;const previous=document.title;document.title=title;return()=>{document.title=previous}},[component,title]);return <section className="space-y-4" data-component={component} data-layout={layout} data-region={name}>{title&&<h2 className="font-heading text-2xl font-semibold">{title}</h2>}{children?.map((child,index)=><Renderer key={index} node={child}/>)}</section>}
 function PageNode({title,description,filters,children}:{title?:string;description?:string;filters:Record<string,PageFilter>;children?:Node[]}){const[urlParams,setURLParams]=useSearchParams();const names=Object.keys(filters);const[state,setState]=useState<Record<string,string>>(()=>Object.fromEntries(names.map(name=>[name,urlParams.get(name)??String(filters[name].Default??'')])));useEffect(()=>{if(!title)return;const previous=document.title;document.title=title;return()=>{document.title=previous}},[title]);const urlState=urlParams.toString();const filterState=JSON.stringify(filters);useEffect(()=>{const definitions=JSON.parse(filterState)as Record<string,PageFilter>;const current=new URLSearchParams(urlState);setState(Object.fromEntries(Object.keys(definitions).map(name=>[name,current.get(name)??String(definitions[name].Default??'')])))},[filterState,urlState]);const apply=(event:FormEvent)=>{event.preventDefault();const next=new URLSearchParams(urlParams);for(const name of names){if(state[name])next.set(name,state[name]);else next.delete(name)}setURLParams(next,{replace:true})};return <section className="space-y-4" data-component="Page">{title&&<h2 className="font-heading text-2xl font-semibold">{title}</h2>}{description&&<p className="text-muted-foreground">{description}</p>}{names.length?<form className="grid items-end gap-4 sm:grid-cols-2 lg:flex lg:flex-wrap" aria-label="Page filters" onSubmit={apply}>{names.map(name=><ViewFilterControl key={name} scope="page" control={{Filter:name,Label:filters[name].Label,Widget:filters[name].Widget}} filter={{Type:filters[name].Type,Options:filters[name].Options}} value={state[name]??''} onChange={value=>setState(current=>({...current,[name]:value}))}/>)}<Button type="submit">Apply filters</Button></form>:null}{children?.map((child,index)=><Renderer key={index} node={child}/>)}</section>}
 function Renderer({node}:{node:Node}){
   if(!isRenderComponent(node.component))return <section role="alert" data-component={node.component}>Unsupported render component: {node.component}</section>
@@ -234,6 +239,7 @@ function Public(){
   const loc=useLocation();const pageKey=loc.search?['page',loc.pathname,loc.search]:['page',loc.pathname];const result=useQuery({queryKey:pageKey,queryFn:()=>loadPage(loc.pathname,loc.search),placeholderData:(previous,query)=>query?.queryKey[1]===loc.pathname?previous:undefined})
   if(result.isPending)return <Shell><Page><LoadingState/></Page></Shell>
   if(result.error)return <Shell><Page><PageHeader title="Bean" description="Metadata-driven applications, compiled."/></Page></Shell>
+  if(result.data.tree.component==='Sequence')return <Shell chrome={false}><Renderer node={result.data.tree}/></Shell>
   return <Shell><Page className="space-y-6"><Renderer node={result.data.tree}/></Page></Shell>
 }
 

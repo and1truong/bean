@@ -1,8 +1,38 @@
 # Definitions
 
-An application source starts with an `app.yaml` manifest containing `apiVersion: bean/v1alpha1`, the application name, and optional explicit local `resources`. Definition documents follow the manifest after `---`, or live in the listed resource files. Each definition has a top-level `kind`, machine `name`, optional `namespace`, and its kind-specific fields. Supported kinds include Entity, View, Action, Lifecycle, Rule, Extension, TestSuite, Webform, Policy, Filter, Block, Panel, Page, Role, Menu, Job, AdminResource, LocalRegistration, and DemoSeed.
+An application source starts with an `app.yaml` manifest containing `apiVersion: bean/v1alpha1`, the application name, and optional explicit local `resources`. Definition documents follow the manifest after `---`, or live in the listed resource files. Each definition has a top-level `kind`, machine `name`, optional `namespace`, and its kind-specific fields. Supported kinds include Entity, View, Action, Lifecycle, Rule, Extension, TestSuite, Webform, Policy, Filter, Block, Panel, Page, Sequence, Role, Menu, Job, AdminResource, LocalRegistration, and DemoSeed.
 
 Compilation validates envelopes, names, fields, references, relation kinds, limits, Action steps, Panel regions, and route uniqueness. Diagnostics identify the source file, line, column, kind, name, field path, and a corrective message. Generated CRUD is emitted as Views and Actions inside AppIR.
+
+## Sequences and semantic content
+
+A `Sequence` is a route-level ordered experience composed from existing Panels. The initial `presentation` profile supports `wide` and `standard` aspect ratios, stable frame identities, speaker notes, URL-addressed navigation, keyboard controls, progress, responsive HTML, and one-frame-per-page print structure. Sequence adds no data or mutation path: View Blocks still read through Views and Actions remain the only write boundary.
+
+```yaml
+kind: Block
+name: product_thesis
+type: content
+content:
+  - {type: heading, text: "Bean is a deterministic application runtime"}
+  - {type: bullets, items: ["Definitions are inspectable", "Compilation is deterministic", "Runtime behavior is policy-bound"]}
+---
+kind: Panel
+name: thesis_frame
+layout: single-column
+regions:
+  - {name: main, blocks: [product_thesis]}
+---
+kind: Sequence
+name: bean_introduction
+route: /presentations/bean
+title: Introducing Bean
+profile: presentation
+aspectRatio: wide
+frames:
+  - {name: thesis, title: Product thesis, layout: bullets, panel: thesis_frame, notes: "Establish the runtime boundary."}
+```
+
+Frame layouts are closed and compiler-checked against their Panel: `title`, `section`, `statement`, `bullets`, `quote`, `closing`, `two-column`, `comparison`, `image-focus`, `chart-focus`, `table`, `timeline`, `process`, and `architecture`. Content elements are `heading`, `paragraph`, `bullets`, `quote`, `code`, `callout`, `image`, and `diagram`. Images require alt text and an absolute application path or HTTPS URL; content is rendered as text nodes, never executable markup. `bean capabilities --json` reports the exact vocabularies and bounds. Current limits include 1–50 frames, 1–12 Blocks per frame, 80-code-point titles, 4,000-byte notes, 12 elements per content Block, six bullets, eight diagram nodes, 120 code lines, and deterministic layout density budgets.
 
 ## Admin resources
 

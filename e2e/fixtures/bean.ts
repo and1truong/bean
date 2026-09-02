@@ -19,7 +19,7 @@ export const test=base.extend<{bean:Bean},{appName:string}>({
     if(appName!=='empty'){
       execFileSync(bin,['app','import',...target,'--file',join(root,'examples',appName,'app.yaml')])
       execFileSync(bin,['publish',...target])
-	  if(appName==='ats')execFileSync(bin,['demo','seed',...target,'--file',join(root,'examples',appName,'app.yaml'),'--seed','42'])
+	  if(appName==='ats'||appName==='presentation')execFileSync(bin,['demo','seed',...target,'--file',join(root,'examples',appName,'app.yaml'),'--seed','42'])
     }
     const createUser=(email:string,roles:string,tenant='')=>execFileSync(bin,['user','create',...target,'--email',email,'--password','test-password','--roles',roles,'--tenant',tenant])
     if(appName==='crm'){

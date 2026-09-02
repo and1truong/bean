@@ -1,0 +1,83 @@
+kind: Block
+name: opening
+type: content
+content:
+  - {type: heading, text: "Bean: deterministic applications from inspectable definitions"}
+  - {type: paragraph, text: "A runtime where humans and agents author the same application semantics."}
+---
+kind: Block
+name: product_statement
+type: content
+content:
+  - {type: quote, text: "Model the application once. Let humans and agents operate the same validated system.", attribution: Bean}
+  - {type: paragraph, text: "Probabilistic agents need a deterministic target with explicit semantics and repairable failures."}
+  - {type: callout, tone: info, text: "Bean owns application semantics; providers own external infrastructure capabilities."}
+---
+kind: Block
+name: runtime_architecture
+type: content
+content:
+  - {type: diagram, direction: horizontal, items: [Definitions, Validation, Migration, Immutable AppIR, Atomic activation]}
+  - {type: paragraph, text: "Every release follows one deterministic publication path."}
+---
+kind: Block
+name: core_primitives
+type: content
+content:
+  - {type: bullets, items: ["Entity models data", "View owns typed reads", "Display owns presentation", "Page and Panel compose layout", "Action owns mutations and effects", "Policy and Lifecycle enforce boundaries"]}
+---
+kind: Block
+name: agent_execution_loop
+type: content
+content:
+  - {type: diagram, direction: horizontal, items: [Prompt, Definitions, Validate, Inspect and diff, Test, Publish, Runtime]}
+  - {type: callout, tone: success, text: "Agent output stays inspectable, diffable, testable, versionable, and manually editable."}
+---
+kind: Block
+name: explore_loop
+type: content
+content:
+  - {type: diagram, direction: horizontal, items: [Model data, Explore, Visualize, Drill down, Act]}
+  - {type: paragraph, text: "Bean Explore turns observation into authorized operational action without a parallel query runtime."}
+---
+kind: Block
+name: capability_chart_context
+type: content
+content:
+  - {type: paragraph, text: "The chart below is a real grouped View rendered inside this presentation."}
+---
+kind: Block
+name: safety_semantics
+type: content
+content:
+  - {type: heading, text: "Application semantics stay in Bean"}
+  - {type: bullets, items: ["Typed definitions and deterministic diagnostics", "Policy before reads and aggregation", "Lifecycle and Rules constrain Actions", "Atomic release activation"]}
+---
+kind: Block
+name: safety_infrastructure
+type: content
+content:
+  - {type: heading, text: "Infrastructure stays behind providers"}
+  - {type: bullets, items: ["Storage adapters", "Typed Extensions for external effects", "Explicit transport boundaries", "No opaque application scripts"]}
+---
+kind: Block
+name: reference_apps
+type: content
+content:
+  - {type: heading, text: "Executable examples"}
+  - {type: bullets, items: ["ATS: recruiting operations", "CRM: policy-safe aggregates", "Commerce: observe, inspect, act", "Booking and tracker: date and workflow patterns"]}
+---
+kind: Block
+name: current_direction
+type: content
+content:
+  - {type: heading, text: "One runtime, more application shapes"}
+  - {type: bullets, items: ["Explore operational data", "Compose dashboards", "Present a guided narrative", "Keep every artifact as ordinary Bean definitions"]}
+---
+kind: Block
+name: getting_started
+type: content
+content:
+  - {type: heading, text: "Start with an Entity"}
+  - {type: paragraph, text: "Add typed Views and Actions, compose the experience, then publish the validated definition bundle."}
+  - {type: callout, tone: success, text: "bean demo run presentation"}

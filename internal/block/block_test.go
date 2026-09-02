@@ -13,8 +13,8 @@ import (
 func TestEveryAcceptedBlockTypeHasRenderer(t *testing.T) {
 	app := appir.Empty()
 	app.Menus["main"] = appir.Menu{Name: "main", Items: []appir.MenuItem{{Label: "Home", Route: "/"}}}
-	tests := map[string]string{"text": "TextBlock", "view": "ViewBlock", "entity": "EntityBlock", "webform": "WebformBlock", "action": "ActionBlock", "menu": "MenuBlock", "resource-list": "ResourceListBlock"}
-	wantNames := []string{"action", "entity", "menu", "resource-list", "text", "view", "webform"}
+	tests := map[string]string{"text": "TextBlock", "content": "ContentBlock", "view": "ViewBlock", "entity": "EntityBlock", "webform": "WebformBlock", "action": "ActionBlock", "menu": "MenuBlock", "resource-list": "ResourceListBlock"}
+	wantNames := []string{"action", "content", "entity", "menu", "resource-list", "text", "view", "webform"}
 	if got := block.Names(); !reflect.DeepEqual(got, wantNames) {
 		t.Fatalf("registered Block types=%v want=%v", got, wantNames)
 	}
@@ -23,7 +23,7 @@ func TestEveryAcceptedBlockTypeHasRenderer(t *testing.T) {
 		if !registered || specification.Component != component {
 			t.Fatalf("type=%s specification=%+v registered=%v", kind, specification, registered)
 		}
-		node, allowed, e := block.Node(app, appir.Block{Name: kind, Type: kind, Text: "text", View: "view", Entity: "entity", Webform: "form", Action: "action", Menu: "main"}, map[string]any{}, beanctx.Request{})
+		node, allowed, e := block.Node(app, appir.Block{Name: kind, Type: kind, Text: "text", Content: []appir.ContentElement{{Type: "paragraph", Text: "content"}}, View: "view", Entity: "entity", Webform: "form", Action: "action", Menu: "main"}, map[string]any{}, beanctx.Request{})
 		if e != nil || !allowed || node.Component != component {
 			t.Fatalf("type=%s node=%+v allowed=%v err=%v", kind, node, allowed, e)
 		}

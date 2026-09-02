@@ -1,0 +1,7 @@
+apiVersion: bean/v1alpha1
+name: Bean Introduction
+resources:
+  - theme.yaml
+  - data.yaml
+  - content.yaml
+  - layout.yaml

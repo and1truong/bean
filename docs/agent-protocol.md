@@ -1,6 +1,6 @@
 # Bean Agent Protocol
 
-Bean v0.8 introduced one provider-neutral `bean.agent/v1alpha1` dispatcher. v0.15 retains that contract and exposes Explore query/result/interaction schema, capabilities, inspection references, and semantic diff without changing the transport envelope or adding an Explore-only operation. CLI and MCP change only framing; each operation's metadata and handler are sealed together, and operation names, input schemas, plane authorization, compiler diagnostics, runtime results, and errors originate from the same service.
+Bean v0.8 introduced one provider-neutral `bean.agent/v1alpha1` dispatcher. v0.16 retains that contract and exposes Explore plus Sequence/content schema, capabilities, inspection references, and semantic diff without changing the transport envelope or adding feature-specific operations. CLI and MCP change only framing; each operation's metadata and handler are sealed together, and operation names, input schemas, plane authorization, compiler diagnostics, runtime results, and errors originate from the same service.
 
 ## Operations
 

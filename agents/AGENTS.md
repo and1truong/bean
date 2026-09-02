@@ -17,4 +17,6 @@ Use a named `Rule` only for a bounded local predicate or calculation after check
 
 Never request raw tables, SQL, arbitrary mutations, roles, tenant identity, or plane grants as tool input. The host configures Definition, Release, and Application Plane access plus runtime identity. A missing primitive is a design constraint to surface, not permission to generate arbitrary code inside metadata.
 
+For ordered guided content, generate an ordinary `Sequence` whose frames reference Panels. Compose semantic `content` Blocks and existing View Blocks inside those Panels; do not invent Presentation, Slide, Report, HTML, CSS, JavaScript, SVG, or private query definitions. Use the capability response for supported frame layouts, content elements, aspect ratios, and resource limits. Repair only compiler-diagnosed paths, then inspect and diff the same definitions before publication.
+
 Prefer the generic `bean agent call` contract for scripts and the MCP stdio adapter for compatible hosts. Both expose the same ten `bean.agent/v1alpha1` operations described in [the protocol reference](../docs/agent-protocol.md).

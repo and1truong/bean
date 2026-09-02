@@ -74,7 +74,7 @@ Presentation remains a separately reported score so a technically correct but un
 
 ## Current engineering goal
 
-Bean v0.15 Explore is complete after the v0.14 View Displays foundation. It turns existing Entity models into operational applications through one typed loop: explore records, save ordinary Views, visualize compatible result shapes, compose dashboards, drill into exact Policy-visible contributors, and execute authorized Actions. Explore adds no Question/Dataset/Visualization abstraction or parallel query runtime.
+Bean v0.16 Semantic Sequences is complete as the experimental implementation of issue #6. It adds one generic ordered composition primitive over existing Panels and Blocks, a bounded semantic content Block, deterministic layout diagnostics, and an accessible HTML presentation profile. The primary executable example is a ten-frame introduction to Bean. It does not add a PowerPoint clone or parallel rendering/runtime model. The next planned goal is the explicit v1.0 production envelope.
 
 ## Roadmap
 
@@ -91,9 +91,10 @@ Bean v0.15 Explore is complete after the v0.14 View Displays foundation. It turn
 | 8 | v0.13 | Typed extension boundary for external effects | complete |
 | 9 | v0.14 | First-class View displays for reusable page, block, table, filter, pager, title, and serializer output | complete |
 | 10 | v0.15 | Bean Explore for typed exploration, aggregates, dashboards, drill-down, and operational Actions | complete |
-| 11 | v1.0 | Qualification of one explicit production envelope | planned |
-| 12 | post-v1.0 | Bean Cloud preview environments | exploratory |
-| 13 | post-v1.0 | Composable application-pattern ecosystem | exploratory |
+| 11 | v0.16 | Semantic Sequences and first-party HTML presentation profile | complete |
+| 12 | v1.0 | Qualification of one explicit production envelope | planned |
+| 13 | post-v1.0 | Bean Cloud preview environments | exploratory |
+| 14 | post-v1.0 | Composable application-pattern ecosystem | exploratory |
 
 ### Phase 0 — Application runtime (complete)
 
@@ -513,7 +514,20 @@ Exit criteria:
 - Existing Entities plus deterministic DemoSeed provide a measured approximately five-minute onboarding path.
 - Arbitrary SQL, a separate semantic layer, BI/reporting features, data federation, and duplicate Question/Dataset/Visualization abstractions remain excluded.
 
-### Phase 11 — v1.0: production qualification
+### Phase 11 — v0.16: Semantic Sequences
+
+Implement issue #6 without creating a presentation silo. `Sequence` owns a canonical route and ordered frames that reference existing Panels. Panels/Regions/Blocks remain the composition tree, View Displays remain the data presentation path, Theme remains the visual token contract, and Policy remains authoritative. A generic `content` Block adds a closed vocabulary for headings, paragraphs, bullets, quotes, code, callouts, accessible images, and ordered diagrams.
+
+The first profile is an accessible interactive HTML presentation with stable frame deep links, keyboard/navigation controls, speaker notes, aspect-ratio layout, and print page breaks. Compiler-known structural and weighted-density bounds provide deterministic repair diagnostics without pretending to measure browser pixels. The executable reference is a ten-frame introduction to Bean generated as ordinary definitions.
+
+Exit criteria:
+
+- Sequence and content metadata are schema-visible, inspectable, diffable, versioned in AppIR v8, restart-safe, and compatible with v1–v7 releases.
+- The Bean introduction validates, renders ten accessible frames, loads a real View-backed chart, deep-links, prints structurally, packages without source, and contains no application-specific core branch.
+- An agent fixture can repair stable title/layout/content/density diagnostics using only the public contract.
+- Arbitrary HTML/CSS/JS/SVG, WYSIWYG layout, embedded LLMs, image generation, web research, native PDF/PPTX, collaboration, and hosted sharing remain excluded.
+
+### Phase 12 — v1.0: production qualification
 
 Qualify Bean for one deliberately narrow production envelope only after the agent-to-demo loop is strong:
 
@@ -523,7 +537,7 @@ Qualify backup/restore, secrets, migration and upgrade behavior, observability, 
 
 The phase must publish explicit supported topologies, failure models, SLO evidence, restore drills, compatibility windows, and known exclusions. Bean consumes managed databases, storage, identity, and orchestration; it does not become a Kubernetes platform, distributed database, Kafka clone, S3 clone, or identity provider.
 
-### Phase 12 — Bean Cloud
+### Phase 13 — Bean Cloud
 
 Only after the local engine and production contract are proven, provide the narrow hosted loop:
 

@@ -32,4 +32,6 @@ Use a `file` field on a related attachment Entity when a record needs one or mor
 
 A View Block may use compiler-validated `board` or `tree` presentation. Boards group an enum field and invoke a declared transition Action. Trees consume a selected many-to-one self relation and build an expandable hierarchy from the bounded View result. See `examples/asana` for both patterns.
 
+Use a `Sequence` when the application needs an ordered guided experience. Each named frame chooses a closed semantic layout and references an existing Panel; Panels still place Blocks, and data-backed frames still use ordinary View Displays. Use `type: content` Blocks for bounded headings, paragraphs, bullets, quotes, code, callouts, accessible images, and ordered diagrams. Run `bean capabilities --json` for the exact vocabularies and limits, and see `examples/presentation` for the ten-frame Bean introduction. Do not embed HTML, CSS, JavaScript, SVG, or private query logic in presentation metadata.
+
 Use a SQLite path for an embedded deployment or pass a PostgreSQL URL through `--database-url`/`BEAN_DATABASE_URL`. Definitions and AppIR are backend-neutral; do not put backend SQL in definitions.

@@ -118,4 +118,49 @@
   .rich-text a { @apply text-primary underline underline-offset-4; }
   .rich-text code { @apply rounded bg-muted px-1 py-0.5 font-mono text-sm; }
   .rich-text pre { @apply overflow-x-auto rounded-lg bg-muted p-4; }
+
+  .bean-sequence { @apply flex min-h-screen flex-col bg-muted/50; }
+  .bean-sequence-toolbar { @apply flex flex-col gap-3 border-b bg-background px-4 py-3 lg:flex-row lg:items-center lg:justify-between; }
+  .bean-sequence-stage { @apply flex flex-1 items-center justify-center p-3 sm:p-6; }
+  .bean-sequence-frame { @apply relative hidden w-full max-w-7xl flex-col overflow-auto rounded-xl border bg-card p-6 text-card-foreground shadow-xl sm:p-10 lg:p-14; }
+  .bean-sequence-frame[data-active="true"] { @apply flex; }
+  .bean-sequence-frame > h1 { @apply mb-6 font-heading text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl; }
+  .bean-sequence-frame[data-layout="title"], .bean-sequence-frame[data-layout="section"], .bean-sequence-frame[data-layout="statement"], .bean-sequence-frame[data-layout="closing"] { @apply justify-center; }
+  .bean-sequence-frame[data-layout="title"] > h1, .bean-sequence-frame[data-layout="section"] > h1, .bean-sequence-frame[data-layout="closing"] > h1 { @apply text-4xl sm:text-5xl lg:text-7xl; }
+  .bean-sequence-frame-body { @apply min-h-0 flex-1; }
+  .bean-sequence-frame [data-component="Panel"] { @apply h-full; }
+  .bean-sequence-frame [data-component="Panel"][data-layout="two-column"] { @apply grid gap-8 md:grid-cols-2; }
+  .bean-sequence-frame [data-component="Region"] { @apply flex min-w-0 flex-col justify-center gap-5; }
+  .bean-sequence-navigation { @apply flex items-center justify-between border-t bg-background px-4 py-3; }
+  .bean-content-block { @apply space-y-5; }
+  .bean-content-block h2 { @apply font-heading text-2xl font-semibold sm:text-3xl; }
+  .bean-content-block p { @apply text-lg leading-8 sm:text-xl; }
+  .bean-content-block ul { @apply list-disc space-y-3 pl-7 text-lg leading-8 sm:text-xl; }
+  .bean-content-block blockquote { @apply border-l-4 border-primary pl-6 text-2xl leading-relaxed; }
+  .bean-content-block blockquote footer { @apply mt-3 text-base text-muted-foreground; }
+  .bean-content-block pre { @apply max-h-80 overflow-auto rounded-xl bg-foreground p-5 text-sm text-background; }
+  .bean-content-callout { @apply rounded-xl border-l-4 border-primary bg-accent p-5 text-lg; }
+  .bean-content-callout[data-tone="success"] { @apply border-emerald-600 bg-emerald-50 text-emerald-950; }
+  .bean-content-callout[data-tone="warning"] { @apply border-amber-600 bg-amber-50 text-amber-950; }
+  .bean-content-block figure { @apply space-y-2; }
+  .bean-content-block img, .bean-image-fallback { @apply mx-auto max-h-96 w-full rounded-xl object-contain; }
+  .bean-image-fallback { @apply flex min-h-48 items-center justify-center border bg-muted p-6 text-center text-muted-foreground; }
+  .bean-content-block figcaption { @apply text-center text-sm text-muted-foreground; }
+  .bean-content-diagram { @apply flex items-center justify-center gap-3; }
+  .bean-content-diagram[data-direction="vertical"] { @apply flex-col; }
+  .bean-content-diagram li { @apply flex items-center gap-3; }
+  .bean-content-diagram[data-direction="vertical"] li { @apply flex-col; }
+  .bean-content-diagram li > span:first-child { @apply rounded-xl border bg-accent px-5 py-4 text-center font-semibold; }
+  .bean-speaker-notes { @apply mt-5 rounded-lg border border-dashed bg-muted p-4 text-sm; }
+  .bean-speaker-notes h2 { @apply mb-1 font-semibold; }
+}
+
+@media print {
+  @page { size: landscape; margin: 0; }
+  body { background: white !important; }
+  .bean-sequence { display: block !important; background: white !important; }
+  .bean-sequence [data-sequence-control="true"], .bean-speaker-notes { display: none !important; }
+  .bean-sequence-stage { display: block !important; padding: 0 !important; }
+  .bean-sequence-frame { display: flex !important; width: 100% !important; max-width: none !important; height: 100vh !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; break-after: page; page-break-after: always; }
+  .bean-sequence-frame:last-child { break-after: auto; page-break-after: auto; }
 }

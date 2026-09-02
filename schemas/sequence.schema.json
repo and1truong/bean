@@ -1,0 +1,73 @@
+{
+  "$defs": {
+    "github_com_beanruntime_bean_internal_appir_SequenceFrame": {
+      "additionalProperties": false,
+      "properties": {
+        "layout": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "panel": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$id": "https://bean.build/schemas/sequence.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "bean/v1alpha1"
+    },
+    "aspectRatio": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "frames": {
+      "items": {
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_SequenceFrame"
+      },
+      "type": "array"
+    },
+    "kind": {
+      "const": "Sequence"
+    },
+    "name": {
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "policy": {
+      "type": "string"
+    },
+    "profile": {
+      "type": "string"
+    },
+    "route": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "name"
+  ],
+  "title": "Bean Sequence definition",
+  "type": "object"
+}

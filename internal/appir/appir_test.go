@@ -188,4 +188,26 @@ func TestViewOwnedSearchRequiresV7Format(t *testing.T) {
 	if err := app.ValidateFormat(); err == nil {
 		t.Fatal("v6 AppIR accepted View-owned search semantics")
 	}
+	app.FormatVersion = appir.ExploreFormat
+	if err := app.ValidateFormat(); err != nil {
+		t.Fatalf("v7 AppIR rejected Explore semantics: %v", err)
+	}
+}
+
+func TestSequenceAndSemanticContentRequireV8Format(t *testing.T) {
+	app := appir.Empty()
+	app.Blocks["title"] = appir.Block{Name: "title", Type: "content", Content: []appir.ContentElement{{Type: "heading", Text: "Bean"}}}
+	app.Sequences["bean"] = appir.Sequence{Name: "bean", Route: "/presentations/bean", Title: "Bean", Profile: "presentation", AspectRatio: "wide", Frames: []appir.SequenceFrame{{Name: "opening", Title: "Bean", Layout: "title", Panel: "opening"}}}
+	if err := app.ValidateFormat(); err != nil {
+		t.Fatal(err)
+	}
+	app.FormatVersion = appir.ExploreFormat
+	if err := app.ValidateFormat(); err == nil {
+		t.Fatal("v7 AppIR accepted Sequence and semantic content semantics")
+	}
+
+	app.Sequences = map[string]appir.Sequence{}
+	if err := app.ValidateFormat(); err == nil {
+		t.Fatal("v7 AppIR accepted semantic content Blocks")
+	}
 }

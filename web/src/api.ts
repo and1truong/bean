@@ -17,6 +17,7 @@ export type ViewDrill={View:string;Display:string;Route:string;Bindings?:Array<{
 export type ViewDisplay={Type:string;Route?:string;Description?:string;EmptyState?:string;Selection?:string;Actions?:string[];Title?:{Text?:string;Field?:string;Fallback?:string};Renderer:ViewRenderer;Controls?:ViewControl[];Pager?:{Type?:string;PageSize?:number};Drill?:ViewDrill}
 export type ViewFilter={Field?:string;Operator?:string;Name?:string;Label?:string;Type?:string;Required?:boolean;Options?:string[]}
 export type PageFilter={Label?:string;Type?:string;Widget?:string;Default?:any;Options?:string[];Targets?:Array<{Block:string;Filter:string}>}
+export type ContentElement={Type:string;Text?:string;Attribution?:string;Source?:string;Alt?:string;Language?:string;Tone?:string;Direction?:string;Items?:string[]}
 export type ViewPresentation={Mode?:string;TitleField?:string;BodyField?:string;LinkRoute?:string;LinkField?:string;EmptyState?:string;MetaFields?:string[];RichTextFields?:string[];GroupField?:string;OrderField?:string;ParentField?:string;MoveAction?:string;Columns?:string[];MetricField?:string;MetricLabel?:string;TimeField?:string;EndField?:string;SearchFields?:string[]}
 export type Node={component:string;props?:Record<string,any>;children?:Node[]}
 export class APIError extends Error{fields?:Record<string,string>;constructor(message:string,fields?:Record<string,string>){super(message);this.fields=fields}}

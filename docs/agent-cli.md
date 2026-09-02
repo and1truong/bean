@@ -2,7 +2,7 @@
 
 Bean v0.6 exposes the compiler and release lifecycle as a provider-neutral command contract. An agent does not need to inspect Bean source or parse human prose.
 
-v0.15 retains the v0.8 generic one-to-one adapter over the shared `bean.agent/v1alpha1` dispatcher and exposes Explore metadata without changing the transport envelope or adding an Explore-only operation:
+v0.16 retains the v0.8 generic one-to-one adapter over the shared `bean.agent/v1alpha1` dispatcher and exposes Explore and Sequence metadata without changing the transport envelope or adding feature-specific operations:
 
 ```bash
 bean agent call bean.definition.validate --input request.json --json

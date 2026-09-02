@@ -34,6 +34,7 @@ import (
 	"github.com/beanruntime/bean/internal/policy"
 	"github.com/beanruntime/bean/internal/release"
 	"github.com/beanruntime/bean/internal/render"
+	"github.com/beanruntime/bean/internal/sequence"
 	"github.com/beanruntime/bean/internal/uiassets"
 	"github.com/beanruntime/bean/internal/uid"
 	"github.com/beanruntime/bean/internal/view"
@@ -264,6 +265,8 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if a, active := s.Kernel.Active(); active {
 		if definition, _, matched := page.Match(a, r.URL.Query().Get("path")); matched {
 			protected = page.Protected(a, definition)
+		} else if definition, matched := sequence.Match(a, r.URL.Query().Get("path")); matched {
+			protected = sequence.Protected(a, definition)
 		} else if matched, found := view.MatchPageDisplay(a, r.URL.Query().Get("path")); found {
 			viewDefinition := a.Views[matched.View]
 			entity := a.Entities[viewDefinition.Entity]
@@ -927,6 +930,19 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 	}
 	p, params, ok := page.Match(a, r.URL.Query().Get("path"))
 	if !ok {
+		if matched, found := sequence.Match(a, r.URL.Query().Get("path")); found {
+			tree, allowed, err := sequence.Node(a, matched, s.ctx(r))
+			if err != nil {
+				problem(w, 400, "render_context", "Required sequence render context is missing.", requestID(r))
+				return
+			}
+			if !allowed {
+				problem(w, 404, "not_found", "Sequence not found.", requestID(r))
+				return
+			}
+			write(w, 200, map[string]any{"tree": tree})
+			return
+		}
 		matched, found := view.MatchPageDisplay(a, r.URL.Query().Get("path"))
 		if !found {
 			problem(w, 404, "not_found", "Page not found.", requestID(r))
@@ -1027,21 +1043,44 @@ func (s *Server) boundBlockInputs(r *http.Request, a *appir.App, kind, target st
 	if pagePath == "" || blockName == "" {
 		return nil, requestContext, fmt.Errorf("page and block context must be supplied together")
 	}
+	definition, exists := a.Blocks[blockName]
+	if !exists || kind == "view" && definition.View != target || kind == "webform" && definition.Webform != target {
+		return nil, requestContext, fmt.Errorf("bound block does not match this request")
+	}
 	p, routeParams, matched := page.Match(a, pagePath)
 	if !matched {
-		return nil, requestContext, fmt.Errorf("bound page was not found")
+		item, sequenceMatched := sequence.Match(a, pagePath)
+		if !sequenceMatched {
+			return nil, requestContext, fmt.Errorf("bound page or sequence was not found")
+		}
+		if item.Policy != "" && !policy.Can(a.Policies[item.Policy], false, requestContext, nil) {
+			return nil, requestContext, fmt.Errorf("bound sequence is unavailable")
+		}
+		found := false
+		for _, frame := range item.Frames {
+			panelDefinition := a.Panels[frame.Panel]
+			if !panelContainsBlock(panelDefinition, blockName) {
+				continue
+			}
+			found = true
+			if panelDefinition.Policy != "" && !policy.Can(a.Policies[panelDefinition.Policy], false, requestContext, nil) {
+				continue
+			}
+			node, allowed, err := block.Node(a, definition, map[string]any{}, requestContext)
+			if err == nil && allowed {
+				inputs, _ := node.Props["inputs"].(map[string]any)
+				return inputs, requestContext, nil
+			}
+		}
+		if !found {
+			return nil, requestContext, fmt.Errorf("bound block does not match this request")
+		}
+		return nil, requestContext, fmt.Errorf("bound block is unavailable")
 	}
 	if p.Policy != "" && !policy.Can(a.Policies[p.Policy], false, requestContext, nil) {
 		return nil, requestContext, fmt.Errorf("bound page is unavailable")
 	}
-	found := false
-	for _, region := range a.Panels[p.Panel].Regions {
-		for _, candidate := range region.Blocks {
-			found = found || candidate == blockName
-		}
-	}
-	definition, exists := a.Blocks[blockName]
-	if !found || !exists || kind == "view" && definition.View != target || kind == "webform" && definition.Webform != target {
+	if !panelContainsBlock(a.Panels[p.Panel], blockName) {
 		return nil, requestContext, fmt.Errorf("bound block does not match this request")
 	}
 	query := map[string]string{}
@@ -1066,6 +1105,17 @@ func (s *Server) boundBlockInputs(r *http.Request, a *appir.App, kind, target st
 	}
 	inputs, _ := node.Props["inputs"].(map[string]any)
 	return inputs, requestContext, nil
+}
+
+func panelContainsBlock(panelDefinition appir.Panel, name string) bool {
+	for _, region := range panelDefinition.Regions {
+		for _, candidate := range region.Blocks {
+			if candidate == name {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (s *Server) fallback(w http.ResponseWriter, r *http.Request) {

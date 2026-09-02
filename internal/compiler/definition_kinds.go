@@ -162,6 +162,24 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 		}
 		return references(out...)
 	}
+	sequenceKind := mappedDefinitionKind(appir.Sequence{}, func(app *appir.App) map[string]appir.Sequence { return app.Sequences }, func(name string, value *appir.Sequence) {
+		value.Name = name
+		if value.Profile == "" {
+			value.Profile = "presentation"
+		}
+		if value.AspectRatio == "" {
+			value.AspectRatio = "wide"
+		}
+	})
+	sequenceKind.References = func(app *appir.App, name string) []DefinitionReference {
+		item := app.Sequences[name]
+		out := []DefinitionReference{reference("policy", "Policy", item.Policy)}
+		for index, frame := range item.Frames {
+			out = append(out, reference(fmt.Sprintf("frames.%d.panel", index), "Panel", frame.Panel))
+		}
+		return references(out...)
+	}
+	sequenceKind.ReferenceCandidates = true
 	role := mappedDefinitionKind(appir.Role{}, func(app *appir.App) map[string]appir.Role { return app.Roles }, nameValue[appir.Role](func(value *appir.Role, name string) { value.Name = name }))
 	role.ReferenceCandidates = true
 	menu := mappedDefinitionKind(appir.Menu{}, func(app *appir.App) map[string]appir.Menu { return app.Menus }, nameValue[appir.Menu](func(value *appir.Menu, name string) { value.Name = name }))
@@ -200,6 +218,7 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 	block.Validate = validateBlocks
 	panel.Validate = validatePanels
 	pageKind.Validate = validatePages
+	sequenceKind.Validate = validateSequences
 	role.Validate = noDefinitionValidation
 	menu.Validate = validateMenus
 	job.Validate = validateJobs
@@ -226,6 +245,7 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 		registry.Entry[definitionKind]{Name: "Policy", Value: policy},
 		registry.Entry[definitionKind]{Name: "Role", Value: role},
 		registry.Entry[definitionKind]{Name: "Rule", Value: ruleKind},
+		registry.Entry[definitionKind]{Name: "Sequence", Value: sequenceKind},
 		registry.Entry[definitionKind]{Name: "TestSuite", Value: testSuite},
 		registry.Entry[definitionKind]{Name: "Theme", Value: theme},
 		registry.Entry[definitionKind]{Name: "View", Value: view},

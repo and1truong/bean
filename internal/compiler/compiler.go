@@ -11,11 +11,13 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/beanruntime/bean/internal/actionop"
 	"github.com/beanruntime/bean/internal/actionstep"
 	"github.com/beanruntime/bean/internal/appir"
 	blockcap "github.com/beanruntime/bean/internal/block"
+	beancontent "github.com/beanruntime/bean/internal/content"
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/expr"
@@ -25,6 +27,7 @@ import (
 	"github.com/beanruntime/bean/internal/page"
 	"github.com/beanruntime/bean/internal/policy"
 	"github.com/beanruntime/bean/internal/rule"
+	beansequence "github.com/beanruntime/bean/internal/sequence"
 	"github.com/beanruntime/bean/internal/valuesource"
 )
 
@@ -589,7 +592,7 @@ func routesOverlap(left, right string) bool {
 func validate(a *appir.App) []definition.Diagnostic {
 	state := &validationState{routes: map[string]string{}}
 	out := []definition.Diagnostic{}
-	for _, kind := range []string{"Theme", "DemoSeed", "Filter", "Page", "View", "Entity", "Lifecycle", "Rule", "Extension", "Action", "TestSuite", "Webform", "Policy", "Block", "LocalRegistration", "Panel", "Job", "Menu", "AdminResource", "Role"} {
+	for _, kind := range []string{"Theme", "DemoSeed", "Filter", "Page", "View", "Sequence", "Entity", "Lifecycle", "Rule", "Extension", "Action", "TestSuite", "Webform", "Policy", "Block", "LocalRegistration", "Panel", "Job", "Menu", "AdminResource", "Role"} {
 		registered, _ := definitionKindRegistry().Lookup(kind)
 		out = append(out, registered.Validate(a, state)...)
 	}
@@ -699,6 +702,10 @@ func sameStrings(left, right []string) bool {
 
 func extensionDiagnostic(name, path, message string) definition.Diagnostic {
 	return definition.NewDiagnostic(definition.RuleExtension, "Extension", name, path, message)
+}
+
+func sequenceDiagnostic(kind, name, path, message string) definition.Diagnostic {
+	return definition.NewDiagnostic(definition.RuleSequence, kind, name, path, message)
 }
 
 func actionExtensionDiagnostic(name, path, message string) definition.Diagnostic {
@@ -2045,6 +2052,11 @@ func validateBlocks(a *appir.App, _ *validationState) []definition.Diagnostic {
 		if blockSpecification.RequiresResource && block.Resource == "" {
 			out = append(out, requiredDiagnostic("Block", name, "spec.resource", "is required"))
 		}
+		if blockSpecification.RequiresContent {
+			out = append(out, validateContentBlock(name, block)...)
+		} else if len(block.Content) > 0 {
+			out = append(out, sequenceDiagnostic("Block", name, "spec.content", "is only supported by a content Block"))
+		}
 		if blockSpecification.RequiresEditorReadPolicy && (block.Policy == "" || !editorOnlyReadPolicy(a.Policies[block.Policy])) {
 			out = append(out, diagnostic("Block", name, "spec.policy", "resource-list Block must be restricted to editor and administrator roles"))
 		}
@@ -2186,6 +2198,55 @@ func validateBlocks(a *appir.App, _ *validationState) []definition.Diagnostic {
 					out = append(out, diagnostic("Block", name, "spec.inputs."+inputName+".type", "does not match target input type "+expected.Type))
 				}
 			}
+		}
+	}
+	return out
+}
+
+func validateContentBlock(name string, block appir.Block) []definition.Diagnostic {
+	if len(block.Content) == 0 {
+		return []definition.Diagnostic{sequenceDiagnostic("Block", name, "spec.content", "requires at least one semantic content element")}
+	}
+	out := []definition.Diagnostic{}
+	if len(block.Content) > beancontent.MaxElements {
+		out = append(out, sequenceDiagnostic("Block", name, "spec.content", fmt.Sprintf("exceeds the maximum of %d elements", beancontent.MaxElements)))
+	}
+	types, tones, directions := nameSet(beancontent.Types()), nameSet(beancontent.Tones()), nameSet(beancontent.Directions())
+	for index, element := range block.Content {
+		path := fmt.Sprintf("spec.content.%d", index)
+		if !types[element.Type] {
+			out = append(out, sequenceDiagnostic("Block", name, path+".type", "has no supported semantic content type"))
+			continue
+		}
+		switch element.Type {
+		case "heading", "paragraph", "quote", "code", "callout":
+			if strings.TrimSpace(element.Text) == "" {
+				out = append(out, sequenceDiagnostic("Block", name, path+".text", "is required"))
+			}
+		case "bullets":
+			if len(element.Items) == 0 || len(element.Items) > beancontent.MaxBulletItems {
+				out = append(out, sequenceDiagnostic("Block", name, path+".items", fmt.Sprintf("must contain between 1 and %d bullet items", beancontent.MaxBulletItems)))
+			}
+		case "image":
+			if strings.TrimSpace(element.Alt) == "" {
+				out = append(out, sequenceDiagnostic("Block", name, path+".alt", "is required for an accessible image"))
+			}
+			if !beancontent.ValidImageSource(element.Source) {
+				out = append(out, sequenceDiagnostic("Block", name, path+".source", "must be an absolute application path or HTTPS URL without credentials, query, or fragment"))
+			}
+		case "diagram":
+			if len(element.Items) < 2 || len(element.Items) > beancontent.MaxDiagramItems {
+				out = append(out, sequenceDiagnostic("Block", name, path+".items", fmt.Sprintf("must contain between 2 and %d ordered nodes", beancontent.MaxDiagramItems)))
+			}
+			if !directions[element.Direction] {
+				out = append(out, sequenceDiagnostic("Block", name, path+".direction", "has no supported diagram direction"))
+			}
+		}
+		if element.Type == "callout" && !tones[element.Tone] {
+			out = append(out, sequenceDiagnostic("Block", name, path+".tone", "has no supported callout tone"))
+		}
+		if element.Type == "code" && strings.Count(element.Text, "\n")+1 > beancontent.MaxCodeLines {
+			out = append(out, sequenceDiagnostic("Block", name, path+".text", fmt.Sprintf("exceeds the maximum of %d code lines", beancontent.MaxCodeLines)))
 		}
 	}
 	return out
@@ -2340,6 +2401,124 @@ func validatePages(a *appir.App, state *validationState) []definition.Diagnostic
 		a.Pages[name] = page
 	}
 	return out
+}
+
+func validateSequences(a *appir.App, state *validationState) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
+	profiles, aspects, layouts := nameSet(beansequence.Profiles()), nameSet(beansequence.AspectRatios()), nameSet(beansequence.Layouts())
+	for _, name := range keys(a.Sequences) {
+		item := a.Sequences[name]
+		if !canonicalRoutePath(item.Route) || strings.Contains(item.Route, ":") {
+			out = append(out, sequenceDiagnostic("Sequence", name, "spec.route", "must be a canonical static absolute URL path"))
+		} else if reservedViewDisplayRoute(item.Route) {
+			out = append(out, sequenceDiagnostic("Sequence", name, "spec.route", "overlaps a built-in application route"))
+		} else if old := conflictingRoute(state.routes, item.Route); old != "" {
+			out = append(out, sequenceDiagnostic("Sequence", name, "spec.route", "overlaps route used by "+old))
+		} else {
+			state.routes[item.Route] = "Sequence/" + name
+		}
+		if !profiles[item.Profile] {
+			out = append(out, sequenceDiagnostic("Sequence", name, "spec.profile", "has no supported Sequence profile"))
+		}
+		if !aspects[item.AspectRatio] {
+			out = append(out, sequenceDiagnostic("Sequence", name, "spec.aspectRatio", "has no supported aspect ratio"))
+		}
+		if strings.TrimSpace(item.Title) == "" {
+			out = append(out, sequenceDiagnostic("Sequence", name, "spec.title", "is required"))
+		} else if utf8.RuneCountInString(item.Title) > beansequence.MaxTitleRunes {
+			out = append(out, sequenceDiagnostic("Sequence", name, "spec.title", fmt.Sprintf("exceeds the maximum of %d characters", beansequence.MaxTitleRunes)))
+		}
+		if len(item.Frames) < beansequence.MinFrames || len(item.Frames) > beansequence.MaxFrames {
+			out = append(out, sequenceDiagnostic("Sequence", name, "spec.frames", fmt.Sprintf("must contain between %d and %d frames", beansequence.MinFrames, beansequence.MaxFrames)))
+		}
+		if item.Policy != "" {
+			if _, exists := a.Policies[item.Policy]; !exists {
+				out = append(out, missingReferenceDiagnostic("Sequence", name, "spec.policy", "Policy", item.Policy))
+			}
+		}
+		seen := map[string]bool{}
+		for index, frame := range item.Frames {
+			path := fmt.Sprintf("spec.frames.%d", index)
+			if !testCaseName.MatchString(frame.Name) {
+				out = append(out, sequenceDiagnostic("Sequence", name, path+".name", "must be a nonempty machine name"))
+			} else if seen[frame.Name] {
+				out = append(out, sequenceDiagnostic("Sequence", name, path+".name", "duplicates another frame name"))
+			}
+			seen[frame.Name] = true
+			if strings.TrimSpace(frame.Title) == "" {
+				out = append(out, sequenceDiagnostic("Sequence", name, path+".title", "is required"))
+			} else if utf8.RuneCountInString(frame.Title) > beansequence.MaxTitleRunes {
+				out = append(out, sequenceDiagnostic("Sequence", name, path+".title", fmt.Sprintf("exceeds the maximum of %d characters", beansequence.MaxTitleRunes)))
+			}
+			if len(frame.Notes) > beansequence.MaxNotesBytes {
+				out = append(out, sequenceDiagnostic("Sequence", name, path+".notes", fmt.Sprintf("exceeds the maximum of %d bytes", beansequence.MaxNotesBytes)))
+			}
+			if !layouts[frame.Layout] {
+				out = append(out, sequenceDiagnostic("Sequence", name, path+".layout", "has no supported frame layout"))
+			}
+			panelDefinition, exists := a.Panels[frame.Panel]
+			if !exists {
+				out = append(out, missingReferenceDiagnostic("Sequence", name, path+".panel", "Panel", frame.Panel))
+				continue
+			}
+			if layouts[frame.Layout] && !beansequence.PanelLayoutAllowed(frame.Layout, panelDefinition.Layout) {
+				out = append(out, sequenceDiagnostic("Sequence", name, path+".layout", "is incompatible with Panel layout "+panelDefinition.Layout))
+			}
+			blocks := sequencePanelBlocks(panelDefinition)
+			if len(blocks) < beansequence.MinBlocksPerFrame || len(blocks) > beansequence.MaxBlocksPerFrame {
+				out = append(out, sequenceDiagnostic("Sequence", name, path, fmt.Sprintf("must render between %d and %d Blocks", beansequence.MinBlocksPerFrame, beansequence.MaxBlocksPerFrame)))
+			}
+			weight, features := sequenceFrameWeight(a, blocks)
+			if weight > beansequence.ContentBudget(frame.Layout) {
+				out = append(out, sequenceDiagnostic("Sequence", name, path, fmt.Sprintf("content density %d exceeds the %s layout budget of %d units", weight, frame.Layout, beansequence.ContentBudget(frame.Layout))))
+			}
+			requiredFeature := map[string]string{"architecture": "diagram", "process": "diagram", "image-focus": "image", "chart-focus": "chart", "table": "table", "timeline": "timeline"}[frame.Layout]
+			if requiredFeature != "" && !features[requiredFeature] {
+				out = append(out, sequenceDiagnostic("Sequence", name, path+".layout", "requires a "+requiredFeature+" element or View renderer"))
+			}
+			if frame.Layout == "table" && features["wide-table"] {
+				out = append(out, sequenceDiagnostic("Sequence", name, path+".layout", "table frames support at most 6 visible columns"))
+			}
+		}
+	}
+	return out
+}
+
+func sequencePanelBlocks(panel appir.Panel) []string {
+	out := []string{}
+	for _, region := range panel.Regions {
+		out = append(out, region.Blocks...)
+	}
+	return out
+}
+
+func sequenceFrameWeight(a *appir.App, blocks []string) (int, map[string]bool) {
+	weight, features := 0, map[string]bool{}
+	for _, blockName := range blocks {
+		block := a.Blocks[blockName]
+		switch block.Type {
+		case "content":
+			weight += beancontent.Weight(block.Content)
+			for _, element := range block.Content {
+				features[element.Type] = true
+			}
+		case "text":
+			weight += utf8.RuneCountInString(block.Text)
+		case "view":
+			weight += 200
+			renderer := block.Presentation.Mode
+			if display, exists := a.Views[block.View].Displays[block.Display]; exists {
+				renderer = display.Renderer.Type
+				if renderer == "table" && len(display.Renderer.Fields) > 6 {
+					features["wide-table"] = true
+				}
+			}
+			features[renderer] = true
+		default:
+			weight += 120
+		}
+	}
+	return weight, features
 }
 
 func validateJobs(a *appir.App, _ *validationState) []definition.Diagnostic {
@@ -3285,6 +3464,17 @@ func normalizeResourceListBlocks(a *appir.App) {
 func normalizeBlocks(a *appir.App) {
 	normalizeResourceListBlocks(a)
 	for name, block := range a.Blocks {
+		if block.Type == "content" {
+			for index := range block.Content {
+				if block.Content[index].Type == "callout" && block.Content[index].Tone == "" {
+					block.Content[index].Tone = "info"
+				}
+				if block.Content[index].Type == "diagram" && block.Content[index].Direction == "" {
+					block.Content[index].Direction = "horizontal"
+				}
+			}
+			a.Blocks[name] = block
+		}
 		if block.Type != "view" || block.View == "" || block.Display != "" {
 			continue
 		}

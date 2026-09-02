@@ -24,6 +24,7 @@ type Specification struct {
 	InputTarget              InputTarget
 	RequiresResource         bool
 	RequiresEditorReadPolicy bool
+	RequiresContent          bool
 	SupportsPresentation     bool
 	DerivesViewFromResource  bool
 }
@@ -38,6 +39,7 @@ type capability struct {
 var capabilities = registry.Must(
 	registry.Identity[capability],
 	entry("action", Specification{Component: "ActionBlock"}, actionProperties),
+	entry("content", Specification{Component: "ContentBlock", RequiresContent: true}, contentProperties),
 	entry("entity", Specification{Component: "EntityBlock"}, entityProperties),
 	entry("menu", Specification{Component: "MenuBlock"}, menuProperties),
 	entry("resource-list", Specification{Component: "ResourceListBlock", InputTarget: ResourceInputTarget, RequiresResource: true, RequiresEditorReadPolicy: true, DerivesViewFromResource: true}, resourceListProperties),
@@ -61,6 +63,11 @@ func Names() []string {
 
 func textProperties(_ *appir.App, block appir.Block, _ beanctx.Request, props map[string]any) error {
 	props["text"] = block.Text
+	return nil
+}
+
+func contentProperties(_ *appir.App, block appir.Block, _ beanctx.Request, props map[string]any) error {
+	props["content"] = block.Content
 	return nil
 }
 

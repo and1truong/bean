@@ -26,6 +26,54 @@ describe('View datetime controls',()=>{
 })
 
 describe('public rendering',()=>{
+  it('renders and navigates an accessible semantic Sequence',async()=>{
+    const print=vi.fn();vi.stubGlobal('print',print)
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Sequence',props:{title:'Introducing Bean',description:'Deterministic applications',profile:'presentation',aspectRatio:'wide'},children:[
+        {component:'SequenceFrame',props:{name:'opening',title:'Bean',layout:'title',notes:''},children:[{component:'Panel',props:{layout:'single-column'},children:[{component:'Region',props:{name:'main'},children:[{component:'ContentBlock',props:{content:[{Type:'heading',Text:'Build with intent'},{Type:'paragraph',Text:'Compile to deterministic software.'}]}}]}]}]},
+        {component:'SequenceFrame',props:{name:'architecture',title:'Architecture',layout:'architecture',notes:'Explain every deterministic boundary.'},children:[{component:'Panel',props:{layout:'single-column'},children:[{component:'Region',props:{name:'main'},children:[{component:'ContentBlock',props:{content:[{Type:'diagram',Items:['Intent','Compiler','Runtime'],Direction:'horizontal'}]}}]}]}]},
+        {component:'SequenceFrame',props:{name:'closing',title:'Start building',layout:'closing',notes:''},children:[{component:'Panel',props:{layout:'single-column'},children:[{component:'Region',props:{name:'main'},children:[{component:'ContentBlock',props:{content:[{Type:'callout',Text:'Five minutes to a useful app.',Tone:'success'}]}}]}]}]},
+      ]}})
+      return response({})
+    }))
+    renderApp('/presentations/bean')
+    expect(await screen.findByRole('heading',{name:'Bean',level:1})).toBeVisible()
+    expect(screen.getByText('1 / 3')).toBeVisible()
+    expect(screen.queryByRole('navigation',{name:'Primary navigation'})).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button',{name:'Next'}))
+    expect(screen.getByRole('heading',{name:'Architecture',level:1})).toBeVisible()
+    expect(screen.getByText('2 / 3')).toBeVisible()
+    const notes=document.querySelector('.bean-speaker-notes')
+    expect(notes).not.toBeVisible()
+    fireEvent.click(screen.getByRole('button',{name:'Speaker notes'}))
+    expect(notes).toBeVisible()
+    expect(screen.getByText('Explain every deterministic boundary.')).toBeVisible()
+    fireEvent.keyDown(window,{key:'End'})
+    expect(screen.getByRole('heading',{name:'Start building',level:1})).toBeVisible()
+    expect(screen.getByText('3 / 3')).toBeVisible()
+    fireEvent.click(screen.getByRole('button',{name:'Print'}))
+    expect(print).toHaveBeenCalledOnce()
+    expect(document.querySelectorAll('.bean-sequence-frame')).toHaveLength(3)
+    expect(document.title).toBe('Introducing Bean')
+  })
+
+  it('opens a Sequence frame by stable URL identity',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Sequence',props:{title:'Introducing Bean'},children:[
+        {component:'SequenceFrame',props:{name:'opening',title:'Bean',layout:'title'},children:[{component:'Panel'}]},
+        {component:'SequenceFrame',props:{name:'architecture',title:'Architecture',layout:'architecture'},children:[{component:'Panel'}]},
+      ]}})
+      return response({})
+    }))
+    renderApp('/presentations/bean?frame=architecture')
+    expect(await screen.findByRole('heading',{name:'Architecture',level:1})).toBeVisible()
+    expect(screen.getByLabelText('Choose frame')).toHaveValue('architecture')
+  })
+
   it('renders an explicit error for an unknown server component',async()=>{
     vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
       const path=String(input)

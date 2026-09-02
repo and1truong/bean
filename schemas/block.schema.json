@@ -1,5 +1,41 @@
 {
   "$defs": {
+    "github_com_beanruntime_bean_internal_appir_ContentElement": {
+      "additionalProperties": false,
+      "properties": {
+        "alt": {
+          "type": "string"
+        },
+        "attribution": {
+          "type": "string"
+        },
+        "direction": {
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "language": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "tone": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "github_com_beanruntime_bean_internal_appir_ContextBinding": {
       "additionalProperties": false,
       "properties": {
@@ -151,6 +187,12 @@
         "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ContextBinding"
       },
       "type": "object"
+    },
+    "content": {
+      "items": {
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ContentElement"
+      },
+      "type": "array"
     },
     "defaultFilters": {
       "additionalProperties": {},

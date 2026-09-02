@@ -484,10 +484,10 @@ func TestAgentCapabilitiesAndSchemaAreSelfDescribing(t *testing.T) {
 		assert  func(*testing.T, map[string]any)
 	}{
 		{args: []string{"capabilities", "--json"}, command: "capabilities", assert: func(t *testing.T, result map[string]any) {
-			if result["definitionAPIVersion"] != "bean/v1alpha1" || result["appIRFormat"] != "bean/appir/v7" {
+			if result["definitionAPIVersion"] != "bean/v1alpha1" || result["appIRFormat"] != "bean/appir/v8" {
 				t.Fatalf("capabilities = %#v", result)
 			}
-			if len(result["definitionKinds"].([]any)) < 10 || len(result["fieldTypes"].([]any)) < 10 {
+			if len(result["definitionKinds"].([]any)) < 10 || len(result["fieldTypes"].([]any)) < 10 || len(result["sequenceFrameLayouts"].([]any)) < 10 || len(result["contentElementTypes"].([]any)) != 8 {
 				t.Fatalf("capability vocabulary is incomplete: %#v", result)
 			}
 		}},
@@ -898,7 +898,7 @@ func TestInspectionAndDiffRedactActionLiterals(t *testing.T) {
 }
 
 func TestInspectionResolvesEveryMaintainedDefinitionReference(t *testing.T) {
-	for _, application := range []string{"asana", "blog", "booking", "cms", "commerce", "community", "crm", "saas", "tracker"} {
+	for _, application := range []string{"asana", "ats", "blog", "booking", "cms", "commerce", "community", "crm", "presentation", "saas", "tracker"} {
 		bundle, err := examples.Load(application)
 		if err != nil {
 			t.Fatal(err)

@@ -1,6 +1,6 @@
-# Bean v0.15 capability matrix
+# Bean v0.16 capability matrix
 
-`complete` means the v0.15 compiler/runtime pair has direct executable evidence. Bean remains alpha software and the limits below are part of the contract.
+`complete` means the v0.16 compiler/runtime pair has direct executable evidence. Bean remains alpha software and the limits below are part of the contract.
 
 | Area | Capability | Status | Direct evidence |
 | --- | --- | --- | --- |
@@ -24,6 +24,10 @@
 | Operational dashboards | Explicit typed Page-filter fan-out, typed drill to exact record Views, and URL-reproducible state | complete | compiler/Page/HTTP/React/ATS/CRM/Asana contracts |
 | Explore Actions | Table/board selection and bounded sequential record batches through ordinary Policy/Rule/Lifecycle/Action semantics | complete | compiler/Action/HTTP/React/ATS/CRM/Commerce contracts |
 | Explore authoring parity | Explore, Studio, schemas, inspect/references/diff, and five agent prompt rubrics produce ordinary definitions | complete | React/compiler/Agent Protocol/agent fixture contracts |
+| Semantic sequences | AppIR v8 ordered route/frame composition over existing Panels and Blocks with inspect/references/diff and Policy-visible render trees | complete | compiler/AppIR/Agent Protocol/release/HTTP contracts |
+| Semantic content | Closed heading, paragraph, bullets, quote, code, callout, image, and ordered-diagram content without executable markup | complete | schema/compiler/content/React safety contracts |
+| HTML presentation profile | Wide/standard frames, URL state, keyboard/buttons/picker, progress, notes, responsive bounds, and print page breaks | complete | React and presentation Playwright journey |
+| Presentation agent slice | Ten-frame Bean introduction with stable repair diagnostics and a real grouped View/chart | complete | presentation source, agent rubric, restart, package, and browser evidence |
 | Public tables and controls | Ordered labelled linked columns, typed exposed-filter operators/widgets/defaults, URL state, immutable binding separation, and cursor page sizes | complete | compiler/View/DBAL/HTTP/React/Studio and SQLite/PostgreSQL contracts |
 | View page titles | Static or unique-bound result titles rendered as page headings and browser titles | complete | compiler/HTTP/React and blog contracts |
 | DBAL | Parameterized CRUD, predicates, joins, groups, aggregates, transactions, inspection, migrations | complete | reusable SQLite/PostgreSQL contract |
@@ -61,12 +65,13 @@
 - One Bean process and one active application per database are qualified. Clustering, multi-process writers, replicas, HA, and failover are not.
 - Migrations are additive. Destructive schema changes, data transformations, and automated rollback are rejected or deferred.
 - Outbox delivery is at-least-once. A crash after delivery but before acknowledgement can duplicate an effect.
-- v0.15 retains the v0.5 crash qualification assumption of a functioning filesystem or PostgreSQL service. Corruption, host loss, backup/restore, and point-in-time recovery are outside scope.
+- v0.16 retains the v0.5 crash qualification assumption of a functioning filesystem or PostgreSQL service. Corruption, host loss, backup/restore, and point-in-time recovery are outside scope.
 - The visual builder covers the core operational definition path, including Page filters; uncommon Block/Panel combinations use advanced JSON.
 - Tree presentation is bounded by the View maximum of 200 rows. File fields are bounded small attachments stored as base64 metadata content; external object storage, resumable transfer, scanning, and media processing are outside this slice.
 - SQLite/PostgreSQL parity is contract and workflow parity, not identical query plans or operational characteristics.
 - `bean package` deliberately targets local SQLite only. It does not create containers, installers, hosted previews, signatures, or a distribution channel.
 - Lifecycle owns only one Entity enum field, initial state, and transition graph. Rules own only bounded side-effect-free local predicates and scalar calculations. TestSuites target Rules and Actions in isolated SQLite only; generated cases exercise Policy/Lifecycle through Actions and never infer business expectations. Extensions provide only typed after-commit HTTP external writes; synchronous results, scripts, WASM, plugins, direct database/filesystem/process access, OAuth, arbitrary headers, compensations, and exactly-once effects remain unsupported. Direct Policy/Lifecycle/Extension TestSuite targets and production release gating remain future work. Legacy Action-local transition graphs remain supported; AppIR v1-v4 remain readable without Extension semantics.
-- Explore does not include arbitrary SQL, pivots, to-many/distinct aggregates, average money, currency conversion, computed read buckets, user-private presets, external data federation, or provider schema introspection. View displays do not include numeric/full pagers, richer chart families, arbitrary templates/application code, sequences/slides, or presentation export. Group results fail rather than silently truncate beyond 200. Bulk Actions are bounded to 200 unique records, sequential, and non-atomic across records.
+- Explore does not include arbitrary SQL, pivots, to-many/distinct aggregates, average money, currency conversion, computed read buckets, user-private presets, external data federation, or provider schema introspection. View displays do not include numeric/full pagers, richer chart families, or arbitrary templates/application code. Group results fail rather than silently truncate beyond 200. Bulk Actions are bounded to 200 unique records, sequential, and non-atomic across records.
+- Sequence v0.16 supports only the `presentation` profile and deterministic semantic density bounds. Freeform coordinates, arbitrary templates, animation, transitions, WYSIWYG editing, embedded agents, research/image generation, executable Markdown/HTML/CSS/JS/SVG, native PDF/PPTX, hosted sharing, asset caching, and pixel-perfect font/layout prediction are outside scope.
 - MCP deliberately targets local stdio only. Streamable HTTP, hosted identity, OAuth, subscriptions, prompts, resources, sampling, and remote rate-limit infrastructure are outside v0.15.
 - External security review, load envelopes, SLOs, supply-chain signing, and production release certification remain future work.

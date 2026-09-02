@@ -1,0 +1,80 @@
+kind: Panel
+name: frame_opening
+layout: single-column
+regions:
+  - {name: main, blocks: [opening]}
+---
+kind: Panel
+name: frame_product
+layout: single-column
+regions:
+  - {name: main, blocks: [product_statement]}
+---
+kind: Panel
+name: frame_architecture
+layout: single-column
+regions:
+  - {name: main, blocks: [runtime_architecture]}
+---
+kind: Panel
+name: frame_primitives
+layout: single-column
+regions:
+  - {name: main, blocks: [core_primitives]}
+---
+kind: Panel
+name: frame_agent
+layout: single-column
+regions:
+  - {name: main, blocks: [agent_execution_loop]}
+---
+kind: Panel
+name: frame_explore
+layout: single-column
+regions:
+  - {name: main, blocks: [explore_loop]}
+---
+kind: Panel
+name: frame_capabilities
+layout: single-column
+regions:
+  - {name: main, blocks: [capability_chart_context, capability_chart]}
+---
+kind: Panel
+name: frame_safety
+layout: two-column
+regions:
+  - {name: left, blocks: [safety_semantics]}
+  - {name: right, blocks: [safety_infrastructure]}
+---
+kind: Panel
+name: frame_examples
+layout: two-column
+regions:
+  - {name: left, blocks: [reference_apps]}
+  - {name: right, blocks: [current_direction]}
+---
+kind: Panel
+name: frame_close
+layout: single-column
+regions:
+  - {name: main, blocks: [getting_started]}
+---
+kind: Sequence
+name: bean_introduction
+route: /presentations/bean
+title: Introducing Bean
+description: A deterministic application runtime for humans and agents.
+profile: presentation
+aspectRatio: wide
+frames:
+  - {name: opening, title: Introducing Bean, layout: title, panel: frame_opening, notes: "Introduce Bean as an application runtime, not a code generator."}
+  - {name: thesis, title: The product thesis, layout: statement, panel: frame_product, notes: "Emphasize shared semantics for human and agent authors."}
+  - {name: architecture, title: Deterministic by construction, layout: architecture, panel: frame_architecture, notes: "Walk left to right through the release lifecycle."}
+  - {name: primitives, title: A small semantic vocabulary, layout: bullets, panel: frame_primitives, notes: "The primitives compose; presentation does not create a second runtime."}
+  - {name: agents, title: Agents compile into Bean, layout: process, panel: frame_agent, notes: "Diagnostics provide a bounded repair loop."}
+  - {name: explore, title: "Observe, drill down, and act", layout: process, panel: frame_explore, notes: "Explore reuses Views, Displays, Actions, and Policies."}
+  - {name: capabilities, title: The presentation can contain live data, layout: chart-focus, panel: frame_capabilities, notes: "This chart is queried and rendered through the normal View path."}
+  - {name: safety, title: Explicit ownership boundaries, layout: comparison, panel: frame_safety, notes: "Application meaning and infrastructure integration have distinct owners."}
+  - {name: examples, title: Executable product specifications, layout: two-column, panel: frame_examples, notes: "Examples prove reusable semantics instead of application-specific branches."}
+  - {name: start, title: Build the next application, layout: closing, panel: frame_close, notes: "Close with the shortest runnable path."}

@@ -16,7 +16,8 @@ const (
 	TestSuiteFormat = "bean/appir/v4"
 	ExtensionFormat = "bean/appir/v5"
 	DisplayFormat   = "bean/appir/v6"
-	CurrentFormat   = "bean/appir/v7"
+	ExploreFormat   = "bean/appir/v7"
+	CurrentFormat   = "bean/appir/v8"
 )
 
 type Field struct {
@@ -313,6 +314,11 @@ type Block struct {
 	Filters                                                                          []string
 	DefaultFilters                                                                   map[string]any
 	Presentation                                                                     ViewPresentation
+	Content                                                                          []ContentElement
+}
+type ContentElement struct {
+	Type, Text, Attribution, Source, Alt, Language, Tone, Direction string
+	Items                                                           []string
 }
 type ViewPresentation struct {
 	Mode, TitleField, BodyField, LinkRoute, LinkField, EmptyState string
@@ -351,6 +357,13 @@ type Page struct {
 	Name, Route, Title, Policy, Panel, Description string
 	Context                                        map[string]ContextBinding
 	Filters                                        map[string]PageFilter
+}
+type SequenceFrame struct {
+	Name, Title, Layout, Panel, Notes string
+}
+type Sequence struct {
+	Name, Route, Title, Description, Profile, AspectRatio, Policy string
+	Frames                                                        []SequenceFrame
 }
 type PageFilter struct {
 	Label, Type, Widget string
@@ -415,6 +428,7 @@ type App struct {
 	Blocks            map[string]Block
 	Panels            map[string]Panel
 	Pages             map[string]Page
+	Sequences         map[string]Sequence
 	Roles             map[string]Role
 	Menus             map[string]Menu
 	Jobs              map[string]Job
@@ -427,10 +441,10 @@ type App struct {
 }
 
 func Empty() *App {
-	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Rules: map[string]Rule{}, TestSuites: map[string]TestSuite{}, Extensions: map[string]Extension{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
+	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Rules: map[string]Rule{}, TestSuites: map[string]TestSuite{}, Extensions: map[string]Extension{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Sequences: map[string]Sequence{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
 }
 func (a *App) ValidateFormat() error {
-	if a.FormatVersion != LegacyFormat && a.FormatVersion != LifecycleFormat && a.FormatVersion != RuleFormat && a.FormatVersion != TestSuiteFormat && a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != LegacyFormat && a.FormatVersion != LifecycleFormat && a.FormatVersion != RuleFormat && a.FormatVersion != TestSuiteFormat && a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != CurrentFormat {
 		return fmt.Errorf("unsupported AppIR format %q", a.FormatVersion)
 	}
 	if a.FormatVersion == LegacyFormat {
@@ -458,13 +472,13 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != TestSuiteFormat && a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != CurrentFormat && len(a.TestSuites) > 0 {
+	if a.FormatVersion != TestSuiteFormat && a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != CurrentFormat && len(a.TestSuites) > 0 {
 		return fmt.Errorf("AppIR format %q cannot contain TestSuite definitions", a.FormatVersion)
 	}
-	if a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != CurrentFormat && len(a.Extensions) > 0 {
+	if a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != CurrentFormat && len(a.Extensions) > 0 {
 		return fmt.Errorf("AppIR format %q cannot contain Extension definitions", a.FormatVersion)
 	}
-	if a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != CurrentFormat {
 		for _, action := range a.Actions {
 			for _, step := range action.Steps {
 				if step.Op == "extension" || step.Extension != "" {
@@ -480,7 +494,7 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != DisplayFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != CurrentFormat {
 		for _, view := range a.Views {
 			for _, filter := range view.ExposedFilters {
 				if filter.Field != "" || filter.Operator != "" {
@@ -501,7 +515,7 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != ExploreFormat && a.FormatVersion != CurrentFormat {
 		for _, view := range a.Views {
 			if len(view.Search.Fields) > 0 {
 				return fmt.Errorf("AppIR format %q cannot contain View-owned search semantics", a.FormatVersion)
@@ -518,6 +532,16 @@ func (a *App) ValidateFormat() error {
 				if display.Selection != "" || len(display.Actions) > 0 || display.Drill != nil {
 					return fmt.Errorf("AppIR format %q cannot contain Explore interactions", a.FormatVersion)
 				}
+			}
+		}
+	}
+	if a.FormatVersion != CurrentFormat {
+		if len(a.Sequences) > 0 {
+			return fmt.Errorf("AppIR format %q cannot contain Sequence definitions", a.FormatVersion)
+		}
+		for _, block := range a.Blocks {
+			if len(block.Content) > 0 {
+				return fmt.Errorf("AppIR format %q cannot contain semantic content Blocks", a.FormatVersion)
 			}
 		}
 	}

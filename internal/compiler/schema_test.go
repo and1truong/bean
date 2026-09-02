@@ -29,7 +29,7 @@ func TestCanonicalSchemasCoverMaintainedExamples(t *testing.T) {
 			t.Fatalf("compile %s schema: %v", kind, err)
 		}
 	}
-	for _, application := range []string{"asana", "blog", "booking", "cms", "commerce", "community", "crm", "saas", "tracker"} {
+	for _, application := range []string{"asana", "ats", "blog", "booking", "cms", "commerce", "community", "crm", "presentation", "saas", "tracker"} {
 		bundle, err := examples.Load(application)
 		if err != nil {
 			t.Fatal(err)

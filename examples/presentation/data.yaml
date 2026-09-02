@@ -1,0 +1,33 @@
+kind: DemoSeed
+name: bean_capabilities
+entities:
+  capability: {count: 12, profile: auto}
+---
+kind: Entity
+name: capability
+label: Capability
+fields:
+  - {name: name, label: Capability, type: string, required: true}
+  - {name: area, label: Area, type: enum, required: true, options: [application, data, operations, safety]}
+---
+kind: View
+name: capabilities_by_area
+entity: capability
+fields: [area]
+groupBy:
+  - {field: area}
+aggregates:
+  - {function: count, field: id, alias: capability_count}
+sort:
+  - {field: area}
+displays:
+  chart:
+    type: block
+    renderer: {type: chart, groupField: area, metricField: capability_count, metricLabel: Demonstrated capabilities}
+    pager: {type: none, pageSize: 20}
+---
+kind: Block
+name: capability_chart
+type: view
+view: capabilities_by_area
+display: chart

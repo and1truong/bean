@@ -10,10 +10,12 @@ import (
 	"github.com/beanruntime/bean/internal/actionstep"
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/block"
+	beancontent "github.com/beanruntime/bean/internal/content"
 	"github.com/beanruntime/bean/internal/definition"
 	beanextension "github.com/beanruntime/bean/internal/extension"
 	"github.com/beanruntime/bean/internal/field"
 	"github.com/beanruntime/bean/internal/rule"
+	beansequence "github.com/beanruntime/bean/internal/sequence"
 	"github.com/beanruntime/bean/internal/testsuite"
 )
 
@@ -43,6 +45,21 @@ type Capabilities struct {
 	ViewSelections          []string `json:"viewSelections"`
 	DisplaySerializers      []string `json:"displaySerializers"`
 	PanelLayouts            []string `json:"panelLayouts"`
+	SequenceProfiles        []string `json:"sequenceProfiles"`
+	SequenceAspectRatios    []string `json:"sequenceAspectRatios"`
+	SequenceFrameLayouts    []string `json:"sequenceFrameLayouts"`
+	ContentElementTypes     []string `json:"contentElementTypes"`
+	ContentTones            []string `json:"contentTones"`
+	DiagramDirections       []string `json:"diagramDirections"`
+	MaxSequenceFrames       int      `json:"maxSequenceFrames"`
+	MaxSequenceTitleRunes   int      `json:"maxSequenceTitleRunes"`
+	MaxSequenceNotesBytes   int      `json:"maxSequenceNotesBytes"`
+	MaxSequenceFrameBlocks  int      `json:"maxSequenceFrameBlocks"`
+	MaxSequenceContentUnits int      `json:"maxSequenceContentUnits"`
+	MaxContentElements      int      `json:"maxContentElements"`
+	MaxContentBulletItems   int      `json:"maxContentBulletItems"`
+	MaxContentDiagramItems  int      `json:"maxContentDiagramItems"`
+	MaxContentCodeLines     int      `json:"maxContentCodeLines"`
 	DatabaseBackends        []string `json:"databaseBackends"`
 	MaxViewLimit            int      `json:"maxViewLimit"`
 	MaxFileBytes            int      `json:"maxFileBytes"`
@@ -102,6 +119,21 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 		ViewSelections:          []string{"multiple", "none", "single"},
 		DisplaySerializers:      displaySerializerNames(),
 		PanelLayouts:            panelLayoutNames(),
+		SequenceProfiles:        beansequence.Profiles(),
+		SequenceAspectRatios:    beansequence.AspectRatios(),
+		SequenceFrameLayouts:    beansequence.Layouts(),
+		ContentElementTypes:     beancontent.Types(),
+		ContentTones:            beancontent.Tones(),
+		DiagramDirections:       beancontent.Directions(),
+		MaxSequenceFrames:       beansequence.MaxFrames,
+		MaxSequenceTitleRunes:   beansequence.MaxTitleRunes,
+		MaxSequenceNotesBytes:   beansequence.MaxNotesBytes,
+		MaxSequenceFrameBlocks:  beansequence.MaxBlocksPerFrame,
+		MaxSequenceContentUnits: beansequence.BaseContentBudget,
+		MaxContentElements:      beancontent.MaxElements,
+		MaxContentBulletItems:   beancontent.MaxBulletItems,
+		MaxContentDiagramItems:  beancontent.MaxDiagramItems,
+		MaxContentCodeLines:     beancontent.MaxCodeLines,
 		DatabaseBackends:        []string{"postgresql", "sqlite"},
 		MaxViewLimit:            200,
 		MaxFileBytes:            field.MaxFileBytes,
