@@ -60,6 +60,11 @@ type Invocation struct {
 	Input          map[string]any `json:"input"`
 }
 
+type intent struct {
+	Invocation
+	Contract appir.Extension `json:"contract"`
+}
+
 type Provider interface {
 	Call(context.Context, appir.Extension, Invocation) (map[string]any, error)
 }
@@ -80,7 +85,7 @@ func Enqueue(ctx context.Context, tx dbal.Transaction, definition appir.Extensio
 		return err
 	}
 	invocation := Invocation{APIVersion: APIVersion, Extension: definition.Name, InvocationID: invocationID, IdempotencyKey: invocationID, Input: input}
-	_, err := event.Enqueue(ctx, tx, TopicPrefix+definition.Name, invocation, event.Options{
+	_, err := event.Enqueue(ctx, tx, TopicPrefix+definition.Name, intent{Invocation: invocation, Contract: definition}, event.Options{
 		ID: invocationID, RetryDelay: time.Duration(definition.Retry.DelaySeconds) * time.Second,
 		MaxAttempts: definition.Retry.MaxAttempts, CreatedAt: createdAt,
 	})
@@ -89,25 +94,26 @@ func Enqueue(ctx context.Context, tx dbal.Transaction, definition appir.Extensio
 
 func IsTopic(topic string) bool { return strings.HasPrefix(topic, TopicPrefix) }
 
-func Deliver(ctx context.Context, app *appir.App, provider Provider, topic string, payload map[string]any) error {
+func Deliver(ctx context.Context, provider Provider, topic string, payload map[string]any) error {
 	name := strings.TrimPrefix(topic, TopicPrefix)
 	if name == topic || name == "" {
 		return &DeliveryFailure{Code: FailureContract}
 	}
-	definition, exists := app.Extensions[name]
-	if !exists || provider == nil {
+	if provider == nil {
 		return &DeliveryFailure{Code: FailureUnavailable, CanRetry: true}
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return &DeliveryFailure{Code: FailureContract}
 	}
-	var invocation Invocation
+	var stored intent
 	decoder := json.NewDecoder(bytes.NewReader(encoded))
 	decoder.UseNumber()
-	if err = decoder.Decode(&invocation); err != nil || invocation.APIVersion != APIVersion || invocation.Extension != name || invocation.InvocationID == "" || invocation.IdempotencyKey != invocation.InvocationID {
+	if err = decoder.Decode(&stored); err != nil || stored.APIVersion != APIVersion || stored.Extension != name || stored.InvocationID == "" || stored.IdempotencyKey != stored.InvocationID || stored.Contract.Name != name {
 		return &DeliveryFailure{Code: FailureContract}
 	}
+	invocation := stored.Invocation
+	definition := stored.Contract
 	if err = ValidateValues(definition.Input, invocation.Input); err != nil {
 		return &DeliveryFailure{Code: FailureContract}
 	}

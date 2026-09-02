@@ -148,7 +148,7 @@ func runIsolatedCase(ctx context.Context, bundle definition.Bundle, suiteName st
 			if !beanextension.IsTopic(topic) {
 				return nil
 			}
-			return beanextension.Deliver(deliveryCtx, app, provider, topic, payload)
+			return beanextension.Deliver(deliveryCtx, provider, topic, payload)
 		}}
 		if err = runner.RunOnce(caseCtx); err != nil {
 			return nil, err

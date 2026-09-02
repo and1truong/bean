@@ -108,11 +108,7 @@ func OpenURLWithOptions(ctx context.Context, databaseURL string, secure bool, op
 	}
 	outbox := event.Runner{DB: db, Deliver: func(ctx context.Context, topic string, payload map[string]any) error {
 		if extension.IsTopic(topic) {
-			app, ok := k.Active()
-			if !ok {
-				return &extension.DeliveryFailure{Code: extension.FailureUnavailable, CanRetry: true}
-			}
-			return extension.Deliver(ctx, app, provider, topic, payload)
+			return extension.Deliver(ctx, provider, topic, payload)
 		}
 		slog.InfoContext(ctx, "Bean event delivered", "topic", topic)
 		return nil

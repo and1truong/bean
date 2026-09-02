@@ -27,11 +27,9 @@ func TestHTTPProviderSendsTypedVersionedAuthenticatedInvocation(t *testing.T) {
 	}))
 	defer server.Close()
 	definition := providerDefinition(server.URL, "bearer")
-	app := appir.Empty()
-	app.Extensions[definition.Name] = definition
-	payload := invocationPayload(t, extension.Invocation{APIVersion: extension.APIVersion, Extension: definition.Name, InvocationID: "invocation-1", IdempotencyKey: "invocation-1", Input: map[string]any{"message": "hello"}})
+	payload := invocationPayload(t, definition, extension.Invocation{APIVersion: extension.APIVersion, Extension: definition.Name, InvocationID: "invocation-1", IdempotencyKey: "invocation-1", Input: map[string]any{"message": "hello"}})
 	provider := extension.NewHTTPProvider(nil, map[string]string{definition.Name: "test-secret"})
-	if err := extension.Deliver(context.Background(), app, provider, extension.TopicPrefix+definition.Name, payload); err != nil {
+	if err := extension.Deliver(context.Background(), provider, extension.TopicPrefix+definition.Name, payload); err != nil {
 		t.Fatal(err)
 	}
 	if received.APIVersion != extension.APIVersion || received.Extension != definition.Name || received.InvocationID != "invocation-1" || received.Input["message"] != "hello" {
@@ -80,10 +78,8 @@ func TestHTTPProviderRejectsRedirectInvalidAndOversizedResponses(t *testing.T) {
 	for _, body := range []string{`{"output":{"accepted":"yes"}}`, `{"output":{"accepted":true},"extra":true}`, `{"output":{"accepted":true}} trailing`, strings.Repeat("x", extension.MaxResponseBytes+1)} {
 		server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) { _, _ = response.Write([]byte(body)) }))
 		definition = providerDefinition(server.URL, "none")
-		app := appir.Empty()
-		app.Extensions[definition.Name] = definition
-		payload := invocationPayload(t, testInvocation(definition.Name))
-		err = extension.Deliver(context.Background(), app, extension.NewHTTPProvider(nil, nil), extension.TopicPrefix+definition.Name, payload)
+		payload := invocationPayload(t, definition, testInvocation(definition.Name))
+		err = extension.Deliver(context.Background(), extension.NewHTTPProvider(nil, nil), extension.TopicPrefix+definition.Name, payload)
 		assertDeliveryFailure(t, err, extension.FailureResponse, false)
 		server.Close()
 	}
@@ -94,9 +90,7 @@ func TestHTTPProviderRejectsFractionalAndOutOfRangeIntegerOutput(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) { _, _ = response.Write([]byte(body)) }))
 		definition := providerDefinition(server.URL, "none")
 		definition.Output = map[string]appir.Field{"sequence": {Name: "sequence", Type: "integer", Required: true}}
-		app := appir.Empty()
-		app.Extensions[definition.Name] = definition
-		err := extension.Deliver(context.Background(), app, extension.NewHTTPProvider(nil, nil), extension.TopicPrefix+definition.Name, invocationPayload(t, testInvocation(definition.Name)))
+		err := extension.Deliver(context.Background(), extension.NewHTTPProvider(nil, nil), extension.TopicPrefix+definition.Name, invocationPayload(t, definition, testInvocation(definition.Name)))
 		assertDeliveryFailure(t, err, extension.FailureResponse, false)
 		server.Close()
 	}
@@ -105,8 +99,6 @@ func TestHTTPProviderRejectsFractionalAndOutOfRangeIntegerOutput(t *testing.T) {
 func TestDeliveryPreservesIntegerInputPrecision(t *testing.T) {
 	definition := providerDefinition("https://provider.example/notify", "none")
 	definition.Input = map[string]appir.Field{"sequence": {Name: "sequence", Type: "integer", Required: true}}
-	app := appir.Empty()
-	app.Extensions[definition.Name] = definition
 	invocation := testInvocation(definition.Name)
 	invocation.Input = map[string]any{"sequence": int64(9007199254740993)}
 	encoded, err := json.Marshal(invocation)
@@ -119,6 +111,7 @@ func TestDeliveryPreservesIntegerInputPrecision(t *testing.T) {
 	if err = decoder.Decode(&payload); err != nil {
 		t.Fatal(err)
 	}
+	payload["contract"] = definition
 	provider := providerFunc(func(_ context.Context, _ appir.Extension, delivered extension.Invocation) (map[string]any, error) {
 		number, ok := delivered.Input["sequence"].(json.Number)
 		if !ok || number.String() != "9007199254740993" {
@@ -126,7 +119,21 @@ func TestDeliveryPreservesIntegerInputPrecision(t *testing.T) {
 		}
 		return map[string]any{"accepted": true}, nil
 	})
-	if err = extension.Deliver(context.Background(), app, provider, extension.TopicPrefix+definition.Name, payload); err != nil {
+	if err = extension.Deliver(context.Background(), provider, extension.TopicPrefix+definition.Name, payload); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDeliveryUsesTheContractStoredWithTheIntent(t *testing.T) {
+	original := providerDefinition("https://original.example/notify", "none")
+	payload := invocationPayload(t, original, testInvocation(original.Name))
+	provider := providerFunc(func(_ context.Context, definition appir.Extension, _ extension.Invocation) (map[string]any, error) {
+		if definition.Endpoint != original.Endpoint {
+			t.Fatalf("definition=%+v", definition)
+		}
+		return map[string]any{"accepted": true}, nil
+	})
+	if err := extension.Deliver(context.Background(), provider, extension.TopicPrefix+original.Name, payload); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -140,15 +147,13 @@ func (f providerFunc) Call(ctx context.Context, definition appir.Extension, invo
 func TestDeliveryEnforcesTimeoutAndTypedMockOutput(t *testing.T) {
 	definition := providerDefinition("https://provider.example/notify", "none")
 	definition.TimeoutSeconds = 1
-	app := appir.Empty()
-	app.Extensions[definition.Name] = definition
-	payload := invocationPayload(t, testInvocation(definition.Name))
+	payload := invocationPayload(t, definition, testInvocation(definition.Name))
 	blocking := providerFunc(func(ctx context.Context, _ appir.Extension, _ extension.Invocation) (map[string]any, error) {
 		<-ctx.Done()
 		return nil, ctx.Err()
 	})
 	started := time.Now()
-	err := extension.Deliver(context.Background(), app, blocking, extension.TopicPrefix+definition.Name, payload)
+	err := extension.Deliver(context.Background(), blocking, extension.TopicPrefix+definition.Name, payload)
 	assertDeliveryFailure(t, err, extension.FailureTimeout, true)
 	if time.Since(started) > 2*time.Second {
 		t.Fatalf("timeout took %s", time.Since(started))
@@ -156,7 +161,7 @@ func TestDeliveryEnforcesTimeoutAndTypedMockOutput(t *testing.T) {
 	invalid := providerFunc(func(context.Context, appir.Extension, extension.Invocation) (map[string]any, error) {
 		return map[string]any{"accepted": "yes"}, nil
 	})
-	err = extension.Deliver(context.Background(), app, invalid, extension.TopicPrefix+definition.Name, payload)
+	err = extension.Deliver(context.Background(), invalid, extension.TopicPrefix+definition.Name, payload)
 	assertDeliveryFailure(t, err, extension.FailureResponse, false)
 }
 
@@ -186,7 +191,7 @@ func testInvocation(name string) extension.Invocation {
 	return extension.Invocation{APIVersion: extension.APIVersion, Extension: name, InvocationID: "invocation-1", IdempotencyKey: "invocation-1", Input: map[string]any{"message": "hello"}}
 }
 
-func invocationPayload(t *testing.T, invocation extension.Invocation) map[string]any {
+func invocationPayload(t *testing.T, definition appir.Extension, invocation extension.Invocation) map[string]any {
 	t.Helper()
 	encoded, err := json.Marshal(invocation)
 	if err != nil {
@@ -196,6 +201,7 @@ func invocationPayload(t *testing.T, invocation extension.Invocation) map[string
 	if err = json.Unmarshal(encoded, &payload); err != nil {
 		t.Fatal(err)
 	}
+	payload["contract"] = definition
 	return payload
 }
 

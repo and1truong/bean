@@ -159,6 +159,25 @@ func TestActionRejectsFractionalExtensionIntegerLiteral(t *testing.T) {
 	t.Fatalf("diagnostics=%v", result.Diagnostics)
 }
 
+func TestActionPreservesExtensionIntegerLiteral(t *testing.T) {
+	extensionDefinition := validExtensionDefinition()
+	extensionDefinition.Spec["input"] = map[string]any{"sequence": map[string]any{"type": "integer", "required": true}}
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "order"}, Spec: map[string]any{}},
+		extensionDefinition,
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "notify_order"}, Spec: map[string]any{
+			"entity": "order", "operation": "transaction", "input": map[string]any{"reason": map[string]any{"type": "string"}}, "steps": []any{map[string]any{"op": "extension", "extension": "order_notification", "values": map[string]any{"sequence": int64(9007199254740993)}}},
+		}},
+	}
+	result := Compile("test", 1, definitions)
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("diagnostics=%v", result.Diagnostics)
+	}
+	if literal := result.App.Actions["notify_order"].Steps[0].Values[0].Value.Literal; string(literal) != "9007199254740993" {
+		t.Fatalf("literal=%s", literal)
+	}
+}
+
 func TestActionEmitRejectsReservedExtensionTopicPrefix(t *testing.T) {
 	definitions := []definition.Definition{
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "order"}, Spec: map[string]any{}},

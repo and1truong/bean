@@ -632,7 +632,9 @@ func hydrate(row dbal.Row, entity appir.Entity) {
 func resolveValue(binding appir.ValueBinding, input map[string]any, results map[string]any, c beanctx.Request) (any, error) {
 	var literal any
 	if valuesource.IsLiteral(binding.Source) {
-		if err := json.Unmarshal(binding.Literal, &literal); err != nil {
+		decoder := json.NewDecoder(strings.NewReader(string(binding.Literal)))
+		decoder.UseNumber()
+		if err := decoder.Decode(&literal); err != nil {
 			return nil, fmt.Errorf("invalid literal: %w", err)
 		}
 	}

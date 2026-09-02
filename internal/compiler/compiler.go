@@ -1372,7 +1372,9 @@ func validateActions(a *appir.App, _ *validationState) []definition.Diagnostic {
 						}
 						if valuesource.IsLiteral(item.Value.Source) {
 							var value any
-							if err := json.Unmarshal(item.Value.Literal, &value); err != nil {
+							decoder := json.NewDecoder(strings.NewReader(string(item.Value.Literal)))
+							decoder.UseNumber()
+							if err := decoder.Decode(&value); err != nil {
 								out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "literal does not match Extension input type"))
 								continue
 							}

@@ -299,6 +299,7 @@ func DecodeSpec(spec map[string]any, target any) error {
 	}
 	decoder := json.NewDecoder(bytes.NewReader(b))
 	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
 	if e = decoder.Decode(target); e != nil {
 		return e
 	}

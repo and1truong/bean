@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -76,6 +77,46 @@ func TestExtensionIntentPreservesAuthorizationTransactionAuditAndIdempotency(t *
 	failureAudits, err := database.Select(ctx, dbal.Select{Table: "bean_audit", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "action", Value: failed.Name}})
 	if err != nil || len(failureAudits) != 1 || failureAudits[0]["success"] != int64(0) {
 		t.Fatalf("failure audits=%v err=%v", failureAudits, err)
+	}
+}
+
+func TestExtensionIntentPreservesIntegerLiteralPrecision(t *testing.T) {
+	ctx := context.Background()
+	database, err := sqlite.Open(filepath.Join(t.TempDir(), "extension-integer.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err = database.ExecuteMigration(ctx, migration.MetadataSchema()); err != nil {
+		t.Fatal(err)
+	}
+	app := extensionActionApp()
+	definition := app.Extensions["notify_provider"]
+	definition.Input = map[string]appir.Field{"sequence": {Name: "sequence", Type: "integer", Required: true}}
+	app.Extensions[definition.Name] = definition
+	actionDefinition := app.Actions["notify"]
+	actionDefinition.Steps[0].Values = []appir.Assignment{{Field: "sequence", Value: appir.ValueBinding{Source: "literal", Literal: json.RawMessage(`9007199254740993`)}}}
+	app.Actions[actionDefinition.Name] = actionDefinition
+	service := action.Service{DB: database, CreateInvocationID: func() string { return "00000000-0000-4000-8000-000000000201" }, Now: func() time.Time {
+		return time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)
+	}}
+	request := beanctx.Request{User: &beanctx.User{ID: "manager", Roles: []string{"manager"}}}
+	if _, err = service.Execute(ctx, app, "notify", map[string]any{"message": "unused"}, request); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := database.Select(ctx, dbal.Select{Table: "bean_outbox", Limit: 1})
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("rows=%v err=%v", rows, err)
+	}
+	payload := map[string]any{}
+	decoder := json.NewDecoder(strings.NewReader(rows[0]["payload"].(string)))
+	decoder.UseNumber()
+	if err = decoder.Decode(&payload); err != nil {
+		t.Fatal(err)
+	}
+	sequence, ok := payload["input"].(map[string]any)["sequence"].(json.Number)
+	if !ok || sequence.String() != "9007199254740993" {
+		t.Fatalf("sequence=%v (%T)", sequence, sequence)
 	}
 }
 
