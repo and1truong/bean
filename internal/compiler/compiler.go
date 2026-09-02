@@ -532,10 +532,33 @@ type validationState struct {
 	routes map[string]string
 }
 
+func conflictingRoute(routes map[string]string, route string) string {
+	for _, existing := range keys(routes) {
+		if routesOverlap(existing, route) {
+			return routes[existing]
+		}
+	}
+	return ""
+}
+
+func routesOverlap(left, right string) bool {
+	leftParts := strings.Split(strings.Trim(left, "/"), "/")
+	rightParts := strings.Split(strings.Trim(right, "/"), "/")
+	if len(leftParts) != len(rightParts) {
+		return false
+	}
+	for index := range leftParts {
+		if leftParts[index] != rightParts[index] && !strings.HasPrefix(leftParts[index], ":") && !strings.HasPrefix(rightParts[index], ":") {
+			return false
+		}
+	}
+	return true
+}
+
 func validate(a *appir.App) []definition.Diagnostic {
 	state := &validationState{routes: map[string]string{}}
 	out := []definition.Diagnostic{}
-	for _, kind := range []string{"Theme", "DemoSeed", "Filter", "View", "Entity", "Lifecycle", "Rule", "Extension", "Action", "TestSuite", "Webform", "Policy", "Block", "LocalRegistration", "Panel", "Page", "Job", "Menu", "AdminResource", "Role"} {
+	for _, kind := range []string{"Theme", "DemoSeed", "Filter", "Page", "View", "Entity", "Lifecycle", "Rule", "Extension", "Action", "TestSuite", "Webform", "Policy", "Block", "LocalRegistration", "Panel", "Job", "Menu", "AdminResource", "Role"} {
 		registered, _ := definitionKindRegistry().Lookup(kind)
 		out = append(out, registered.Validate(a, state)...)
 	}
@@ -748,7 +771,8 @@ func validateFilters(a *appir.App, _ *validationState) []definition.Diagnostic {
 func validateViews(a *appir.App, state *validationState) []definition.Diagnostic {
 	out := []definition.Diagnostic{}
 	routes := state.routes
-	for name, v := range a.Views {
+	for _, name := range keys(a.Views) {
+		v := a.Views[name]
 		e, ok := a.Entities[v.Entity]
 		if !ok {
 			out = append(out, missingReferenceDiagnostic("View", name, "spec.entity", "Entity", v.Entity))
@@ -920,8 +944,9 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 				if display.Route == "" {
 					continue
 				}
-				if old := routes[display.Route]; old != "" {
-					out = append(out, duplicateDiagnostic("View", name, "spec.displays."+displayName+".route", "duplicates route used by "+old))
+				if old := conflictingRoute(routes, display.Route); old != "" {
+					out = append(out, duplicateDiagnostic("View", name, "spec.displays."+displayName+".route", "overlaps route used by "+old))
+					continue
 				}
 				routes[display.Route] = "View/" + name
 				continue
@@ -934,8 +959,8 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 			if display.Type == "page" {
 				if display.Route == "" {
 					out = append(out, requiredDiagnostic("View", name, "spec.displays."+displayName+".route", "page display route is required"))
-				} else if old := routes[display.Route]; old != "" {
-					out = append(out, duplicateDiagnostic("View", name, "spec.displays."+displayName+".route", "duplicates route used by "+old))
+				} else if old := conflictingRoute(routes, display.Route); old != "" {
+					out = append(out, duplicateDiagnostic("View", name, "spec.displays."+displayName+".route", "overlaps route used by "+old))
 				} else {
 					routes[display.Route] = "View/" + name
 				}
@@ -953,7 +978,7 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 	selected := nameSet(view.Fields)
 	redacted := nameSet(app.Policies[policy.EffectiveViewPolicyName(view, entity)].Redact)
 	renderer := display.Renderer
-	if !nameSet(append(presentationNames(), "table"))[renderer.Type] {
+	if !nameSet(viewRendererNames())[renderer.Type] {
 		out = append(out, diagnostic("View", viewName, base+".renderer.type", "has no registered renderer"))
 	} else if renderer.Type == "table" {
 		if len(renderer.Fields) == 0 {
@@ -1999,14 +2024,16 @@ func validatePanels(a *appir.App, _ *validationState) []definition.Diagnostic {
 func validatePages(a *appir.App, state *validationState) []definition.Diagnostic {
 	out := []definition.Diagnostic{}
 	routes := state.routes
-	for name, page := range a.Pages {
+	for _, name := range keys(a.Pages) {
+		page := a.Pages[name]
 		if !strings.HasPrefix(page.Route, "/") {
 			out = append(out, diagnostic("Page", name, "spec.route", "must start with /"))
 		}
-		if old := routes[page.Route]; old != "" {
-			out = append(out, diagnostic("Page", name, "spec.route", "duplicates route used by "+old))
+		if old := conflictingRoute(routes, page.Route); old != "" {
+			out = append(out, diagnostic("Page", name, "spec.route", "overlaps route used by "+old))
+		} else {
+			routes[page.Route] = "Page/" + name
 		}
-		routes[page.Route] = "Page/" + name
 		if _, ok := a.Panels[page.Panel]; !ok {
 			out = append(out, missingReferenceDiagnostic("Page", name, "spec.panel", "Panel", page.Panel))
 		}
@@ -2386,6 +2413,18 @@ func viewFieldDefinition(name string, base appir.Entity, relationships map[strin
 	for _, fieldDefinition := range []appir.Field{{Name: "id", Type: "uuid"}, {Name: "created_at", Type: "datetime"}, {Name: "updated_at", Type: "datetime"}, {Name: "version", Type: "integer"}} {
 		if fieldDefinition.Name == fieldName {
 			return fieldDefinition, true
+		}
+	}
+	for _, fieldDefinition := range []struct {
+		field   appir.Field
+		enabled bool
+	}{
+		{field: appir.Field{Name: "owner_id", Type: "uuid"}, enabled: entity.Owner},
+		{field: appir.Field{Name: "tenant_id", Type: "uuid"}, enabled: entity.Tenant},
+		{field: appir.Field{Name: "deleted_at", Type: "datetime"}, enabled: entity.SoftDelete},
+	} {
+		if fieldDefinition.enabled && fieldDefinition.field.Name == fieldName {
+			return fieldDefinition.field, true
 		}
 	}
 	return appir.Field{}, false

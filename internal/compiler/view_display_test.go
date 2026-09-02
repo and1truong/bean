@@ -63,8 +63,11 @@ func TestFirstClassViewDisplayCompilesCanonicalContract(t *testing.T) {
 		t.Fatalf("block=%+v", result.App.Blocks["recent_articles"])
 	}
 	capabilities := compiler.AgentCapabilities("test")
-	if !reflect.DeepEqual(capabilities.ViewDisplayTypes, []string{"block", "csv", "json", "page", "rss"}) || !reflect.DeepEqual(capabilities.ViewFilterOperators, []string{"contains", "eq", "gte", "lte"}) || !reflect.DeepEqual(capabilities.ViewControlWidgets, []string{"auto", "checkbox", "date", "number", "select", "text"}) || !reflect.DeepEqual(capabilities.ViewPagers, []string{"cursor", "none"}) {
+	if !reflect.DeepEqual(capabilities.ViewDisplayTypes, []string{"block", "csv", "json", "page", "rss"}) || !reflect.DeepEqual(capabilities.ViewRenderers, []string{"board", "detail", "list", "metric", "table", "timeline", "tree"}) || !reflect.DeepEqual(capabilities.ViewFilterOperators, []string{"contains", "eq", "gte", "lte"}) || !reflect.DeepEqual(capabilities.ViewControlWidgets, []string{"auto", "checkbox", "date", "number", "select", "text"}) || !reflect.DeepEqual(capabilities.ViewPagers, []string{"cursor", "none"}) {
 		t.Fatalf("capabilities=%+v", capabilities)
+	}
+	if contains(capabilities.Presentations, "table") {
+		t.Fatalf("legacy presentations=%v", capabilities.Presentations)
 	}
 }
 
@@ -82,6 +85,59 @@ func TestLegacyBlockPresentationNormalizesToPrivateViewDisplay(t *testing.T) {
 	display, exists := result.App.Views["articles"].Displays[block.Display]
 	if !exists || block.Display != "_block_articles_list" || display.Type != "block" || display.Renderer.Type != "list" {
 		t.Fatalf("block=%+v display=%+v", block, display)
+	}
+	definitions[2].Spec = map[string]any{"type": "view", "view": "articles", "presentation": map[string]any{"mode": "table"}}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasViewDisplayDiagnostic(diagnostics, "Block", "articles_list", "spec.presentation.mode") {
+		t.Fatalf("legacy table diagnostics=%v", diagnostics)
+	}
+}
+
+func TestViewDisplayRejectsOverlappingRoutes(t *testing.T) {
+	entity := definition.Definition{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}}}}
+	t.Run("between displays", func(t *testing.T) {
+		view := definition.Definition{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "articles"}, Spec: map[string]any{
+			"entity": "article", "fields": []any{"id", "title"}, "displays": map[string]any{
+				"by_id":   map[string]any{"type": "page", "route": "/articles/:id", "renderer": map[string]any{"type": "list"}},
+				"by_slug": map[string]any{"type": "page", "route": "/articles/:slug", "renderer": map[string]any{"type": "list"}},
+			},
+		}}
+		diagnostics := compiler.Compile("test", 1, []definition.Definition{entity, view}).Diagnostics
+		if !hasViewDisplayDiagnostic(diagnostics, "View", "articles", "spec.displays.by_slug.route") {
+			t.Fatalf("overlapping display diagnostics=%v", diagnostics)
+		}
+	})
+	t.Run("with an existing Page", func(t *testing.T) {
+		view := definition.Definition{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "articles"}, Spec: map[string]any{
+			"entity": "article", "fields": []any{"id", "title"}, "displays": map[string]any{
+				"new": map[string]any{"type": "page", "route": "/articles/new", "renderer": map[string]any{"type": "list"}},
+			},
+		}}
+		panel := definition.Definition{APIVersion: definition.APIVersion, Kind: "Panel", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"layout": "single-column", "regions": []any{}}}
+		page := definition.Definition{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"route": "/articles/:id", "panel": "article"}}
+		diagnostics := compiler.Compile("test", 1, []definition.Definition{entity, view, panel, page}).Diagnostics
+		if !hasViewDisplayDiagnostic(diagnostics, "View", "articles", "spec.displays.new.route") {
+			t.Fatalf("shadowed display diagnostics=%v", diagnostics)
+		}
+	})
+}
+
+func TestViewExposedFiltersDeriveScopedSystemFieldTypes(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "record"}, Spec: map[string]any{"owner": true, "tenant": true, "softDelete": true, "fields": []any{map[string]any{"name": "title", "type": "string"}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "records"}, Spec: map[string]any{
+			"entity": "record", "fields": []any{"id", "owner_id", "tenant_id", "deleted_at"}, "exposedFilters": map[string]any{
+				"owner": map[string]any{"field": "owner_id"}, "tenant": map[string]any{"field": "tenant_id"}, "deleted": map[string]any{"field": "deleted_at"},
+			},
+		}},
+	}
+	result := compiler.Compile("test", 1, definitions)
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("diagnostics=%v", result.Diagnostics)
+	}
+	filters := result.App.Views["records"].ExposedFilters
+	if filters["owner"].Type != "uuid" || filters["tenant"].Type != "uuid" || filters["deleted"].Type != "datetime" {
+		t.Fatalf("filters=%+v", filters)
 	}
 }
 
@@ -135,4 +191,22 @@ func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 			t.Errorf("missing %s: %v", path, diagnostics)
 		}
 	}
+}
+
+func hasViewDisplayDiagnostic(diagnostics []definition.Diagnostic, kind, name, path string) bool {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Kind == kind && diagnostic.Name == name && diagnostic.Path == path {
+			return true
+		}
+	}
+	return false
+}
+
+func contains(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }

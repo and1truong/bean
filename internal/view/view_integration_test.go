@@ -96,7 +96,7 @@ func TestTenantIsolationInjectedIntoView(t *testing.T) {
 	if e = s.Initialize(ctx); e != nil {
 		t.Fatal(e)
 	}
-	defs := []definition.Definition{{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "project"}, Spec: map[string]any{"tenant": true, "fields": []any{map[string]any{"name": "name", "type": "string", "required": true}}}}, {APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "tenant_member"}, Spec: map[string]any{"readRoles": []any{"member"}, "writeRoles": []any{"member"}, "tenant": true}}, {APIVersion: "bean/v1alpha1", Kind: "View", Metadata: definition.Metadata{Name: "projects"}, Spec: map[string]any{"entity": "project", "fields": []any{"id", "name", "tenant_id"}, "policy": "tenant_member"}}}
+	defs := []definition.Definition{{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "project"}, Spec: map[string]any{"tenant": true, "fields": []any{map[string]any{"name": "name", "type": "string", "required": true}}}}, {APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "tenant_member"}, Spec: map[string]any{"readRoles": []any{"member"}, "writeRoles": []any{"member"}, "tenant": true}}, {APIVersion: "bean/v1alpha1", Kind: "View", Metadata: definition.Metadata{Name: "projects"}, Spec: map[string]any{"entity": "project", "fields": []any{"id", "name", "tenant_id"}, "policy": "tenant_member", "exposedFilters": map[string]any{"tenant": map[string]any{"field": "tenant_id"}}}}}
 	if e = s.SaveBundle(ctx, "default", definition.Bundle{Name: "test", Definitions: defs}); e != nil {
 		t.Fatal(e)
 	}
@@ -123,6 +123,13 @@ func TestTenantIsolationInjectedIntoView(t *testing.T) {
 	rows, e = views.Run(ctx, app, "projects", view.Params{}, member("00000000-0000-4000-8000-00000000000a"))
 	if e != nil || len(rows) != 1 {
 		t.Fatalf("tenant A rows=%v err=%v", rows, e)
+	}
+	if app.Views["projects"].ExposedFilters["tenant"].Type != "uuid" {
+		t.Fatalf("tenant filter=%+v", app.Views["projects"].ExposedFilters["tenant"])
+	}
+	rows, e = views.Run(ctx, app, "projects", view.Params{Filter: map[string]any{"tenant": "00000000-0000-4000-8000-00000000000a"}}, member("00000000-0000-4000-8000-00000000000a"))
+	if e != nil || len(rows) != 1 {
+		t.Fatalf("tenant filter rows=%v err=%v", rows, e)
 	}
 	_ = appir.Empty()
 }

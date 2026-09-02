@@ -32,6 +32,7 @@ type Capabilities struct {
 	BlockTypes              []string `json:"blockTypes"`
 	Presentations           []string `json:"presentations"`
 	ViewDisplayTypes        []string `json:"viewDisplayTypes"`
+	ViewRenderers           []string `json:"viewRenderers"`
 	ViewFilterOperators     []string `json:"viewFilterOperators"`
 	ViewControlWidgets      []string `json:"viewControlWidgets"`
 	ViewPagers              []string `json:"viewPagers"`
@@ -85,6 +86,7 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 		BlockTypes:              block.Names(),
 		Presentations:           presentationNames(),
 		ViewDisplayTypes:        viewDisplayTypes(),
+		ViewRenderers:           viewRendererNames(),
 		ViewFilterOperators:     viewFilterOperators(),
 		ViewControlWidgets:      viewControlWidgets(),
 		ViewPagers:              viewPagerTypes(),
@@ -122,6 +124,9 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 }
 
 func presentationNames() []string {
+	return []string{"board", "detail", "list", "metric", "timeline", "tree"}
+}
+func viewRendererNames() []string {
 	return []string{"board", "detail", "list", "metric", "table", "timeline", "tree"}
 }
 func viewDisplayTypes() []string    { return []string{"block", "csv", "json", "page", "rss"} }
