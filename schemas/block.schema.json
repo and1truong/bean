@@ -153,6 +153,9 @@
       "additionalProperties": {},
       "type": "object"
     },
+    "display": {
+      "type": "string"
+    },
     "entity": {
       "type": "string"
     },

@@ -7,6 +7,7 @@ import (
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/policy"
 	"github.com/beanruntime/bean/internal/registry"
+	beanview "github.com/beanruntime/bean/internal/view"
 )
 
 type InputTarget uint8
@@ -65,7 +66,14 @@ func textProperties(_ *appir.App, block appir.Block, _ beanctx.Request, props ma
 
 func viewProperties(app *appir.App, block appir.Block, _ beanctx.Request, props map[string]any) error {
 	props["view"] = block.View
-	props["presentation"] = block.Presentation
+	presentation := block.Presentation
+	if display, exists := app.Views[block.View].Displays[block.Display]; exists {
+		props["display"] = display
+		props["filters"] = app.Views[block.View].ExposedFilters
+		presentation = display.Renderer.Presentation()
+	}
+	props["presentation"] = presentation
+	props["fieldTypes"] = beanview.FieldTypes(app, app.Views[block.View])
 	props["formattedFields"] = formattedFields(app, block)
 	props["fileFields"] = fileFields(app, block)
 	return nil

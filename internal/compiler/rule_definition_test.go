@@ -17,7 +17,7 @@ func TestRuleDefinitionCompilesIntoTypedAppIR(t *testing.T) {
 	if len(result.Diagnostics) != 0 {
 		t.Fatalf("diagnostics=%v", result.Diagnostics)
 	}
-	if result.App.FormatVersion != appir.CurrentFormat || appir.CurrentFormat != "bean/appir/v5" {
+	if result.App.FormatVersion != appir.CurrentFormat || appir.CurrentFormat != "bean/appir/v6" {
 		t.Fatalf("format=%q", result.App.FormatVersion)
 	}
 	compiled := result.App.Rules["positive_total"]

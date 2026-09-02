@@ -55,6 +55,7 @@ test('complete blog editorial, identity, and moderation journey',async({page,bea
   await expect(page.locator('.history').getByText('Publish post')).toBeVisible()
   await page.goto(bean.baseURL+'/posts/bean-ships')
   await expect(page.getByText('Bean ships')).toBeVisible()
+  await expect(page).toHaveTitle('Bean ships')
   await expect(page.getByText('Engineering')).toBeVisible()
   await expect(page.getByText(/Go, Runtime|Runtime, Go/)).toBeVisible()
   await expect(page.locator('.rich-text strong')).toHaveText('Markdown body')

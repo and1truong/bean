@@ -1,6 +1,6 @@
-# Bean v0.13 capability matrix
+# Bean v0.14 capability matrix
 
-`complete` means the v0.13 compiler/runtime pair has direct executable evidence. Bean remains alpha software and the limits below are part of the contract.
+`complete` means the v0.14 compiler/runtime pair has direct executable evidence. Bean remains alpha software and the limits below are part of the contract.
 
 | Area | Capability | Status | Direct evidence |
 | --- | --- | --- | --- |
@@ -17,6 +17,9 @@
 | Semantic TestSuites | Typed Rule/Action targets, fixtures, explicit actor/tenant/time/ID/seed context, deterministic assertions, typed offline provider mocks, fresh case isolation | complete | compiler/schema/AppIR, isolated runner, CLI/Agent Protocol, release, Extension, and maintained defect contracts |
 | Generated tests | Explicit-oracle replays, proven Policy/Lifecycle negatives, DemoSeed CRUD, structural/route evidence, eligible HTTP journeys | complete | generator, seeded-defect, production Action/View/HTTP, ordering, and CLI/Agent Protocol contracts |
 | Typed Extensions | AppIR v5 HTTP boundary with typed I/O, transactional intents, stable idempotency identity, host bearer auth, bounded delivery, and offline interaction assertions | complete | compiler/schema/AppIR/release, Action atomicity/replay, outbox/HTTP failure, TestSuite, and commerce contracts |
+| First-class View displays | AppIR v6 named page/block/JSON/CSV/RSS displays over one canonical View query, with legacy Block presentation normalization | complete | compiler/schema/AppIR/inspection/release, HTTP, React, blog, and ATS contracts |
+| Public tables and controls | Ordered labelled linked columns, typed exposed-filter operators/widgets/defaults, URL state, immutable binding separation, and cursor page sizes | complete | compiler/View/DBAL/HTTP/React/Studio and SQLite/PostgreSQL contracts |
+| View page titles | Static or unique-bound result titles rendered as page headings and browser titles | complete | compiler/HTTP/React and blog contracts |
 | DBAL | Parameterized CRUD, predicates, joins, groups, aggregates, transactions, inspection, migrations | complete | reusable SQLite/PostgreSQL contract |
 | PostgreSQL | pgx backend selection, numbered parameters, SQLSTATE errors, Admin/Action/View HTTP parity | complete | `make test-postgres` against PostgreSQL 17 |
 | Entity/relations | Typed native tables, four relation cardinalities, owner/tenant/soft-delete/version | complete | migration, Action, View, policy contracts |
@@ -32,7 +35,7 @@
 | UI system | Source-owned shadcn primitives, shared Bean tokens, accessible confirmations, responsive Shell/Public/Admin/System/Studio surfaces | complete | frontend lint/unit/build, `ui.spec.ts`, and full Playwright gate |
 | Actions | Typed I/O, full declared step set, Rule guards/derives/invariants, rollback, concurrency, audit, job/outbox intent | complete | Action integration and race tests |
 | Idempotency | Atomic result persistence and canonical input fingerprint conflict | complete | replay and changed-input contracts |
-| Views/policies | Projection, filters, joins, aggregates, keyset paging, tenant/owner/role/redaction | complete | View/policy contracts and browser apps |
+| Views/policies | Projection, filters, joins, aggregates, keyset paging, named displays, tenant/owner/role/redaction | complete | View/policy/display contracts and browser apps |
 | Releases | Additive plan, schema-ahead reconciliation, pointer integrity, startup storage validation | complete | release tests and process-crash gate |
 | SQLite durability | WAL, foreign keys, synchronous FULL, crash/restart integrity/foreign-key checks | complete | `make test-crash` |
 | Jobs | Claim token/lease, attempts, retry schedule, terminal failure, stale recovery | complete | job state-machine test |
@@ -52,11 +55,12 @@
 - One Bean process and one active application per database are qualified. Clustering, multi-process writers, replicas, HA, and failover are not.
 - Migrations are additive. Destructive schema changes, data transformations, and automated rollback are rejected or deferred.
 - Outbox delivery is at-least-once. A crash after delivery but before acknowledgement can duplicate an effect.
-- v0.13 retains the v0.5 crash qualification assumption of a functioning filesystem or PostgreSQL service. Corruption, host loss, backup/restore, and point-in-time recovery are outside scope.
+- v0.14 retains the v0.5 crash qualification assumption of a functioning filesystem or PostgreSQL service. Corruption, host loss, backup/restore, and point-in-time recovery are outside scope.
 - The visual builder covers the core operational definition path; non-core page composition kinds use advanced JSON in this slice.
 - Tree presentation is bounded by the View maximum of 200 rows. File fields are bounded small attachments stored as base64 metadata content; external object storage, resumable transfer, scanning, and media processing are outside this slice.
 - SQLite/PostgreSQL parity is contract and workflow parity, not identical query plans or operational characteristics.
 - `bean package` deliberately targets local SQLite only. It does not create containers, installers, hosted previews, signatures, or a distribution channel.
 - Lifecycle owns only one Entity enum field, initial state, and transition graph. Rules own only bounded side-effect-free local predicates and scalar calculations. TestSuites target Rules and Actions in isolated SQLite only; generated cases exercise Policy/Lifecycle through Actions and never infer business expectations. Extensions provide only typed after-commit HTTP external writes; synchronous results, scripts, WASM, plugins, direct database/filesystem/process access, OAuth, arbitrary headers, compensations, and exactly-once effects remain unsupported. Direct Policy/Lifecycle/Extension TestSuite targets and production release gating remain future work. Legacy Action-local transition graphs remain supported; AppIR v1-v4 remain readable without Extension semantics.
-- MCP deliberately targets local stdio only. Streamable HTTP, hosted identity, OAuth, subscriptions, prompts, resources, sampling, and remote rate-limit infrastructure are outside v0.13.
+- View displays do not include numeric/full pagers, totals, saved presets, arbitrary templates or application code, sequences/slides, or presentation export.
+- MCP deliberately targets local stdio only. Streamable HTTP, hosted identity, OAuth, subscriptions, prompts, resources, sampling, and remote rate-limit infrastructure are outside v0.14.
 - External security review, load envelopes, SLOs, supply-chain signing, and production release certification remain future work.

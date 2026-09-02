@@ -74,7 +74,7 @@ Presentation remains a separately reported score so a technically correct but un
 
 ## Current engineering goal
 
-Bean v0.13 Typed Extension Boundary is complete at squash merge `8a8c199`. It adds one metadata-declared, out-of-process HTTP contract for typed external effects. Authorized Actions atomically persist after-commit extension intents; bounded outbox delivery preserves stable invocation identity, retry, failure, audit, and Action idempotency semantics. Semantic TestSuites replace the same provider path with typed offline mocks and ordered interaction assertions. No successor phase is active; v1.0 remains planned and has not started.
+Bean v0.14 First-class View Displays is complete. It makes View the complete public read-and-presentation primitive: one canonical View query owns named page, block, and serializer displays. The first slice adds public table rendering, display-owned exposed controls, cursor pager configuration, page titles, compatibility for existing Block presentation metadata, and focused Studio authoring. Query planning remains internal; slides and presentation export remain deferred.
 
 ## Roadmap
 
@@ -89,9 +89,10 @@ Bean v0.13 Typed Extension Boundary is complete at squash merge `8a8c199`. It ad
 | 6 | v0.11 | First-class Semantic Test Suites for Bean definitions | complete |
 | 7 | v0.12 | Generated tests from semantic primitives and rules | complete |
 | 8 | v0.13 | Typed extension boundary for external effects | complete |
-| 9 | v1.0 | Qualification of one explicit production envelope | planned |
-| 10 | post-v1.0 | Bean Cloud preview environments | exploratory |
-| 11 | post-v1.0 | Composable application-pattern ecosystem | exploratory |
+| 9 | v0.14 | First-class View displays for reusable page, block, table, filter, pager, title, and serializer output | complete |
+| 10 | v1.0 | Qualification of one explicit production envelope | planned |
+| 11 | post-v1.0 | Bean Cloud preview environments | exploratory |
+| 12 | post-v1.0 | Composable application-pattern ecosystem | exploratory |
 
 ### Phase 0 — Application runtime (complete)
 
@@ -478,7 +479,21 @@ Exit criteria:
 - Semantic Test Suites can replace typed provider calls with mocks and assert their interactions without contacting real infrastructure.
 - Arbitrary inline JavaScript, SQL, and React remain unsupported.
 
-### Phase 9 — v1.0: production qualification
+### Phase 9 — v0.14: first-class View displays
+
+Make View match its product meaning rather than expose a query definition with presentation split across Blocks and Admin configuration. Existing entity, projection, relationship, predicate, aggregate, sort, Policy, and limit metadata remains the common query contract. Named displays reuse that query for simple pages, reusable blocks, and JSON/CSV/RSS endpoints.
+
+The first display slice moves existing list/detail/board/tree/metric/timeline presentation behind View ownership and adds a public table renderer, typed exposed-filter controls with labels and safe operators, explicit cursor pager behavior, and static or single-result page titles. Simple single-View routes are page displays; Page/Panel/Block remains the composition model for complex pages. Existing source and AppIR remain compatible through deterministic normalization.
+
+Exit criteria:
+
+- One View publishes multiple named page, block, and serializer displays through one Policy-preserving query engine.
+- Public table, labelled exposed controls, cursor pager, heading, and browser title behavior have compiler, HTTP, React, and browser evidence.
+- Existing Block presentation metadata and AppIR v1-v5 releases preserve observable behavior.
+- Studio authors the common display path without raw JSON, and metadata-only blog/ATS slices prove reuse without application-specific core branches.
+- Sequence/slide rendering, presentation diagnostics, and HTML/PDF/PPTX export remain deferred behind the generic display seam.
+
+### Phase 10 — v1.0: production qualification
 
 Qualify Bean for one deliberately narrow production envelope only after the agent-to-demo loop is strong:
 
@@ -488,7 +503,7 @@ Qualify backup/restore, secrets, migration and upgrade behavior, observability, 
 
 The phase must publish explicit supported topologies, failure models, SLO evidence, restore drills, compatibility windows, and known exclusions. Bean consumes managed databases, storage, identity, and orchestration; it does not become a Kubernetes platform, distributed database, Kafka clone, S3 clone, or identity provider.
 
-### Phase 10 — Bean Cloud
+### Phase 11 — Bean Cloud
 
 Only after the local engine and production contract are proven, provide the narrow hosted loop:
 
@@ -498,7 +513,7 @@ git or prompt -> Bean build -> preview environment -> shareable URL
 
 The minimum platform supplies PostgreSQL, object storage, secrets, domains, logs, deployments, and expiring previews. It does not expand into a general backend-as-a-service or functions platform.
 
-### Phase 11 — application-pattern ecosystem
+### Phase 12 — application-pattern ecosystem
 
 Once the definition and extension compatibility contracts are stable, allow agents to discover and compose versioned packages such as approval workflows, kanban, comments, tenant ownership, and activity feeds.
 

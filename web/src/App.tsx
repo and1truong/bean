@@ -1,7 +1,7 @@
-import {createContext,FormEvent,useContext,useRef,useState} from 'react'
-import {Link,Route,Routes,useLocation,useNavigate} from 'react-router-dom'
+import {createContext,FormEvent,useContext,useEffect,useMemo,useRef,useState} from 'react'
+import {Link,Route,Routes,useLocation,useNavigate,useSearchParams} from 'react-router-dom'
 import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query'
-import {api,APIError,FormElement,Manifest,Node,Session,ViewPresentation} from './api'
+import {api,APIError,FormElement,Manifest,Node,Session,ViewDisplay,ViewFilter,ViewPresentation} from './api'
 import {callAction,encodeInput} from './action-client'
 import {Admin,ResourceListBlock} from './Admin'
 import {Studio} from './Studio'
@@ -13,6 +13,7 @@ import {Input} from '@/components/ui/input'
 import {Label} from '@/components/ui/label'
 import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select'
 import {Textarea} from '@/components/ui/textarea'
+import {Table,TableBody,TableCell,TableHead,TableHeader,TableRow} from '@/components/ui/table'
 
 type Row=Record<string,any>
 const CurrentPath=createContext<React.MutableRefObject<string>|null>(null)
@@ -53,7 +54,7 @@ type RenderProps={
   Panel:{layout?:string}
   Region:{name?:string}
   TextBlock:{text?:string}
-  ViewBlock:{name?:string;view?:string;presentation?:ViewPresentation;formattedFields?:string[];fileFields?:string[]}
+  ViewBlock:{name?:string;view?:string;display?:ViewDisplay;filters?:Record<string,ViewFilter>;fieldTypes?:Record<string,string>;presentation?:ViewPresentation;formattedFields?:string[];fileFields?:string[]}
   EntityBlock:{name?:string;entity?:string;presentation?:ViewPresentation;formattedFields?:string[];fileFields?:string[]}
   ResourceListBlock:{name?:string;resource?:string;view?:string;filters?:string[];defaultFilters?:Record<string,any>}
   WebformBlock:{name?:string;webform?:string;form?:Manifest['webforms'][string]}
@@ -67,7 +68,7 @@ const nodeRenderers:{[K in RenderComponent]:NodeRenderer<K>}={
   Panel:(_props,children)=><StructuralNode component="Panel" children={children}/>,
   Region:(_props,children)=><StructuralNode component="Region" children={children}/>,
   TextBlock:props=><p>{props.text}</p>,
-  ViewBlock:props=><ViewBlock name={props.view||''} block={props.name||''} presentation={props.presentation||{}} formattedFields={props.formattedFields||[]} fileFields={props.fileFields||[]}/>,
+  ViewBlock:props=><ViewBlock name={props.view||''} block={props.name||''} display={props.display} filters={props.filters||{}} fieldTypes={props.fieldTypes||{}} presentation={props.presentation||{}} formattedFields={props.formattedFields||[]} fileFields={props.fileFields||[]}/>,
   EntityBlock:props=><ViewBlock name={(props.entity||'')+'_list'} block={props.name||''} presentation={props.presentation||{}} formattedFields={props.formattedFields||[]} fileFields={props.fileFields||[]}/>,
   ResourceListBlock:props=><ResourceListBlock resource={props.resource||''} view={props.view||''} block={props.name||''} filters={props.filters} defaultFilters={props.defaultFilters}/>,
   WebformBlock:props=><WebformBlock name={props.webform||''} block={props.name||''} renderedForm={props.form}/>,
@@ -82,36 +83,53 @@ function Renderer({node}:{node:Node}){
   return renderKnownNode(node.component,node.props||{},node.children)
 }
 
-type ViewBlockProps={name:string;block:string;presentation:ViewPresentation;formattedFields:string[];fileFields:string[]}
+type ViewBlockProps={name:string;block:string;display?:ViewDisplay;filters?:Record<string,ViewFilter>;fieldTypes?:Record<string,string>;presentation:ViewPresentation;formattedFields:string[];fileFields:string[]}
 function ViewBlock(props:ViewBlockProps){
   const path=useLocation().pathname
   return <ViewBlockPage key={`${props.name}:${props.block}:${path}`} {...props} path={path}/>
 }
-function ViewBlockPage({name,block,presentation,formattedFields,fileFields,path}:ViewBlockProps&{path:string}){
+function ViewBlockPage({name,block,display,filters={},fieldTypes={},presentation,formattedFields,fileFields,path}:ViewBlockProps&{path:string}){
 	const[cursors,setCursors]=useState<string[]>(['']);const cursor=cursors[cursors.length-1]
 	const[search,setSearch]=useState('');const[submittedSearch,setSubmittedSearch]=useState('')
-	const query=new URLSearchParams({_page:path,_block:block});if(presentation.Mode==='board'||presentation.Mode==='tree')query.set('limit','200');else if(cursor)query.set('cursor',cursor);if(submittedSearch)query.set('q',submittedSearch)
+	const[urlParams,setURLParams]=useSearchParams();const controls=useMemo(()=>display?.Controls||[],[display?.Controls]);const pageDisplay=display?.Type==='page'
+	const parameter=(filter:string)=>pageDisplay?filter:block+'.'+filter
+	const initialControls=()=>Object.fromEntries(controls.map(control=>[control.Filter,urlParams.get(parameter(control.Filter))??String(control.Default??'')]))
+	const[controlValues,setControlValues]=useState<Record<string,string>>(initialControls)
+	const urlState=urlParams.toString()
+	useEffect(()=>setControlValues(Object.fromEntries(controls.map(control=>[control.Filter,urlParams.get(pageDisplay?control.Filter:block+'.'+control.Filter)??String(control.Default??'')]))),[block,controls,pageDisplay,urlParams,urlState])
+	const mode=display?.Renderer?.Type||presentation.Mode
+	const renderer=display?.Renderer
+	const effectivePresentation:ViewPresentation=renderer?{Mode:renderer.Type,TitleField:renderer.TitleField,BodyField:renderer.BodyField,LinkRoute:renderer.LinkRoute,LinkField:renderer.LinkField,EmptyState:renderer.EmptyState||display.EmptyState,MetaFields:renderer.MetaFields,RichTextFields:renderer.RichTextFields,GroupField:renderer.GroupField,OrderField:renderer.OrderField,ParentField:renderer.ParentField,MoveAction:renderer.MoveAction,Columns:renderer.Columns,MetricField:renderer.MetricField,MetricLabel:renderer.MetricLabel,TimeField:renderer.TimeField,SearchFields:renderer.SearchFields}:presentation
+	const query=new URLSearchParams({_page:path});if(pageDisplay)query.set('_display',block);else query.set('_block',block);for(const control of controls)query.set(control.Filter,urlParams.get(parameter(control.Filter))??String(control.Default??''));if(mode==='board'||mode==='tree')query.set('limit','200');else if(display?.Pager?.PageSize)query.set('limit',String(display.Pager.PageSize));if(cursor)query.set('cursor',cursor);if(submittedSearch)query.set('q',submittedSearch)
   const request='/api/views/'+name+'?'+query.toString()
-  const structured=presentation.Mode==='board'||presentation.Mode==='tree'
+	const structured=mode==='board'||mode==='tree'
   const result=useQuery({queryKey:['public-view',request],queryFn:async()=>{const first=await api<{data:Row[];nextCursor:string}>(request);if(!structured)return first;const data=[...first.data];let nextCursor=first.nextCursor;while(nextCursor&&data.length<200){const nextQuery=new URLSearchParams(query);nextQuery.set('cursor',nextCursor);nextQuery.set('limit',String(200-data.length));const next=await api<{data:Row[];nextCursor:string}>('/api/views/'+name+'?'+nextQuery);data.push(...next.data);nextCursor=next.nextCursor}if(nextCursor)throw new APIError('Board and tree Views support at most 200 rows.');return {data,nextCursor:''}}})
+	const resolvedTitle=display?.Title?.Field?String(result.data?.data[0]?.[display.Title.Field]??display.Title.Fallback??''):display?.Title?.Text||''
+	useEffect(()=>{if(!(pageDisplay||display?.Title?.Field)||!resolvedTitle)return;const previous=document.title;document.title=resolvedTitle;return()=>{document.title=previous}},[display?.Title?.Field,pageDisplay,resolvedTitle])
 	let content:React.ReactNode
 	if(result.isPending)content=<LoadingState/>
 	else if(result.error)content=<ErrorAlert error={result.error}/>
-	else if(!result.data.data.length)content=<Card><CardContent className="py-8 text-center text-muted-foreground">{presentation.EmptyState||'Nothing to show.'}</CardContent></Card>
-	else if(presentation.Mode==='board')content=<BoardView rows={result.data.data} presentation={presentation}/>
-	else if(presentation.Mode==='tree')content=<TreeView rows={result.data.data} presentation={presentation}/>
-	else if(presentation.Mode==='metric')content=<MetricView row={result.data.data[0]} presentation={presentation}/>
-	else if(presentation.Mode==='timeline')content=<div className="space-y-4"><TimelineView rows={result.data.data} presentation={presentation}/><Pagination previousDisabled={cursors.length===1} nextDisabled={!result.data.nextCursor} previous={()=>setCursors(value=>value.slice(0,-1))} next={()=>setCursors(value=>[...value,result.data.nextCursor])}/></div>
-	else{const rows=presentation.Mode==='detail'?[mergeDetail(result.data.data,presentation.MetaFields||[])]:result.data.data;content=<div className="space-y-4">{rows.map(row=><Card key={String(row.id)+JSON.stringify(row)}><CardHeader><CardTitle><h3>{presentation.LinkRoute?<Link className="hover:underline" to={viewLink(presentation.LinkRoute,row)}>{row[presentation.TitleField||'title']}</Link>:row[presentation.TitleField||'title']||row.name}</h3></CardTitle>{presentation.MetaFields?.length?<CardDescription className="flex flex-wrap gap-2">{presentation.MetaFields.map(field=><span key={field}>{String(row[field]??'')}</span>)}</CardDescription>:null}</CardHeader><CardContent><ViewBody row={row} view={name} page={path} block={block} field={presentation.BodyField||'body'} rich={formattedFields.includes(presentation.BodyField||'body')} file={fileFields.includes(presentation.BodyField||'body')}/></CardContent></Card>)}{presentation.Mode!=='detail'&&<Pagination previousDisabled={cursors.length===1} nextDisabled={!result.data.nextCursor} previous={()=>setCursors(value=>value.slice(0,-1))} next={()=>setCursors(value=>[...value,result.data.nextCursor])}/>}</div>}
-	return <div className="space-y-4">{presentation.SearchFields?.length?<form className="flex gap-2" role="search" onSubmit={event=>{event.preventDefault();setCursors(['']);setSubmittedSearch(search)}}><Input aria-label={'Search '+name.replaceAll('_',' ')} type="search" value={search} onChange={event=>setSearch(event.target.value)}/><Button type="submit">Search</Button></form>:null}{content}</div>
+	else if(!result.data.data.length)content=<Card><CardContent className="py-8 text-center text-muted-foreground">{display?.EmptyState||effectivePresentation.EmptyState||'Nothing to show.'}</CardContent></Card>
+	else if(mode==='table')content=<TableView rows={result.data.data} fields={renderer?.Fields||[]} fieldTypes={fieldTypes}/>
+	else if(mode==='board')content=<BoardView rows={result.data.data} presentation={effectivePresentation}/>
+	else if(mode==='tree')content=<TreeView rows={result.data.data} presentation={effectivePresentation}/>
+	else if(mode==='metric')content=<MetricView row={result.data.data[0]} presentation={effectivePresentation}/>
+	else if(mode==='timeline')content=<div className="space-y-4"><TimelineView rows={result.data.data} presentation={effectivePresentation}/>{display?.Pager?.Type!=='none'&&<Pagination previousDisabled={cursors.length===1} nextDisabled={!result.data.nextCursor} previous={()=>setCursors(value=>value.slice(0,-1))} next={()=>setCursors(value=>[...value,result.data.nextCursor])}/>}</div>
+	else{const rows=mode==='detail'?[mergeDetail(result.data.data,effectivePresentation.MetaFields||[])]:result.data.data;content=<div className="space-y-4">{rows.map(row=><Card key={String(row.id)+JSON.stringify(row)}><CardHeader>{!(mode==='detail'&&display?.Title?.Field)&&<CardTitle><h3>{effectivePresentation.LinkRoute?<Link className="hover:underline" to={viewLink(effectivePresentation.LinkRoute,row)}>{row[effectivePresentation.TitleField||'title']}</Link>:row[effectivePresentation.TitleField||'title']||row.name}</h3></CardTitle>}{effectivePresentation.MetaFields?.length?<CardDescription className="flex flex-wrap gap-2">{effectivePresentation.MetaFields.map(field=><span key={field}>{String(row[field]??'')}</span>)}</CardDescription>:null}</CardHeader><CardContent><ViewBody row={row} view={name} page={path} block={block} display={pageDisplay} field={effectivePresentation.BodyField||'body'} rich={formattedFields.includes(effectivePresentation.BodyField||'body')} file={fileFields.includes(effectivePresentation.BodyField||'body')}/></CardContent></Card>)}{mode!=='detail'&&display?.Pager?.Type!=='none'&&<Pagination previousDisabled={cursors.length===1} nextDisabled={!result.data.nextCursor} previous={()=>setCursors(value=>value.slice(0,-1))} next={()=>setCursors(value=>[...value,result.data.nextCursor])}/>}</div>}
+	const applyControls=(event:FormEvent)=>{event.preventDefault();const next=new URLSearchParams(urlParams);for(const control of controls)next.set(parameter(control.Filter),controlValues[control.Filter]??'');setCursors(['']);setURLParams(next,{replace:true})}
+	return <div className="space-y-4">{pageDisplay?<PageHeader title={resolvedTitle||display?.Title?.Fallback||humanize(name)} description={display?.Description}/>:display&&resolvedTitle?<h2 className="font-heading text-2xl font-semibold">{resolvedTitle}</h2>:null} {controls.length?<form className="grid items-end gap-4 sm:grid-cols-2 lg:flex lg:flex-wrap" onSubmit={applyControls}>{controls.map(control=><ViewFilterControl key={control.Filter} scope={block} control={control} filter={filters[control.Filter]} value={controlValues[control.Filter]??''} onChange={value=>setControlValues(current=>({...current,[control.Filter]:value}))}/>)}<Button type="submit">Apply</Button></form>:null}{effectivePresentation.SearchFields?.length?<form className="flex gap-2" role="search" onSubmit={event=>{event.preventDefault();setCursors(['']);setSubmittedSearch(search)}}><Input aria-label={'Search '+name.replaceAll('_',' ')} type="search" value={search} onChange={event=>setSearch(event.target.value)}/><Button type="submit">Search</Button></form>:null}{content}{mode==='table'&&display?.Pager?.Type!=='none'&&result.data&&<Pagination previousDisabled={cursors.length===1} nextDisabled={!result.data.nextCursor} previous={()=>setCursors(value=>value.slice(0,-1))} next={()=>setCursors(value=>[...value,result.data.nextCursor])}/>}</div>
 }
+
+function TableView({rows,fields,fieldTypes}:{rows:Row[];fields:NonNullable<ViewDisplay['Renderer']['Fields']>;fieldTypes:Record<string,string>}){return <Table><TableHeader><TableRow>{fields.map(column=><TableHead scope="col" key={column.Field}>{column.Label||humanize(column.Field)}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.map((row,index)=><TableRow key={String(row.id??index)}>{fields.map(column=><TableCell key={column.Field}>{column.LinkRoute?<Link className="font-medium text-primary hover:underline" to={viewLink(column.LinkRoute,row)}>{displayValue(row[column.Field],fieldTypes[column.Field])}</Link>:displayValue(row[column.Field],fieldTypes[column.Field])}</TableCell>)}</TableRow>)}</TableBody></Table>}
+function displayValue(value:any,type?:string){if(value===null||value===undefined)return '';if(type==='boolean'||typeof value==='boolean')return value?'Yes':'No';if(type==='date'||type==='datetime')return formatDemoDate(value);if(type==='integer'||type==='decimal'||type==='money')return new Intl.NumberFormat().format(Number(value));if(typeof value==='object')return JSON.stringify(value);return String(value)}
+function ViewFilterControl({scope,control,filter,value,onChange}:{scope:string;control:NonNullable<ViewDisplay['Controls']>[number];filter?:ViewFilter;value:string;onChange:(value:string)=>void}){const id='view-filter-'+scope+'-'+control.Filter;const label=control.Label||filter?.Label||humanize(control.Filter);const widget=control.Widget==='auto'||!control.Widget?(filter?.Type==='enum'?'select':filter?.Type==='boolean'?'checkbox':filter?.Type==='integer'||filter?.Type==='decimal'||filter?.Type==='money'?'number':filter?.Type==='date'||filter?.Type==='datetime'?'date':'text'):control.Widget;if(widget==='select')return <Field id={id} label={label}><NativeSelect id={id} value={value} onChange={event=>onChange(event.target.value)}><NativeSelectOption value="">All</NativeSelectOption>{filter?.Options?.map(option=><NativeSelectOption key={option} value={option}>{humanize(option)}</NativeSelectOption>)}</NativeSelect></Field>;if(widget==='checkbox')return <div className="flex items-center gap-2"><Checkbox id={id} checked={value==='true'} onCheckedChange={checked=>onChange(checked?'true':'')}/><Label htmlFor={id}>{label}</Label></div>;return <Field id={id} label={label}><Input id={id} type={widget==='number'?'number':widget==='date'?'date':'text'} value={value} onChange={event=>onChange(event.target.value)}/></Field>}
 
 function MetricView({row,presentation}:{row:Row;presentation:ViewPresentation}){return <Card><CardHeader><CardDescription>{presentation.MetricLabel||humanize(presentation.MetricField||'metric')}</CardDescription><CardTitle><span className="text-4xl" data-testid="metric-value">{String(row[presentation.MetricField||'']??0)}</span></CardTitle></CardHeader></Card>}
 function TimelineView({rows,presentation}:{rows:Row[];presentation:ViewPresentation}){return <ol className="relative space-y-6 border-l pl-6" data-testid="timeline-view">{rows.map(row=><li key={String(row.id)+JSON.stringify(row)}><span className="absolute -ml-[1.85rem] mt-1.5 size-3 rounded-full bg-primary"/><time className="text-sm text-muted-foreground">{formatDemoDate(row[presentation.TimeField||''])}</time><h3 className="font-semibold">{presentation.LinkRoute?<Link className="hover:underline" to={viewLink(presentation.LinkRoute,row)}>{row[presentation.TitleField||'title']}</Link>:row[presentation.TitleField||'title']}</h3>{presentation.BodyField?<p>{String(row[presentation.BodyField]??'')}</p>:null}{presentation.MetaFields?.length?<p className="text-sm text-muted-foreground">{presentation.MetaFields.map(field=>String(row[field]??'')).filter(Boolean).join(' · ')}</p>:null}</li>)}</ol>}
 function formatDemoDate(value:any){const date=new Date(String(value));return Number.isNaN(date.valueOf())?String(value??''):new Intl.DateTimeFormat('en-US',{year:'numeric',month:'short',day:'numeric',timeZone:'UTC'}).format(date)}
 
 function mergeDetail(rows:Row[],meta:string[]){const result={...rows[0]};for(const field of meta){const values=[...new Set(rows.map(row=>row[field]).filter(value=>value!==null&&value!==undefined&&value!==''))];result[field]=values.join(', ')}return result}
-function ViewBody({row,view,page,block,field,rich,file}:{row:Row;view:string;page:string;block:string;field:string;rich:boolean;file:boolean}){const selected=row[field];const value=String(selected??row.excerpt??row.description??'');if(file&&selected){const query=new URLSearchParams({view,_page:page,_block:block});return <Button variant="outline" asChild><a href={'/api/files/'+encodeURIComponent(String(selected))+'?'+query}>Download attachment</a></Button>}return rich&&selected!==null&&selected!==undefined?<div className="rich-text" dangerouslySetInnerHTML={{__html:String(selected)}}/>:<p className="leading-7">{value}</p>}
+function ViewBody({row,view,page,block,display,field,rich,file}:{row:Row;view:string;page:string;block:string;display:boolean;field:string;rich:boolean;file:boolean}){const selected=row[field];const value=String(selected??row.excerpt??row.description??'');if(file&&selected){const query=new URLSearchParams({view,_page:page});query.set(display?'_display':'_block',block);return <Button variant="outline" asChild><a href={'/api/files/'+encodeURIComponent(String(selected))+'?'+query}>Download attachment</a></Button>}return rich&&selected!==null&&selected!==undefined?<div className="rich-text" dangerouslySetInnerHTML={{__html:String(selected)}}/>:<p className="leading-7">{value}</p>}
 function viewLink(template:string,row:Row){return template.replace(/:([a-zA-Z0-9_.]+)/g,(_,field)=>encodeURIComponent(String(row[field]??'')))}
 
 function BoardView({rows,presentation}:{rows:Row[];presentation:ViewPresentation}){
@@ -198,9 +216,9 @@ function Pagination({previousDisabled,nextDisabled,previous,next}:{previousDisab
 function humanize(value:string){return value.replaceAll('_',' ').replace(/^./,letter=>letter.toUpperCase())}
 
 type PageResult={tree:Node}
-function loadPage(path:string){return api<PageResult>('/api/system/page?path='+encodeURIComponent(path))}
+function loadPage(path:string,search:string){const query=new URLSearchParams(search);query.set('path',path);return api<PageResult>('/api/system/page?'+query)}
 function Public(){
-  const loc=useLocation();const result=useQuery({queryKey:['page',loc.pathname],queryFn:()=>loadPage(loc.pathname)})
+  const loc=useLocation();const pageKey=loc.search?['page',loc.pathname,loc.search]:['page',loc.pathname];const result=useQuery({queryKey:pageKey,queryFn:()=>loadPage(loc.pathname,loc.search)})
   if(result.isPending)return <Shell><Page><LoadingState/></Page></Shell>
   if(result.error)return <Shell><Page><PageHeader title="Bean" description="Metadata-driven applications, compiled."/></Page></Shell>
   return <Shell><Page className="space-y-6"><Renderer node={result.data.tree}/></Page></Shell>

@@ -89,7 +89,7 @@ func compile(appID string, version int, defs []definition.Definition, validateGr
 	for name, entity := range a.Entities {
 		generate(a, name, entity)
 	}
-	for _, kind := range []string{"Action", "AdminResource", "Block", "TestSuite"} {
+	for _, kind := range []string{"View", "Action", "AdminResource", "Block", "TestSuite"} {
 		registered, _ := definitionKindRegistry().Lookup(kind)
 		registered.Normalize(a)
 	}
@@ -448,7 +448,7 @@ func diagnosticRule(kind, path string) definition.DiagnosticRule {
 		return definition.RuleLifecycle
 	case kind == "Policy" || strings.Contains(path, "policy"):
 		return definition.RulePolicy
-	case kind == "Block" && strings.Contains(path, "presentation"):
+	case kind == "Block" && strings.Contains(path, "presentation"), kind == "View" && strings.Contains(path, "displays"):
 		return definition.RulePresentation
 	case strings.Contains(path, "binding"):
 		return definition.RuleBinding
@@ -859,12 +859,21 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 			a.Views[name] = v
 		}
 		for key, exposed := range v.ExposedFilters {
-			fieldName := exposed.Name
-			if fieldName == "" {
-				fieldName = key
-			}
+			fieldName := exposed.Target(key)
 			if !validViewField(fieldName, fields, relationships, a) {
 				out = append(out, missingFieldDiagnostic("View", name, "spec.exposedFilters."+key, fieldName, false))
+				continue
+			}
+			fieldType, _ := viewFieldType(fieldName, e, relationships, a)
+			allowed := map[string]bool{"eq": true}
+			if map[string]bool{"email": true, "richtext": true, "slug": true, "string": true, "text": true, "url": true}[fieldType] {
+				allowed["contains"] = true
+			}
+			if map[string]bool{"date": true, "datetime": true, "decimal": true, "integer": true, "money": true}[fieldType] {
+				allowed["gte"], allowed["lte"] = true, true
+			}
+			if !allowed[exposed.Operator] {
+				out = append(out, diagnostic("View", name, "spec.exposedFilters."+key+".operator", "is incompatible with field type "+fieldType))
 			}
 		}
 		for path, expression := range map[string]*expr.Expr{"spec.filter": v.Filter, "spec.contextFilter": v.ContextFilter} {
@@ -890,7 +899,7 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 				}
 			}
 			for key, exposed := range v.ExposedFilters {
-				if redacted[exposed.Name] || exposed.Name == "" && redacted[key] {
+				if redacted[exposed.Target(key)] {
 					out = append(out, diagnostic("View", name, "spec.exposedFilters."+key, "redacted fields cannot be exposed as filters"))
 				}
 			}
@@ -902,18 +911,170 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 				}
 			}
 		}
-		for displayName, display := range v.Displays {
-			if !nameSet(displaySerializerNames())[display.Type] {
-				out = append(out, diagnostic("View", name, "spec.displays."+displayName+".type", "has no serializer"))
-			}
-			if display.Route == "" {
+		for _, displayName := range keys(v.Displays) {
+			display := v.Displays[displayName]
+			if strings.HasPrefix(displayName, "_") {
 				continue
 			}
-			if old := routes[display.Route]; old != "" {
-				out = append(out, duplicateDiagnostic("View", name, "spec.displays."+displayName+".route", "duplicates route used by "+old))
+			if nameSet(displaySerializerNames())[display.Type] {
+				if display.Route == "" {
+					continue
+				}
+				if old := routes[display.Route]; old != "" {
+					out = append(out, duplicateDiagnostic("View", name, "spec.displays."+displayName+".route", "duplicates route used by "+old))
+				}
+				routes[display.Route] = "View/" + name
+				continue
 			}
-			routes[display.Route] = "View/" + name
+			if display.Type != "page" && display.Type != "block" {
+				out = append(out, diagnostic("View", name, "spec.displays."+displayName+".type", "has no registered display type"))
+				continue
+			}
+			out = append(out, validateViewDisplay(name, displayName, v, display, e, relationships, a)...)
+			if display.Type == "page" {
+				if display.Route == "" {
+					out = append(out, requiredDiagnostic("View", name, "spec.displays."+displayName+".route", "page display route is required"))
+				} else if old := routes[display.Route]; old != "" {
+					out = append(out, duplicateDiagnostic("View", name, "spec.displays."+displayName+".route", "duplicates route used by "+old))
+				} else {
+					routes[display.Route] = "View/" + name
+				}
+			} else if display.Route != "" {
+				out = append(out, diagnostic("View", name, "spec.displays."+displayName+".route", "block display cannot declare a route"))
+			}
 		}
+	}
+	return out
+}
+
+func validateViewDisplay(viewName, displayName string, view appir.View, display appir.Display, entity appir.Entity, relationships map[string]appir.ViewRelationship, app *appir.App) []definition.Diagnostic {
+	base := "spec.displays." + displayName
+	out := []definition.Diagnostic{}
+	selected := nameSet(view.Fields)
+	redacted := nameSet(app.Policies[policy.EffectiveViewPolicyName(view, entity)].Redact)
+	renderer := display.Renderer
+	if !nameSet(append(presentationNames(), "table"))[renderer.Type] {
+		out = append(out, diagnostic("View", viewName, base+".renderer.type", "has no registered renderer"))
+	} else if renderer.Type == "table" {
+		if len(renderer.Fields) == 0 {
+			out = append(out, requiredDiagnostic("View", viewName, base+".renderer.fields", "table requires at least one field"))
+		}
+		for index, column := range renderer.Fields {
+			path := fmt.Sprintf("%s.renderer.fields.%d", base, index)
+			if !selected[column.Field] {
+				out = append(out, diagnostic("View", viewName, path+".field", "must be selected by View "+viewName))
+			} else if redacted[column.Field] {
+				out = append(out, diagnostic("View", viewName, path+".field", "must not be redacted by View policy"))
+			}
+			if column.LinkRoute != "" && (!strings.HasPrefix(column.LinkRoute, "/") || strings.HasPrefix(column.LinkRoute, "//")) {
+				out = append(out, diagnostic("View", viewName, path+".linkRoute", "must be an absolute application route"))
+			}
+			for _, match := range regexp.MustCompile(`:([a-zA-Z0-9_.]+)`).FindAllStringSubmatch(column.LinkRoute, -1) {
+				fieldName := match[1]
+				if !selected[fieldName] || redacted[fieldName] {
+					out = append(out, diagnostic("View", viewName, path+".linkRoute", "route field "+fieldName+" must be selected and visible"))
+				}
+			}
+		}
+	} else {
+		legacy := validatePresentation(viewName, appir.Block{View: viewName, Presentation: renderer.Presentation()}, app)
+		for _, item := range legacy {
+			item.Kind = "View"
+			item.Path = strings.Replace(item.Path, "spec.presentation", base+".renderer", 1)
+			out = append(out, item)
+		}
+	}
+	if display.Title.Text != "" && display.Title.Field != "" {
+		out = append(out, diagnostic("View", viewName, base+".title", "must use text or a result field, not both"))
+	}
+	if display.Title.Field != "" {
+		if renderer.Type != "detail" {
+			out = append(out, diagnostic("View", viewName, base+".title.field", "result title requires a detail renderer"))
+		}
+		if !selected[display.Title.Field] || redacted[display.Title.Field] {
+			out = append(out, diagnostic("View", viewName, base+".title.field", "must reference a selected, visible field"))
+		}
+		if display.Title.Fallback == "" {
+			out = append(out, requiredDiagnostic("View", viewName, base+".title.fallback", "is required for a result title"))
+		}
+		if display.Type == "page" {
+			singleRecord := false
+			for filterName := range display.Bindings {
+				filter, exists := view.ExposedFilters[filterName]
+				target := filter.Target(filterName)
+				definition, fieldExists := entityFieldDefinition(entity, target)
+				singleRecord = singleRecord || exists && (target == "id" || fieldExists && definition.Unique)
+			}
+			if !singleRecord {
+				out = append(out, diagnostic("View", viewName, base+".title.field", "result title requires a unique bound filter"))
+			}
+		}
+	}
+	if display.Type == "block" && len(display.Bindings) > 0 {
+		out = append(out, diagnostic("View", viewName, base+".bindings", "block display bindings must be declared by the mounting Block"))
+	}
+	bound := map[string]bool{}
+	for filterName, binding := range display.Bindings {
+		bound[filterName] = true
+		if _, exists := view.ExposedFilters[filterName]; !exists {
+			out = append(out, invalidReferenceDiagnostic("View", viewName, base+".bindings."+filterName, "has no matching exposed filter"))
+		}
+		if !valuesource.Allows(valuesource.Page, binding.Source) {
+			out = append(out, diagnostic("View", viewName, base+".bindings."+filterName+".source", "has no typed resolver"))
+		} else if binding.Source == valuesource.Query {
+			out = append(out, diagnostic("View", viewName, base+".bindings."+filterName+".source", "query values are not immutable display bindings"))
+		}
+		if binding.Source != "tenant" && binding.Name == "" {
+			out = append(out, requiredDiagnostic("View", viewName, base+".bindings."+filterName+".name", "is required"))
+		}
+	}
+	seenControls := map[string]bool{}
+	widgets := map[string]bool{"auto": true, "text": true, "select": true, "checkbox": true, "number": true, "date": true}
+	for index, control := range display.Controls {
+		path := fmt.Sprintf("%s.controls.%d", base, index)
+		filter, exists := view.ExposedFilters[control.Filter]
+		if !exists {
+			out = append(out, invalidReferenceDiagnostic("View", viewName, path+".filter", "has no matching exposed filter"))
+			continue
+		}
+		if seenControls[control.Filter] {
+			out = append(out, duplicateDiagnostic("View", viewName, path+".filter", "duplicates another display control"))
+		}
+		seenControls[control.Filter] = true
+		if bound[control.Filter] {
+			out = append(out, diagnostic("View", viewName, path+".filter", "cannot expose an immutable bound input"))
+		}
+		if !widgets[control.Widget] {
+			out = append(out, diagnostic("View", viewName, path+".widget", "has no registered control widget"))
+		}
+		definition := filter.Definition(control.Filter)
+		compatible := map[string]bool{"auto": true}
+		switch definition.Type {
+		case "boolean":
+			compatible["checkbox"] = true
+		case "enum":
+			compatible["select"] = true
+		case "integer", "decimal", "money":
+			compatible["number"] = true
+		case "date", "datetime":
+			compatible["date"] = true
+		case "email", "richtext", "slug", "string", "text", "url", "uuid":
+			compatible["text"] = true
+		}
+		if widgets[control.Widget] && !compatible[control.Widget] {
+			out = append(out, diagnostic("View", viewName, path+".widget", "is incompatible with field type "+definition.Type))
+		}
+		if control.Default != nil {
+			if err := field.Validate(definition, control.Default); err != nil {
+				out = append(out, diagnostic("View", viewName, path+".default", err.Error()))
+			}
+		}
+	}
+	if display.Pager.Type != "none" && display.Pager.Type != "cursor" {
+		out = append(out, diagnostic("View", viewName, base+".pager.type", "has no registered pager"))
+	}
+	if display.Pager.PageSize < 1 || display.Pager.PageSize > view.MaxLimit {
+		out = append(out, diagnostic("View", viewName, base+".pager.pageSize", "must be between 1 and the View maximum"))
 	}
 	return out
 }
@@ -1660,6 +1821,34 @@ func validateBlocks(a *appir.App, _ *validationState) []definition.Diagnostic {
 		}
 		if blockSpecification.SupportsPresentation && block.View != "" {
 			out = append(out, validatePresentation(name, block, a)...)
+			if block.Display != "" {
+				display, exists := a.Views[block.View].Displays[block.Display]
+				if !exists {
+					out = append(out, invalidReferenceDiagnostic("Block", name, "spec.display", "references missing View display "+block.Display))
+				} else if display.Type != "block" {
+					out = append(out, diagnostic("Block", name, "spec.display", "must reference a block display"))
+				} else {
+					if display.Title.Field != "" {
+						viewDefinition := a.Views[block.View]
+						entity := a.Entities[viewDefinition.Entity]
+						singleRecord := false
+						for filterName := range block.Bindings {
+							filter, exposed := viewDefinition.ExposedFilters[filterName]
+							target := filter.Target(filterName)
+							definition, fieldExists := entityFieldDefinition(entity, target)
+							singleRecord = singleRecord || exposed && (target == "id" || fieldExists && definition.Unique)
+						}
+						if !singleRecord {
+							out = append(out, diagnostic("Block", name, "spec.display", "result title requires a unique bound View filter"))
+						}
+					}
+					for index, control := range display.Controls {
+						if _, bound := block.Bindings[control.Filter]; bound {
+							out = append(out, diagnostic("Block", name, fmt.Sprintf("spec.bindings.%s", control.Filter), fmt.Sprintf("cannot bind filter exposed by display control %d", index)))
+						}
+					}
+				}
+			}
 		}
 		if block.Menu != "" {
 			if _, ok := a.Menus[block.Menu]; !ok {
@@ -1694,7 +1883,7 @@ func validateBlocks(a *appir.App, _ *validationState) []definition.Diagnostic {
 		switch blockSpecification.InputTarget {
 		case blockcap.ViewInputTarget:
 			if block.View != "" {
-				target = a.Views[block.View].ExposedFilters
+				target = exposedFilterFields(a.Views[block.View])
 			}
 		case blockcap.WebformInputTarget:
 			if block.Webform != "" {
@@ -1711,7 +1900,7 @@ func validateBlocks(a *appir.App, _ *validationState) []definition.Diagnostic {
 				break
 			}
 			resource := a.AdminResources[block.Resource]
-			target = a.Views[resource.View].ExposedFilters
+			target = exposedFilterFields(a.Views[resource.View])
 			resourceFilters := nameSet(resource.List.Filters)
 			interactive := nameSet(block.Filters)
 			for i, filterName := range block.Filters {
@@ -1747,6 +1936,16 @@ func validateBlocks(a *appir.App, _ *validationState) []definition.Diagnostic {
 				}
 			}
 		}
+	}
+	return out
+}
+
+func exposedFilterFields(view appir.View) map[string]appir.Field {
+	out := make(map[string]appir.Field, len(view.ExposedFilters))
+	for name, filter := range view.ExposedFilters {
+		definition := filter.Definition(name)
+		definition.Name = name
+		out[name] = definition
 	}
 	return out
 }
@@ -2158,33 +2357,38 @@ func validViewField(name string, base map[string]bool, relationships map[string]
 }
 
 func viewFieldType(name string, base appir.Entity, relationships map[string]appir.ViewRelationship, a *appir.App) (string, bool) {
+	definition, exists := viewFieldDefinition(name, base, relationships, a)
+	return definition.Type, exists
+}
+
+func viewFieldDefinition(name string, base appir.Entity, relationships map[string]appir.ViewRelationship, a *appir.App) (appir.Field, bool) {
 	parts := strings.Split(name, ".")
 	entity := base
 	fieldName := name
 	if len(parts) == 2 {
 		relationship, ok := relationships[parts[0]]
 		if !ok {
-			return "", false
+			return appir.Field{}, false
 		}
 		entity, ok = a.Entities[relationship.Entity]
 		if !ok {
-			return "", false
+			return appir.Field{}, false
 		}
 		fieldName = parts[1]
 	} else if len(parts) != 1 {
-		return "", false
+		return appir.Field{}, false
 	}
 	for _, fieldDefinition := range entity.Fields {
 		if fieldDefinition.Name == fieldName {
-			return fieldDefinition.Type, true
+			return fieldDefinition, true
 		}
 	}
 	for _, fieldDefinition := range []appir.Field{{Name: "id", Type: "uuid"}, {Name: "created_at", Type: "datetime"}, {Name: "updated_at", Type: "datetime"}, {Name: "version", Type: "integer"}} {
 		if fieldDefinition.Name == fieldName {
-			return fieldDefinition.Type, true
+			return fieldDefinition, true
 		}
 	}
-	return "", false
+	return appir.Field{}, false
 }
 
 func stepValueFields(specification actionstep.Specification, entity appir.Entity, action appir.Action) map[string]bool {
@@ -2544,6 +2748,32 @@ func normalizeResourceListBlocks(a *appir.App) {
 		if block.DefaultFilters == nil {
 			block.DefaultFilters = map[string]any{}
 		}
+		a.Blocks[name] = block
+	}
+}
+
+func normalizeBlocks(a *appir.App) {
+	normalizeResourceListBlocks(a)
+	for name, block := range a.Blocks {
+		if block.Type != "view" || block.View == "" || block.Display != "" {
+			continue
+		}
+		view, exists := a.Views[block.View]
+		if !exists {
+			continue
+		}
+		displayName := "_block_" + name
+		renderer := appir.RendererFromPresentation(block.Presentation)
+		if renderer.Type == "" {
+			renderer.Type = "list"
+		}
+		pagerType := "cursor"
+		if renderer.Type == "detail" || renderer.Type == "metric" || renderer.Type == "board" || renderer.Type == "tree" {
+			pagerType = "none"
+		}
+		view.Displays[displayName] = appir.Display{Type: "block", Renderer: renderer, EmptyState: block.Presentation.EmptyState, Pager: appir.ViewPager{Type: pagerType, PageSize: view.DefaultLimit}}
+		block.Display = displayName
+		a.Views[block.View] = view
 		a.Blocks[name] = block
 	}
 }

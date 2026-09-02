@@ -2,7 +2,7 @@
 
 Bean v0.6 exposes the compiler and release lifecycle as a provider-neutral command contract. An agent does not need to inspect Bean source or parse human prose.
 
-v0.13 retains the v0.8 generic one-to-one adapter over the shared `bean.agent/v1alpha1` dispatcher and adds typed Extension definitions and offline provider-call evidence without changing the transport envelope:
+v0.14 retains the v0.8 generic one-to-one adapter over the shared `bean.agent/v1alpha1` dispatcher and adds first-class View display metadata without changing the transport envelope:
 
 ```bash
 bean agent call bean.definition.validate --input request.json --json
@@ -115,13 +115,13 @@ Sensitive inputs, file bytes, secrets, passwords, and database credentials are e
 
 ## Schemas and capabilities
 
-`bean capabilities --json` reports definition/API versions, definition kinds, semantic primitives, field types, Action operations and steps, Block types, presentations, serializers, layouts, database backends, and hard limits. `semanticPrimitives` contains `Lifecycle` and `Rule`; `ruleOperators`, `ruleSources`, and the node/depth/literal/value limits expose the closed evaluator contract. `testSuiteTargets` and the suite/case/fixture/encoded-byte limits expose the bounds shared by explicit and generated TestSuites. Extension capability fields expose the single `http` transport, `none`/`bearer` authentication, closed permission/effect vocabularies, stable failure categories, and timeout/attempt/delay/response bounds.
+`bean capabilities --json` reports definition/API versions, definition kinds, semantic primitives, field types, Action operations and steps, Block types, View display/render/control/pager vocabularies, serializers, layouts, database backends, and hard limits. `semanticPrimitives` contains `Lifecycle` and `Rule`; `ruleOperators`, `ruleSources`, and the node/depth/literal/value limits expose the closed evaluator contract. `testSuiteTargets` and the suite/case/fixture/encoded-byte limits expose the bounds shared by explicit and generated TestSuites. Extension capability fields expose the single `http` transport, `none`/`bearer` authentication, closed permission/effect vocabularies, stable failure categories, and timeout/attempt/delay/response bounds.
 
 `bean schema [Kind] --json` returns canonical Draft 2020-12 JSON Schema. `bean schema --output ./schemas` writes `bean.schema.json` and one lower-case file per definition kind. The checked-in [schemas](../schemas) directory is generated from the same Go specification types used by compiler decoding; tests fail if those files drift or stop covering a maintained example.
 
 JSON Schema describes document shape and rejects unknown properties. Cross-definition references and semantic constraints remain compiler responsibilities and are visible through diagnostics, capabilities, and `app inspect`.
 
-v0.13 stores Extension semantics in `bean/appir/v5`. The runtime still loads `bean/appir/v1` releases without Lifecycle, Rule, TestSuite, or Extension semantics; `bean/appir/v2` releases with Lifecycle only; `bean/appir/v3` releases with Rules but without TestSuites; and `bean/appir/v4` releases with TestSuites but without Extensions. Rule definitions and Rule-bound consumers remain invalid under v1/v2; TestSuites are invalid under v1/v2/v3; Extensions and Extension-bound Actions are invalid under v1-v4.
+v0.14 stores first-class View display semantics in `bean/appir/v6`. The runtime still loads v1 releases without Lifecycle, Rule, TestSuite, Extension, or first-class display semantics; v2 with Lifecycle; v3 with Rules; v4 with TestSuites; and v5 with Extensions plus legacy serializer displays and field-shaped exposed filters. First-class page/block displays, display-bound Blocks, and field/operator filter mappings are invalid under v1-v5 so older runtimes cannot silently discard them.
 
 ## Inspection, plan, and diff
 

@@ -411,6 +411,48 @@ describe('public rendering',()=>{
     expect(screen.getByLabelText('Status')).toHaveValue('pending')
     expect(fetchMock.mock.calls.some(([input])=>String(input).includes('_block=queue')&&String(input).includes('status=pending'))).toBe(true)
   })
+
+  it('renders a page display table with labelled URL filters, title, and cursor pager',async()=>{
+    const fetchMock=vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'ViewBlock',props:{name:'index',view:'articles',formattedFields:[],fileFields:[],fieldTypes:{published_at:'datetime'},filters:{status:{Field:'status',Type:'enum',Options:['draft','published']}},display:{Type:'page',Description:'Browse articles.',Title:{Text:'Articles'},Renderer:{Type:'table',Fields:[{Field:'title',Label:'Article',LinkRoute:'/articles/:id'},{Field:'status',Label:'State'},{Field:'published_at',Label:'Published'}]},Controls:[{Filter:'status',Label:'Publication status',Widget:'select'}],Pager:{Type:'cursor',PageSize:1}}}}]}})
+      if(path.includes('/api/views/articles')&&path.includes('cursor=next-page'))return response({data:[{id:'2',title:'Second article',status:'published'}],nextCursor:''})
+      if(path.includes('/api/views/articles')&&path.includes('status=published'))return response({data:[{id:'2',title:'Published article',status:'published'}],nextCursor:''})
+      if(path.includes('/api/views/articles'))return response({data:[{id:'1',title:'Draft article',status:'draft',published_at:'2026-01-02T10:00:00Z'}],nextCursor:'next-page'})
+      return response({})
+    })
+    vi.stubGlobal('fetch',fetchMock)
+    renderApp('/articles?status=draft')
+    expect(await screen.findByRole('heading',{name:'Articles'})).toBeInTheDocument()
+    expect(document.title).toBe('Articles')
+    expect(screen.getByText('Browse articles.')).toBeInTheDocument()
+    expect(screen.getByRole('columnheader',{name:'Article'})).toBeInTheDocument()
+    expect(screen.getByRole('link',{name:'Draft article'})).toHaveAttribute('href','/articles/1')
+    expect(screen.getByText('Jan 2, 2026')).toBeInTheDocument()
+    expect(screen.getByLabelText('Publication status')).toHaveValue('draft')
+    fireEvent.click(screen.getByRole('button',{name:'Next'}))
+    expect(await screen.findByText('Second article')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button',{name:'Previous'}))
+    expect(await screen.findByText('Draft article')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Publication status'),{target:{value:'published'}})
+    fireEvent.click(screen.getByRole('button',{name:'Apply'}))
+    expect(await screen.findByText('Published article')).toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(([input])=>String(input).includes('_display=index')&&String(input).includes('status=published')&&String(input).includes('limit=1'))).toBe(true)
+  })
+
+  it('resolves a detail display heading and browser title from its result',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'ViewBlock',props:{name:'detail',view:'articles',display:{Type:'page',Title:{Field:'title',Fallback:'Article'},Renderer:{Type:'detail',TitleField:'title'},Pager:{Type:'none',PageSize:1}}}}]}})
+      if(path.includes('/api/views/articles'))return response({data:[{id:'1',title:'Resolved article'}],nextCursor:''})
+      return response({})
+    }))
+    renderApp('/articles/1')
+    expect(await screen.findByRole('heading',{name:'Resolved article',level:1})).toBeInTheDocument()
+    expect(document.title).toBe('Resolved article')
+  })
 })
 
 function NavigationDriver({capture}:{capture:(navigate:NavigateFunction)=>void}){capture(useNavigate());return null}

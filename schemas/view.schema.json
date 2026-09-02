@@ -15,11 +15,53 @@
       },
       "type": "object"
     },
+    "github_com_beanruntime_bean_internal_appir_ContextBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "github_com_beanruntime_bean_internal_appir_Display": {
       "additionalProperties": false,
       "properties": {
+        "bindings": {
+          "additionalProperties": {
+            "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ContextBinding"
+          },
+          "type": "object"
+        },
+        "controls": {
+          "items": {
+            "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ViewControl"
+          },
+          "type": "array"
+        },
+        "description": {
+          "type": "string"
+        },
+        "emptyState": {
+          "type": "string"
+        },
+        "pager": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ViewPager"
+        },
+        "renderer": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ViewRenderer"
+        },
         "route": {
           "type": "string"
+        },
+        "title": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_DisplayTitle"
         },
         "type": {
           "type": "string"
@@ -27,35 +69,17 @@
       },
       "type": "object"
     },
-    "github_com_beanruntime_bean_internal_appir_Field": {
+    "github_com_beanruntime_bean_internal_appir_DisplayTitle": {
       "additionalProperties": false,
       "properties": {
-        "label": {
+        "fallback": {
           "type": "string"
         },
-        "name": {
+        "field": {
           "type": "string"
         },
-        "options": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "relation": {
-          "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_Relation"
-        },
-        "required": {
-          "type": "boolean"
-        },
-        "sensitive": {
-          "type": "boolean"
-        },
-        "type": {
+        "text": {
           "type": "string"
-        },
-        "unique": {
-          "type": "boolean"
         }
       },
       "type": "object"
@@ -87,6 +111,88 @@
       },
       "type": "object"
     },
+    "github_com_beanruntime_bean_internal_appir_ViewColumn": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "linkRoute": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_ViewControl": {
+      "additionalProperties": false,
+      "properties": {
+        "default": {},
+        "filter": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "widget": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_ViewFilter": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "operator": {
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "relation": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_Relation"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "sensitive": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": "string"
+        },
+        "unique": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_ViewPager": {
+      "additionalProperties": false,
+      "properties": {
+        "pageSize": {
+          "type": "integer"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "github_com_beanruntime_bean_internal_appir_ViewRelationship": {
       "additionalProperties": false,
       "properties": {
@@ -103,6 +209,81 @@
           "type": "string"
         },
         "targetField": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_ViewRenderer": {
+      "additionalProperties": false,
+      "properties": {
+        "bodyField": {
+          "type": "string"
+        },
+        "columns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "emptyState": {
+          "type": "string"
+        },
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ViewColumn"
+          },
+          "type": "array"
+        },
+        "groupField": {
+          "type": "string"
+        },
+        "linkField": {
+          "type": "string"
+        },
+        "linkRoute": {
+          "type": "string"
+        },
+        "metaFields": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "metricField": {
+          "type": "string"
+        },
+        "metricLabel": {
+          "type": "string"
+        },
+        "moveAction": {
+          "type": "string"
+        },
+        "orderField": {
+          "type": "string"
+        },
+        "parentField": {
+          "type": "string"
+        },
+        "richTextFields": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "searchFields": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "timeField": {
+          "type": "string"
+        },
+        "titleField": {
           "type": "string"
         },
         "type": {
@@ -176,7 +357,7 @@
     },
     "exposedFilters": {
       "additionalProperties": {
-        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_Field"
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ViewFilter"
       },
       "type": "object"
     },

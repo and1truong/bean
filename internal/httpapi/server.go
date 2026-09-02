@@ -261,6 +261,11 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if a, active := s.Kernel.Active(); active {
 		if definition, _, matched := page.Match(a, r.URL.Query().Get("path")); matched {
 			protected = page.Protected(a, definition)
+		} else if matched, found := view.MatchPageDisplay(a, r.URL.Query().Get("path")); found {
+			viewDefinition := a.Views[matched.View]
+			entity := a.Entities[viewDefinition.Entity]
+			policyDefinition := a.Policies[policy.EffectiveViewPolicyName(viewDefinition, entity)]
+			protected = entity.Owner || entity.Tenant || policyDefinition.Authenticated || policyDefinition.Owner || policyDefinition.Tenant || len(policyDefinition.ReadRoles) > 0 || authenticationCondition(policyDefinition.Condition)
 		}
 	}
 	_, session, ok := s.requestContext(r)
@@ -283,7 +288,7 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 	filters := queryMap(r)
-	bound, viewContext, e := s.boundBlockInputs(r, a, "view", r.PathValue("name"))
+	bound, display, viewContext, e := s.boundViewInputs(r, a, r.PathValue("name"))
 	if e != nil {
 		problem(w, 400, "bound_input", e.Error(), requestID(r))
 		return
@@ -299,14 +304,34 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request) {
 	delete(filters, "q")
 	searchFields := []string{}
 	if search != "" {
-		blockName := r.URL.Query().Get("_block")
-		blockDefinition, exists := a.Blocks[blockName]
-		specification, registered := block.Lookup(blockDefinition.Type)
-		if !exists || !registered || specification.InputTarget != block.ViewInputTarget || blockDefinition.View != r.PathValue("name") || len(blockDefinition.Presentation.SearchFields) == 0 {
+		if display == nil || len(display.Renderer.SearchFields) == 0 {
 			problem(w, 400, "invalid_query", "Search is not configured for this View block.", requestID(r))
 			return
 		}
-		searchFields = blockDefinition.Presentation.SearchFields
+		searchFields = display.Renderer.SearchFields
+	}
+	if display != nil {
+		enforceControls := r.URL.Query().Get("_display") != ""
+		if blockDefinition, exists := a.Blocks[r.URL.Query().Get("_block")]; exists && !strings.HasPrefix(blockDefinition.Display, "_block_") {
+			enforceControls = true
+		}
+		allowed := map[string]bool{}
+		for _, control := range display.Controls {
+			allowed[control.Filter] = true
+			if _, supplied := filters[control.Filter]; !supplied && control.Default != nil {
+				filters[control.Filter] = control.Default
+			}
+		}
+		for name := range bound {
+			allowed[name] = true
+		}
+		for name := range filters {
+			if enforceControls && !allowed[name] {
+				problem(w, 400, "invalid_query", "Filter is not configured for this View display.", requestID(r))
+				return
+			}
+		}
+		limit = display.Pager.PageSize
 	}
 	if blockName := r.URL.Query().Get("_block"); blockName != "" {
 		blockDefinition := a.Blocks[blockName]
@@ -372,7 +397,7 @@ func (s *Server) fileAllowed(r *http.Request, a *appir.App, id string) bool {
 	if !exists {
 		return false
 	}
-	bound, requestContext, err := s.boundBlockInputs(r, a, "view", viewName)
+	bound, _, requestContext, err := s.boundViewInputs(r, a, viewName)
 	if err != nil {
 		return false
 	}
@@ -783,7 +808,20 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 	}
 	p, params, ok := page.Match(a, r.URL.Query().Get("path"))
 	if !ok {
-		problem(w, 404, "not_found", "Page not found.", requestID(r))
+		matched, found := view.MatchPageDisplay(a, r.URL.Query().Get("path"))
+		if !found {
+			problem(w, 404, "not_found", "Page not found.", requestID(r))
+			return
+		}
+		query := map[string]string{}
+		for key := range r.URL.Query() {
+			query[key] = r.URL.Query().Get(key)
+		}
+		if _, err := view.ResolveDisplayBindings(matched.Display, matched.Params, query, s.ctx(r)); err != nil {
+			problem(w, 400, "missing_context", "Required View display context is missing.", requestID(r))
+			return
+		}
+		write(w, 200, map[string]any{"tree": view.DisplayPageNode(a, matched)})
 		return
 	}
 	if p.Policy != "" {
@@ -815,6 +853,46 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	write(w, 200, map[string]any{"tree": tree})
+}
+
+func (s *Server) boundViewInputs(r *http.Request, a *appir.App, target string) (map[string]any, *appir.Display, beanctx.Request, error) {
+	displayName := r.URL.Query().Get("_display")
+	if displayName == "" {
+		bound, requestContext, err := s.boundBlockInputs(r, a, "view", target)
+		if err != nil {
+			return nil, nil, requestContext, err
+		}
+		blockDefinition, exists := a.Blocks[r.URL.Query().Get("_block")]
+		if !exists || blockDefinition.Display == "" {
+			return bound, nil, requestContext, nil
+		}
+		display, exists := a.Views[target].Displays[blockDefinition.Display]
+		if !exists {
+			return nil, nil, requestContext, fmt.Errorf("bound View display was not found")
+		}
+		return bound, &display, requestContext, nil
+	}
+	if r.URL.Query().Get("_block") != "" || r.URL.Query().Get("_page") == "" {
+		return nil, nil, s.ctx(r), fmt.Errorf("page and display context must be supplied together")
+	}
+	matched, found := view.MatchPageDisplay(a, r.URL.Query().Get("_page"))
+	if !found || matched.View != target || matched.Name != displayName {
+		return nil, nil, s.ctx(r), fmt.Errorf("bound View display does not match this request")
+	}
+	query := map[string]string{}
+	for key := range r.URL.Query() {
+		if !strings.HasPrefix(key, "_") {
+			query[key] = r.URL.Query().Get(key)
+		}
+	}
+	requestContext := s.ctx(r)
+	bound, err := view.ResolveDisplayBindings(matched.Display, matched.Params, query, requestContext)
+	if err != nil {
+		return nil, nil, requestContext, err
+	}
+	requestContext.RouteParams = matched.Params
+	requestContext.Values = bound
+	return bound, &matched.Display, requestContext, nil
 }
 
 func (s *Server) boundBlockInputs(r *http.Request, a *appir.App, kind, target string) (map[string]any, beanctx.Request, error) {

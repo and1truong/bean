@@ -105,7 +105,11 @@ func formattedFields(a *appir.App, b appir.Block) []string {
 		trusted[fieldName] = true
 	}
 	entity := a.Entities[viewDefinition.Entity]
-	for _, legacy := range b.Presentation.RichTextFields {
+	presentation := b.Presentation
+	if display, exists := viewDefinition.Displays[b.Display]; exists {
+		presentation = display.Renderer.Presentation()
+	}
+	for _, legacy := range presentation.RichTextFields {
 		for _, fieldDefinition := range entity.Fields {
 			if fieldDefinition.Name == legacy && fieldDefinition.Type == "richtext" {
 				trusted[legacy] = true

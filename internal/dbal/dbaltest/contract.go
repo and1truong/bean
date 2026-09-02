@@ -36,6 +36,19 @@ func Contract(t *testing.T, database Backend) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for name, test := range map[string]struct {
+		predicate dbal.Predicate
+		rows      int
+	}{
+		"contains": {dbal.Predicate{Op: dbal.OpContains, Column: "name", Value: "ph"}, 1},
+		"gte":      {dbal.Predicate{Op: dbal.OpGTE, Column: "amount", Value: 3}, 2},
+		"lte":      {dbal.Predicate{Op: dbal.OpLTE, Column: "amount", Value: 3}, 1},
+	} {
+		rows, selectErr := database.Select(ctx, dbal.Select{Table: "item", Columns: []string{"id"}, Where: &test.predicate, Limit: 50})
+		if selectErr != nil || len(rows) != test.rows {
+			t.Fatalf("%s rows=%v err=%v", name, rows, selectErr)
+		}
+	}
 	if _, err = database.Insert(ctx, dbal.Insert{Table: "item", Values: map[string]dbal.Value{"id": "3", "name": "alpha", "amount": 1}}); !dbal.IsCode(err, dbal.UniqueViolation) {
 		t.Fatalf("want unique violation, got %v", err)
 	}
