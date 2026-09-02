@@ -213,6 +213,34 @@ describe('public rendering',()=>{
     expect(fetchMock.mock.calls.filter(([input])=>String(input).includes('/api/views/shared'))).toHaveLength(2)
   })
 
+  it('keeps sibling View state mounted while filter URL state refetches the Page',async()=>{
+    let resolveFilteredPage:(value:Response)=>void=()=>{}
+    const filteredPage=new Promise<Response>(resolve=>{resolveFilteredPage=resolve})
+    const tree={component:'Page',children:[
+      {component:'ViewBlock',props:{name:'first',block:'first',view:'shared',filters:{status:{Field:'status',Type:'string'}},display:{Type:'block',Renderer:{Type:'list',TitleField:'title'},Controls:[{Filter:'status',Label:'Status',Widget:'text'}],Pager:{Type:'none'}}}},
+      {component:'ViewBlock',props:{name:'second',block:'second',view:'shared',presentation:{Mode:'list',TitleField:'title'}}},
+    ]}
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page')&&path.includes('first.status=open'))return filteredPage
+      if(path.includes('/api/system/page'))return response({tree})
+      if(path.includes('_block=first'))return response({data:[{id:'1',title:'First result'}],nextCursor:''})
+      if(path.includes('_block=second')&&path.includes('cursor=second-next'))return response({data:[{id:'3',title:'Second page'}],nextCursor:''})
+      if(path.includes('_block=second'))return response({data:[{id:'2',title:'Second result'}],nextCursor:'second-next'})
+      return response({})
+    }))
+    renderApp('/two-blocks')
+    expect(await screen.findByText('Second result')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button',{name:'Next'}))
+    expect(await screen.findByText('Second page')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Status'),{target:{value:'open'}})
+    fireEvent.click(screen.getByRole('button',{name:'Apply'}))
+    expect(screen.getByText('Second page')).toBeInTheDocument()
+    await act(async()=>resolveFilteredPage(await response({tree})))
+    expect(screen.getByText('Second page')).toBeInTheDocument()
+  })
+
   it('resets View pagination when a reused block moves to another bound page',async()=>{
     let navigate:NavigateFunction=()=>{}
     const viewRequests:string[]=[]
