@@ -265,6 +265,20 @@ func TestUserAuthoredPrivateViewDisplayPrefixIsRejected(t *testing.T) {
 	}
 }
 
+func TestPageRoutesMustBeCanonicalURLPaths(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "query"}, Spec: map[string]any{"route": "/reports?format=full", "panel": "missing"}},
+		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "encoded"}, Spec: map[string]any{"route": "/caf%C3%A9", "panel": "missing"}},
+		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "unclean"}, Spec: map[string]any{"route": "/reports/../latest", "panel": "missing"}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	for _, name := range []string{"query", "encoded", "unclean"} {
+		if !hasViewDisplayDiagnostic(diagnostics, "Page", name, "spec.route") {
+			t.Errorf("missing Page/%s/spec.route: %v", name, diagnostics)
+		}
+	}
+}
+
 func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 	definitions := []definition.Definition{
 		{APIVersion: definition.APIVersion, Kind: "Policy", Metadata: definition.Metadata{Name: "redacted"}, Spec: map[string]any{"redact": []any{"status"}}},
@@ -292,8 +306,11 @@ func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 				"dynamic_csv":    map[string]any{"type": "csv", "route": "/items/:id.csv"},
 				"query_api":      map[string]any{"type": "json", "route": "/healthz?format=json"},
 				"fragment_feed":  map[string]any{"type": "rss", "route": "/items.xml#latest"},
+				"encoded_api":    map[string]any{"type": "json", "route": "/caf%C3%A9.json"},
 				"builtin_api":    map[string]any{"type": "json", "route": "/api/system/page"},
 				"builtin_health": map[string]any{"type": "csv", "route": "/healthz"},
+				"query_page":     map[string]any{"type": "page", "route": "/reports?format=full", "renderer": map[string]any{"type": "list"}},
+				"fragment_page":  map[string]any{"type": "page", "route": "/reports#latest", "renderer": map[string]any{"type": "list"}},
 				"unsafe_rich": map[string]any{
 					"type": "block", "renderer": map[string]any{"type": "detail", "titleField": "title", "richTextFields": []any{"title"}},
 				},
@@ -324,8 +341,11 @@ func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 		"View/items/spec.displays.dynamic_csv.route",
 		"View/items/spec.displays.query_api.route",
 		"View/items/spec.displays.fragment_feed.route",
+		"View/items/spec.displays.encoded_api.route",
 		"View/items/spec.displays.builtin_api.route",
 		"View/items/spec.displays.builtin_health.route",
+		"View/items/spec.displays.query_page.route",
+		"View/items/spec.displays.fragment_page.route",
 		"View/items/spec.displays.unsafe_rich.renderer.richTextFields.0",
 		"Block/items/spec.display",
 	} {

@@ -938,16 +938,12 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 					out = append(out, requiredDiagnostic("View", name, "spec.displays."+displayName+".route", "serializer display route is required"))
 					continue
 				}
-				if !strings.HasPrefix(display.Route, "/") || strings.HasPrefix(display.Route, "//") {
-					out = append(out, diagnostic("View", name, "spec.displays."+displayName+".route", "serializer display route must be absolute"))
+				if !canonicalRoutePath(display.Route) {
+					out = append(out, diagnostic("View", name, "spec.displays."+displayName+".route", "serializer display route must be a canonical absolute URL path"))
 					continue
 				}
 				if strings.Contains(display.Route, "/:") {
 					out = append(out, diagnostic("View", name, "spec.displays."+displayName+".route", "serializer display route must be static"))
-					continue
-				}
-				if strings.ContainsAny(display.Route, "?#") {
-					out = append(out, diagnostic("View", name, "spec.displays."+displayName+".route", "serializer display route must not contain a query or fragment"))
 					continue
 				}
 				if reservedServerRoute(display.Route) {
@@ -969,6 +965,8 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 			if display.Type == "page" {
 				if display.Route == "" {
 					out = append(out, requiredDiagnostic("View", name, "spec.displays."+displayName+".route", "page display route is required"))
+				} else if !canonicalRoutePath(display.Route) {
+					out = append(out, diagnostic("View", name, "spec.displays."+displayName+".route", "page display route must be a canonical absolute URL path"))
 				} else if old := conflictingRoute(routes, display.Route); old != "" {
 					out = append(out, duplicateDiagnostic("View", name, "spec.displays."+displayName+".route", "overlaps route used by "+old))
 				} else {
@@ -2032,10 +2030,9 @@ func validatePages(a *appir.App, state *validationState) []definition.Diagnostic
 	routes := state.routes
 	for _, name := range keys(a.Pages) {
 		page := a.Pages[name]
-		if !strings.HasPrefix(page.Route, "/") {
-			out = append(out, diagnostic("Page", name, "spec.route", "must start with /"))
-		}
-		if old := conflictingRoute(routes, page.Route); old != "" {
+		if !canonicalRoutePath(page.Route) {
+			out = append(out, diagnostic("Page", name, "spec.route", "must be a canonical absolute URL path"))
+		} else if old := conflictingRoute(routes, page.Route); old != "" {
 			out = append(out, diagnostic("Page", name, "spec.route", "overlaps route used by "+old))
 		} else {
 			routes[page.Route] = "Page/" + name
@@ -2760,6 +2757,22 @@ func reservedServerRoute(route string) bool {
 		}
 	}
 	return false
+}
+
+func canonicalRoutePath(route string) bool {
+	if route == "" || !strings.HasPrefix(route, "/") || strings.HasPrefix(route, "//") || strings.ContainsAny(route, "?#") || strings.Contains(route, "//") {
+		return false
+	}
+	parsed, err := url.ParseRequestURI(route)
+	if err != nil || parsed.Path != route || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return false
+	}
+	for _, segment := range strings.Split(route, "/") {
+		if segment == "." || segment == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 func nameSet(values []string) map[string]bool {
