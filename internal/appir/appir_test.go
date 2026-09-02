@@ -132,6 +132,10 @@ func TestExtensionRequiresV5Format(t *testing.T) {
 	if err := app.ValidateFormat(); err == nil {
 		t.Fatal("v4 AppIR accepted Extension semantics that a v0.12 runtime would discard")
 	}
+	app.FormatVersion = appir.ExtensionFormat
+	if err := app.ValidateFormat(); err != nil {
+		t.Fatalf("v5 AppIR rejected Extension semantics: %v", err)
+	}
 
 	app = appir.Empty()
 	app.FormatVersion = appir.TestSuiteFormat
@@ -144,5 +148,32 @@ func TestExtensionRequiresV5Format(t *testing.T) {
 	app.TestSuites["notify"] = appir.TestSuite{Name: "notify", Tests: []appir.TestCase{{Providers: map[string][]appir.TestProviderResult{"notify": {{Output: map[string]any{}}}}}}}
 	if err := app.ValidateFormat(); err == nil {
 		t.Fatal("v4 AppIR accepted an Extension-bound TestSuite")
+	}
+}
+
+func TestFirstClassViewDisplaysRequireV6Format(t *testing.T) {
+	app := appir.Empty()
+	app.Views["articles"] = appir.View{
+		Name: "articles", Entity: "article",
+		ExposedFilters: map[string]appir.ViewFilter{"status": {Field: "status", Operator: "eq"}},
+		Displays: map[string]appir.Display{"index": {
+			Type: "page", Route: "/articles", Title: appir.DisplayTitle{Text: "Articles"},
+			Renderer: appir.ViewRenderer{Type: "table", Fields: []appir.ViewColumn{{Field: "title", Label: "Article"}}},
+			Pager:    appir.ViewPager{Type: "cursor", PageSize: 25},
+		}},
+	}
+	if err := app.ValidateFormat(); err != nil {
+		t.Fatal(err)
+	}
+	app.FormatVersion = appir.ExtensionFormat
+	if err := app.ValidateFormat(); err == nil {
+		t.Fatal("v5 AppIR accepted first-class View display semantics")
+	}
+
+	legacy := appir.Empty()
+	legacy.FormatVersion = appir.ExtensionFormat
+	legacy.Views["feed"] = appir.View{Name: "feed", Displays: map[string]appir.Display{"rss": {Type: "rss", Route: "/feed.xml"}}}
+	if err := legacy.ValidateFormat(); err != nil {
+		t.Fatalf("v5 AppIR rejected legacy serializer displays: %v", err)
 	}
 }

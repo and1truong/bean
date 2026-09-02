@@ -2,6 +2,7 @@ package page
 
 import (
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -48,7 +49,12 @@ func Match(a *appir.App, path string) (appir.Page, map[string]string, bool) {
 		ok := true
 		for i, v := range pp {
 			if strings.HasPrefix(v, ":") {
-				params[strings.TrimPrefix(v, ":")] = actual[i]
+				value, err := url.PathUnescape(actual[i])
+				if err != nil {
+					ok = false
+					break
+				}
+				params[strings.TrimPrefix(v, ":")] = value
 			} else if v != actual[i] {
 				ok = false
 			}

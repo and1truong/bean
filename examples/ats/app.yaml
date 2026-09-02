@@ -112,6 +112,34 @@ name: candidate_pipeline
 entity: candidate
 policy: public_access
 fields: [id, job_id, name, email, stage, applied_at, summary]
+exposedFilters:
+  stage: {field: stage, operator: eq}
+displays:
+  search:
+    type: block
+    renderer: {type: list, titleField: name, bodyField: summary, metaFields: [email, stage, applied_at], searchFields: [name, email, summary], linkRoute: /candidates/:id, linkField: id}
+    pager: {type: cursor, pageSize: 50}
+    emptyState: No candidates match this search.
+  board:
+    type: block
+    renderer: {type: board, titleField: name, groupField: stage, columns: [applied, screen, interview, offer, hired, rejected], moveAction: move_candidate, metaFields: [email, applied_at], linkRoute: /candidates/:id, linkField: id}
+    pager: {type: none, pageSize: 50}
+  table:
+    type: page
+    route: /candidates
+    title: {text: Candidates}
+    description: Filter and review the candidate pipeline.
+    renderer:
+      type: table
+      fields:
+        - {field: name, label: Candidate, linkRoute: /candidates/:id}
+        - {field: email, label: Email}
+        - {field: stage, label: Stage}
+        - {field: applied_at, label: Applied}
+    controls:
+      - {filter: stage, label: Pipeline stage, widget: select}
+    pager: {type: cursor, pageSize: 10}
+    emptyState: No candidates match.
 sort:
   - {field: applied_at, desc: true}
 ---
@@ -121,7 +149,13 @@ entity: candidate
 policy: public_access
 fields: [id, job_id, name, email, stage, applied_at, summary]
 exposedFilters:
-  id: {name: id, type: uuid, required: true}
+  id: {field: id, operator: eq}
+displays:
+  summary:
+    type: block
+    title: {field: name, fallback: Candidate}
+    renderer: {type: detail, titleField: name, bodyField: summary, metaFields: [email, stage, applied_at]}
+    pager: {type: none, pageSize: 50}
 ---
 kind: View
 name: candidate_total
@@ -129,12 +163,22 @@ entity: candidate
 policy: public_access
 aggregates:
   - {function: count, field: id, alias: candidate_count}
+displays:
+  metric:
+    type: block
+    renderer: {type: metric, metricField: candidate_count, metricLabel: Active candidates}
+    pager: {type: none, pageSize: 50}
 ---
 kind: View
 name: recent_activity
 entity: activity
 policy: public_access
 fields: [id, candidate_id, subject, detail, occurred_at]
+displays:
+  timeline:
+    type: block
+    renderer: {type: timeline, titleField: subject, bodyField: detail, timeField: occurred_at}
+    pager: {type: cursor, pageSize: 50}
 sort:
   - {field: occurred_at, desc: true}
 ---
@@ -142,48 +186,25 @@ kind: Block
 name: candidate_metric
 type: view
 view: candidate_total
-presentation:
-  mode: metric
-  metricField: candidate_count
-  metricLabel: Active candidates
+display: metric
 ---
 kind: Block
 name: candidate_search
 type: view
 view: candidate_pipeline
-presentation:
-  mode: list
-  titleField: name
-  bodyField: summary
-  metaFields: [email, stage, applied_at]
-  searchFields: [name, email, summary]
-  linkRoute: /candidates/:id
-  linkField: id
-  emptyState: No candidates match this search.
+display: search
 ---
 kind: Block
 name: candidate_board
 type: view
 view: candidate_pipeline
-presentation:
-  mode: board
-  titleField: name
-  groupField: stage
-  columns: [applied, screen, interview, offer, hired, rejected]
-  moveAction: move_candidate
-  metaFields: [email, applied_at]
-  linkRoute: /candidates/:id
-  linkField: id
+display: board
 ---
 kind: Block
 name: activity_timeline
 type: view
 view: recent_activity
-presentation:
-  mode: timeline
-  titleField: subject
-  bodyField: detail
-  timeField: occurred_at
+display: timeline
 ---
 kind: Block
 name: candidate_summary
@@ -193,16 +214,13 @@ inputs:
   id: {type: uuid, required: true}
 bindings:
   id: {source: context, name: id, required: true}
-presentation:
-  mode: detail
-  titleField: name
-  bodyField: summary
-  metaFields: [email, stage, applied_at]
+display: summary
 ---
 kind: Menu
 name: main_navigation
 items:
   - {label: Pipeline, route: /}
+  - {label: Candidates, route: /candidates}
 ---
 kind: Block
 name: main_menu

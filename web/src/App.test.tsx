@@ -2,7 +2,7 @@ import {act,fireEvent,render,screen,waitFor} from '@testing-library/react'
 import {afterEach,describe,it,expect,vi} from 'vitest'
 import {MemoryRouter,useNavigate,type NavigateFunction} from 'react-router-dom'
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query'
-import App,{evaluate} from './App'
+import App,{controlInputValue,controlQueryValue,evaluate} from './App'
 describe('App',()=>{it('renders login',()=>{render(<QueryClientProvider client={new QueryClient()}><MemoryRouter initialEntries={['/login']}><App/></MemoryRouter></QueryClientProvider>);expect(screen.getByRole('heading',{name:'Sign in'})).toBeInTheDocument()})})
 
 describe('client expressions',()=>{
@@ -14,6 +14,14 @@ describe('client expressions',()=>{
     expect(evaluate(adult,{age:21})).toBe(true)
     expect(()=>evaluate({...adult,Right:{Source:'literal',Literal:'18'}},{})).toThrow('comparison requires numbers')
     expect(()=>evaluate({Op:'future',Left:{Source:'literal',Literal:true},Right:{Source:'literal',Literal:true}},{})).toThrow('unsupported client expression operator')
+  })
+})
+
+describe('View datetime controls',()=>{
+  it('preserves the original RFC3339 instant when the local control is unchanged',()=>{
+    const filter={Field:'published_at',Type:'datetime'}
+    const original='2026-11-01T06:30:00Z'
+    expect(controlQueryValue(controlInputValue(original,filter),filter,original)).toBe(original)
   })
 })
 
@@ -139,6 +147,20 @@ describe('public rendering',()=>{
     expect(screen.getByTestId('tree-view')).toContainElement(screen.getByRole('link',{name:'Grandchild C'}))
   })
 
+  it('rejects a structured View response that exceeds 200 rows',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/manifest'))return response({authNavigation:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'ViewBlock',props:{name:'board',view:'tasks',formattedFields:[],fileFields:[],presentation:{Mode:'board',TitleField:'title',GroupField:'status',Columns:['todo']}}}})
+      if(path.includes('cursor=next'))return response({data:Array.from({length:100},(_,index)=>({id:'next-'+index,title:'Task',status:'todo'})),nextCursor:''})
+      if(path.includes('/api/views/tasks'))return response({data:Array.from({length:150},(_,index)=>({id:'first-'+index,title:'Task',status:'todo'})),nextCursor:'next'})
+      return response({})
+    }))
+    renderApp('/tasks')
+    expect(await screen.findByRole('alert')).toHaveTextContent('This View display supports at most 200 rows.')
+  })
+
   it('submits file Webforms as multipart data',async()=>{
     let submitted:BodyInit|null|undefined
     vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request,init?:RequestInit)=>{
@@ -189,6 +211,54 @@ describe('public rendering',()=>{
     expect(await screen.findByText('First result')).toBeInTheDocument()
     expect(await screen.findByText('Second result')).toBeInTheDocument()
     expect(fetchMock.mock.calls.filter(([input])=>String(input).includes('/api/views/shared'))).toHaveLength(2)
+  })
+
+  it('keeps sibling View state mounted while filter URL state refetches the Page',async()=>{
+    let resolveFilteredPage:(value:Response)=>void=()=>{}
+    const filteredPage=new Promise<Response>(resolve=>{resolveFilteredPage=resolve})
+    const tree={component:'Page',children:[
+      {component:'ViewBlock',props:{name:'first',block:'first',view:'shared',filters:{status:{Field:'status',Type:'string'}},display:{Type:'block',Renderer:{Type:'list',TitleField:'title'},Controls:[{Filter:'status',Label:'Status',Widget:'text'}],Pager:{Type:'none'}}}},
+      {component:'ViewBlock',props:{name:'second',block:'second',view:'shared',presentation:{Mode:'list',TitleField:'title'}}},
+    ]}
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page')&&path.includes('first.status=open'))return filteredPage
+      if(path.includes('/api/system/page'))return response({tree})
+      if(path.includes('_block=first'))return response({data:[{id:'1',title:'First result'}],nextCursor:''})
+      if(path.includes('_block=second')&&path.includes('cursor=second-next'))return response({data:[{id:'3',title:'Second page'}],nextCursor:''})
+      if(path.includes('_block=second'))return response({data:[{id:'2',title:'Second result'}],nextCursor:'second-next'})
+      return response({})
+    }))
+    renderApp('/two-blocks')
+    expect(await screen.findByText('Second result')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button',{name:'Next'}))
+    expect(await screen.findByText('Second page')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Status'),{target:{value:'open'}})
+    fireEvent.click(screen.getByRole('button',{name:'Apply'}))
+    expect(screen.getByText('Second page')).toBeInTheDocument()
+    await act(async()=>resolveFilteredPage(await response({tree})))
+    expect(screen.getByText('Second page')).toBeInTheDocument()
+  })
+
+  it('does not retain the previous Page tree while another path loads',async()=>{
+    let navigate:NavigateFunction=()=>{}
+    let resolveNextPage:(value:Response)=>void=()=>{}
+    const nextPage=new Promise<Response>(resolve=>{resolveNextPage=resolve})
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page')&&path.includes('%2Fnext'))return nextPage
+      if(path.includes('/api/system/page'))return response({tree:{component:'TextBlock',props:{text:'Previous page'}}})
+      return response({})
+    }))
+    render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter initialEntries={['/previous']}><NavigationDriver capture={value=>{navigate=value}}/><App/></MemoryRouter></QueryClientProvider>)
+    expect(await screen.findByText('Previous page')).toBeInTheDocument()
+    act(()=>navigate('/next'))
+    expect(screen.queryByText('Previous page')).not.toBeInTheDocument()
+    expect(screen.getByText('Loading…')).toBeInTheDocument()
+    await act(async()=>resolveNextPage(await response({tree:{component:'TextBlock',props:{text:'Next page'}}})))
+    expect(await screen.findByText('Next page')).toBeInTheDocument()
   })
 
   it('resets View pagination when a reused block moves to another bound page',async()=>{
@@ -410,6 +480,102 @@ describe('public rendering',()=>{
     expect(await screen.findByText('Needs review')).toBeInTheDocument()
     expect(screen.getByLabelText('Status')).toHaveValue('pending')
     expect(fetchMock.mock.calls.some(([input])=>String(input).includes('_block=queue')&&String(input).includes('status=pending'))).toBe(true)
+  })
+
+  it('renders a page display table with labelled URL filters, title, and cursor pager',async()=>{
+    const fetchMock=vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'ViewBlock',props:{name:'index',view:'articles',formattedFields:[],fileFields:[],fieldTypes:{published_at:'datetime'},filters:{status:{Field:'status',Type:'enum',Options:['draft','published']},featured:{Field:'featured',Type:'boolean'},published_after:{Field:'published_at',Type:'datetime'}},display:{Type:'page',Description:'Browse articles.',Title:{Text:'Articles'},Renderer:{Type:'table',Fields:[{Field:'title',Label:'Article',LinkRoute:'/articles/:id'},{Field:'status',Label:'State'},{Field:'published_at',Label:'Published'}]},Controls:[{Filter:'status',Label:'Publication status',Widget:'select'},{Filter:'featured',Label:'Featured',Widget:'checkbox'},{Filter:'published_after',Label:'Published after',Widget:'auto'}],Pager:{Type:'cursor',PageSize:1}}}}]}})
+      if(path.includes('/api/views/articles')&&path.includes('cursor=next-page'))return response({data:[{id:'2',title:'Second article',status:'published'}],nextCursor:''})
+      if(path.includes('/api/views/articles')&&path.includes('status=published'))return response({data:[{id:'2',title:'Published article',status:'published'}],nextCursor:''})
+      if(path.includes('/api/views/articles'))return response({data:[{id:'1',title:'Draft article',status:'draft',published_at:'2026-01-02T10:00:00Z'}],nextCursor:'next-page'})
+      return response({})
+    })
+    vi.stubGlobal('fetch',fetchMock)
+    renderApp('/articles?status=draft&featured=true')
+    expect(await screen.findByRole('heading',{name:'Articles'})).toBeInTheDocument()
+    expect(document.title).toBe('Articles')
+    expect(screen.getByText('Browse articles.')).toBeInTheDocument()
+    expect(await screen.findByRole('columnheader',{name:'Article'})).toBeInTheDocument()
+    expect(screen.getByRole('link',{name:'Draft article'})).toHaveAttribute('href','/articles/1')
+    expect(screen.getByText('Jan 2, 2026')).toBeInTheDocument()
+    expect(screen.getByLabelText('Publication status')).toHaveValue('draft')
+    expect(screen.getByRole('checkbox',{name:'Featured'})).toBeChecked()
+    fireEvent.click(screen.getByRole('button',{name:'Next'}))
+    expect(await screen.findByText('Second article')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button',{name:'Previous'}))
+    expect(await screen.findByText('Draft article')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Publication status'),{target:{value:'published'}})
+    fireEvent.click(screen.getByRole('checkbox',{name:'Featured'}))
+    const localDateTime='2026-01-02T10:30:00'
+    expect(screen.getByLabelText('Published after')).toHaveAttribute('type','datetime-local')
+    fireEvent.change(screen.getByLabelText('Published after'),{target:{value:localDateTime}})
+    fireEvent.click(screen.getByRole('button',{name:'Apply'}))
+    expect(await screen.findByText('Published article')).toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(([input])=>String(input).includes('_display=index')&&String(input).includes('status=published')&&String(input).includes('featured=false')&&String(input).includes('limit=1'))).toBe(true)
+    const filteredRequest=fetchMock.mock.calls.map(([input])=>String(input)).find(path=>path.includes('status=published')&&path.includes('published_after='))
+    expect(new URL(filteredRequest!,'http://bean').searchParams.get('published_after')).toBe(new Date(localDateTime).toISOString())
+  })
+
+  it('resolves a detail display heading and browser title from its result',async()=>{
+    const fetchMock=vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'ViewBlock',props:{name:'detail',view:'articles',maxRows:50,display:{Type:'page',Title:{Field:'title',Fallback:'Article'},Renderer:{Type:'detail',TitleField:'title',MetaFields:['tag']},Pager:{Type:'none',PageSize:50}}}}]}})
+      if(path.includes('/api/views/articles'))return response({data:Array.from({length:50},(_,index)=>({id:'1',title:'Resolved article',tag:'Tag '+(index+1)})),nextCursor:''})
+      return response({})
+    })
+    vi.stubGlobal('fetch',fetchMock)
+    renderApp('/articles/1')
+    expect(await screen.findByRole('heading',{name:'Resolved article',level:1})).toBeInTheDocument()
+    expect(document.title).toBe('Resolved article')
+    expect(await screen.findByText(/Tag 50/)).toBeInTheDocument()
+    const requests=fetchMock.mock.calls.map(([input])=>String(input)).filter(path=>path.includes('/api/views/articles'))
+    expect(requests[0]).toContain('limit=50')
+    expect(requests).toHaveLength(1)
+  })
+
+  it('uses the title fallback for an empty detail result value',async()=>{
+    document.title='Bean'
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'ViewBlock',props:{name:'detail',view:'articles',display:{Type:'page',Title:{Field:'title',Fallback:'Article'},Renderer:{Type:'detail',TitleField:'title'},Pager:{Type:'none',PageSize:1}}}}]}})
+      if(path.includes('/api/views/articles'))return response({data:[{id:'1',title:''}],nextCursor:''})
+      return response({})
+    }))
+    renderApp('/articles/empty')
+    expect(await screen.findByRole('heading',{name:'Article',level:1})).toBeInTheDocument()
+    expect(document.title).toBe('Article')
+  })
+
+  it('keeps a block result title out of the browser title',async()=>{
+    document.title='Bean'
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',props:{title:'Outer page'},children:[{component:'ViewBlock',props:{name:'detail',block:'sidebar',view:'articles',display:{Type:'block',Title:{Field:'title',Fallback:'Article'},Renderer:{Type:'detail',TitleField:'title'}}}}]}})
+      if(path.includes('/api/views/articles'))return response({data:[{id:'1',title:'Block article'}],nextCursor:''})
+      return response({})
+    }))
+    renderApp('/composed')
+    expect(await screen.findByRole('heading',{name:'Block article',level:2})).toBeInTheDocument()
+    expect(document.title).toBe('Outer page')
+  })
+
+  it('rejects detail data that cannot fit in one bounded snapshot',async()=>{
+    const fetchMock=vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'ViewBlock',props:{name:'detail',view:'articles',maxRows:50,presentation:{Mode:'detail',TitleField:'title'}}}})
+      if(path.includes('/api/views/articles'))return response({data:[{id:'1',title:'Article'}],nextCursor:'more-detail'})
+      return response({})
+    })
+    vi.stubGlobal('fetch',fetchMock)
+    renderApp('/articles/1')
+    expect(await screen.findByRole('alert')).toHaveTextContent('This View display supports at most 50 rows.')
+    expect(fetchMock.mock.calls.filter(([input])=>String(input).includes('/api/views/articles'))).toHaveLength(1)
   })
 })
 

@@ -65,7 +65,7 @@ func New(config Config) *Server {
 		config.Service = agentprotocol.New()
 	}
 	if config.Version == "" {
-		config.Version = "0.13.0-alpha"
+		config.Version = "0.14.0-alpha"
 	}
 	return &Server{config: config}
 }

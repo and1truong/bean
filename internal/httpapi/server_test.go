@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -231,6 +232,73 @@ func TestPublicViewSearchIsCompilerDeclaredAndThemeIsExposed(t *testing.T) {
 	unbound := serve(t, handler, http.MethodGet, "/api/views/items?q=alpha", nil, nil, "")
 	if unbound.Code != http.StatusBadRequest {
 		t.Fatalf("unbound search status=%d body=%s", unbound.Code, unbound.Body.String())
+	}
+}
+
+func TestPageViewDisplayEnforcesControlsPagerAndRouteBindings(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := bootstrap.Open(ctx, filepath.Join(t.TempDir(), "display.db"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.DB.Close()
+	bundle := definition.Bundle{Name: "display", Definitions: []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Policy", Metadata: definition.Metadata{Name: "public"}, Spec: map[string]any{}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"policy": "public", "fields": []any{
+			map[string]any{"name": "title", "type": "string", "required": true},
+			map[string]any{"name": "status", "type": "enum", "options": []any{"open", "closed"}, "required": true},
+		}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "articles"}, Spec: map[string]any{
+			"entity": "article", "fields": []any{"id", "title", "status"}, "policy": "public",
+			"exposedFilters": map[string]any{"id": map[string]any{"field": "id", "operator": "eq"}, "status": map[string]any{"field": "status", "operator": "eq"}},
+			"displays": map[string]any{
+				"index":    map[string]any{"type": "page", "route": "/articles", "title": map[string]any{"text": "Articles"}, "renderer": map[string]any{"type": "table", "fields": []any{map[string]any{"field": "title", "label": "Article"}}}, "controls": []any{map[string]any{"filter": "status", "label": "Status", "widget": "select"}}, "pager": map[string]any{"type": "cursor", "pageSize": 1}},
+				"snapshot": map[string]any{"type": "page", "route": "/article-snapshot", "renderer": map[string]any{"type": "detail", "titleField": "title"}, "pager": map[string]any{"type": "none", "pageSize": 2}},
+				"detail":   map[string]any{"type": "page", "route": "/articles/:id", "bindings": map[string]any{"id": map[string]any{"source": "route", "name": "id", "required": true}}, "title": map[string]any{"field": "title", "fallback": "Article"}, "renderer": map[string]any{"type": "detail", "titleField": "title"}},
+			},
+		}},
+	}}
+	if err = runtime.Store.SaveBundle(ctx, "default", bundle); err != nil {
+		t.Fatal(err)
+	}
+	if _, diagnostics, publishErr := runtime.Store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) > 0 {
+		t.Fatalf("publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	handler := runtime.HTTP.Handler()
+	ids := []string{}
+	for _, input := range []map[string]any{{"title": "One", "status": "open"}, {"title": "Two", "status": "open"}, {"title": "Closed", "status": "closed"}} {
+		created := serve(t, handler, http.MethodPost, "/api/actions/article_create", input, nil, "")
+		var result struct{ Data map[string]any }
+		decodeResponse(t, created, &result)
+		ids = append(ids, result.Data["id"].(string))
+	}
+	pageResponse := serve(t, handler, http.MethodGet, "/api/system/page?path=%2Farticles", nil, nil, "")
+	if pageResponse.Code != http.StatusOK || !strings.Contains(pageResponse.Body.String(), `"Type":"table"`) {
+		t.Fatalf("page status=%d body=%s", pageResponse.Code, pageResponse.Body.String())
+	}
+	first := serve(t, handler, http.MethodGet, "/api/views/articles?_page=%2Farticles&_display=index&status=open&limit=200", nil, nil, "")
+	var rows struct {
+		Data       []map[string]any `json:"data"`
+		NextCursor string           `json:"nextCursor"`
+	}
+	decodeResponse(t, first, &rows)
+	if len(rows.Data) != 1 || rows.NextCursor == "" {
+		t.Fatalf("rows=%v cursor=%q", rows.Data, rows.NextCursor)
+	}
+	snapshot := serve(t, handler, http.MethodGet, "/api/views/articles?_page=%2Farticle-snapshot&_display=snapshot&limit=200", nil, nil, "")
+	decodeResponse(t, snapshot, &rows)
+	if len(rows.Data) != 3 || rows.NextCursor != "" {
+		t.Fatalf("snapshot rows=%v cursor=%q", rows.Data, rows.NextCursor)
+	}
+	if response := serve(t, handler, http.MethodGet, "/api/views/articles?_page=%2Farticles&_display=index&title=forged", nil, nil, ""); response.Code != http.StatusBadRequest {
+		t.Fatalf("unknown filter status=%d body=%s", response.Code, response.Body.String())
+	}
+	detailPath := "/articles/" + ids[0]
+	if response := serve(t, handler, http.MethodGet, "/api/views/articles?_page="+url.QueryEscape(detailPath)+"&_display=detail", nil, nil, ""); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"title":"One"`) {
+		t.Fatalf("detail status=%d body=%s", response.Code, response.Body.String())
+	}
+	if response := serve(t, handler, http.MethodGet, "/api/views/articles?_page="+url.QueryEscape(detailPath)+"&_display=detail&id="+ids[1], nil, nil, ""); response.Code != http.StatusBadRequest {
+		t.Fatalf("bound collision status=%d body=%s", response.Code, response.Body.String())
 	}
 }
 

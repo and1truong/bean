@@ -96,20 +96,21 @@ func ReadPage(ctx context.Context, reader Reader, app *appir.App, name string, o
 		predicates = append(predicates, qualifyPredicateColumns(p, v.Entity, joined))
 	}
 	if options.ApplyExposedFilter {
-		for name, definition := range v.ExposedFilters {
+		for name, exposed := range v.ExposedFilters {
 			value, supplied := params.Filter[name]
 			if !supplied || value == "" {
 				continue
 			}
+			definition := exposed.Definition(name)
 			value = coerce(value, definition.Type)
 			if er := field.Validate(definition, value); er != nil {
 				return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: er.Error()}
 			}
-			column := definition.Name
-			if column == "" {
-				column = name
+			operator := map[string]dbal.Operator{"": dbal.OpEQ, "eq": dbal.OpEQ, "contains": dbal.OpContains, "gte": dbal.OpGTE, "lte": dbal.OpLTE}[exposed.Operator]
+			if operator == "" {
+				return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "View filter operator is invalid"}
 			}
-			predicates = append(predicates, dbal.Predicate{Op: dbal.OpEQ, Column: qualify(column, v.Entity, joined), Value: value})
+			predicates = append(predicates, dbal.Predicate{Op: operator, Column: qualify(exposed.Target(name), v.Entity, joined), Value: value})
 		}
 	}
 	available := map[string]bool{}
@@ -509,11 +510,12 @@ func qualifyPredicateColumns(predicate dbal.Predicate, entity string, joined boo
 func signature(v appir.View, params Params) string {
 	b, _ := json.Marshal(struct {
 		View         appir.View
+		Filter       map[string]any
 		ExactFilters map[string]any
 		Search       string
 		SearchFields []string
 		Sort         []appir.Sort
-	}{v, params.ExactFilters, params.Search, params.SearchFields, params.Sort})
+	}{v, params.Filter, params.ExactFilters, params.Search, params.SearchFields, params.Sort})
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
 }
@@ -538,7 +540,7 @@ func decodeCursor(value string) (cursor, error) {
 func Display(app *appir.App, route string) (string, appir.Display, bool) {
 	for name, v := range app.Views {
 		for _, d := range v.Displays {
-			if d.Route == route {
+			if d.Route == route && (d.Type == "json" || d.Type == "csv" || d.Type == "rss") {
 				return name, d, true
 			}
 		}

@@ -14,7 +14,8 @@ const (
 	LifecycleFormat = "bean/appir/v2"
 	RuleFormat      = "bean/appir/v3"
 	TestSuiteFormat = "bean/appir/v4"
-	CurrentFormat   = "bean/appir/v5"
+	ExtensionFormat = "bean/appir/v5"
+	CurrentFormat   = "bean/appir/v6"
 )
 
 type Field struct {
@@ -32,7 +33,35 @@ type Entity struct {
 	Indexes, Unique           [][]string
 	Validations               map[string]string
 }
-type Display struct{ Type, Route string }
+type DisplayTitle struct {
+	Text, Field, Fallback string
+}
+type ViewColumn struct {
+	Field, Label, LinkRoute string
+}
+type ViewControl struct {
+	Filter, Label, Widget string
+	Default               any
+}
+type ViewPager struct {
+	Type     string
+	PageSize int
+}
+type ViewRenderer struct {
+	Type, TitleField, BodyField, LinkRoute, LinkField, EmptyState string
+	GroupField, OrderField, ParentField, MoveAction               string
+	MetricField, MetricLabel, TimeField                           string
+	MetaFields, RichTextFields, Columns, SearchFields             []string
+	Fields                                                        []ViewColumn
+}
+type Display struct {
+	Type, Route, Description, EmptyState string
+	Title                                DisplayTitle
+	Bindings                             map[string]ContextBinding
+	Renderer                             ViewRenderer
+	Controls                             []ViewControl
+	Pager                                ViewPager
+}
 type FilterStep struct{ Type string }
 type Filter struct {
 	Name  string
@@ -44,7 +73,7 @@ type View struct {
 	Relationships          []ViewRelationship
 	Filter                 *expr.Expr
 	ContextFilter          *expr.Expr
-	ExposedFilters         map[string]Field
+	ExposedFilters         map[string]ViewFilter
 	FieldFilters           map[string]string
 	Sort                   []Sort
 	GroupBy                []string
@@ -53,6 +82,28 @@ type View struct {
 	DefaultLimit, MaxLimit int
 	Displays               map[string]Display
 }
+type ViewFilter struct {
+	Field, Operator             string
+	Name, Label, Type           string
+	Required, Unique, Sensitive bool
+	Options                     []string
+	Relation                    *Relation
+}
+
+func (f ViewFilter) Target(name string) string {
+	if f.Field != "" {
+		return f.Field
+	}
+	if f.Name != "" {
+		return f.Name
+	}
+	return name
+}
+
+func (f ViewFilter) Definition(name string) Field {
+	return Field{Name: f.Target(name), Label: f.Label, Type: f.Type, Required: f.Required, Unique: f.Unique, Sensitive: f.Sensitive, Options: f.Options, Relation: f.Relation}
+}
+
 type ViewRelationship struct {
 	Name, Entity, Type, LocalField, TargetField, RelationField string
 }
@@ -216,12 +267,12 @@ type Webform struct {
 	Confirmation string
 }
 type Block struct {
-	Name, Type, View, Entity, Webform, Action, Menu, Text, Policy, Resource string
-	Inputs                                                                  map[string]Field
-	Bindings                                                                map[string]ContextBinding
-	Filters                                                                 []string
-	DefaultFilters                                                          map[string]any
-	Presentation                                                            ViewPresentation
+	Name, Type, View, Display, Entity, Webform, Action, Menu, Text, Policy, Resource string
+	Inputs                                                                           map[string]Field
+	Bindings                                                                         map[string]ContextBinding
+	Filters                                                                          []string
+	DefaultFilters                                                                   map[string]any
+	Presentation                                                                     ViewPresentation
 }
 type ViewPresentation struct {
 	Mode, TitleField, BodyField, LinkRoute, LinkField, EmptyState string
@@ -229,6 +280,25 @@ type ViewPresentation struct {
 	MetricField, MetricLabel, TimeField                           string
 	MetaFields, RichTextFields, Columns, SearchFields             []string
 }
+
+func (r ViewRenderer) Presentation() ViewPresentation {
+	return ViewPresentation{
+		Mode: r.Type, TitleField: r.TitleField, BodyField: r.BodyField, LinkRoute: r.LinkRoute, LinkField: r.LinkField, EmptyState: r.EmptyState,
+		GroupField: r.GroupField, OrderField: r.OrderField, ParentField: r.ParentField, MoveAction: r.MoveAction,
+		MetricField: r.MetricField, MetricLabel: r.MetricLabel, TimeField: r.TimeField,
+		MetaFields: r.MetaFields, RichTextFields: r.RichTextFields, Columns: r.Columns, SearchFields: r.SearchFields,
+	}
+}
+
+func RendererFromPresentation(p ViewPresentation) ViewRenderer {
+	return ViewRenderer{
+		Type: p.Mode, TitleField: p.TitleField, BodyField: p.BodyField, LinkRoute: p.LinkRoute, LinkField: p.LinkField, EmptyState: p.EmptyState,
+		GroupField: p.GroupField, OrderField: p.OrderField, ParentField: p.ParentField, MoveAction: p.MoveAction,
+		MetricField: p.MetricField, MetricLabel: p.MetricLabel, TimeField: p.TimeField,
+		MetaFields: p.MetaFields, RichTextFields: p.RichTextFields, Columns: p.Columns, SearchFields: p.SearchFields,
+	}
+}
+
 type Region struct {
 	Name   string
 	Blocks []string
@@ -312,7 +382,7 @@ func Empty() *App {
 	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Rules: map[string]Rule{}, TestSuites: map[string]TestSuite{}, Extensions: map[string]Extension{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
 }
 func (a *App) ValidateFormat() error {
-	if a.FormatVersion != LegacyFormat && a.FormatVersion != LifecycleFormat && a.FormatVersion != RuleFormat && a.FormatVersion != TestSuiteFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != LegacyFormat && a.FormatVersion != LifecycleFormat && a.FormatVersion != RuleFormat && a.FormatVersion != TestSuiteFormat && a.FormatVersion != ExtensionFormat && a.FormatVersion != CurrentFormat {
 		return fmt.Errorf("unsupported AppIR format %q", a.FormatVersion)
 	}
 	if a.FormatVersion == LegacyFormat {
@@ -340,13 +410,13 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != TestSuiteFormat && a.FormatVersion != CurrentFormat && len(a.TestSuites) > 0 {
+	if a.FormatVersion != TestSuiteFormat && a.FormatVersion != ExtensionFormat && a.FormatVersion != CurrentFormat && len(a.TestSuites) > 0 {
 		return fmt.Errorf("AppIR format %q cannot contain TestSuite definitions", a.FormatVersion)
 	}
-	if a.FormatVersion != CurrentFormat && len(a.Extensions) > 0 {
+	if a.FormatVersion != ExtensionFormat && a.FormatVersion != CurrentFormat && len(a.Extensions) > 0 {
 		return fmt.Errorf("AppIR format %q cannot contain Extension definitions", a.FormatVersion)
 	}
-	if a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != ExtensionFormat && a.FormatVersion != CurrentFormat {
 		for _, action := range a.Actions {
 			for _, step := range action.Steps {
 				if step.Op == "extension" || step.Extension != "" {
@@ -359,6 +429,27 @@ func (a *App) ValidateFormat() error {
 				if len(test.Providers) > 0 || len(test.Expect.ProviderCalls) > 0 {
 					return fmt.Errorf("AppIR format %q cannot contain Extension-bound TestSuites", a.FormatVersion)
 				}
+			}
+		}
+	}
+	if a.FormatVersion != CurrentFormat {
+		for _, view := range a.Views {
+			for _, filter := range view.ExposedFilters {
+				if filter.Field != "" || filter.Operator != "" {
+					return fmt.Errorf("AppIR format %q cannot contain first-class View filters", a.FormatVersion)
+				}
+			}
+			for _, display := range view.Displays {
+				if display.Type == "page" || display.Type == "block" || display.Description != "" || display.EmptyState != "" ||
+					display.Title != (DisplayTitle{}) || len(display.Bindings) > 0 || display.Renderer.Type != "" ||
+					len(display.Controls) > 0 || display.Pager != (ViewPager{}) {
+					return fmt.Errorf("AppIR format %q cannot contain first-class View displays", a.FormatVersion)
+				}
+			}
+		}
+		for _, block := range a.Blocks {
+			if block.Display != "" {
+				return fmt.Errorf("AppIR format %q cannot contain View display-bound Blocks", a.FormatVersion)
 			}
 		}
 	}

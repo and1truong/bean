@@ -3,6 +3,7 @@ package compiler
 import (
 	"fmt"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -30,6 +31,7 @@ type definitionKind struct {
 	ReferenceCandidates bool
 }
 
+var viewDisplayName = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 var definitionKinds = newDefinitionKinds()
 
 func definitionKindRegistry() registry.Registry[definitionKind] { return definitionKinds }
@@ -40,6 +42,20 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 	entity.FieldEntity = func(_ *appir.App, name string) string { return name }
 	entity.ReferenceCandidates = true
 	view := mappedDefinitionKind(appir.View{}, func(app *appir.App) map[string]appir.View { return app.Views }, normalizeView)
+	compileView := view.Compile
+	view.Compile = func(app *appir.App, source definition.Definition) []definition.Diagnostic {
+		out := compileView(app, source)
+		for _, displayName := range keys(app.Views[source.Metadata.Name].Displays) {
+			if !viewDisplayName.MatchString(displayName) {
+				path := "spec.displays." + displayName
+				if displayName == "" {
+					path = "spec.displays"
+				}
+				out = append(out, diagnostic("View", source.Metadata.Name, path, "display name must be a nonempty machine name"))
+			}
+		}
+		return out
+	}
 	view.References = viewReferences
 	view.FieldEntity = func(app *appir.App, name string) string { return app.Views[name].Entity }
 	view.ReferenceCandidates = true
@@ -154,7 +170,8 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 
 	action.Normalize = normalizeActions
 	admin.Normalize = normalizeAdminResources
-	block.Normalize = normalizeResourceListBlocks
+	view.Normalize = normalizeViews
+	block.Normalize = normalizeBlocks
 	localRegistration.Normalize = noDefinitionNormalization
 	theme.Normalize = noDefinitionNormalization
 	demoSeed.Normalize = noDefinitionNormalization
@@ -297,6 +314,78 @@ func normalizeView(name string, value *appir.View) {
 	}
 	if value.MaxLimit == 0 {
 		value.MaxLimit = 200
+	}
+}
+
+func normalizeViews(app *appir.App) {
+	for name, view := range app.Views {
+		entity, exists := app.Entities[view.Entity]
+		if !exists {
+			continue
+		}
+		relationships := map[string]appir.ViewRelationship{}
+		for index, relationship := range view.Relationships {
+			if resolved, found := resolveViewRelationship(entity, relationship); found {
+				relationship = resolved
+				view.Relationships[index] = relationship
+			}
+			relationships[relationship.Name] = relationship
+		}
+		for filterName, filter := range view.ExposedFilters {
+			target := filter.Target(filterName)
+			if filter.Field == "" {
+				filter.Field = target
+			}
+			if filter.Operator == "" {
+				filter.Operator = "eq"
+			}
+			if definition, found := viewFieldDefinition(target, entity, relationships, app); found {
+				if filter.Type == "" {
+					filter.Type = definition.Type
+				}
+				if filter.Label == "" {
+					filter.Label = definition.Label
+				}
+				if len(filter.Options) == 0 {
+					filter.Options = append([]string{}, definition.Options...)
+				}
+				if filter.Relation == nil {
+					filter.Relation = definition.Relation
+				}
+			}
+			view.ExposedFilters[filterName] = filter
+		}
+		if view.Displays == nil {
+			view.Displays = map[string]appir.Display{}
+		}
+		for displayName, display := range view.Displays {
+			if display.Type != "page" && display.Type != "block" {
+				continue
+			}
+			if display.Renderer.Type == "" {
+				display.Renderer.Type = "list"
+			}
+			if display.Renderer.EmptyState == "" {
+				display.Renderer.EmptyState = display.EmptyState
+			}
+			if display.Pager.Type == "" {
+				if display.Renderer.Type == "detail" || display.Renderer.Type == "metric" || display.Renderer.Type == "board" || display.Renderer.Type == "tree" {
+					display.Pager.Type = "none"
+				} else {
+					display.Pager.Type = "cursor"
+				}
+			}
+			if display.Pager.PageSize == 0 {
+				display.Pager.PageSize = view.DefaultLimit
+			}
+			for index := range display.Controls {
+				if display.Controls[index].Widget == "" {
+					display.Controls[index].Widget = "auto"
+				}
+			}
+			view.Displays[displayName] = display
+		}
+		app.Views[name] = view
 	}
 }
 
@@ -524,6 +613,9 @@ func viewReferences(app *appir.App, name string) []DefinitionReference {
 	}
 	for index, relationship := range item.Relationships {
 		out = append(out, reference(fmt.Sprintf("relationships.%d.entity", index), "Entity", relationship.Entity))
+	}
+	for displayName, display := range item.Displays {
+		out = append(out, reference("displays."+displayName+".renderer.moveAction", "Action", display.Renderer.MoveAction))
 	}
 	return references(out...)
 }

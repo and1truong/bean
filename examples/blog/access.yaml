@@ -36,11 +36,6 @@ name: signup_form
 type: webform
 webform: signup
 ---
-kind: Block
-name: login_help
-text: Sign in with your email and password.
-type: text
----
 kind: Panel
 name: signup_panel
 layout: single-column
@@ -48,21 +43,8 @@ regions:
   - blocks: [public_menu, signup_form]
     name: main
 ---
-kind: Panel
-name: login_panel
-layout: single-column
-regions:
-  - blocks: [public_menu, login_help]
-    name: main
----
 kind: Page
 name: signup
 panel: signup_panel
 route: /signup
 title: Sign up
----
-kind: Page
-name: login
-panel: login_panel
-route: /login
-title: Sign in

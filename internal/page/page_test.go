@@ -18,6 +18,13 @@ func TestMatchPrefersStaticSegmentsDeterministically(t *testing.T) {
 			t.Fatalf("attempt=%d matched=%+v params=%v ok=%v", attempt, matched, params, ok)
 		}
 	}
+	matched, params, ok := page.Match(app, "/posts/Hello%20world%2B")
+	if !ok || matched.Name != "dynamic" || params["slug"] != "Hello world+" {
+		t.Fatalf("encoded match=%+v params=%v ok=%v", matched, params, ok)
+	}
+	if _, _, ok = page.Match(app, "/posts/%zz"); ok {
+		t.Fatal("invalid escaped route parameter matched")
+	}
 }
 
 func TestPageNodeExposesWhetherRouteMetadataIsProtected(t *testing.T) {

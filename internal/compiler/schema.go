@@ -31,6 +31,11 @@ type Capabilities struct {
 	ActionSteps             []string `json:"actionSteps"`
 	BlockTypes              []string `json:"blockTypes"`
 	Presentations           []string `json:"presentations"`
+	ViewDisplayTypes        []string `json:"viewDisplayTypes"`
+	ViewRenderers           []string `json:"viewRenderers"`
+	ViewFilterOperators     []string `json:"viewFilterOperators"`
+	ViewControlWidgets      []string `json:"viewControlWidgets"`
+	ViewPagers              []string `json:"viewPagers"`
 	DisplaySerializers      []string `json:"displaySerializers"`
 	PanelLayouts            []string `json:"panelLayouts"`
 	DatabaseBackends        []string `json:"databaseBackends"`
@@ -80,6 +85,11 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 		ActionSteps:             actionstep.Names(),
 		BlockTypes:              block.Names(),
 		Presentations:           presentationNames(),
+		ViewDisplayTypes:        viewDisplayTypes(),
+		ViewRenderers:           viewRendererNames(),
+		ViewFilterOperators:     viewFilterOperators(),
+		ViewControlWidgets:      viewControlWidgets(),
+		ViewPagers:              viewPagerTypes(),
 		DisplaySerializers:      displaySerializerNames(),
 		PanelLayouts:            panelLayoutNames(),
 		DatabaseBackends:        []string{"postgresql", "sqlite"},
@@ -116,6 +126,15 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 func presentationNames() []string {
 	return []string{"board", "detail", "list", "metric", "timeline", "tree"}
 }
+func viewRendererNames() []string {
+	return []string{"board", "detail", "list", "metric", "table", "timeline", "tree"}
+}
+func viewDisplayTypes() []string    { return []string{"block", "csv", "json", "page", "rss"} }
+func viewFilterOperators() []string { return []string{"contains", "eq", "gte", "lte"} }
+func viewControlWidgets() []string {
+	return []string{"auto", "checkbox", "date", "number", "select", "text"}
+}
+func viewPagerTypes() []string         { return []string{"cursor", "none"} }
 func displaySerializerNames() []string { return []string{"csv", "json", "rss"} }
 func panelLayoutNames() []string       { return keys(panelLayouts()) }
 func panelLayouts() map[string]map[string]bool {

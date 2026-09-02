@@ -53,7 +53,11 @@ func TestCompiledQueryPlanAndOpaqueCursor(t *testing.T) {
 	if e != nil || len(detail.Rows) != 1 || detail.Rows[0]["id"] != "b2" {
 		t.Fatalf("joined base-field search=%v err=%v", detail, e)
 	}
-	app.Views["books"] = appir.View{Name: "books", Entity: "book", Fields: []string{"id", "title"}, Sort: []appir.Sort{{Field: "title"}}, DefaultLimit: 1, MaxLimit: 2}
+	app.Views["books"] = appir.View{Name: "books", Entity: "book", Fields: []string{"id", "title", "price"}, ExposedFilters: map[string]appir.ViewFilter{
+		"title": {Field: "title", Operator: "contains", Type: "string"},
+		"min":   {Field: "price", Operator: "gte", Type: "integer"},
+		"max":   {Field: "price", Operator: "lte", Type: "integer"},
+	}, Sort: []appir.Sort{{Field: "title"}}, DefaultLimit: 1, MaxLimit: 2}
 	first, e := service.RunPage(ctx, app, "books", view.Params{}, beanctx.Request{})
 	if e != nil || len(first.Rows) != 1 || first.NextCursor == "" {
 		t.Fatalf("first=%v err=%v", first, e)
@@ -64,6 +68,15 @@ func TestCompiledQueryPlanAndOpaqueCursor(t *testing.T) {
 	}
 	if _, e = service.RunPage(ctx, app, "books", view.Params{Cursor: "not-a-cursor"}, beanctx.Request{}); !dbal.IsCode(e, dbal.InvalidQuery) {
 		t.Fatalf("malformed cursor accepted: %v", e)
+	}
+	for name, filter := range map[string]map[string]any{"contains": {"title": "et"}, "gte": {"min": "3"}, "lte": {"max": "2"}} {
+		result, filterErr := service.RunPage(ctx, app, "books", view.Params{Filter: filter}, beanctx.Request{})
+		if filterErr != nil || len(result.Rows) != 1 || result.Rows[0]["title"] == nil {
+			t.Fatalf("%s filter rows=%v err=%v", name, result.Rows, filterErr)
+		}
+	}
+	if _, e = service.RunPage(ctx, app, "books", view.Params{Filter: map[string]any{"title": "alpha"}, Cursor: first.NextCursor}, beanctx.Request{}); !dbal.IsCode(e, dbal.InvalidQuery) {
+		t.Fatalf("cursor survived a filter-state change: %v", e)
 	}
 	filtered, e := service.RunPage(ctx, app, "books", view.Params{Search: "bet", SearchFields: []string{"title"}, ExactFilters: map[string]any{"title": "Beta"}, Sort: []appir.Sort{{Field: "title", Desc: true}}}, beanctx.Request{})
 	if e != nil || len(filtered.Rows) != 1 || filtered.Rows[0]["id"] != "b2" {
@@ -83,7 +96,7 @@ func TestTenantIsolationInjectedIntoView(t *testing.T) {
 	if e = s.Initialize(ctx); e != nil {
 		t.Fatal(e)
 	}
-	defs := []definition.Definition{{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "project"}, Spec: map[string]any{"tenant": true, "fields": []any{map[string]any{"name": "name", "type": "string", "required": true}}}}, {APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "tenant_member"}, Spec: map[string]any{"readRoles": []any{"member"}, "writeRoles": []any{"member"}, "tenant": true}}, {APIVersion: "bean/v1alpha1", Kind: "View", Metadata: definition.Metadata{Name: "projects"}, Spec: map[string]any{"entity": "project", "fields": []any{"id", "name", "tenant_id"}, "policy": "tenant_member"}}}
+	defs := []definition.Definition{{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "project"}, Spec: map[string]any{"tenant": true, "fields": []any{map[string]any{"name": "name", "type": "string", "required": true}}}}, {APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "tenant_member"}, Spec: map[string]any{"readRoles": []any{"member"}, "writeRoles": []any{"member"}, "tenant": true}}, {APIVersion: "bean/v1alpha1", Kind: "View", Metadata: definition.Metadata{Name: "projects"}, Spec: map[string]any{"entity": "project", "fields": []any{"id", "name", "tenant_id"}, "policy": "tenant_member", "exposedFilters": map[string]any{"tenant": map[string]any{"field": "tenant_id"}}}}}
 	if e = s.SaveBundle(ctx, "default", definition.Bundle{Name: "test", Definitions: defs}); e != nil {
 		t.Fatal(e)
 	}
@@ -110,6 +123,13 @@ func TestTenantIsolationInjectedIntoView(t *testing.T) {
 	rows, e = views.Run(ctx, app, "projects", view.Params{}, member("00000000-0000-4000-8000-00000000000a"))
 	if e != nil || len(rows) != 1 {
 		t.Fatalf("tenant A rows=%v err=%v", rows, e)
+	}
+	if app.Views["projects"].ExposedFilters["tenant"].Type != "uuid" {
+		t.Fatalf("tenant filter=%+v", app.Views["projects"].ExposedFilters["tenant"])
+	}
+	rows, e = views.Run(ctx, app, "projects", view.Params{Filter: map[string]any{"tenant": "00000000-0000-4000-8000-00000000000a"}}, member("00000000-0000-4000-8000-00000000000a"))
+	if e != nil || len(rows) != 1 {
+		t.Fatalf("tenant filter rows=%v err=%v", rows, e)
 	}
 	_ = appir.Empty()
 }
