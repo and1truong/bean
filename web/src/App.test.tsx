@@ -158,7 +158,7 @@ describe('public rendering',()=>{
       return response({})
     }))
     renderApp('/tasks')
-    expect(await screen.findByRole('alert')).toHaveTextContent('Board and tree Views support at most 200 rows.')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Detail, board, and tree Views support at most 200 rows.')
   })
 
   it('submits file Webforms as multipart data',async()=>{
@@ -471,16 +471,22 @@ describe('public rendering',()=>{
   })
 
   it('resolves a detail display heading and browser title from its result',async()=>{
-    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+    const fetchMock=vi.fn(async(input:string|URL|Request)=>{
       const path=String(input)
       if(path.includes('/api/system/session'))return response({authenticated:false})
-      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'ViewBlock',props:{name:'detail',view:'articles',display:{Type:'page',Title:{Field:'title',Fallback:'Article'},Renderer:{Type:'detail',TitleField:'title'},Pager:{Type:'none',PageSize:1}}}}]}})
-      if(path.includes('/api/views/articles'))return response({data:[{id:'1',title:'Resolved article'}],nextCursor:''})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'ViewBlock',props:{name:'detail',view:'articles',display:{Type:'page',Title:{Field:'title',Fallback:'Article'},Renderer:{Type:'detail',TitleField:'title',MetaFields:['tag']},Pager:{Type:'none',PageSize:50}}}}]}})
+      if(path.includes('/api/views/articles')&&path.includes('offset=50'))return response({data:[{id:'1',title:'Resolved article',tag:'Tag 51'}],nextCursor:''})
+      if(path.includes('/api/views/articles'))return response({data:Array.from({length:50},(_,index)=>({id:'1',title:'Resolved article',tag:'Tag '+(index+1)})),nextCursor:'detail-next'})
       return response({})
-    }))
+    })
+    vi.stubGlobal('fetch',fetchMock)
     renderApp('/articles/1')
     expect(await screen.findByRole('heading',{name:'Resolved article',level:1})).toBeInTheDocument()
     expect(document.title).toBe('Resolved article')
+    expect(await screen.findByText(/Tag 51/)).toBeInTheDocument()
+    const requests=fetchMock.mock.calls.map(([input])=>String(input)).filter(path=>path.includes('/api/views/articles'))
+    expect(requests[0]).toContain('limit=200')
+    expect(requests.some(path=>path.includes('offset=50'))).toBe(true)
   })
 })
 

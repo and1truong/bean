@@ -285,8 +285,11 @@ func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 					"controls": []any{map[string]any{"filter": "title", "widget": "checkbox"}, map[string]any{"filter": "missing", "widget": "future"}},
 					"pager":    map[string]any{"type": "offset", "pageSize": 999},
 				},
-				"index_copy": map[string]any{"type": "page", "route": "/items", "renderer": map[string]any{"type": "list"}},
-				"unknown":    map[string]any{"type": "screen"},
+				"index_copy":   map[string]any{"type": "page", "route": "/items", "renderer": map[string]any{"type": "list"}},
+				"unknown":      map[string]any{"type": "screen"},
+				"missing_feed": map[string]any{"type": "rss"},
+				"relative_api": map[string]any{"type": "json", "route": "items.json"},
+				"dynamic_csv":  map[string]any{"type": "csv", "route": "/items/:id.csv"},
 			},
 		}},
 		{APIVersion: definition.APIVersion, Kind: "Block", Metadata: definition.Metadata{Name: "items"}, Spec: map[string]any{"type": "view", "view": "items", "display": "missing"}},
@@ -309,6 +312,9 @@ func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 		"View/items/spec.displays.index.pager.pageSize",
 		"View/items/spec.displays.index_copy.route",
 		"View/items/spec.displays.unknown.type",
+		"View/items/spec.displays.missing_feed.route",
+		"View/items/spec.displays.relative_api.route",
+		"View/items/spec.displays.dynamic_csv.route",
 		"Block/items/spec.display",
 	} {
 		if !paths[path] {

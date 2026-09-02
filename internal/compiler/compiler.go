@@ -935,6 +935,15 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 			}
 			if nameSet(displaySerializerNames())[display.Type] {
 				if display.Route == "" {
+					out = append(out, requiredDiagnostic("View", name, "spec.displays."+displayName+".route", "serializer display route is required"))
+					continue
+				}
+				if !strings.HasPrefix(display.Route, "/") || strings.HasPrefix(display.Route, "//") {
+					out = append(out, diagnostic("View", name, "spec.displays."+displayName+".route", "serializer display route must be absolute"))
+					continue
+				}
+				if strings.Contains(display.Route, "/:") {
+					out = append(out, diagnostic("View", name, "spec.displays."+displayName+".route", "serializer display route must be static"))
 					continue
 				}
 				if old := conflictingRoute(routes, display.Route); old != "" {

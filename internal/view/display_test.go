@@ -9,13 +9,13 @@ import (
 
 func TestMatchPageDisplayPrefersStaticRouteAndBuildsRenderNode(t *testing.T) {
 	app := appir.Empty()
-	app.Entities["article"] = appir.Entity{Name: "article", Fields: []appir.Field{{Name: "attachment", Type: "file"}}}
+	app.Entities["article"] = appir.Entity{Name: "article", Fields: []appir.Field{{Name: "attachment", Type: "file"}, {Name: "body", Type: "richtext"}}}
 	app.Views["articles"] = appir.View{
-		Name: "articles", Entity: "article", Fields: []string{"id", "attachment"},
+		Name: "articles", Entity: "article", Fields: []string{"id", "attachment", "body"},
 		ExposedFilters: map[string]appir.ViewFilter{"id": {Field: "id"}},
 		Displays: map[string]appir.Display{
 			"detail":  {Type: "page", Route: "/articles/:id", Renderer: appir.ViewRenderer{Type: "detail"}},
-			"archive": {Type: "page", Route: "/articles/archive", Renderer: appir.ViewRenderer{Type: "table"}},
+			"archive": {Type: "page", Route: "/articles/archive", Renderer: appir.ViewRenderer{Type: "detail", RichTextFields: []string{"body"}}},
 		},
 	}
 	match, found := MatchPageDisplay(app, "/articles/archive")
@@ -25,6 +25,10 @@ func TestMatchPageDisplayPrefersStaticRouteAndBuildsRenderNode(t *testing.T) {
 	node := DisplayPageNode(app, match)
 	if len(node.Children) != 1 || node.Children[0].Component != "ViewBlock" || node.Children[0].Props["display"] == nil {
 		t.Fatalf("node=%+v", node)
+	}
+	formatted, ok := node.Children[0].Props["formattedFields"].([]string)
+	if !ok || len(formatted) != 1 || formatted[0] != "body" {
+		t.Fatalf("formattedFields=%v", node.Children[0].Props["formattedFields"])
 	}
 }
 

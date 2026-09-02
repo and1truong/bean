@@ -74,6 +74,7 @@ func DisplayPageNode(app *appir.App, match DisplayMatch) render.Node {
 	for fieldName := range view.FieldFilters {
 		formatted = append(formatted, fieldName)
 	}
+	formatted = append(formatted, match.Display.Renderer.RichTextFields...)
 	sort.Strings(formatted)
 	props := map[string]any{
 		"name": match.Name, "view": match.View, "display": match.Display,
