@@ -130,6 +130,7 @@ func TestTransactionActionRejectsInvalidExtensionBindings(t *testing.T) {
 		{"wrong input type", map[string]any{"op": "extension", "extension": "order_notification", "values": map[string]any{"order_id": "$input.message"}}, "spec.steps.0.values.order_id", "BEAN-E2871", true},
 		{"result unavailable", map[string]any{"op": "extension", "extension": "order_notification", "result": "provider", "values": map[string]any{"order_id": "$input.order_id"}}, "spec.steps.0.result", "BEAN-E2871", true},
 		{"optional input", map[string]any{"op": "extension", "extension": "order_notification", "values": map[string]any{"order_id": "$input.order_id"}}, "spec.steps.0.values.order_id", "BEAN-E2871", false},
+		{"untyped source", map[string]any{"op": "extension", "extension": "order_notification", "values": map[string]any{"order_id": "$context.request_id"}}, "spec.steps.0.values.order_id", "BEAN-E2871", true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -155,6 +156,27 @@ func TestTransactionActionRejectsInvalidExtensionBindings(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestActionRejectsExtensionEnumBindingWithWiderInputOptions(t *testing.T) {
+	extensionDefinition := validExtensionDefinition()
+	extensionDefinition.Spec["input"] = map[string]any{"channel": map[string]any{"type": "enum", "required": true, "options": []any{"email"}}}
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "order"}, Spec: map[string]any{}},
+		extensionDefinition,
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "notify_order"}, Spec: map[string]any{
+			"entity": "order", "operation": "transaction",
+			"input": map[string]any{"channel": map[string]any{"type": "enum", "required": true, "options": []any{"email", "sms"}}},
+			"steps": []any{map[string]any{"op": "extension", "extension": "order_notification", "values": map[string]any{"channel": "$input.channel"}}},
+		}},
+	}
+	result := Compile("test", 1, definitions)
+	for _, diagnostic := range result.Diagnostics {
+		if diagnostic.Kind == "Action" && diagnostic.Code == "BEAN-E2871" && diagnostic.Path == "spec.steps.0.values.channel" {
+			return
+		}
+	}
+	t.Fatalf("diagnostics=%v", result.Diagnostics)
 }
 
 func TestActionRejectsFractionalExtensionIntegerLiteral(t *testing.T) {

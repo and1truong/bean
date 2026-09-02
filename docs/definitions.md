@@ -103,7 +103,7 @@ fieldFilters: {body: markdown}
 
 ## Runtime durability
 
-An `Extension` declares one typed out-of-process HTTP effect. Transaction Actions bind its required input in an `extension` step; Bean stores the invocation with domain writes and delivers it only after commit. v0.13 accepts HTTPS endpoints, plus loopback HTTP for local development, with closed `network` permission and `external_write` effect vocabularies:
+An `Extension` declares one typed out-of-process HTTP effect. Transaction Actions bind its input from typed Action inputs, literals, or statically typed entity-row step results in an `extension` step; required Extension fields require non-nullable sources, and source enum options must be a subset of the Extension field options. Bean stores the invocation with domain writes and delivers it only after commit. v0.13 accepts HTTPS endpoints, plus loopback HTTP for local development, with closed `network` permission and `external_write` effect vocabularies:
 
 ```yaml
 kind: Extension

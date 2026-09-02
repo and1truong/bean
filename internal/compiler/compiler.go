@@ -1264,6 +1264,7 @@ func validateActions(a *appir.App, _ *validationState) []definition.Diagnostic {
 			out = append(out, diagnostic("Action", name, "spec.steps", "steps are only valid for transaction Actions"))
 		}
 		results := map[string]bool{}
+		resultEntities := map[string]appir.Entity{}
 		for i, step := range action.Steps {
 			path := fmt.Sprintf("spec.steps.%d", i)
 			stepSpecification, registered := actionstep.Lookup(step.Op)
@@ -1296,6 +1297,14 @@ func validateActions(a *appir.App, _ *validationState) []definition.Diagnostic {
 				results[step.Result] = true
 			}
 			entity := actionstep.EntityName(action, step)
+			if step.Result != "" {
+				switch step.Op {
+				case "create", "load", "update", "conditional_update", "transition", "delete":
+					if target, exists := a.Entities[entity]; exists {
+						resultEntities[step.Result] = target
+					}
+				}
+			}
 			if stepSpecification.UsesEntity {
 				if _, ok := a.Entities[entity]; !ok {
 					out = append(out, missingReferenceDiagnostic("Action", name, path+".entity", "Entity", entity))
@@ -1371,14 +1380,60 @@ func validateActions(a *appir.App, _ *validationState) []definition.Diagnostic {
 							out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "Action binds undeclared Extension input"))
 							continue
 						}
-						if item.Value.Source == valuesource.Input {
-							actionInput, exists := action.Input[item.Value.Path]
-							if exists && actionInput.Type != fieldDefinition.Type {
-								out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "Action input type does not match Extension input"))
+						validateTypedSource := func(source appir.Field) {
+							if source.Type != fieldDefinition.Type {
+								out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "bound value type does not match Extension input"))
 							}
-							if exists && fieldDefinition.Required && !actionInput.Required {
-								out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "optional Action input cannot bind required Extension input"))
+							if source.Type == "enum" && fieldDefinition.Type == "enum" {
+								allowed := map[string]bool{}
+								for _, option := range fieldDefinition.Options {
+									allowed[option] = true
+								}
+								for _, option := range source.Options {
+									if !allowed[option] {
+										out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "bound enum options exceed Extension input options"))
+										break
+									}
+								}
 							}
+							if fieldDefinition.Required && !source.Required {
+								out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "optional value cannot bind required Extension input"))
+							}
+						}
+						switch item.Value.Source {
+						case valuesource.Input:
+							if actionInput, exists := action.Input[item.Value.Path]; exists {
+								validateTypedSource(actionInput)
+							}
+						case valuesource.Result:
+							parts := strings.Split(item.Value.Path, ".")
+							if len(parts) >= 1 && results[parts[0]] {
+								var source appir.Field
+								found := false
+								if len(parts) == 2 {
+									if resultEntity, exists := resultEntities[parts[0]]; exists {
+										source, found = entityFieldDefinition(resultEntity, parts[1])
+										if !found {
+											switch parts[1] {
+											case "id":
+												source, found = appir.Field{Name: "id", Type: "uuid", Required: true}, true
+											case "created_at", "updated_at":
+												source, found = appir.Field{Name: parts[1], Type: "datetime", Required: true}, true
+											case "version":
+												source, found = appir.Field{Name: "version", Type: "integer", Required: true}, true
+											}
+										}
+									}
+								}
+								if found {
+									validateTypedSource(source)
+								} else {
+									out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "step result has no statically typed Extension value"))
+								}
+							}
+						case valuesource.Literal:
+						default:
+							out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "Extension input source has no static type contract"))
 						}
 						if valuesource.IsLiteral(item.Value.Source) {
 							var value any
