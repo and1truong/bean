@@ -140,6 +140,41 @@ func TestTransactionActionRejectsInvalidExtensionBindings(t *testing.T) {
 	}
 }
 
+func TestActionRejectsFractionalExtensionIntegerLiteral(t *testing.T) {
+	extensionDefinition := validExtensionDefinition()
+	extensionDefinition.Spec["input"] = map[string]any{"sequence": map[string]any{"type": "integer", "required": true}}
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "order"}, Spec: map[string]any{}},
+		extensionDefinition,
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "notify_order"}, Spec: map[string]any{
+			"entity": "order", "operation": "transaction", "steps": []any{map[string]any{"op": "extension", "extension": "order_notification", "values": map[string]any{"sequence": 1.5}}},
+		}},
+	}
+	result := Compile("test", 1, definitions)
+	for _, diagnostic := range result.Diagnostics {
+		if diagnostic.Kind == "Action" && diagnostic.Code == "BEAN-E2871" && diagnostic.Path == "spec.steps.0.values.sequence" {
+			return
+		}
+	}
+	t.Fatalf("diagnostics=%v", result.Diagnostics)
+}
+
+func TestActionEmitRejectsReservedExtensionTopicPrefix(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "order"}, Spec: map[string]any{}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "place_order"}, Spec: map[string]any{
+			"entity": "order", "operation": "transaction", "steps": []any{map[string]any{"op": "emit", "event": beanextension.TopicPrefix + "order_notification"}},
+		}},
+	}
+	result := Compile("test", 1, definitions)
+	for _, diagnostic := range result.Diagnostics {
+		if diagnostic.Kind == "Action" && diagnostic.Code == "BEAN-E2871" && diagnostic.Path == "spec.steps.0.event" {
+			return
+		}
+	}
+	t.Fatalf("diagnostics=%v", result.Diagnostics)
+}
+
 func TestActionTestSuiteValidatesExtensionMocksAndCalls(t *testing.T) {
 	definitions := extensionTestSuiteDefinitions()
 	if result := Compile("test", 1, definitions); len(result.Diagnostics) != 0 {

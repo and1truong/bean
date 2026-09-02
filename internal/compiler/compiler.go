@@ -1348,6 +1348,9 @@ func validateActions(a *appir.App, _ *validationState) []definition.Diagnostic {
 			if stepSpecification.RequiresEvent && step.Event == "" {
 				out = append(out, requiredDiagnostic("Action", name, path+".event", "is required"))
 			}
+			if stepSpecification.RequiresEvent && strings.HasPrefix(step.Event, beanextension.TopicPrefix) {
+				out = append(out, actionExtensionDiagnostic(name, path+".event", "uses the reserved Extension topic prefix"))
+			}
 			if stepSpecification.RequiresExtension {
 				extensionDefinition, exists := a.Extensions[step.Extension]
 				if !exists {
@@ -1369,7 +1372,11 @@ func validateActions(a *appir.App, _ *validationState) []definition.Diagnostic {
 						}
 						if valuesource.IsLiteral(item.Value.Source) {
 							var value any
-							if err := json.Unmarshal(item.Value.Literal, &value); err != nil || field.Validate(fieldDefinition, value) != nil {
+							if err := json.Unmarshal(item.Value.Literal, &value); err != nil {
+								out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "literal does not match Extension input type"))
+								continue
+							}
+							if beanextension.ValidateValues(map[string]appir.Field{item.Field: fieldDefinition}, map[string]any{item.Field: value}) != nil {
 								out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "literal does not match Extension input type"))
 							}
 						}
