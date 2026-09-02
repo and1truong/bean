@@ -488,6 +488,20 @@ describe('public rendering',()=>{
     expect(requests).toHaveLength(1)
   })
 
+  it('keeps a block result title out of the browser title',async()=>{
+    document.title='Bean'
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',props:{title:'Outer page'},children:[{component:'ViewBlock',props:{name:'detail',block:'sidebar',view:'articles',display:{Type:'block',Title:{Field:'title',Fallback:'Article'},Renderer:{Type:'detail',TitleField:'title'}}}}]}})
+      if(path.includes('/api/views/articles'))return response({data:[{id:'1',title:'Block article'}],nextCursor:''})
+      return response({})
+    }))
+    renderApp('/composed')
+    expect(await screen.findByRole('heading',{name:'Block article',level:2})).toBeInTheDocument()
+    expect(document.title).toBe('Outer page')
+  })
+
   it('rejects detail data that cannot fit in one bounded snapshot',async()=>{
     const fetchMock=vi.fn(async(input:string|URL|Request)=>{
       const path=String(input)

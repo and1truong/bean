@@ -30,6 +30,13 @@ func TestMatchPageDisplayPrefersStaticRouteAndBuildsRenderNode(t *testing.T) {
 	if !ok || len(formatted) != 1 || formatted[0] != "body" {
 		t.Fatalf("formattedFields=%v", node.Children[0].Props["formattedFields"])
 	}
+	match, found = MatchPageDisplay(app, "/articles/Hello%20world%2B")
+	if !found || match.Name != "detail" || match.Params["id"] != "Hello world+" {
+		t.Fatalf("encoded match=%+v found=%v", match, found)
+	}
+	if _, found = MatchPageDisplay(app, "/articles/%zz"); found {
+		t.Fatal("invalid escaped route parameter matched")
+	}
 }
 
 func TestResolveDisplayBindingsUsesTrustedRouteValues(t *testing.T) {

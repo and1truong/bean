@@ -1068,6 +1068,7 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 		}
 	}
 	seenControls := map[string]bool{}
+	transportParameters := map[string]bool{"cursor": true, "limit": true, "offset": true, "q": true}
 	widgets := map[string]bool{"auto": true, "text": true, "select": true, "checkbox": true, "number": true, "date": true}
 	for index, control := range display.Controls {
 		path := fmt.Sprintf("%s.controls.%d", base, index)
@@ -1080,6 +1081,9 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 			out = append(out, duplicateDiagnostic("View", viewName, path+".filter", "duplicates another display control"))
 		}
 		seenControls[control.Filter] = true
+		if transportParameters[control.Filter] || strings.HasPrefix(control.Filter, "_") {
+			out = append(out, diagnostic("View", viewName, path+".filter", "conflicts with a View transport parameter"))
+		}
 		if bound[control.Filter] {
 			out = append(out, diagnostic("View", viewName, path+".filter", "cannot expose an immutable bound input"))
 		}
@@ -2041,8 +2045,8 @@ func validatePages(a *appir.App, state *validationState) []definition.Diagnostic
 			out = append(out, diagnostic("Page", name, "spec.route", "must be a canonical absolute URL path"))
 		} else if duplicate := duplicateRouteParameter(page.Route); duplicate != "" {
 			out = append(out, diagnostic("Page", name, "spec.route", "route parameter "+duplicate+" must be unique"))
-		} else if reservedServerRoute(page.Route) {
-			out = append(out, diagnostic("Page", name, "spec.route", "overlaps a built-in server route"))
+		} else if reservedViewDisplayRoute(page.Route) {
+			out = append(out, diagnostic("Page", name, "spec.route", "overlaps a built-in application route"))
 		} else if old := conflictingRoute(routes, page.Route); old != "" {
 			out = append(out, diagnostic("Page", name, "spec.route", "overlaps route used by "+old))
 		} else {

@@ -77,7 +77,7 @@ const nodeRenderers:{[K in RenderComponent]:NodeRenderer<K>}={
 }
 function isRenderComponent(value:string):value is RenderComponent{return Object.hasOwn(nodeRenderers,value)}
 function renderKnownNode(component:RenderComponent,props:Record<string,any>,children?:Node[]){const renderer=nodeRenderers[component] as NodeRenderer<RenderComponent>;return renderer(props,children)}
-function StructuralNode({component,title,children}:{component:'Page'|'Panel'|'Region';title?:string;children?:Node[]}){return <section className="space-y-4" data-component={component}>{title&&<h2 className="font-heading text-2xl font-semibold">{title}</h2>}{children?.map((child,index)=><Renderer key={index} node={child}/>)}</section>}
+function StructuralNode({component,title,children}:{component:'Page'|'Panel'|'Region';title?:string;children?:Node[]}){useEffect(()=>{if(component!=='Page'||!title)return;const previous=document.title;document.title=title;return()=>{document.title=previous}},[component,title]);return <section className="space-y-4" data-component={component}>{title&&<h2 className="font-heading text-2xl font-semibold">{title}</h2>}{children?.map((child,index)=><Renderer key={index} node={child}/>)}</section>}
 function Renderer({node}:{node:Node}){
   if(!isRenderComponent(node.component))return <section role="alert" data-component={node.component}>Unsupported render component: {node.component}</section>
   return renderKnownNode(node.component,node.props||{},node.children)
@@ -106,7 +106,7 @@ function ViewBlockPage({name,block,display,filters={},fieldTypes={},presentation
 	const structured=mode==='board'||mode==='tree'||mode==='detail';const structuredLimit=mode==='detail'?rowLimit:200;const structuredLimitError=`This View display supports at most ${structuredLimit} rows.`
   const result=useQuery({queryKey:['public-view',request],queryFn:async()=>{const first=await api<{data:Row[];nextCursor:string}>(request);if(!structured)return first;const data=[...first.data];if(data.length>structuredLimit||(mode==='detail'&&first.nextCursor))throw new APIError(structuredLimitError);if(mode==='detail')return {data,nextCursor:''};let nextCursor=first.nextCursor;while(nextCursor&&data.length<200){const nextQuery=new URLSearchParams(query);nextQuery.set('cursor',nextCursor);nextQuery.set('limit',String(200-data.length));const next=await api<{data:Row[];nextCursor:string}>('/api/views/'+name+'?'+nextQuery);data.push(...next.data);if(data.length>200)throw new APIError(structuredLimitError);nextCursor=next.nextCursor}if(nextCursor)throw new APIError(structuredLimitError);return {data,nextCursor:''}}})
 	const resolvedTitle=display?.Title?.Field?String(result.data?.data[0]?.[display.Title.Field]??display.Title.Fallback??''):display?.Title?.Text||''
-	useEffect(()=>{if(!(pageDisplay||display?.Title?.Field)||!resolvedTitle)return;const previous=document.title;document.title=resolvedTitle;return()=>{document.title=previous}},[display?.Title?.Field,pageDisplay,resolvedTitle])
+	useEffect(()=>{if(!pageDisplay||!resolvedTitle)return;const previous=document.title;document.title=resolvedTitle;return()=>{document.title=previous}},[pageDisplay,resolvedTitle])
 	let content:React.ReactNode
 	if(result.isPending)content=<LoadingState/>
 	else if(result.error)content=<ErrorAlert error={result.error}/>

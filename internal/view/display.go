@@ -2,6 +2,7 @@ package view
 
 import (
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -153,7 +154,11 @@ func matchRoute(route, path string) (map[string]string, bool) {
 	params := map[string]string{}
 	for index, part := range template {
 		if strings.HasPrefix(part, ":") {
-			params[strings.TrimPrefix(part, ":")] = actual[index]
+			value, err := url.PathUnescape(actual[index])
+			if err != nil {
+				return nil, false
+			}
+			params[strings.TrimPrefix(part, ":")] = value
 		} else if part != actual[index] {
 			return nil, false
 		}

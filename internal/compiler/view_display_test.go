@@ -273,12 +273,14 @@ func TestPageRoutesMustBeCanonicalURLPaths(t *testing.T) {
 		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "unicode"}, Spec: map[string]any{"route": "/café", "panel": "missing"}},
 		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "backslash"}, Spec: map[string]any{"route": "/\\evil.example/x", "panel": "missing"}},
 		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "server"}, Spec: map[string]any{"route": "/healthz", "panel": "missing"}},
+		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "client"}, Spec: map[string]any{"route": "/login", "panel": "missing"}},
+		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "dynamic_client"}, Spec: map[string]any{"route": "/admin/:section", "panel": "missing"}},
 		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "dynamic_server"}, Spec: map[string]any{"route": "/:section", "panel": "missing"}},
 		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "duplicate_parameter"}, Spec: map[string]any{"route": "/projects/:id/tasks/:id", "panel": "missing"}},
 		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "binding"}, Spec: map[string]any{"route": "/reports/:slug", "panel": "missing", "context": map[string]any{"id": map[string]any{"source": "route", "name": "id"}}}},
 	}
 	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
-	for _, name := range []string{"query", "encoded", "unclean", "unicode", "backslash", "server", "dynamic_server", "duplicate_parameter"} {
+	for _, name := range []string{"query", "encoded", "unclean", "unicode", "backslash", "server", "client", "dynamic_client", "dynamic_server", "duplicate_parameter"} {
 		if !hasViewDisplayDiagnostic(diagnostics, "Page", name, "spec.route") {
 			t.Errorf("missing Page/%s/spec.route: %v", name, diagnostics)
 		}
@@ -297,7 +299,11 @@ func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 		}}},
 		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "items"}, Spec: map[string]any{
 			"entity": "item", "fields": []any{"id", "title", "status"}, "policy": "redacted",
-			"exposedFilters": map[string]any{"title": map[string]any{"field": "title"}, "status": map[string]any{"field": "status", "operator": "contains"}},
+			"exposedFilters": map[string]any{
+				"title": map[string]any{"field": "title"}, "status": map[string]any{"field": "status", "operator": "contains"},
+				"limit": map[string]any{"field": "title"}, "offset": map[string]any{"field": "title"}, "cursor": map[string]any{"field": "title"},
+				"q": map[string]any{"field": "title"}, "_display": map[string]any{"field": "title"},
+			},
 			"displays": map[string]any{
 				"index": map[string]any{
 					"type": "page", "route": "/items", "bindings": map[string]any{"title": map[string]any{"source": "route", "name": "title"}},
@@ -306,8 +312,12 @@ func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 						map[string]any{"field": "missing"}, map[string]any{"field": "status"}, map[string]any{"field": "title", "linkRoute": "javascript:alert(1)"},
 						map[string]any{"field": "title", "linkRoute": "/\\evil.example/:id"},
 					}},
-					"controls": []any{map[string]any{"filter": "title", "widget": "checkbox"}, map[string]any{"filter": "missing", "widget": "future"}},
-					"pager":    map[string]any{"type": "offset", "pageSize": 999},
+					"controls": []any{
+						map[string]any{"filter": "title", "widget": "checkbox"}, map[string]any{"filter": "missing", "widget": "future"},
+						map[string]any{"filter": "limit"}, map[string]any{"filter": "offset"}, map[string]any{"filter": "cursor"},
+						map[string]any{"filter": "q"}, map[string]any{"filter": "_display"},
+					},
+					"pager": map[string]any{"type": "offset", "pageSize": 999},
 				},
 				"index_copy":     map[string]any{"type": "page", "route": "/items", "renderer": map[string]any{"type": "list"}},
 				"unknown":        map[string]any{"type": "screen"},
@@ -348,6 +358,11 @@ func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 		"View/items/spec.displays.index.controls.0.filter",
 		"View/items/spec.displays.index.controls.0.widget",
 		"View/items/spec.displays.index.controls.1.filter",
+		"View/items/spec.displays.index.controls.2.filter",
+		"View/items/spec.displays.index.controls.3.filter",
+		"View/items/spec.displays.index.controls.4.filter",
+		"View/items/spec.displays.index.controls.5.filter",
+		"View/items/spec.displays.index.controls.6.filter",
 		"View/items/spec.displays.index.pager.type",
 		"View/items/spec.displays.index.pager.pageSize",
 		"View/items/spec.displays.index.bindings.title.name",
