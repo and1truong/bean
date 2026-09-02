@@ -1372,9 +1372,12 @@ func validateActions(a *appir.App, _ *validationState) []definition.Diagnostic {
 							continue
 						}
 						if item.Value.Source == valuesource.Input {
-							actionInput := action.Input[item.Value.Path]
-							if actionInput.Type != fieldDefinition.Type {
+							actionInput, exists := action.Input[item.Value.Path]
+							if exists && actionInput.Type != fieldDefinition.Type {
 								out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "Action input type does not match Extension input"))
+							}
+							if exists && fieldDefinition.Required && !actionInput.Required {
+								out = append(out, actionExtensionDiagnostic(name, path+".values."+item.Field, "optional Action input cannot bind required Extension input"))
 							}
 						}
 						if valuesource.IsLiteral(item.Value.Source) {

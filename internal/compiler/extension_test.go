@@ -118,16 +118,18 @@ func TestTransactionActionBindsTypedExtensionInputs(t *testing.T) {
 
 func TestTransactionActionRejectsInvalidExtensionBindings(t *testing.T) {
 	tests := []struct {
-		name string
-		step map[string]any
-		path string
-		code string
+		name            string
+		step            map[string]any
+		path            string
+		code            string
+		orderIDRequired bool
 	}{
-		{"missing extension", map[string]any{"op": "extension", "extension": "missing", "values": map[string]any{"order_id": "$input.order_id"}}, "spec.steps.0.extension", "BEAN-E2001"},
-		{"missing input", map[string]any{"op": "extension", "extension": "order_notification", "values": map[string]any{}}, "spec.steps.0.values.order_id", "BEAN-E2871"},
-		{"extra input", map[string]any{"op": "extension", "extension": "order_notification", "values": map[string]any{"order_id": "$input.order_id", "extra": "value"}}, "spec.steps.0.values.extra", "BEAN-E2871"},
-		{"wrong input type", map[string]any{"op": "extension", "extension": "order_notification", "values": map[string]any{"order_id": "$input.message"}}, "spec.steps.0.values.order_id", "BEAN-E2871"},
-		{"result unavailable", map[string]any{"op": "extension", "extension": "order_notification", "result": "provider", "values": map[string]any{"order_id": "$input.order_id"}}, "spec.steps.0.result", "BEAN-E2871"},
+		{"missing extension", map[string]any{"op": "extension", "extension": "missing", "values": map[string]any{"order_id": "$input.order_id"}}, "spec.steps.0.extension", "BEAN-E2001", true},
+		{"missing input", map[string]any{"op": "extension", "extension": "order_notification", "values": map[string]any{}}, "spec.steps.0.values.order_id", "BEAN-E2871", true},
+		{"extra input", map[string]any{"op": "extension", "extension": "order_notification", "values": map[string]any{"order_id": "$input.order_id", "extra": "value"}}, "spec.steps.0.values.extra", "BEAN-E2871", true},
+		{"wrong input type", map[string]any{"op": "extension", "extension": "order_notification", "values": map[string]any{"order_id": "$input.message"}}, "spec.steps.0.values.order_id", "BEAN-E2871", true},
+		{"result unavailable", map[string]any{"op": "extension", "extension": "order_notification", "result": "provider", "values": map[string]any{"order_id": "$input.order_id"}}, "spec.steps.0.result", "BEAN-E2871", true},
+		{"optional input", map[string]any{"op": "extension", "extension": "order_notification", "values": map[string]any{"order_id": "$input.order_id"}}, "spec.steps.0.values.order_id", "BEAN-E2871", false},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -137,7 +139,7 @@ func TestTransactionActionRejectsInvalidExtensionBindings(t *testing.T) {
 				{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "notify_order"}, Spec: map[string]any{
 					"entity": "order", "operation": "transaction",
 					"input": map[string]any{
-						"order_id": map[string]any{"type": "uuid", "required": true},
+						"order_id": map[string]any{"type": "uuid", "required": test.orderIDRequired},
 						"message":  map[string]any{"type": "string", "required": true},
 					},
 					"steps": []any{test.step},
