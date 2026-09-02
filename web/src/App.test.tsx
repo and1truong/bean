@@ -488,6 +488,20 @@ describe('public rendering',()=>{
     expect(requests).toHaveLength(1)
   })
 
+  it('uses the title fallback for an empty detail result value',async()=>{
+    document.title='Bean'
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'ViewBlock',props:{name:'detail',view:'articles',display:{Type:'page',Title:{Field:'title',Fallback:'Article'},Renderer:{Type:'detail',TitleField:'title'},Pager:{Type:'none',PageSize:1}}}}]}})
+      if(path.includes('/api/views/articles'))return response({data:[{id:'1',title:''}],nextCursor:''})
+      return response({})
+    }))
+    renderApp('/articles/empty')
+    expect(await screen.findByRole('heading',{name:'Article',level:1})).toBeInTheDocument()
+    expect(document.title).toBe('Article')
+  })
+
   it('keeps a block result title out of the browser title',async()=>{
     document.title='Bean'
     vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{

@@ -105,7 +105,8 @@ function ViewBlockPage({name,block,display,filters={},fieldTypes={},presentation
   const request='/api/views/'+name+'?'+query.toString()
 	const structured=mode==='board'||mode==='tree'||mode==='detail';const structuredLimit=mode==='detail'?rowLimit:200;const structuredLimitError=`This View display supports at most ${structuredLimit} rows.`
   const result=useQuery({queryKey:['public-view',request],queryFn:async()=>{const first=await api<{data:Row[];nextCursor:string}>(request);if(!structured)return first;const data=[...first.data];if(data.length>structuredLimit||(mode==='detail'&&first.nextCursor))throw new APIError(structuredLimitError);if(mode==='detail')return {data,nextCursor:''};let nextCursor=first.nextCursor;while(nextCursor&&data.length<200){const nextQuery=new URLSearchParams(query);nextQuery.set('cursor',nextCursor);nextQuery.set('limit',String(200-data.length));const next=await api<{data:Row[];nextCursor:string}>('/api/views/'+name+'?'+nextQuery);data.push(...next.data);if(data.length>200)throw new APIError(structuredLimitError);nextCursor=next.nextCursor}if(nextCursor)throw new APIError(structuredLimitError);return {data,nextCursor:''}}})
-	const resolvedTitle=display?.Title?.Field?String(result.data?.data[0]?.[display.Title.Field]??display.Title.Fallback??''):display?.Title?.Text||''
+	const resultTitle=display?.Title?.Field?result.data?.data[0]?.[display.Title.Field]:undefined
+	const resolvedTitle=display?.Title?.Field?(resultTitle===null||resultTitle===undefined||resultTitle===''?display.Title.Fallback||'':String(resultTitle)):display?.Title?.Text||''
 	useEffect(()=>{if(!pageDisplay||!resolvedTitle)return;const previous=document.title;document.title=resolvedTitle;return()=>{document.title=previous}},[pageDisplay,resolvedTitle])
 	let content:React.ReactNode
 	if(result.isPending)content=<LoadingState/>

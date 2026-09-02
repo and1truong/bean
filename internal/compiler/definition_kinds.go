@@ -3,6 +3,7 @@ package compiler
 import (
 	"fmt"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -30,6 +31,7 @@ type definitionKind struct {
 	ReferenceCandidates bool
 }
 
+var viewDisplayName = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 var definitionKinds = newDefinitionKinds()
 
 func definitionKindRegistry() registry.Registry[definitionKind] { return definitionKinds }
@@ -44,8 +46,12 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 	view.Compile = func(app *appir.App, source definition.Definition) []definition.Diagnostic {
 		out := compileView(app, source)
 		for _, displayName := range keys(app.Views[source.Metadata.Name].Displays) {
-			if strings.HasPrefix(displayName, "_") {
-				out = append(out, diagnostic("View", source.Metadata.Name, "spec.displays."+displayName, "display names beginning with _ are reserved"))
+			if !viewDisplayName.MatchString(displayName) {
+				path := "spec.displays." + displayName
+				if displayName == "" {
+					path = "spec.displays"
+				}
+				out = append(out, diagnostic("View", source.Metadata.Name, path, "display name must be a nonempty machine name"))
 			}
 		}
 		return out

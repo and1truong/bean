@@ -876,6 +876,9 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 			a.Views[name] = v
 		}
 		for key, exposed := range v.ExposedFilters {
+			if reservedViewTransportParameter(key) {
+				out = append(out, diagnostic("View", name, "spec.exposedFilters."+key, "conflicts with a View transport parameter"))
+			}
 			fieldName := exposed.Target(key)
 			if !validViewField(fieldName, fields, relationships, a) {
 				out = append(out, missingFieldDiagnostic("View", name, "spec.exposedFilters."+key, fieldName, false))
@@ -1053,6 +1056,9 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 	routeParameters := routeParameterNames(display.Route)
 	for filterName, binding := range display.Bindings {
 		bound[filterName] = true
+		if reservedViewTransportParameter(filterName) {
+			out = append(out, diagnostic("View", viewName, base+".bindings."+filterName, "conflicts with a View transport parameter"))
+		}
 		if _, exists := view.ExposedFilters[filterName]; !exists {
 			out = append(out, invalidReferenceDiagnostic("View", viewName, base+".bindings."+filterName, "has no matching exposed filter"))
 		}
@@ -1068,7 +1074,6 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 		}
 	}
 	seenControls := map[string]bool{}
-	transportParameters := map[string]bool{"cursor": true, "limit": true, "offset": true, "q": true}
 	widgets := map[string]bool{"auto": true, "text": true, "select": true, "checkbox": true, "number": true, "date": true}
 	for index, control := range display.Controls {
 		path := fmt.Sprintf("%s.controls.%d", base, index)
@@ -1081,7 +1086,7 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 			out = append(out, duplicateDiagnostic("View", viewName, path+".filter", "duplicates another display control"))
 		}
 		seenControls[control.Filter] = true
-		if transportParameters[control.Filter] || strings.HasPrefix(control.Filter, "_") {
+		if reservedViewTransportParameter(control.Filter) {
 			out = append(out, diagnostic("View", viewName, path+".filter", "conflicts with a View transport parameter"))
 		}
 		if bound[control.Filter] {
@@ -1915,6 +1920,9 @@ func validateBlocks(a *appir.App, _ *validationState) []definition.Diagnostic {
 			}
 		}
 		for inputName := range block.Bindings {
+			if block.View != "" && reservedViewTransportParameter(inputName) {
+				out = append(out, diagnostic("Block", name, "spec.bindings."+inputName, "conflicts with a View transport parameter"))
+			}
 			if _, exists := block.Inputs[inputName]; !exists {
 				out = append(out, invalidReferenceDiagnostic("Block", name, "spec.bindings."+inputName, "references an undeclared input"))
 			}
@@ -2779,6 +2787,10 @@ func reservedServerRoute(route string) bool {
 		}
 	}
 	return false
+}
+
+func reservedViewTransportParameter(name string) bool {
+	return name == "cursor" || name == "limit" || name == "offset" || name == "q" || strings.HasPrefix(name, "_")
 }
 
 func reservedViewDisplayRoute(route string) bool {

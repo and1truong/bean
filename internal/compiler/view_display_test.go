@@ -306,7 +306,9 @@ func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 			},
 			"displays": map[string]any{
 				"index": map[string]any{
-					"type": "page", "route": "/items", "bindings": map[string]any{"title": map[string]any{"source": "route", "name": "title"}},
+					"type": "page", "route": "/items", "bindings": map[string]any{
+						"title": map[string]any{"source": "route", "name": "title"}, "q": map[string]any{"source": "context", "name": "q"},
+					},
 					"title": map[string]any{"field": "status", "fallback": "Item"},
 					"renderer": map[string]any{"type": "table", "fields": []any{
 						map[string]any{"field": "missing"}, map[string]any{"field": "status"}, map[string]any{"field": "title", "linkRoute": "javascript:alert(1)"},
@@ -339,9 +341,13 @@ func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 				"unsafe_rich": map[string]any{
 					"type": "block", "renderer": map[string]any{"type": "detail", "titleField": "title", "richTextFields": []any{"title"}},
 				},
+				"": map[string]any{"type": "page", "route": "/empty-display", "renderer": map[string]any{"type": "list"}},
 			},
 		}},
-		{APIVersion: definition.APIVersion, Kind: "Block", Metadata: definition.Metadata{Name: "items"}, Spec: map[string]any{"type": "view", "view": "items", "display": "missing"}},
+		{APIVersion: definition.APIVersion, Kind: "Block", Metadata: definition.Metadata{Name: "items"}, Spec: map[string]any{
+			"type": "view", "view": "items", "display": "missing", "inputs": map[string]any{"q": map[string]any{"type": "string"}},
+			"bindings": map[string]any{"q": map[string]any{"source": "context", "name": "q"}},
+		}},
 	}
 	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
 	paths := map[string]bool{}
@@ -349,6 +355,12 @@ func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 		paths[diagnostic.Kind+"/"+diagnostic.Name+"/"+diagnostic.Path] = true
 	}
 	for _, path := range []string{
+		"View/items/spec.displays",
+		"View/items/spec.exposedFilters.limit",
+		"View/items/spec.exposedFilters.offset",
+		"View/items/spec.exposedFilters.cursor",
+		"View/items/spec.exposedFilters.q",
+		"View/items/spec.exposedFilters._display",
 		"View/items/spec.exposedFilters.status.operator",
 		"View/items/spec.displays.index.renderer.fields.0.field",
 		"View/items/spec.displays.index.renderer.fields.1.field",
@@ -366,6 +378,7 @@ func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 		"View/items/spec.displays.index.pager.type",
 		"View/items/spec.displays.index.pager.pageSize",
 		"View/items/spec.displays.index.bindings.title.name",
+		"View/items/spec.displays.index.bindings.q",
 		"View/items/spec.displays.index_copy.route",
 		"View/items/spec.displays.unknown.type",
 		"View/items/spec.displays.missing_feed.route",
@@ -385,6 +398,7 @@ func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 		"View/items/spec.displays.fragment_page.route",
 		"View/items/spec.displays.unsafe_rich.renderer.richTextFields.0",
 		"Block/items/spec.display",
+		"Block/items/spec.bindings.q",
 	} {
 		if !paths[path] {
 			t.Errorf("missing %s: %v", path, diagnostics)
