@@ -2,6 +2,7 @@ package semantictest_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"reflect"
 	"strings"
@@ -121,6 +122,22 @@ func TestActionSuiteUsesOrderedOfflineExtensionMocks(t *testing.T) {
 			}},
 		}},
 	}
+	actionSteps := definitions[2].Spec["steps"].([]any)
+	testCase := definitions[3].Spec["tests"].([]any)[0].(map[string]any)
+	contextIDs := testCase["context"].(map[string]any)["ids"].([]any)
+	providerResults := testCase["providers"].(map[string]any)["order_notification"].([]any)
+	providerCalls := testCase["expect"].(map[string]any)["providerCalls"].([]any)
+	for index := 2; index < 21; index++ {
+		invocationID := fmt.Sprintf("00000000-0000-4000-8000-%012d", 20+index)
+		actionSteps = append(actionSteps, map[string]any{"op": "extension", "extension": "order_notification", "values": map[string]any{"message": "$input.second"}})
+		contextIDs = append(contextIDs, invocationID)
+		providerResults = append(providerResults, map[string]any{"output": map[string]any{"accepted": true}})
+		providerCalls = append(providerCalls, map[string]any{"extension": "order_notification", "invocationId": invocationID, "idempotencyKey": invocationID, "input": map[string]any{"message": "sent"}})
+	}
+	definitions[2].Spec["steps"] = actionSteps
+	testCase["context"].(map[string]any)["ids"] = contextIDs
+	testCase["providers"].(map[string]any)["order_notification"] = providerResults
+	testCase["expect"].(map[string]any)["providerCalls"] = providerCalls
 	bundle := definition.Bundle{Name: "Extensions", Definitions: definitions}
 	results, diagnostics, err := semantictest.Run(context.Background(), bundle, t.TempDir())
 	if err != nil || len(diagnostics) != 0 || len(results) != 1 || results[0].Status != "passed" {
@@ -130,7 +147,6 @@ func TestActionSuiteUsesOrderedOfflineExtensionMocks(t *testing.T) {
 	if err != nil || len(repeatedDiagnostics) != 0 || !reflect.DeepEqual(results, repeated) {
 		t.Fatalf("first=%+v repeated=%+v diagnostics=%v err=%v", results, repeated, repeatedDiagnostics, err)
 	}
-	testCase := definitions[3].Spec["tests"].([]any)[0].(map[string]any)
 	testCase["providers"] = map[string]any{"order_notification": []any{map[string]any{"output": map[string]any{"accepted": true}}}}
 	failed, failureDiagnostics, err := semantictest.Run(context.Background(), bundle, t.TempDir())
 	if err != nil || len(failureDiagnostics) != 1 || failureDiagnostics[0].Code != "BEAN-T1001" || failureDiagnostics[0].Path != "tests.delivers_after_commit.providers" || failed[0].Status != "failed" {

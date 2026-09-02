@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -134,11 +135,28 @@ func ValidateValues(definitions map[string]appir.Field, values map[string]any) e
 		if !exists {
 			value = nil
 		}
+		if definition.Type == "integer" && value != nil && !validInteger(value) {
+			return fmt.Errorf("%s has invalid integer value", definition.Name)
+		}
 		if err := field.Validate(definition, value); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func validInteger(value any) bool {
+	switch typed := value.(type) {
+	case int, int64:
+		return true
+	case float64:
+		return !math.IsNaN(typed) && !math.IsInf(typed, 0) && math.Trunc(typed) == typed && typed >= -9223372036854775808.0 && typed < 9223372036854775808.0
+	case json.Number:
+		_, err := typed.Int64()
+		return err == nil
+	default:
+		return false
+	}
 }
 
 type HTTPProvider struct {
@@ -205,6 +223,7 @@ func (p *HTTPProvider) Call(ctx context.Context, definition appir.Extension, inv
 	}
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
 	if err = decoder.Decode(&envelope); err != nil || envelope.Output == nil {
 		return nil, &DeliveryFailure{Code: FailureResponse}
 	}

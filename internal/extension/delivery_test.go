@@ -89,6 +89,19 @@ func TestHTTPProviderRejectsRedirectInvalidAndOversizedResponses(t *testing.T) {
 	}
 }
 
+func TestHTTPProviderRejectsFractionalAndOutOfRangeIntegerOutput(t *testing.T) {
+	for _, body := range []string{`{"output":{"sequence":1.5}}`, `{"output":{"sequence":9223372036854775808}}`} {
+		server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) { _, _ = response.Write([]byte(body)) }))
+		definition := providerDefinition(server.URL, "none")
+		definition.Output = map[string]appir.Field{"sequence": {Name: "sequence", Type: "integer", Required: true}}
+		app := appir.Empty()
+		app.Extensions[definition.Name] = definition
+		err := extension.Deliver(context.Background(), app, extension.NewHTTPProvider(nil, nil), extension.TopicPrefix+definition.Name, invocationPayload(t, testInvocation(definition.Name)))
+		assertDeliveryFailure(t, err, extension.FailureResponse, false)
+		server.Close()
+	}
+}
+
 type providerFunc func(context.Context, appir.Extension, extension.Invocation) (map[string]any, error)
 
 func (f providerFunc) Call(ctx context.Context, definition appir.Extension, invocation extension.Invocation) (map[string]any, error) {

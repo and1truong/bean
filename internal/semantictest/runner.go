@@ -144,7 +144,7 @@ func runIsolatedCase(ctx context.Context, bundle definition.Bundle, suiteName st
 		if parseErr != nil {
 			return nil, parseErr
 		}
-		runner := event.Runner{DB: runtime.DB, Now: func() time.Time { return now }, Deliver: func(deliveryCtx context.Context, topic string, payload map[string]any) error {
+		runner := event.Runner{DB: runtime.DB, BatchSize: len(app.Actions[suite.Target.Name].Steps), Now: func() time.Time { return now }, Deliver: func(deliveryCtx context.Context, topic string, payload map[string]any) error {
 			if !beanextension.IsTopic(topic) {
 				return nil
 			}
