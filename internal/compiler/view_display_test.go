@@ -270,12 +270,19 @@ func TestPageRoutesMustBeCanonicalURLPaths(t *testing.T) {
 		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "query"}, Spec: map[string]any{"route": "/reports?format=full", "panel": "missing"}},
 		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "encoded"}, Spec: map[string]any{"route": "/caf%C3%A9", "panel": "missing"}},
 		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "unclean"}, Spec: map[string]any{"route": "/reports/../latest", "panel": "missing"}},
+		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "unicode"}, Spec: map[string]any{"route": "/café", "panel": "missing"}},
+		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "backslash"}, Spec: map[string]any{"route": "/\\evil.example/x", "panel": "missing"}},
+		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "server"}, Spec: map[string]any{"route": "/healthz", "panel": "missing"}},
+		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "binding"}, Spec: map[string]any{"route": "/reports/:slug", "panel": "missing", "context": map[string]any{"id": map[string]any{"source": "route", "name": "id"}}}},
 	}
 	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
-	for _, name := range []string{"query", "encoded", "unclean"} {
+	for _, name := range []string{"query", "encoded", "unclean", "unicode", "backslash", "server"} {
 		if !hasViewDisplayDiagnostic(diagnostics, "Page", name, "spec.route") {
 			t.Errorf("missing Page/%s/spec.route: %v", name, diagnostics)
 		}
+	}
+	if !hasViewDisplayDiagnostic(diagnostics, "Page", "binding", "spec.context.id.name") {
+		t.Errorf("missing Page/binding/spec.context.id.name: %v", diagnostics)
 	}
 }
 
@@ -309,6 +316,9 @@ func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 				"encoded_api":    map[string]any{"type": "json", "route": "/caf%C3%A9.json"},
 				"builtin_api":    map[string]any{"type": "json", "route": "/api/system/page"},
 				"builtin_health": map[string]any{"type": "csv", "route": "/healthz"},
+				"client_api":     map[string]any{"type": "json", "route": "/login"},
+				"builtin_page":   map[string]any{"type": "page", "route": "/docs", "renderer": map[string]any{"type": "list"}},
+				"client_page":    map[string]any{"type": "page", "route": "/admin/reports", "renderer": map[string]any{"type": "list"}},
 				"query_page":     map[string]any{"type": "page", "route": "/reports?format=full", "renderer": map[string]any{"type": "list"}},
 				"fragment_page":  map[string]any{"type": "page", "route": "/reports#latest", "renderer": map[string]any{"type": "list"}},
 				"unsafe_rich": map[string]any{
@@ -334,6 +344,7 @@ func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 		"View/items/spec.displays.index.controls.1.filter",
 		"View/items/spec.displays.index.pager.type",
 		"View/items/spec.displays.index.pager.pageSize",
+		"View/items/spec.displays.index.bindings.title.name",
 		"View/items/spec.displays.index_copy.route",
 		"View/items/spec.displays.unknown.type",
 		"View/items/spec.displays.missing_feed.route",
@@ -344,6 +355,9 @@ func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 		"View/items/spec.displays.encoded_api.route",
 		"View/items/spec.displays.builtin_api.route",
 		"View/items/spec.displays.builtin_health.route",
+		"View/items/spec.displays.client_api.route",
+		"View/items/spec.displays.builtin_page.route",
+		"View/items/spec.displays.client_page.route",
 		"View/items/spec.displays.query_page.route",
 		"View/items/spec.displays.fragment_page.route",
 		"View/items/spec.displays.unsafe_rich.renderer.richTextFields.0",

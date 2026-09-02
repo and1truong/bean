@@ -946,8 +946,8 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 					out = append(out, diagnostic("View", name, "spec.displays."+displayName+".route", "serializer display route must be static"))
 					continue
 				}
-				if reservedServerRoute(display.Route) {
-					out = append(out, diagnostic("View", name, "spec.displays."+displayName+".route", "serializer display route overlaps a built-in server route"))
+				if reservedViewDisplayRoute(display.Route) {
+					out = append(out, diagnostic("View", name, "spec.displays."+displayName+".route", "serializer display route overlaps a built-in application route"))
 					continue
 				}
 				if old := conflictingRoute(routes, display.Route); old != "" {
@@ -967,6 +967,8 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 					out = append(out, requiredDiagnostic("View", name, "spec.displays."+displayName+".route", "page display route is required"))
 				} else if !canonicalRoutePath(display.Route) {
 					out = append(out, diagnostic("View", name, "spec.displays."+displayName+".route", "page display route must be a canonical absolute URL path"))
+				} else if reservedViewDisplayRoute(display.Route) {
+					out = append(out, diagnostic("View", name, "spec.displays."+displayName+".route", "page display route overlaps a built-in application route"))
 				} else if old := conflictingRoute(routes, display.Route); old != "" {
 					out = append(out, duplicateDiagnostic("View", name, "spec.displays."+displayName+".route", "overlaps route used by "+old))
 				} else {
@@ -1046,6 +1048,7 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 		out = append(out, diagnostic("View", viewName, base+".bindings", "block display bindings must be declared by the mounting Block"))
 	}
 	bound := map[string]bool{}
+	routeParameters := routeParameterNames(display.Route)
 	for filterName, binding := range display.Bindings {
 		bound[filterName] = true
 		if _, exists := view.ExposedFilters[filterName]; !exists {
@@ -1058,6 +1061,8 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 		}
 		if binding.Source != "tenant" && binding.Name == "" {
 			out = append(out, requiredDiagnostic("View", viewName, base+".bindings."+filterName+".name", "is required"))
+		} else if binding.Source == valuesource.Route && !routeParameters[binding.Name] {
+			out = append(out, diagnostic("View", viewName, base+".bindings."+filterName+".name", "must reference a parameter declared by the display route"))
 		}
 	}
 	seenControls := map[string]bool{}
@@ -2032,6 +2037,8 @@ func validatePages(a *appir.App, state *validationState) []definition.Diagnostic
 		page := a.Pages[name]
 		if !canonicalRoutePath(page.Route) {
 			out = append(out, diagnostic("Page", name, "spec.route", "must be a canonical absolute URL path"))
+		} else if reservedServerRoute(page.Route) {
+			out = append(out, diagnostic("Page", name, "spec.route", "overlaps a built-in server route"))
 		} else if old := conflictingRoute(routes, page.Route); old != "" {
 			out = append(out, diagnostic("Page", name, "spec.route", "overlaps route used by "+old))
 		} else {
@@ -2045,12 +2052,15 @@ func validatePages(a *appir.App, state *validationState) []definition.Diagnostic
 				out = append(out, missingReferenceDiagnostic("Page", name, "spec.policy", "Policy", page.Policy))
 			}
 		}
+		routeParameters := routeParameterNames(page.Route)
 		for key, binding := range page.Context {
 			if !valuesource.Allows(valuesource.Page, binding.Source) {
 				out = append(out, diagnostic("Page", name, "spec.context."+key+".source", "has no typed resolver"))
 			}
 			if binding.Source != "tenant" && binding.Name == "" {
 				out = append(out, requiredDiagnostic("Page", name, "spec.context."+key+".name", "is required"))
+			} else if binding.Source == valuesource.Route && !routeParameters[binding.Name] {
+				out = append(out, diagnostic("Page", name, "spec.context."+key+".name", "must reference a parameter declared by the Page route"))
 			}
 		}
 	}
@@ -2759,6 +2769,14 @@ func reservedServerRoute(route string) bool {
 	return false
 }
 
+func reservedViewDisplayRoute(route string) bool {
+	if reservedServerRoute(route) {
+		return true
+	}
+	withoutTrailingSlash := strings.TrimSuffix(route, "/")
+	return withoutTrailingSlash == "/login" || withoutTrailingSlash == "/studio" || route == "/admin" || strings.HasPrefix(route, "/admin/")
+}
+
 func canonicalRoutePath(route string) bool {
 	if route == "" || !strings.HasPrefix(route, "/") || strings.HasPrefix(route, "//") || strings.ContainsAny(route, "?#") || strings.Contains(route, "//") {
 		return false
@@ -2767,12 +2785,29 @@ func canonicalRoutePath(route string) bool {
 	if err != nil || parsed.Path != route || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return false
 	}
+	for index := 0; index < len(route); index++ {
+		character := route[index]
+		if character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' || character >= '0' && character <= '9' || strings.ContainsRune("/-._~!$&'()*+,;=:@", rune(character)) {
+			continue
+		}
+		return false
+	}
 	for _, segment := range strings.Split(route, "/") {
 		if segment == "." || segment == ".." {
 			return false
 		}
 	}
 	return true
+}
+
+func routeParameterNames(route string) map[string]bool {
+	out := map[string]bool{}
+	for _, segment := range strings.Split(strings.Trim(route, "/"), "/") {
+		if strings.HasPrefix(segment, ":") && len(segment) > 1 {
+			out[strings.TrimPrefix(segment, ":")] = true
+		}
+	}
+	return out
 }
 
 func nameSet(values []string) map[string]bool {
