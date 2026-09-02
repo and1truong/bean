@@ -946,6 +946,10 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 					out = append(out, diagnostic("View", name, "spec.displays."+displayName+".route", "serializer display route must be static"))
 					continue
 				}
+				if strings.ContainsAny(display.Route, "?#") {
+					out = append(out, diagnostic("View", name, "spec.displays."+displayName+".route", "serializer display route must not contain a query or fragment"))
+					continue
+				}
 				if reservedServerRoute(display.Route) {
 					out = append(out, diagnostic("View", name, "spec.displays."+displayName+".route", "serializer display route overlaps a built-in server route"))
 					continue

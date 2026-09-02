@@ -290,6 +290,8 @@ func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 				"missing_feed":   map[string]any{"type": "rss"},
 				"relative_api":   map[string]any{"type": "json", "route": "items.json"},
 				"dynamic_csv":    map[string]any{"type": "csv", "route": "/items/:id.csv"},
+				"query_api":      map[string]any{"type": "json", "route": "/healthz?format=json"},
+				"fragment_feed":  map[string]any{"type": "rss", "route": "/items.xml#latest"},
 				"builtin_api":    map[string]any{"type": "json", "route": "/api/system/page"},
 				"builtin_health": map[string]any{"type": "csv", "route": "/healthz"},
 				"unsafe_rich": map[string]any{
@@ -320,6 +322,8 @@ func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 		"View/items/spec.displays.missing_feed.route",
 		"View/items/spec.displays.relative_api.route",
 		"View/items/spec.displays.dynamic_csv.route",
+		"View/items/spec.displays.query_api.route",
+		"View/items/spec.displays.fragment_feed.route",
 		"View/items/spec.displays.builtin_api.route",
 		"View/items/spec.displays.builtin_health.route",
 		"View/items/spec.displays.unsafe_rich.renderer.richTextFields.0",

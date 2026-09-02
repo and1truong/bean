@@ -252,8 +252,9 @@ func TestPageViewDisplayEnforcesControlsPagerAndRouteBindings(t *testing.T) {
 			"entity": "article", "fields": []any{"id", "title", "status"}, "policy": "public",
 			"exposedFilters": map[string]any{"id": map[string]any{"field": "id", "operator": "eq"}, "status": map[string]any{"field": "status", "operator": "eq"}},
 			"displays": map[string]any{
-				"index":  map[string]any{"type": "page", "route": "/articles", "title": map[string]any{"text": "Articles"}, "renderer": map[string]any{"type": "table", "fields": []any{map[string]any{"field": "title", "label": "Article"}}}, "controls": []any{map[string]any{"filter": "status", "label": "Status", "widget": "select"}}, "pager": map[string]any{"type": "cursor", "pageSize": 1}},
-				"detail": map[string]any{"type": "page", "route": "/articles/:id", "bindings": map[string]any{"id": map[string]any{"source": "route", "name": "id", "required": true}}, "title": map[string]any{"field": "title", "fallback": "Article"}, "renderer": map[string]any{"type": "detail", "titleField": "title"}},
+				"index":    map[string]any{"type": "page", "route": "/articles", "title": map[string]any{"text": "Articles"}, "renderer": map[string]any{"type": "table", "fields": []any{map[string]any{"field": "title", "label": "Article"}}}, "controls": []any{map[string]any{"filter": "status", "label": "Status", "widget": "select"}}, "pager": map[string]any{"type": "cursor", "pageSize": 1}},
+				"snapshot": map[string]any{"type": "page", "route": "/article-snapshot", "renderer": map[string]any{"type": "detail", "titleField": "title"}, "pager": map[string]any{"type": "none", "pageSize": 2}},
+				"detail":   map[string]any{"type": "page", "route": "/articles/:id", "bindings": map[string]any{"id": map[string]any{"source": "route", "name": "id", "required": true}}, "title": map[string]any{"field": "title", "fallback": "Article"}, "renderer": map[string]any{"type": "detail", "titleField": "title"}},
 			},
 		}},
 	}}
@@ -283,6 +284,11 @@ func TestPageViewDisplayEnforcesControlsPagerAndRouteBindings(t *testing.T) {
 	decodeResponse(t, first, &rows)
 	if len(rows.Data) != 1 || rows.NextCursor == "" {
 		t.Fatalf("rows=%v cursor=%q", rows.Data, rows.NextCursor)
+	}
+	snapshot := serve(t, handler, http.MethodGet, "/api/views/articles?_page=%2Farticle-snapshot&_display=snapshot&limit=200", nil, nil, "")
+	decodeResponse(t, snapshot, &rows)
+	if len(rows.Data) != 3 || rows.NextCursor != "" {
+		t.Fatalf("snapshot rows=%v cursor=%q", rows.Data, rows.NextCursor)
 	}
 	if response := serve(t, handler, http.MethodGet, "/api/views/articles?_page=%2Farticles&_display=index&title=forged", nil, nil, ""); response.Code != http.StatusBadRequest {
 		t.Fatalf("unknown filter status=%d body=%s", response.Code, response.Body.String())

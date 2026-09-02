@@ -331,7 +331,11 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		limit = display.Pager.PageSize
+		if display.Renderer.Type == "detail" {
+			limit = a.Views[r.PathValue("name")].MaxLimit
+		} else {
+			limit = display.Pager.PageSize
+		}
 	}
 	if blockName := r.URL.Query().Get("_block"); blockName != "" {
 		blockDefinition := a.Blocks[blockName]
