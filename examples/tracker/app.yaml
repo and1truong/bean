@@ -44,8 +44,37 @@ kind: View
 name: issue_kanban
 displays:
   kanban: {route: /api/issues/kanban, type: json}
+  board:
+    type: block
+    renderer: {type: board, titleField: title, groupField: status, columns: [todo, in_progress, done], moveAction: move_issue, metaFields: [project_id, assignee_id]}
+    pager: {type: none, pageSize: 200}
+  page:
+    type: page
+    route: /issues
+    title: {text: Issues}
+    selection: multiple
+    actions: [move_issue]
+    renderer:
+      type: table
+      fields:
+        - {field: title, label: Issue}
+        - {field: status, label: Status}
+        - {field: project_id, label: Project}
+        - {field: assignee_id, label: Assignee}
+    controls:
+      - {filter: status, label: Status, widget: select}
+      - {filter: project, label: Project, widget: auto}
+      - {filter: assignee, label: Assignee, widget: auto}
+    pager: {type: cursor, pageSize: 25}
 entity: issue
-fields: [id, title, status, assignee_id]
+fields: [id, title, status, project_id, assignee_id]
+exposedFilters:
+  status: {field: status, operator: eq}
+  project: {field: project_id, operator: eq}
+  assignee: {field: assignee_id, operator: eq}
+sort:
+  - {field: status}
+  - {field: id}
 ---
 kind: Action
 name: move_issue
@@ -54,3 +83,47 @@ operation: transition
 transitions:
   in_progress: [done]
   todo: [in_progress]
+---
+kind: View
+name: issues_by_status
+entity: issue
+fields: [status]
+groupBy:
+  - {field: status}
+aggregates:
+  - {function: count, field: id, alias: issue_count}
+displays:
+  chart:
+    type: block
+    renderer: {type: chart, groupField: status, metricField: issue_count, metricLabel: Issues by status}
+    pager: {type: none, pageSize: 200}
+    drill:
+      view: issue_kanban
+      display: page
+      bindings:
+        - {source: group, name: status, filter: status}
+---
+kind: Block
+name: issue_status_chart
+type: view
+view: issues_by_status
+display: chart
+---
+kind: Block
+name: issue_board
+type: view
+view: issue_kanban
+display: board
+---
+kind: Panel
+name: tracker_operations
+layout: two-column
+regions:
+  - {name: left, blocks: [issue_status_chart]}
+  - {name: right, blocks: [issue_board]}
+---
+kind: Page
+name: tracker_home
+route: /
+title: Issue operations
+panel: tracker_operations

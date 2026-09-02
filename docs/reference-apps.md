@@ -1,13 +1,14 @@
 # Reference applications
 
 - `cms`: draft/publish news with page, JSON, CSV, RSS, and scheduled publishing metadata.
-- `crm`: owned contacts, manager policy, activity, pipeline View, and audited transitions.
-- `commerce`: inventory, checkout Webform, transactional decrement, deterministic payment, order transitions, and an after-commit typed order-notification Extension with an offline provider contract test.
-- `tracker`: issues/comments, kanban View, transitions, and audit.
-- `booking`: overlap-safe booking, cancellation, calendar, and reminders.
+- `crm`: owned contacts/deals, manager bypass, Policy-scoped count/money dashboards, exact aggregate drill, and audited transitions.
+- `commerce`: inventory, checkout Webform, deterministic payment, order Lifecycle, typed order-notification Extension, and a paid-unfulfilled observe → drill → `advance_order` dashboard.
+- `tracker`: issues/comments, status chart-to-record drill, operational board, selected `move_issue`, and audit.
+- `booking`: overlap-safe booking, cancellation, table/calendar Displays, and reminders.
 - `saas`: organisations, memberships, tenant-scoped projects, and automatic tenant predicates.
 - `community`: profiles/posts/comments/reactions/follows with private-to-public transitions.
 - `blog`: draft/publish posts, categories, many-to-many tags, opt-in member signup, bound comments, post-scoped moderation queues, safe Markdown content filtering, public rendering, and RSS.
-- `asana`: anonymous local projects, status board movement, arbitrary-depth task trees, route-bound subtask creation, and multiple transactional file attachments.
+- `asana`: split YAML, anonymous local projects, immutable project context, typed task page filters/status chart, board movement, arbitrary-depth trees, and file attachments.
+- `ats`: the primary Explore application with recruiting metrics/charts, shared filters, exact candidate drill, table/cards/board/timeline/calendar-compatible patterns, Lifecycle Actions, Rules, TestSuites, and deterministic DemoSeed.
 
 Every application uses the same manifest and flat YAML definition format. Small examples keep definitions inline; the larger blog is split into explicit feature-oriented resources. Core Go and React code contains no application-name branches.

@@ -33,6 +33,12 @@
     "github_com_beanruntime_bean_internal_appir_Display": {
       "additionalProperties": false,
       "properties": {
+        "actions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "bindings": {
           "additionalProperties": {
             "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ContextBinding"
@@ -48,6 +54,9 @@
         "description": {
           "type": "string"
         },
+        "drill": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ViewDrill"
+        },
         "emptyState": {
           "type": "string"
         },
@@ -58,6 +67,9 @@
           "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ViewRenderer"
         },
         "route": {
+          "type": "string"
+        },
+        "selection": {
           "type": "string"
         },
         "title": {
@@ -142,6 +154,42 @@
       },
       "type": "object"
     },
+    "github_com_beanruntime_bean_internal_appir_ViewDrill": {
+      "additionalProperties": false,
+      "properties": {
+        "bindings": {
+          "items": {
+            "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ViewDrillBinding"
+          },
+          "type": "array"
+        },
+        "display": {
+          "type": "string"
+        },
+        "route": {
+          "type": "string"
+        },
+        "view": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_ViewDrillBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "filter": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "github_com_beanruntime_bean_internal_appir_ViewFilter": {
       "additionalProperties": false,
       "properties": {
@@ -177,6 +225,21 @@
         },
         "unique": {
           "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_ViewGroup": {
+      "additionalProperties": false,
+      "properties": {
+        "as": {
+          "type": "string"
+        },
+        "bucket": {
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
         }
       },
       "type": "object"
@@ -230,6 +293,9 @@
           "type": "array"
         },
         "emptyState": {
+          "type": "string"
+        },
+        "endField": {
           "type": "string"
         },
         "fields": {
@@ -288,6 +354,18 @@
         },
         "type": {
           "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_ViewSearch": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
       },
       "type": "object"
@@ -378,7 +456,7 @@
     },
     "groupBy": {
       "items": {
-        "type": "string"
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ViewGroup"
       },
       "type": "array"
     },
@@ -403,6 +481,12 @@
         "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ViewRelationship"
       },
       "type": "array"
+    },
+    "resultShape": {
+      "type": "string"
+    },
+    "search": {
+      "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ViewSearch"
     },
     "sort": {
       "items": {

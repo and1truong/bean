@@ -10,7 +10,9 @@ import (
 
 var identifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-type Compiler struct{}
+type Compiler struct {
+	DateBucket func(string, string) (string, error)
+}
 
 func (Compiler) QuoteIdentifier(s string) (string, error) {
 	parts := strings.Split(s, ".")
@@ -23,6 +25,29 @@ func (Compiler) QuoteIdentifier(s string) (string, error) {
 	return strings.Join(parts, "."), nil
 }
 func (Compiler) Placeholder(int) string { return "?" }
+
+func (c Compiler) groupExpression(group dbal.Group) (string, error) {
+	column, err := c.QuoteIdentifier(group.Column)
+	if err != nil {
+		return "", err
+	}
+	if group.Bucket == "" {
+		return column, nil
+	}
+	if c.DateBucket != nil {
+		return c.DateBucket(group.Bucket, column)
+	}
+	switch group.Bucket {
+	case "day":
+		return "date(" + column + ")", nil
+	case "week":
+		return "date(" + column + ", '-' || ((strftime('%w', " + column + ") + 6) % 7) || ' days')", nil
+	case "month":
+		return "strftime('%Y-%m-01', " + column + ")", nil
+	default:
+		return "", fmt.Errorf("invalid date bucket %q", group.Bucket)
+	}
+}
 
 func (c Compiler) CompileSelect(q dbal.Select) (string, []dbal.Value, error) {
 	table, err := c.QuoteIdentifier(q.Table)
@@ -58,6 +83,17 @@ func (c Compiler) CompileSelect(q dbal.Select) (string, []dbal.Value, error) {
 			return "", nil, e
 		}
 		cols = append(cols, fn+"("+col+") AS "+alias)
+	}
+	for _, group := range q.GroupBy {
+		expression, e := c.groupExpression(group)
+		if e != nil {
+			return "", nil, e
+		}
+		alias, e := c.QuoteIdentifier(group.Alias)
+		if e != nil {
+			return "", nil, e
+		}
+		cols = append(cols, expression+" AS "+alias)
 	}
 	if len(cols) == 0 {
 		cols = []string{"*"}
@@ -108,7 +144,7 @@ func (c Compiler) CompileSelect(q dbal.Select) (string, []dbal.Value, error) {
 	if len(q.GroupBy) > 0 {
 		xs := []string{}
 		for _, g := range q.GroupBy {
-			x, e := c.QuoteIdentifier(g)
+			x, e := c.groupExpression(g)
 			if e != nil {
 				return "", nil, e
 			}
@@ -127,6 +163,9 @@ func (c Compiler) CompileSelect(q dbal.Select) (string, []dbal.Value, error) {
 				x += " DESC"
 			} else {
 				x += " ASC"
+			}
+			if o.NullsLast {
+				x += " NULLS LAST"
 			}
 			xs = append(xs, x)
 		}

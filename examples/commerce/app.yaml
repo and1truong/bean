@@ -1,6 +1,12 @@
 apiVersion: bean/v1alpha1
 name: Commerce
 ---
+kind: DemoSeed
+name: credible_demo
+entities:
+  product: {count: 12, profile: auto}
+  order: {count: 18, profile: auto}
+---
 kind: Entity
 name: product
 fields:
@@ -120,6 +126,161 @@ displays:
   api: {route: /api/products, type: json}
 entity: product
 fields: [id, name, price, inventory]
+---
+kind: View
+name: low_inventory_product_records
+entity: product
+fields: [id, name, price, inventory]
+filter:
+  op: lte
+  left: {source: record, name: inventory}
+  right: {source: literal, literal: 30}
+sort:
+  - {field: inventory}
+displays:
+  page:
+    type: page
+    route: /low-inventory
+    title: {text: Low inventory products}
+    renderer:
+      type: table
+      fields:
+        - {field: name, label: Product}
+        - {field: inventory, label: Inventory}
+        - {field: price, label: Price}
+    pager: {type: cursor, pageSize: 25}
+---
+kind: View
+name: low_inventory_product_count
+entity: product
+filter:
+  op: lte
+  left: {source: record, name: inventory}
+  right: {source: literal, literal: 30}
+aggregates:
+  - {function: count, field: id, alias: product_count}
+displays:
+  metric:
+    type: block
+    renderer: {type: metric, metricField: product_count, metricLabel: Low inventory products}
+    pager: {type: none, pageSize: 1}
+    drill: {view: low_inventory_product_records, display: page}
+---
+kind: View
+name: order_records
+entity: order
+fields: [id, status, payment_result, updated_at]
+exposedFilters:
+  status: {field: status, operator: eq}
+sort:
+  - {field: updated_at, desc: true}
+displays:
+  page:
+    type: page
+    route: /orders
+    title: {text: Orders}
+    selection: multiple
+    actions: [advance_order]
+    renderer:
+      type: table
+      fields:
+        - {field: id, label: Order}
+        - {field: status, label: Status}
+        - {field: payment_result, label: Payment}
+    controls:
+      - {filter: status, label: Status, widget: select}
+    pager: {type: cursor, pageSize: 25}
+---
+kind: View
+name: orders_by_status
+entity: order
+fields: [status]
+groupBy:
+  - {field: status}
+aggregates:
+  - {function: count, field: id, alias: order_count}
+displays:
+  chart:
+    type: block
+    renderer: {type: chart, groupField: status, metricField: order_count, metricLabel: Orders by status}
+    pager: {type: none, pageSize: 200}
+    drill:
+      view: order_records
+      display: page
+      bindings:
+        - {source: group, name: status, filter: status}
+---
+kind: View
+name: paid_unfulfilled_orders
+entity: order
+fields: [id, status, payment_result, updated_at]
+filter:
+  op: eq
+  left: {source: record, name: status}
+  right: {source: literal, literal: paid}
+sort:
+  - {field: updated_at, desc: true}
+displays:
+  page:
+    type: page
+    route: /paid-orders
+    title: {text: Paid orders awaiting fulfillment}
+    selection: multiple
+    actions: [advance_order]
+    renderer:
+      type: table
+      fields:
+        - {field: id, label: Order}
+        - {field: status, label: Status}
+        - {field: payment_result, label: Payment}
+    pager: {type: cursor, pageSize: 25}
+---
+kind: View
+name: paid_unfulfilled_count
+entity: order
+filter:
+  op: eq
+  left: {source: record, name: status}
+  right: {source: literal, literal: paid}
+aggregates:
+  - {function: count, field: id, alias: order_count}
+displays:
+  metric:
+    type: block
+    renderer: {type: metric, metricField: order_count, metricLabel: Paid orders awaiting fulfillment}
+    pager: {type: none, pageSize: 1}
+    drill: {view: paid_unfulfilled_orders, display: page}
+---
+kind: Block
+name: low_inventory_metric
+type: view
+view: low_inventory_product_count
+display: metric
+---
+kind: Block
+name: order_status_chart
+type: view
+view: orders_by_status
+display: chart
+---
+kind: Block
+name: paid_unfulfilled_metric
+type: view
+view: paid_unfulfilled_count
+display: metric
+---
+kind: Panel
+name: commerce_operations_panel
+layout: single-column
+regions:
+  - {name: main, blocks: [low_inventory_metric, order_status_chart, paid_unfulfilled_metric]}
+---
+kind: Page
+name: commerce_operations
+route: /
+title: Commerce operations
+description: Observe inventory and fulfillment issues, inspect contributing records, and act.
+panel: commerce_operations_panel
 ---
 kind: TestSuite
 name: order_item_total_contract

@@ -36,6 +36,11 @@ type Capabilities struct {
 	ViewFilterOperators     []string `json:"viewFilterOperators"`
 	ViewControlWidgets      []string `json:"viewControlWidgets"`
 	ViewPagers              []string `json:"viewPagers"`
+	ViewResultShapes        []string `json:"viewResultShapes"`
+	ViewGroupBuckets        []string `json:"viewGroupBuckets"`
+	ViewAggregateFunctions  []string `json:"viewAggregateFunctions"`
+	ViewDrillSources        []string `json:"viewDrillSources"`
+	ViewSelections          []string `json:"viewSelections"`
 	DisplaySerializers      []string `json:"displaySerializers"`
 	PanelLayouts            []string `json:"panelLayouts"`
 	DatabaseBackends        []string `json:"databaseBackends"`
@@ -90,6 +95,11 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 		ViewFilterOperators:     viewFilterOperators(),
 		ViewControlWidgets:      viewControlWidgets(),
 		ViewPagers:              viewPagerTypes(),
+		ViewResultShapes:        []string{"groups", "metric", "records"},
+		ViewGroupBuckets:        []string{"day", "month", "week"},
+		ViewAggregateFunctions:  []string{"average", "count", "max", "min", "sum"},
+		ViewDrillSources:        []string{"filter", "group"},
+		ViewSelections:          []string{"multiple", "none", "single"},
 		DisplaySerializers:      displaySerializerNames(),
 		PanelLayouts:            panelLayoutNames(),
 		DatabaseBackends:        []string{"postgresql", "sqlite"},
@@ -124,10 +134,10 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 }
 
 func presentationNames() []string {
-	return []string{"board", "detail", "list", "metric", "timeline", "tree"}
+	return []string{"board", "calendar", "cards", "chart", "detail", "list", "metric", "timeline", "tree"}
 }
 func viewRendererNames() []string {
-	return []string{"board", "detail", "list", "metric", "table", "timeline", "tree"}
+	return []string{"board", "calendar", "cards", "chart", "detail", "list", "metric", "table", "timeline", "tree"}
 }
 func viewDisplayTypes() []string    { return []string{"block", "csv", "json", "page", "rss"} }
 func viewFilterOperators() []string { return []string{"contains", "eq", "gte", "lte"} }

@@ -99,6 +99,7 @@ exposedFilters:
     required: true
     type: relation
     relation: {entity: project, kind: many-to-one, targetField: id}
+  priority: {field: priority, operator: eq}
 filter:
   left: {source: record, name: parent_id}
   op: is_null
@@ -117,10 +118,32 @@ exposedFilters:
     required: true
     type: relation
     relation: {entity: project, kind: many-to-one, targetField: id}
+  priority: {field: priority, operator: eq}
 sort:
   - {field: position}
 maxLimit: 200
 defaultLimit: 200
+---
+kind: View
+name: project_tasks_by_status
+entity: task
+fields: [status]
+exposedFilters:
+  project_id:
+    name: project_id
+    required: true
+    type: relation
+    relation: {entity: project, kind: many-to-one, targetField: id}
+  priority: {field: priority, operator: eq}
+groupBy:
+  - {field: status}
+aggregates:
+  - {function: count, field: id, alias: task_count}
+displays:
+  chart:
+    type: block
+    renderer: {type: chart, groupField: status, metricField: task_count, metricLabel: Tasks by status}
+    pager: {type: none, pageSize: 200}
 ---
 kind: View
 name: task_detail
@@ -171,6 +194,19 @@ presentation:
   moveAction: move_task
   columns: [todo, in_progress, done]
   emptyState: Create the first task below.
+---
+kind: Block
+name: project_status_chart
+type: view
+view: project_tasks_by_status
+display: chart
+inputs:
+  project_id:
+    required: true
+    type: relation
+    relation: {entity: project, kind: many-to-one, targetField: id}
+bindings:
+  project_id: {source: context, name: id, required: true}
 ---
 kind: Block
 name: project_tree

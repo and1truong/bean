@@ -49,7 +49,7 @@ func TestFirstClassViewDisplayCompilesCanonicalContract(t *testing.T) {
 	if len(result.Diagnostics) != 0 {
 		t.Fatalf("diagnostics=%v", result.Diagnostics)
 	}
-	if result.App.FormatVersion != appir.CurrentFormat || appir.CurrentFormat != "bean/appir/v6" {
+	if result.App.FormatVersion != appir.CurrentFormat || appir.CurrentFormat != "bean/appir/v7" {
 		t.Fatalf("format=%q", result.App.FormatVersion)
 	}
 	view := result.App.Views["articles"]
@@ -63,7 +63,7 @@ func TestFirstClassViewDisplayCompilesCanonicalContract(t *testing.T) {
 		t.Fatalf("block=%+v", result.App.Blocks["recent_articles"])
 	}
 	capabilities := compiler.AgentCapabilities("test")
-	if !reflect.DeepEqual(capabilities.ViewDisplayTypes, []string{"block", "csv", "json", "page", "rss"}) || !reflect.DeepEqual(capabilities.ViewRenderers, []string{"board", "detail", "list", "metric", "table", "timeline", "tree"}) || !reflect.DeepEqual(capabilities.ViewFilterOperators, []string{"contains", "eq", "gte", "lte"}) || !reflect.DeepEqual(capabilities.ViewControlWidgets, []string{"auto", "checkbox", "date", "number", "select", "text"}) || !reflect.DeepEqual(capabilities.ViewPagers, []string{"cursor", "none"}) {
+	if !reflect.DeepEqual(capabilities.ViewDisplayTypes, []string{"block", "csv", "json", "page", "rss"}) || !reflect.DeepEqual(capabilities.ViewRenderers, []string{"board", "calendar", "cards", "chart", "detail", "list", "metric", "table", "timeline", "tree"}) || !reflect.DeepEqual(capabilities.ViewFilterOperators, []string{"contains", "eq", "gte", "lte"}) || !reflect.DeepEqual(capabilities.ViewControlWidgets, []string{"auto", "checkbox", "date", "number", "select", "text"}) || !reflect.DeepEqual(capabilities.ViewPagers, []string{"cursor", "none"}) {
 		t.Fatalf("capabilities=%+v", capabilities)
 	}
 	if contains(capabilities.Presentations, "table") {

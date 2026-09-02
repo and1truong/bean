@@ -125,8 +125,9 @@ displays:
     renderer: {type: board, titleField: name, groupField: stage, columns: [applied, screen, interview, offer, hired, rejected], moveAction: move_candidate, metaFields: [email, applied_at], linkRoute: /candidates/:id, linkField: id}
     pager: {type: none, pageSize: 50}
   table:
-    type: page
-    route: /candidates
+    type: block
+    selection: multiple
+    actions: [move_candidate]
     title: {text: Candidates}
     description: Filter and review the candidate pipeline.
     renderer:
@@ -140,6 +141,77 @@ displays:
       - {filter: stage, label: Pipeline stage, widget: select}
     pager: {type: cursor, pageSize: 10}
     emptyState: No candidates match.
+sort:
+  - {field: applied_at, desc: true}
+---
+kind: View
+name: candidate_records
+entity: candidate
+policy: public_access
+relationships:
+  - {name: job, relationField: job_id, type: inner}
+fields: [id, job_id, job.title, job.department, name, email, stage, applied_at, summary]
+search: {fields: [name, email, summary]}
+exposedFilters:
+  job: {field: job_id, operator: eq}
+  job_title: {field: job.title, operator: eq}
+  department: {field: job.department, operator: eq}
+  stage: {field: stage, operator: eq}
+  applied_from: {field: applied_at, operator: gte}
+  applied_to: {field: applied_at, operator: lte}
+displays:
+  list:
+    type: block
+    renderer: {type: list, titleField: name, bodyField: summary, metaFields: [email, stage, applied_at], linkRoute: /candidates/:id, linkField: id}
+    pager: {type: cursor, pageSize: 25}
+    emptyState: No candidates match.
+  cards:
+    type: block
+    renderer: {type: cards, titleField: name, bodyField: summary, metaFields: [job.title, job.department, email, stage, applied_at], linkRoute: /candidates/:id, linkField: id}
+    pager: {type: cursor, pageSize: 25}
+    emptyState: No candidates match.
+  board:
+    type: block
+    renderer: {type: board, titleField: name, groupField: stage, columns: [applied, screen, interview, offer, hired, rejected], moveAction: move_candidate, metaFields: [job.title, email, applied_at], linkRoute: /candidates/:id, linkField: id}
+    pager: {type: none, pageSize: 200}
+  table:
+    type: block
+    selection: multiple
+    actions: [move_candidate]
+    renderer:
+      type: table
+      fields:
+        - {field: name, label: Candidate, linkRoute: /candidates/:id}
+        - {field: job.title, label: Job}
+        - {field: job.department, label: Department}
+        - {field: stage, label: Stage}
+        - {field: applied_at, label: Applied}
+    pager: {type: cursor, pageSize: 25}
+    emptyState: No candidates match.
+  page:
+    type: page
+    selection: multiple
+    actions: [move_candidate]
+    route: /candidates
+    title: {text: Candidates}
+    description: Inspect the records contributing to recruiting metrics.
+    renderer:
+      type: table
+      fields:
+        - {field: name, label: Candidate, linkRoute: /candidates/:id}
+        - {field: job.title, label: Job}
+        - {field: job.department, label: Department}
+        - {field: stage, label: Stage}
+        - {field: applied_at, label: Applied}
+    controls:
+      - {filter: job, label: Job, widget: auto}
+      - {filter: job_title, label: Job title, widget: text}
+      - {filter: department, label: Department, widget: text}
+      - {filter: stage, label: Stage, widget: select}
+      - {filter: applied_from, label: Applied from, widget: date}
+      - {filter: applied_to, label: Applied to, widget: date}
+    pager: {type: cursor, pageSize: 25}
+    emptyState: No candidates contribute to this result.
 sort:
   - {field: applied_at, desc: true}
 ---
@@ -170,6 +242,206 @@ displays:
     pager: {type: none, pageSize: 50}
 ---
 kind: View
+name: active_candidate_total
+entity: candidate
+policy: public_access
+relationships:
+  - {name: job, relationField: job_id, type: inner}
+exposedFilters:
+  job: {field: job_id, operator: eq}
+  department: {field: job.department, operator: eq}
+  stage: {field: stage, operator: eq}
+  applied_from: {field: applied_at, operator: gte}
+  applied_to: {field: applied_at, operator: lte}
+filter:
+  op: not_in
+  left: {source: record, name: stage}
+  right: {source: literal, literal: [hired, rejected]}
+aggregates:
+  - {function: count, field: id, alias: candidate_count}
+displays:
+  metric:
+    type: block
+    renderer: {type: metric, metricField: candidate_count, metricLabel: Active candidates}
+    pager: {type: none, pageSize: 1}
+    drill:
+      view: active_candidate_records
+      display: page
+      bindings:
+        - {source: filter, name: job, filter: job}
+        - {source: filter, name: department, filter: department}
+        - {source: filter, name: stage, filter: stage}
+        - {source: filter, name: applied_from, filter: applied_from}
+        - {source: filter, name: applied_to, filter: applied_to}
+---
+kind: View
+name: active_candidate_records
+entity: candidate
+policy: public_access
+relationships:
+  - {name: job, relationField: job_id, type: inner}
+fields: [id, job_id, job.title, job.department, name, email, stage, applied_at]
+exposedFilters:
+  job: {field: job_id, operator: eq}
+  department: {field: job.department, operator: eq}
+  stage: {field: stage, operator: eq}
+  applied_from: {field: applied_at, operator: gte}
+  applied_to: {field: applied_at, operator: lte}
+filter:
+  op: not_in
+  left: {source: record, name: stage}
+  right: {source: literal, literal: [hired, rejected]}
+sort:
+  - {field: applied_at, desc: true}
+displays:
+  page:
+    type: page
+    route: /active-candidates
+    title: {text: Active candidates}
+    renderer:
+      type: table
+      fields:
+        - {field: name, label: Candidate, linkRoute: /candidates/:id}
+        - {field: job.title, label: Job}
+        - {field: job.department, label: Department}
+        - {field: stage, label: Stage}
+        - {field: applied_at, label: Applied}
+    controls:
+      - {filter: job, label: Job, widget: auto}
+      - {filter: department, label: Department, widget: text}
+      - {filter: stage, label: Stage, widget: select}
+      - {filter: applied_from, label: Applied from, widget: date}
+      - {filter: applied_to, label: Applied to, widget: date}
+    pager: {type: cursor, pageSize: 25}
+---
+kind: View
+name: candidates_by_stage
+entity: candidate
+policy: public_access
+relationships:
+  - {name: job, relationField: job_id, type: inner}
+exposedFilters:
+  job: {field: job_id, operator: eq}
+  department: {field: job.department, operator: eq}
+  stage: {field: stage, operator: eq}
+  applied_from: {field: applied_at, operator: gte}
+  applied_to: {field: applied_at, operator: lte}
+fields: [stage]
+groupBy:
+  - {field: stage}
+aggregates:
+  - {function: count, field: id, alias: candidate_count}
+displays:
+  table:
+    type: block
+    renderer:
+      type: table
+      fields:
+        - {field: stage, label: Stage}
+        - {field: candidate_count, label: Candidates}
+    pager: {type: none, pageSize: 200}
+  chart:
+    type: block
+    renderer: {type: chart, groupField: stage, metricField: candidate_count, metricLabel: Candidates by stage}
+    pager: {type: none, pageSize: 200}
+    drill:
+      view: candidate_records
+      display: page
+      bindings:
+        - {source: group, name: stage, filter: stage}
+        - {source: filter, name: job, filter: job}
+        - {source: filter, name: department, filter: department}
+        - {source: filter, name: applied_from, filter: applied_from}
+        - {source: filter, name: applied_to, filter: applied_to}
+---
+kind: View
+name: candidates_by_job
+entity: candidate
+policy: public_access
+relationships:
+  - {name: job, relationField: job_id, type: inner}
+fields: [job.title]
+exposedFilters:
+  job: {field: job_id, operator: eq}
+  department: {field: job.department, operator: eq}
+  stage: {field: stage, operator: eq}
+  applied_from: {field: applied_at, operator: gte}
+  applied_to: {field: applied_at, operator: lte}
+groupBy:
+  - {field: job.title, as: job}
+aggregates:
+  - {function: count, field: id, alias: candidate_count}
+displays:
+  chart:
+    type: block
+    renderer: {type: chart, groupField: job, metricField: candidate_count, metricLabel: Candidates by job}
+    pager: {type: none, pageSize: 200}
+    drill:
+      view: candidate_records
+      display: page
+      bindings:
+        - {source: group, name: job, filter: job_title}
+        - {source: filter, name: department, filter: department}
+        - {source: filter, name: stage, filter: stage}
+        - {source: filter, name: applied_from, filter: applied_from}
+        - {source: filter, name: applied_to, filter: applied_to}
+---
+kind: View
+name: candidates_by_department
+entity: candidate
+policy: public_access
+relationships:
+  - {name: job, relationField: job_id, type: inner}
+fields: [job.department]
+exposedFilters:
+  job: {field: job_id, operator: eq}
+  department: {field: job.department, operator: eq}
+  stage: {field: stage, operator: eq}
+  applied_from: {field: applied_at, operator: gte}
+  applied_to: {field: applied_at, operator: lte}
+groupBy:
+  - {field: job.department, as: department}
+aggregates:
+  - {function: count, field: id, alias: candidate_count}
+displays:
+  chart:
+    type: block
+    renderer: {type: chart, groupField: department, metricField: candidate_count, metricLabel: Candidates by department}
+    pager: {type: none, pageSize: 200}
+    drill:
+      view: candidate_records
+      display: page
+      bindings:
+        - {source: group, name: department, filter: department}
+        - {source: filter, name: job, filter: job}
+        - {source: filter, name: stage, filter: stage}
+        - {source: filter, name: applied_from, filter: applied_from}
+        - {source: filter, name: applied_to, filter: applied_to}
+---
+kind: View
+name: recent_candidates
+entity: candidate
+policy: public_access
+relationships:
+  - {name: job, relationField: job_id, type: inner}
+fields: [id, job_id, name, email, stage, applied_at]
+exposedFilters:
+  job: {field: job_id, operator: eq}
+  department: {field: job.department, operator: eq}
+  stage: {field: stage, operator: eq}
+  applied_from: {field: applied_at, operator: gte}
+  applied_to: {field: applied_at, operator: lte}
+displays:
+  list:
+    type: block
+    renderer: {type: list, titleField: name, metaFields: [email, stage, applied_at], linkRoute: /candidates/:id, linkField: id}
+    pager: {type: none, pageSize: 10}
+sort:
+  - {field: applied_at, desc: true}
+defaultLimit: 10
+maxLimit: 10
+---
+kind: View
 name: recent_activity
 entity: activity
 policy: public_access
@@ -185,20 +457,44 @@ sort:
 kind: Block
 name: candidate_metric
 type: view
-view: candidate_total
+view: active_candidate_total
 display: metric
 ---
 kind: Block
 name: candidate_search
 type: view
-view: candidate_pipeline
-display: search
+view: candidate_records
+display: list
 ---
 kind: Block
 name: candidate_board
 type: view
-view: candidate_pipeline
+view: candidate_records
 display: board
+---
+kind: Block
+name: candidate_stage_chart
+type: view
+view: candidates_by_stage
+display: chart
+---
+kind: Block
+name: candidate_job_chart
+type: view
+view: candidates_by_job
+display: chart
+---
+kind: Block
+name: candidate_department_chart
+type: view
+view: candidates_by_department
+display: chart
+---
+kind: Block
+name: recent_candidate_list
+type: view
+view: recent_candidates
+display: list
 ---
 kind: Block
 name: activity_timeline
@@ -231,7 +527,7 @@ kind: Panel
 name: home_panel
 layout: single-column
 regions:
-  - {name: main, blocks: [main_menu, candidate_metric, candidate_search, candidate_board, activity_timeline]}
+  - {name: main, blocks: [main_menu, candidate_metric, candidate_stage_chart, candidate_job_chart, candidate_department_chart, recent_candidate_list, candidate_search, candidate_board, activity_timeline]}
 ---
 kind: Panel
 name: candidate_panel
@@ -242,8 +538,64 @@ regions:
 kind: Page
 name: home
 route: /
-title: Recruiting pipeline
+title: Recruiting overview
 panel: home_panel
+filters:
+  job:
+    label: Job
+    widget: text
+    targets:
+      - {block: candidate_metric, filter: job}
+      - {block: candidate_stage_chart, filter: job}
+      - {block: candidate_job_chart, filter: job}
+      - {block: candidate_department_chart, filter: job}
+      - {block: recent_candidate_list, filter: job}
+      - {block: candidate_search, filter: job}
+      - {block: candidate_board, filter: job}
+  department:
+    label: Department
+    widget: text
+    targets:
+      - {block: candidate_metric, filter: department}
+      - {block: candidate_stage_chart, filter: department}
+      - {block: candidate_job_chart, filter: department}
+      - {block: candidate_department_chart, filter: department}
+      - {block: recent_candidate_list, filter: department}
+      - {block: candidate_search, filter: department}
+      - {block: candidate_board, filter: department}
+  stage:
+    label: Stage
+    widget: select
+    targets:
+      - {block: candidate_metric, filter: stage}
+      - {block: candidate_stage_chart, filter: stage}
+      - {block: candidate_job_chart, filter: stage}
+      - {block: candidate_department_chart, filter: stage}
+      - {block: recent_candidate_list, filter: stage}
+      - {block: candidate_search, filter: stage}
+      - {block: candidate_board, filter: stage}
+  applied_from:
+    label: Applied from
+    widget: date
+    targets:
+      - {block: candidate_metric, filter: applied_from}
+      - {block: candidate_stage_chart, filter: applied_from}
+      - {block: candidate_job_chart, filter: applied_from}
+      - {block: candidate_department_chart, filter: applied_from}
+      - {block: recent_candidate_list, filter: applied_from}
+      - {block: candidate_search, filter: applied_from}
+      - {block: candidate_board, filter: applied_from}
+  applied_to:
+    label: Applied to
+    widget: date
+    targets:
+      - {block: candidate_metric, filter: applied_to}
+      - {block: candidate_stage_chart, filter: applied_to}
+      - {block: candidate_job_chart, filter: applied_to}
+      - {block: candidate_department_chart, filter: applied_to}
+      - {block: recent_candidate_list, filter: applied_to}
+      - {block: candidate_search, filter: applied_to}
+      - {block: candidate_board, filter: applied_to}
 ---
 kind: Page
 name: candidate

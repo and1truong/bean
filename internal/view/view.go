@@ -46,6 +46,7 @@ type Params struct {
 type Result struct {
 	Rows       []dbal.Row
 	NextCursor string
+	Shape      string
 }
 
 type cursor struct {
@@ -119,6 +120,9 @@ func ReadPage(ctx context.Context, reader Reader, app *appir.App, name string, o
 	}
 	for _, aggregate := range v.Aggregates {
 		available[aggregate.Alias] = true
+	}
+	for _, group := range v.GroupBy {
+		available[group.Output()] = true
 	}
 	for name, value := range params.ExactFilters {
 		if !available[name] {
@@ -194,10 +198,25 @@ func ReadPage(ctx context.Context, reader Reader, app *appir.App, name string, o
 	if limit > max {
 		limit = max
 	}
+	if len(v.GroupBy) > 0 {
+		if params.Cursor != "" || params.Offset != 0 {
+			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "grouped Views use a bounded result and do not support pagination"}
+		}
+		limit = max
+	} else if len(v.Aggregates) > 0 {
+		if params.Cursor != "" || params.Offset != 0 {
+			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "metric Views do not support pagination"}
+		}
+		limit = 1
+	}
 	offset := params.Offset
 	aggregateAliases := map[string]bool{}
 	for _, aggregate := range v.Aggregates {
 		aggregateAliases[aggregate.Alias] = true
+	}
+	groupAliases := map[string]string{}
+	for _, group := range v.GroupBy {
+		groupAliases[group.Output()] = strings.ReplaceAll(group.Output(), ".", "__")
 	}
 	orders := []dbal.Order{}
 	sortDefinitions := v.Sort
@@ -212,15 +231,19 @@ func ReadPage(ctx context.Context, reader Reader, app *appir.App, name string, o
 		column := o.Field
 		if aggregateAliases[column] {
 			aggregateSort = true
+		} else if alias, grouped := groupAliases[column]; grouped {
+			aggregateSort = true
+			column = alias
 		} else {
 			column = qualify(column, v.Entity, joined)
 		}
-		orders = append(orders, dbal.Order{Column: column, Desc: o.Desc})
+		orders = append(orders, dbal.Order{Column: column, Desc: o.Desc, NullsLast: groupAliases[o.Field] != ""})
 	}
 	if aggregateSort {
 		for _, group := range v.GroupBy {
-			if !orderedBy(orders, group) {
-				orders = append(orders, dbal.Order{Column: qualify(group, v.Entity, joined)})
+			alias := groupAliases[group.Output()]
+			if !orderedBy(orders, alias) {
+				orders = append(orders, dbal.Order{Column: alias, NullsLast: true})
 			}
 		}
 	}
@@ -266,6 +289,10 @@ func ReadPage(ctx context.Context, reader Reader, app *appir.App, name string, o
 		}
 		aggregates = append(aggregates, dbal.Aggregate{Function: function, Column: qualify(aggregate.Field, v.Entity, joined), Alias: aggregate.Alias})
 	}
+	groups := make([]dbal.Group, 0, len(v.GroupBy))
+	for _, group := range v.GroupBy {
+		groups = append(groups, dbal.Group{Column: qualify(group.Field, v.Entity, joined), Alias: groupAliases[group.Output()], Bucket: group.Bucket})
+	}
 	var where *dbal.Predicate
 	if len(predicates) == 1 {
 		where = &predicates[0]
@@ -274,6 +301,9 @@ func ReadPage(ctx context.Context, reader Reader, app *appir.App, name string, o
 		where = &x
 	}
 	columns := qualifyAll(storedFields(v.Fields, e), v.Entity, joined)
+	if len(groups) > 0 || len(aggregates) > 0 {
+		columns = nil
+	}
 	hiddenCursorFields := map[string]bool{}
 	if !aggregateSort {
 		for _, order := range orders {
@@ -283,12 +313,15 @@ func ReadPage(ctx context.Context, reader Reader, app *appir.App, name string, o
 			}
 		}
 	}
-	rows, er := reader.Select(ctx, dbal.Select{Table: v.Entity, Columns: columns, Joins: joins, Where: where, GroupBy: qualifyAll(v.GroupBy, v.Entity, joined), Aggregates: aggregates, OrderBy: orders, Limit: limit + 1, Offset: offset})
+	rows, er := reader.Select(ctx, dbal.Select{Table: v.Entity, Columns: columns, Joins: joins, Where: where, GroupBy: groups, Aggregates: aggregates, OrderBy: orders, Limit: limit + 1, Offset: offset})
 	if er != nil {
 		return Result{}, er
 	}
 	next := ""
 	if len(rows) > limit {
+		if len(v.GroupBy) > 0 {
+			return Result{}, &dbal.Error{Code: dbal.ResultLimitExceeded, Message: fmt.Sprintf("grouped View exceeds the maximum of %d groups; narrow the filters", max)}
+		}
 		rows = rows[:limit]
 		if !aggregateSort {
 			last := rows[len(rows)-1]
@@ -320,6 +353,13 @@ func ReadPage(ctx context.Context, reader Reader, app *appir.App, name string, o
 						row[parts[1]] = value
 					}
 				}
+			}
+		}
+		for _, group := range v.GroupBy {
+			encoded := groupAliases[group.Output()]
+			if encoded != group.Output() {
+				row[group.Output()] = row[encoded]
+				delete(row, encoded)
 			}
 		}
 		for _, definition := range e.Fields {
@@ -363,7 +403,7 @@ func ReadPage(ctx context.Context, reader Reader, app *appir.App, name string, o
 			}
 		}
 	}
-	return Result{Rows: rows, NextCursor: next}, nil
+	return Result{Rows: rows, NextCursor: next, Shape: v.ResultShape}, nil
 }
 
 func coerce(value any, fieldType string) any {

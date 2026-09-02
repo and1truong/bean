@@ -92,5 +92,24 @@ func Node(a *appir.App, p appir.Page, ctx map[string]any, c beanctx.Request) (re
 	if e != nil || !allowed {
 		return render.Node{}, allowed, e
 	}
-	return render.Node{Component: "Page", Props: map[string]any{"title": p.Title, "description": p.Description, "protected": Protected(a, p)}, Children: []render.Node{child}}, true, nil
+	pageTargets := map[string]map[string]string{}
+	for pageFilterName, definition := range p.Filters {
+		for _, target := range definition.Targets {
+			if pageTargets[target.Block] == nil {
+				pageTargets[target.Block] = map[string]string{}
+			}
+			pageTargets[target.Block][target.Filter] = pageFilterName
+		}
+	}
+	applyPageFilterTargets(&child, pageTargets)
+	return render.Node{Component: "Page", Props: map[string]any{"title": p.Title, "description": p.Description, "protected": Protected(a, p), "filters": p.Filters}, Children: []render.Node{child}}, true, nil
+}
+
+func applyPageFilterTargets(node *render.Node, targets map[string]map[string]string) {
+	if blockName, ok := node.Props["name"].(string); ok && targets[blockName] != nil {
+		node.Props["pageFilters"] = targets[blockName]
+	}
+	for index := range node.Children {
+		applyPageFilterTargets(&node.Children[index], targets)
+	}
 }

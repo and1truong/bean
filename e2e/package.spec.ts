@@ -24,7 +24,7 @@ test('package starts without its source and retains populated Views',async({page
     }
     await page.goto(url+'/')
     await expect(page.getByRole('link',{name:'Acme Recruiting'})).toBeVisible()
-    await expect(page.getByTestId('metric-value')).toHaveText('18')
+    await expect(page.getByTestId('metric-value')).toHaveText('12')
     await expect(page.getByTestId('timeline-view')).toBeVisible()
   }finally{
     child.kill('SIGTERM')

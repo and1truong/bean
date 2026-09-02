@@ -7,6 +7,12 @@ fields:
   - {label: Name, name: name, required: true, type: string}
 label: Resource
 ---
+kind: DemoSeed
+name: credible_demo
+entities:
+  resource: {count: 4, profile: auto}
+  booking: {count: 16, profile: auto}
+---
 kind: Entity
 name: booking
 fields:
@@ -118,6 +124,42 @@ tests:
 kind: View
 name: resource_calendar
 displays:
-  calendar: {route: /api/calendar, type: json}
+  api: {route: /api/calendar, type: json}
+  calendar:
+    type: block
+    renderer: {type: calendar, titleField: resource.name, timeField: start_at, endField: end_at}
+    pager: {type: none, pageSize: 200}
+  table:
+    type: block
+    renderer:
+      type: table
+      fields:
+        - {field: resource.name, label: Resource}
+        - {field: start_at, label: Start}
+        - {field: end_at, label: End}
+        - {field: status, label: Status}
+    pager: {type: cursor, pageSize: 25}
 entity: booking
-fields: [id, resource_id, start_at, end_at, status]
+relationships:
+  - {name: resource, relationField: resource_id, type: inner}
+fields: [id, resource_id, resource.name, start_at, end_at, status]
+sort:
+  - {field: start_at}
+---
+kind: Block
+name: booking_calendar
+type: view
+view: resource_calendar
+display: calendar
+---
+kind: Panel
+name: calendar_panel
+layout: single-column
+regions:
+  - {name: main, blocks: [booking_calendar]}
+---
+kind: Page
+name: calendar
+route: /
+title: Resource calendar
+panel: calendar_panel

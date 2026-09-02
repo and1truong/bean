@@ -52,7 +52,7 @@ func TestQueryPlanJoinsGroupsAndAggregates(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
-	rows, e := d.Select(ctx, dbal.Select{Table: "sale", Columns: []string{"customer.name"}, Joins: []dbal.Join{{Table: "customer", Alias: "customer", Type: "inner", Left: "sale.customer_id", Right: "customer.id"}}, GroupBy: []string{"customer.name"}, Aggregates: []dbal.Aggregate{{Function: "count", Column: "sale.id", Alias: "sales"}, {Function: "sum", Column: "sale.amount", Alias: "total"}}, OrderBy: []dbal.Order{{Column: "customer.name"}}, Limit: 10})
+	rows, e := d.Select(ctx, dbal.Select{Table: "sale", Joins: []dbal.Join{{Table: "customer", Alias: "customer", Type: "inner", Left: "sale.customer_id", Right: "customer.id"}}, GroupBy: []dbal.Group{{Column: "customer.name", Alias: "customer_name"}}, Aggregates: []dbal.Aggregate{{Function: "count", Column: "sale.id", Alias: "sales"}, {Function: "sum", Column: "sale.amount", Alias: "total"}}, OrderBy: []dbal.Order{{Column: "customer_name"}}, Limit: 10})
 	if e != nil || len(rows) != 1 || rows[0]["sales"] != int64(2) || rows[0]["total"] != int64(5) {
 		t.Fatalf("rows=%v err=%v", rows, e)
 	}

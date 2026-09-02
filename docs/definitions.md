@@ -34,7 +34,7 @@ Local signup is disabled unless a `LocalRegistration` definition references a `r
 
 ## Bound blocks and content presentation
 
-A View owns one query contract and any number of named displays. `page` and `block` displays use the closed `list`, `detail`, `table`, `board`, `tree`, `metric`, or `timeline` renderer vocabulary; `json`, `csv`, and `rss` displays serialize the same Policy-preserving result. A page display owns its route, bindings, title, description, controls, pager, and empty state. A View Block mounts a named `block` display without copying presentation metadata. Legacy `Block.presentation` source remains accepted and compiles to a private compatibility display.
+A View owns one query contract and any number of named displays. `page` and `block` displays use the closed `list`, `detail`, `table`, `cards`, `board`, `tree`, `chart`, `metric`, `timeline`, or `calendar` renderer vocabulary; `json`, `csv`, and `rss` displays serialize the same Policy-preserving result. A page display owns its route, bindings, title, description, controls, pager, drill, selection, Actions, and empty state. A View Block mounts a named `block` display without copying presentation metadata. Legacy `Block.presentation` source remains accepted and compiles to a private compatibility display.
 
 ```yaml
 kind: View
@@ -69,6 +69,50 @@ display: recent
 ```
 
 Exposed filters map public input names to selected fields and accept `eq`, textual `contains`, or ordered `gte`/`lte`. Displays choose interactive controls and own their labels, defaults, and `auto`, `text`, `select`, `checkbox`, `number`, or `date` widget. Submitted values are validated using the Entity field contract. Page bindings and Block bindings are recomputed from trusted request context; bound inputs cannot also be controls and client collisions fail closed. Cursor filters are URL-addressable, use opaque previous/next state, and cannot exceed the View maximum of 200 rows.
+
+## Explore query and result shapes
+
+`View` is the typed query model. `search.fields` names selected textual fields. `groupBy` entries use `{field, as, bucket}`; `bucket` is optional and accepts UTC `day`, `week`, or `month` for date/datetime fields. `aggregates` use `{function, field, alias}` with `count`, `sum`, `min`, `max`, or `average`; money may be summed but not averaged. The compiler rejects alias collisions, incompatible types, redacted inputs, to-many aggregate traversal, and unsupported buckets. It derives one result shape:
+
+- `records`: no aggregate; cursor paging and deterministic record ordering apply;
+- `metric`: exactly one aggregate and no group; one row, no pager;
+- `groups`: at least one group and aggregate; bounded to the View maximum and fails with `result_limit_exceeded` rather than truncating.
+
+Policy predicates and fixed/exposed filters apply before grouping. `count` over an empty contribution set is zero; other empty aggregates are null. Money sums preserve minor units. Storage adapters push down grouping and aggregation and produce backend-equivalent ordering.
+
+```yaml
+kind: View
+name: candidates_by_stage
+entity: candidate
+fields: [stage]
+groupBy: [{field: stage}]
+aggregates: [{function: count, field: id, alias: candidate_count}]
+displays:
+  chart:
+    type: block
+    renderer: {type: chart, groupField: stage, metricField: candidate_count}
+    pager: {type: none}
+```
+
+Displays must match the compiled shape: charts consume grouped scalar + numeric outputs; metrics consume a metric output; record renderers consume records; tables accept records or groups. Calendar requires selected date/datetime start and optional end fields. Switching named Displays never changes the View query.
+
+## Page filters, drill-down, and selected Actions
+
+A Page filter explicitly targets one or more View Blocks and exposed filter names. Types/options are derived and checked across targets; Page URL state cannot override immutable route/context bindings. There is no implicit same-name fan-out.
+
+```yaml
+filters:
+  stage:
+    label: Stage
+    widget: select
+    targets:
+      - {block: candidate_metric, filter: stage}
+      - {block: candidate_stage_chart, filter: stage}
+```
+
+A chart or metric drill names a target record View/Display and maps only compiler-known `group` or active `filter` values to target exposed filters. The compiler derives the target route; definitions cannot supply a private query or URL template as authority. The target executes under its own Policy.
+
+Record table/board Displays may declare `selection: single|multiple` and same-Entity `actions`. The public batch endpoint accepts 1–200 unique record IDs and shared typed values, executes the ordinary Action once per record in order, and reports ordered success/failure entries. Execution is sequential and non-atomic across records: a later failure does not roll back an earlier success. Each call independently enforces Policy, Rule, Lifecycle, version checks, audit, and transaction semantics.
 
 Table columns are ordered, selected, non-redacted View fields with optional labels and safe application route templates. A page title may be static or sourced from a result field when a unique route-bound filter proves a single detail record; it becomes both the page heading and browser title.
 

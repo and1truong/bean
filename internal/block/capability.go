@@ -68,12 +68,27 @@ func viewProperties(app *appir.App, block appir.Block, _ beanctx.Request, props 
 	props["view"] = block.View
 	presentation := block.Presentation
 	if display, exists := app.Views[block.View].Displays[block.Display]; exists {
+		if len(display.Renderer.SearchFields) == 0 {
+			display.Renderer.SearchFields = append([]string{}, app.Views[block.View].Search.Fields...)
+		}
 		props["display"] = display
+		props["displayName"] = block.Display
+		displays := map[string]appir.Display{}
+		for name, candidate := range app.Views[block.View].Displays {
+			if candidate.Type == "block" {
+				if len(candidate.Renderer.SearchFields) == 0 {
+					candidate.Renderer.SearchFields = append([]string{}, app.Views[block.View].Search.Fields...)
+				}
+				displays[name] = candidate
+			}
+		}
+		props["displays"] = displays
 		props["filters"] = app.Views[block.View].ExposedFilters
 		presentation = display.Renderer.Presentation()
 	}
 	props["presentation"] = presentation
 	props["maxRows"] = app.Views[block.View].MaxLimit
+	props["searchFields"] = append([]string{}, app.Views[block.View].Search.Fields...)
 	props["fieldTypes"] = beanview.FieldTypes(app, app.Views[block.View])
 	props["formattedFields"] = formattedFields(app, block)
 	props["fileFields"] = fileFields(app, block)

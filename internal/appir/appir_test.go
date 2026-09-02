@@ -177,3 +177,15 @@ func TestFirstClassViewDisplaysRequireV6Format(t *testing.T) {
 		t.Fatalf("v5 AppIR rejected legacy serializer displays: %v", err)
 	}
 }
+
+func TestViewOwnedSearchRequiresV7Format(t *testing.T) {
+	app := appir.Empty()
+	app.Views["articles"] = appir.View{Name: "articles", Entity: "article", Fields: []string{"id", "title"}, Search: appir.ViewSearch{Fields: []string{"title"}}}
+	if err := app.ValidateFormat(); err != nil {
+		t.Fatal(err)
+	}
+	app.FormatVersion = appir.DisplayFormat
+	if err := app.ValidateFormat(); err == nil {
+		t.Fatal("v6 AppIR accepted View-owned search semantics")
+	}
+}

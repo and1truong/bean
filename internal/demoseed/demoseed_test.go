@@ -514,7 +514,7 @@ func TestVerificationAppBuildsUnrestrictedCompleteViews(t *testing.T) {
 	app := appir.Empty()
 	app.Entities["sample"] = appir.Entity{Name: "sample", Owner: true, Tenant: true, SoftDelete: true, Fields: []appir.Field{{Name: "name", Type: "string"}}}
 	filter := &expr.Expr{}
-	app.Views["sample_list"] = appir.View{Name: "sample_list", Entity: "other", Fields: []string{"name"}, Relationships: []appir.ViewRelationship{{Name: "related"}}, Filter: filter, ContextFilter: filter, GroupBy: []string{"name"}, Aggregates: []appir.Aggregate{{Function: "count", Field: "id", Alias: "total"}}, Policy: "scoped", FieldFilters: map[string]string{"name": "markdown"}, MaxLimit: 2}
+	app.Views["sample_list"] = appir.View{Name: "sample_list", Entity: "other", Fields: []string{"name"}, Relationships: []appir.ViewRelationship{{Name: "related"}}, Filter: filter, ContextFilter: filter, GroupBy: []appir.ViewGroup{{Field: "name"}}, Aggregates: []appir.Aggregate{{Function: "count", Field: "id", Alias: "total"}}, Policy: "scoped", FieldFilters: map[string]string{"name": "markdown"}, MaxLimit: 2}
 	app.DemoSeed = &appir.DemoSeed{Name: "demo", Entities: map[string]appir.DemoSeedEntity{"sample": {Count: 1}}}
 	verification, err := verificationApp(app)
 	if err != nil {

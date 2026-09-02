@@ -17,6 +17,8 @@ export function callAction<T=unknown>(name:string,input:Input):Promise<T>{
   return api<T>('/api/actions/'+name,{method:'POST',body:encodeInput(input)})
 }
 
+export type ActionBatchItem={id:string;ok:boolean;data?:unknown;error?:{code:string;message:string}}
+export type ActionBatchResult={results:ActionBatchItem[]}
 type Failure={id:string;error:Error}
 
 export class ActionBatchError extends APIError{
@@ -27,13 +29,16 @@ export class ActionBatchError extends APIError{
   }
 }
 
+export async function runActionBatch(name:string,ids:string[],values:Input):Promise<ActionBatchResult>{
+	if(ids.length<1||ids.length>200)throw new APIError('Action batch must contain between 1 and 200 record IDs.')
+	const response=await api<{data:ActionBatchResult}>('/api/actions/'+name+'/batch',{method:'POST',body:JSON.stringify({ids,values})})
+	return response.data
+}
+
 export async function callActionBatch(name:string,ids:string[],values:Input):Promise<void>{
-  const failures:Failure[]=[]
-  for(const id of ids){
-    try{await callAction(name,{...values,id})}
-    catch(cause){failures.push({id,error:cause instanceof Error?cause:new Error(String(cause))})}
-  }
-  if(failures.length)throw new ActionBatchError(failures)
+	const result=await runActionBatch(name,ids,values)
+	const failures:Failure[]=result.results.filter(item=>!item.ok).map(item=>({id:item.id,error:new APIError(item.error?.message||'Action failed.')}))
+	if(failures.length)throw new ActionBatchError(failures)
 }
 
 function mergeFields(failures:Failure[]):Record<string,string>|undefined{

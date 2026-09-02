@@ -1,6 +1,7 @@
 package agentprotocol_test
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/beanruntime/bean/internal/agentprotocol"
@@ -40,4 +41,43 @@ func TestViewDisplayInspectionReferencesAndSemanticDiff(t *testing.T) {
 	if !found {
 		t.Fatalf("changes=%+v", changes)
 	}
+}
+
+func TestExploreVocabularyAndReferencesAreAgentDiscoverable(t *testing.T) {
+	capabilities := compiler.ProtocolCapabilities("bean.cli/v1alpha1", agentprotocol.APIVersion)
+	if !reflect.DeepEqual(capabilities.ViewResultShapes, []string{"groups", "metric", "records"}) ||
+		!reflect.DeepEqual(capabilities.ViewGroupBuckets, []string{"day", "month", "week"}) ||
+		!reflect.DeepEqual(capabilities.ViewAggregateFunctions, []string{"average", "count", "max", "min", "sum"}) ||
+		!reflect.DeepEqual(capabilities.ViewDrillSources, []string{"filter", "group"}) ||
+		!reflect.DeepEqual(capabilities.ViewSelections, []string{"multiple", "none", "single"}) {
+		t.Fatalf("Explore capabilities=%+v", capabilities)
+	}
+	app := appir.Empty()
+	app.Entities["candidate"] = appir.Entity{Name: "candidate"}
+	app.Actions["move_candidate"] = appir.Action{Name: "move_candidate", Entity: "candidate"}
+	app.Views["candidate_records"] = appir.View{Name: "candidate_records", Entity: "candidate"}
+	app.Views["candidates_by_stage"] = appir.View{Name: "candidates_by_stage", Entity: "candidate", Displays: map[string]appir.Display{
+		"chart": {Actions: []string{"move_candidate"}, Drill: &appir.ViewDrill{View: "candidate_records"}},
+	}}
+	app.Blocks["stage_chart"] = appir.Block{Name: "stage_chart", Type: "view", View: "candidates_by_stage"}
+	app.Pages["overview"] = appir.Page{Name: "overview", Filters: map[string]appir.PageFilter{
+		"stage": {Targets: []appir.PageFilterTarget{{Block: "stage_chart", Filter: "stage"}}},
+	}}
+	_, viewReferences, _ := compiler.InspectDefinition(app, "View", "candidates_by_stage")
+	_, pageReferences, _ := compiler.InspectDefinition(app, "Page", "overview")
+	if !containsReference(viewReferences, "displays.chart.actions.0", "Action", "move_candidate") || !containsReference(viewReferences, "displays.chart.drill.view", "View", "candidate_records") {
+		t.Fatalf("View references=%+v", viewReferences)
+	}
+	if !containsReference(pageReferences, "filters.stage.targets.0.block", "Block", "stage_chart") {
+		t.Fatalf("Page references=%+v", pageReferences)
+	}
+}
+
+func containsReference(values []compiler.DefinitionReference, path, kind, name string) bool {
+	for _, value := range values {
+		if value.Path == path && value.Kind == kind && value.Name == name {
+			return true
+		}
+	}
+	return false
 }

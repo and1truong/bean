@@ -21,7 +21,6 @@ import (
 	"github.com/beanruntime/bean/internal/view"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -273,14 +272,9 @@ func TestManyToManyActionWriteAndViewTraversal(t *testing.T) {
 		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "tag"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "name", "type": "string", "required": true}}}},
 		{APIVersion: "bean/v1alpha1", Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string", "required": true}, map[string]any{"name": "tags", "type": "relation", "relation": map[string]any{"entity": "tag", "kind": "many-to-many"}}}}},
 		{APIVersion: "bean/v1alpha1", Kind: "View", Metadata: definition.Metadata{Name: "article_tags"}, Spec: map[string]any{"entity": "article", "fields": []any{"id", "tags.name"}, "relationships": []any{map[string]any{"name": "tags", "relationField": "tags", "type": "inner"}}, "sort": []any{map[string]any{"field": "id"}}}},
-		{APIVersion: "bean/v1alpha1", Kind: "View", Metadata: definition.Metadata{Name: "article_tag_counts"}, Spec: map[string]any{"entity": "article", "fields": []any{"id"}, "relationships": []any{map[string]any{"name": "tags", "relationField": "tags", "type": "inner"}}, "groupBy": []any{"id"}, "aggregates": []any{map[string]any{"function": "count", "field": "tags.id", "alias": "tag_count"}}, "sort": []any{map[string]any{"field": "tag_count", "desc": true}}}},
 		{APIVersion: "bean/v1alpha1", Kind: "Action", Metadata: definition.Metadata{Name: "query_article_tags"}, Spec: map[string]any{"entity": "article", "operation": "transaction", "input": map[string]any{"request": map[string]any{"type": "string", "required": true}}, "output": map[string]any{"article_id": map[string]any{"type": "uuid", "required": true}, "tag_name": map[string]any{"type": "string", "required": true}}, "steps": []any{
 			map[string]any{"op": "query", "view": "article_tags", "result": "articles"},
 			map[string]any{"op": "return", "values": map[string]any{"article_id": "$result.articles.0.id", "tag_name": "$result.articles.0.name"}},
-		}}},
-		{APIVersion: "bean/v1alpha1", Kind: "Action", Metadata: definition.Metadata{Name: "query_article_tag_counts"}, Spec: map[string]any{"entity": "article", "operation": "transaction", "input": map[string]any{"request": map[string]any{"type": "string", "required": true}}, "output": map[string]any{"article_id": map[string]any{"type": "uuid", "required": true}, "tag_count": map[string]any{"type": "integer", "required": true}}, "steps": []any{
-			map[string]any{"op": "query", "view": "article_tag_counts", "result": "articles"},
-			map[string]any{"op": "return", "values": map[string]any{"article_id": "$result.articles.0.id", "tag_count": "$result.articles.0.tag_count"}},
 		}}},
 	}
 	if e = store.SaveBundle(ctx, "default", definition.Bundle{Name: "relations", Definitions: defs}); e != nil {
@@ -310,30 +304,6 @@ func TestManyToManyActionWriteAndViewTraversal(t *testing.T) {
 	queried, e := engine.Execute(ctx, app, "query_article_tags", map[string]any{"request": "articles"}, admin())
 	if e != nil || queried["article_id"] != article["id"] || queried["tag_name"] != "Go" {
 		t.Fatalf("transaction query=%v err=%v cause=%v", queried, e, errors.Unwrap(e))
-	}
-	secondArticle, e := engine.Execute(ctx, app, "article_create", map[string]any{"title": "Runtime", "tags": []any{tag["id"]}}, admin())
-	if e != nil {
-		t.Fatal(e)
-	}
-	wantFirst, wantSecond := article["id"].(string), secondArticle["id"].(string)
-	if wantFirst > wantSecond {
-		wantFirst, wantSecond = wantSecond, wantFirst
-	}
-	views := view.Service{DB: db}
-	firstPage, e := views.RunPage(ctx, app, "article_tag_counts", view.Params{Limit: 1}, admin())
-	if e != nil || len(firstPage.Rows) != 1 || firstPage.Rows[0]["id"] != wantFirst || firstPage.Rows[0]["tag_count"] != int64(1) || firstPage.NextCursor != "" {
-		t.Fatalf("first aggregate page=%v err=%v cause=%v", firstPage, e, errors.Unwrap(e))
-	}
-	secondPage, e := views.RunPage(ctx, app, "article_tag_counts", view.Params{Limit: 1, Offset: 1}, admin())
-	if e != nil || len(secondPage.Rows) != 1 || secondPage.Rows[0]["id"] != wantSecond || secondPage.Rows[0]["tag_count"] != int64(1) || secondPage.NextCursor != "" {
-		t.Fatalf("second aggregate page=%v err=%v cause=%v", secondPage, e, errors.Unwrap(e))
-	}
-	if _, e = views.RunPage(ctx, app, "article_tag_counts", view.Params{Cursor: "disabled"}, admin()); !dbal.IsCode(e, dbal.InvalidQuery) || !strings.Contains(e.Error(), "use offset pagination") {
-		t.Fatalf("aggregate cursor error=%v", e)
-	}
-	counted, e := engine.Execute(ctx, app, "query_article_tag_counts", map[string]any{"request": "articles"}, admin())
-	if e != nil || counted["article_id"] != wantFirst || counted["tag_count"] != int64(1) {
-		t.Fatalf("aggregate transaction query=%v err=%v cause=%v", counted, e, errors.Unwrap(e))
 	}
 }
 

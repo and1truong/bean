@@ -18,7 +18,7 @@ test('anonymous local project uses board, deep subtasks, and attachments',async(
 
   await page.getByLabel('title').fill('Build release')
   await page.getByLabel('description').fill('Prepare the alpha')
-  await page.getByLabel('priority').selectOption('high')
+  await page.getByLabel('priority',{exact:true}).selectOption('high')
   await page.getByRole('button',{name:'Submit'}).click()
   await expect(page.getByText('Task created. Refresh the project to see it.')).toBeVisible()
   await page.reload()

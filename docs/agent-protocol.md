@@ -1,6 +1,6 @@
 # Bean Agent Protocol
 
-Bean v0.8 introduced one provider-neutral `bean.agent/v1alpha1` dispatcher. v0.14 retains that contract and exposes first-class View display schema, capabilities, inspection references, and semantic diff without changing the transport envelope. CLI and MCP change only framing; each operation's metadata and handler are sealed together, and operation names, input schemas, plane authorization, compiler diagnostics, runtime results, and errors originate from the same service.
+Bean v0.8 introduced one provider-neutral `bean.agent/v1alpha1` dispatcher. v0.15 retains that contract and exposes Explore query/result/interaction schema, capabilities, inspection references, and semantic diff without changing the transport envelope or adding an Explore-only operation. CLI and MCP change only framing; each operation's metadata and handler are sealed together, and operation names, input schemas, plane authorization, compiler diagnostics, runtime results, and errors originate from the same service.
 
 ## Operations
 
@@ -18,6 +18,10 @@ Bean v0.8 introduced one provider-neutral `bean.agent/v1alpha1` dispatcher. v0.1
 | Application | `bean.application.execute` | `{"target":"./bean.db","action":"create_candidate","input":{...}}` |
 
 Discovery returns canonical Draft 2020-12 input schemas. Inputs reject unknown top-level properties. Application input cannot select tables, SQL, arbitrary mutations, roles, tenants, or plane grants.
+
+An agent builds Explore artifacts through the ordinary loop: request capabilities and the `View`/`Page` schemas, edit source definitions, validate, inspect references, request a semantic diff, execute isolated tests, and publish only with an authorized Release Plane call. Capabilities enumerate result shapes, date buckets, aggregate functions, renderers, drill sources, selection modes, filters, pagers, and bounds. View inspection includes Display Action and drill target references; Page inspection includes filter target Blocks. Generated output is normal YAML/JSON source and AppIR—there is no prompt store, hidden question object, agent query language, or raw SQL path.
+
+The maintained prompt rubric covers candidates grouped by stage, a recruiting operations dashboard, deal pipeline value by stage, paid-unfulfilled orders, and selected candidate movement. It checks semantic artifacts rather than a byte-for-byte YAML oracle and proves that identical definitions compile to identical AppIR.
 
 ## CLI reference transport
 
@@ -46,7 +50,7 @@ The safe default is Definition Plane only. The process host may configure runtim
 
 The adapter implements newline-delimited UTF-8 JSON-RPC over stdin/stdout, current MCP `2026-07-28` `server/discover`, `tools/list`, and `tools/call`, plus initialization compatibility for maintained `2024-11-05`, `2025-03-26`, `2025-06-18`, and `2025-11-25` clients. Modern results include `resultType`, private cache metadata, and server identity metadata. Tool calls return equivalent JSON text and `structuredContent`. Only MCP messages are written to stdout.
 
-The current framing follows the official [MCP discovery](https://modelcontextprotocol.io/specification/2026-07-28/server/discover), [tools](https://modelcontextprotocol.io/specification/2026-07-28/server/tools), and [stdio](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio) contracts. Streamable HTTP, OAuth, hosted identity, prompts, resources, sampling, and subscriptions are outside v0.14.
+The current framing follows the official [MCP discovery](https://modelcontextprotocol.io/specification/2026-07-28/server/discover), [tools](https://modelcontextprotocol.io/specification/2026-07-28/server/tools), and [stdio](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio) contracts. Streamable HTTP, OAuth, hosted identity, prompts, resources, sampling, and subscriptions are outside v0.15.
 
 ## Authorization and runtime boundaries
 

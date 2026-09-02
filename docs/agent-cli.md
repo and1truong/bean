@@ -2,7 +2,7 @@
 
 Bean v0.6 exposes the compiler and release lifecycle as a provider-neutral command contract. An agent does not need to inspect Bean source or parse human prose.
 
-v0.14 retains the v0.8 generic one-to-one adapter over the shared `bean.agent/v1alpha1` dispatcher and adds first-class View display metadata without changing the transport envelope:
+v0.15 retains the v0.8 generic one-to-one adapter over the shared `bean.agent/v1alpha1` dispatcher and exposes Explore metadata without changing the transport envelope or adding an Explore-only operation:
 
 ```bash
 bean agent call bean.definition.validate --input request.json --json
@@ -121,7 +121,7 @@ Sensitive inputs, file bytes, secrets, passwords, and database credentials are e
 
 JSON Schema describes document shape and rejects unknown properties. Cross-definition references and semantic constraints remain compiler responsibilities and are visible through diagnostics, capabilities, and `app inspect`.
 
-v0.14 stores first-class View display semantics in `bean/appir/v6`. The runtime still loads v1 releases without Lifecycle, Rule, TestSuite, Extension, or first-class display semantics; v2 with Lifecycle; v3 with Rules; v4 with TestSuites; and v5 with Extensions plus legacy serializer displays and field-shaped exposed filters. First-class page/block displays, display-bound Blocks, and field/operator filter mappings are invalid under v1-v5 so older runtimes cannot silently discard them.
+v0.14 stores first-class View display semantics in `bean/appir/v6`; v0.15 stores View-owned search and later Explore semantics in `bean/appir/v7`. The runtime still loads v1 releases without Lifecycle, Rule, TestSuite, Extension, or first-class display semantics; v2 with Lifecycle; v3 with Rules; v4 with TestSuites; v5 with Extensions plus legacy serializer displays and field-shaped exposed filters; and v6 with first-class View displays. Newer semantics are invalid under older formats so older runtimes cannot silently discard them.
 
 ## Inspection, plan, and diff
 

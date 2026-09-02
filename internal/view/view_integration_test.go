@@ -38,7 +38,7 @@ func TestCompiledQueryPlanAndOpaqueCursor(t *testing.T) {
 	app := appir.Empty()
 	app.Entities["book"] = appir.Entity{Name: "book", Fields: []appir.Field{{Name: "title", Type: "string"}, {Name: "price", Type: "integer"}, {Name: "category_id", Type: "relation"}}}
 	app.Entities["category"] = appir.Entity{Name: "category", Fields: []appir.Field{{Name: "name", Type: "string"}, {Name: "title", Type: "string"}}}
-	app.Views["totals"] = appir.View{Name: "totals", Entity: "book", Fields: []string{"category.name"}, Relationships: []appir.ViewRelationship{{Name: "category", Entity: "category", Type: "inner", LocalField: "category_id", TargetField: "id"}}, GroupBy: []string{"category.name"}, Aggregates: []appir.Aggregate{{Function: "sum", Field: "book.price", Alias: "total"}}, Sort: []appir.Sort{{Field: "category.name"}}, DefaultLimit: 10, MaxLimit: 10}
+	app.Views["totals"] = appir.View{Name: "totals", Entity: "book", ResultShape: "groups", Fields: []string{"category.name"}, Relationships: []appir.ViewRelationship{{Name: "category", Entity: "category", Type: "inner", LocalField: "category_id", TargetField: "id"}}, GroupBy: []appir.ViewGroup{{Field: "category.name", As: "category_name"}}, Aggregates: []appir.Aggregate{{Function: "sum", Field: "book.price", Alias: "total"}}, Sort: []appir.Sort{{Field: "category_name"}}, DefaultLimit: 10, MaxLimit: 10}
 	service := view.Service{DB: db}
 	rows, e := service.Run(ctx, app, "totals", view.Params{}, beanctx.Request{})
 	if e != nil || len(rows) != 1 || rows[0]["total"] != int64(5) {
@@ -132,4 +132,84 @@ func TestTenantIsolationInjectedIntoView(t *testing.T) {
 		t.Fatalf("tenant filter rows=%v err=%v", rows, e)
 	}
 	_ = appir.Empty()
+}
+
+func TestPolicyIsAppliedBeforeGroupingAndAggregation(t *testing.T) {
+	ctx := context.Background()
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "aggregate-policy.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err = db.ExecuteMigration(ctx, []string{`CREATE TABLE deal (id TEXT PRIMARY KEY, status TEXT NOT NULL, amount INTEGER NOT NULL, owner_id TEXT NOT NULL)`}); err != nil {
+		t.Fatal(err)
+	}
+	for _, insert := range []dbal.Insert{
+		{Table: "deal", Values: map[string]dbal.Value{"id": "a1", "status": "lead", "amount": 100, "owner_id": "alice"}},
+		{Table: "deal", Values: map[string]dbal.Value{"id": "a2", "status": "won", "amount": 300, "owner_id": "alice"}},
+		{Table: "deal", Values: map[string]dbal.Value{"id": "b1", "status": "lead", "amount": 900, "owner_id": "bob"}},
+	} {
+		if _, err = db.Insert(ctx, insert); err != nil {
+			t.Fatal(err)
+		}
+	}
+	app := appir.Empty()
+	app.Entities["deal"] = appir.Entity{Name: "deal", Owner: true, Policy: "owned_records", Fields: []appir.Field{{Name: "status", Type: "enum", Options: []string{"lead", "won"}}, {Name: "amount", Type: "money"}}}
+	app.Policies["owned_records"] = appir.Policy{Name: "owned_records", Owner: true, ReadRoles: []string{"salesperson", "manager"}, BypassOwnerRoles: []string{"manager"}}
+	app.Views["pipeline"] = appir.View{Name: "pipeline", Entity: "deal", Policy: "owned_records", ResultShape: "groups", Fields: []string{"status"}, GroupBy: []appir.ViewGroup{{Field: "status"}}, Aggregates: []appir.Aggregate{{Function: "count", Field: "id", Alias: "deal_count"}, {Function: "sum", Field: "amount", Alias: "pipeline_amount"}}, Sort: []appir.Sort{{Field: "status"}}, MaxLimit: 20}
+	app.Views["deal_records"] = appir.View{Name: "deal_records", Entity: "deal", Policy: "owned_records", ResultShape: "records", Fields: []string{"id", "status", "amount"}, ExposedFilters: map[string]appir.ViewFilter{"stage": {Field: "status", Operator: "eq", Type: "enum", Options: []string{"lead", "won"}}}, Sort: []appir.Sort{{Field: "id"}}, DefaultLimit: 20, MaxLimit: 20}
+	service := view.Service{DB: db}
+	salesperson := beanctx.Request{User: &beanctx.User{ID: "alice", Roles: []string{"salesperson"}}}
+	result, err := service.RunPage(ctx, app, "pipeline", view.Params{}, salesperson)
+	if err != nil || len(result.Rows) != 2 || result.Rows[0]["deal_count"] != int64(1) || result.Rows[0]["pipeline_amount"] != int64(100) {
+		t.Fatalf("salesperson aggregate=%v err=%v", result, err)
+	}
+	drill, err := service.RunPage(ctx, app, "deal_records", view.Params{Filter: map[string]any{"stage": "lead"}}, salesperson)
+	if err != nil || len(drill.Rows) != 1 || drill.Rows[0]["id"] != "a1" {
+		t.Fatalf("salesperson drill=%v err=%v", drill, err)
+	}
+	manager := beanctx.Request{User: &beanctx.User{ID: "manager", Roles: []string{"manager"}}}
+	result, err = service.RunPage(ctx, app, "pipeline", view.Params{}, manager)
+	if err != nil || len(result.Rows) != 2 || result.Rows[0]["deal_count"] != int64(2) || result.Rows[0]["pipeline_amount"] != int64(1000) {
+		t.Fatalf("manager aggregate=%v err=%v", result, err)
+	}
+	drill, err = service.RunPage(ctx, app, "deal_records", view.Params{Filter: map[string]any{"stage": "lead"}}, manager)
+	if err != nil || len(drill.Rows) != 2 {
+		t.Fatalf("manager drill=%v err=%v", drill, err)
+	}
+}
+
+func TestDateBucketsAndGroupOverflow(t *testing.T) {
+	ctx := context.Background()
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "date-groups.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err = db.ExecuteMigration(ctx, []string{`CREATE TABLE event (id TEXT PRIMARY KEY, occurred_at TEXT NOT NULL)`}); err != nil {
+		t.Fatal(err)
+	}
+	for _, insert := range []dbal.Insert{
+		{Table: "event", Values: map[string]dbal.Value{"id": "1", "occurred_at": "2026-07-01T10:00:00Z"}},
+		{Table: "event", Values: map[string]dbal.Value{"id": "2", "occurred_at": "2026-08-01T10:00:00Z"}},
+		{Table: "event", Values: map[string]dbal.Value{"id": "3", "occurred_at": "2026-09-01T10:00:00Z"}},
+	} {
+		if _, err = db.Insert(ctx, insert); err != nil {
+			t.Fatal(err)
+		}
+	}
+	app := appir.Empty()
+	app.Entities["event"] = appir.Entity{Name: "event", Fields: []appir.Field{{Name: "occurred_at", Type: "datetime"}}}
+	app.Views["events_by_month"] = appir.View{Name: "events_by_month", Entity: "event", ResultShape: "groups", Fields: []string{"occurred_at"}, GroupBy: []appir.ViewGroup{{Field: "occurred_at", As: "month", Bucket: "month"}}, Aggregates: []appir.Aggregate{{Function: "count", Field: "id", Alias: "event_count"}}, Sort: []appir.Sort{{Field: "month"}}, MaxLimit: 3}
+	service := view.Service{DB: db}
+	result, err := service.RunPage(ctx, app, "events_by_month", view.Params{}, beanctx.Request{})
+	if err != nil || len(result.Rows) != 3 || result.Rows[0]["month"] != "2026-07-01" {
+		t.Fatalf("date groups=%v err=%v", result, err)
+	}
+	grouped := app.Views["events_by_month"]
+	grouped.MaxLimit = 2
+	app.Views["events_by_month"] = grouped
+	if _, err = service.RunPage(ctx, app, "events_by_month", view.Params{}, beanctx.Request{}); !dbal.IsCode(err, dbal.ResultLimitExceeded) {
+		t.Fatalf("group overflow accepted: %v", err)
+	}
 }

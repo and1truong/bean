@@ -67,6 +67,10 @@ name: manager_records
 readRoles: [manager]
 writeRoles: [manager]
 ---
+kind: Policy
+name: crm_page_access
+readRoles: [salesperson, manager]
+---
 kind: View
 name: contacts
 displays:
@@ -76,12 +80,120 @@ fields: [id, name, email, owner_id]
 policy: owned_records
 ---
 kind: View
+name: deal_records
+entity: deal
+fields: [id, title, status, amount, owner_id, updated_at]
+search: {fields: [title]}
+exposedFilters:
+  stage: {field: status, operator: eq}
+policy: owned_records
+sort:
+  - {field: updated_at, desc: true}
+displays:
+  page:
+    type: page
+    selection: multiple
+    actions: [move_deal]
+    route: /deals
+    title: {text: Deals}
+    renderer:
+      type: table
+      fields:
+        - {field: title, label: Deal}
+        - {field: status, label: Stage}
+        - {field: amount, label: Amount}
+    controls:
+      - {filter: stage, label: Stage, widget: select}
+    pager: {type: cursor, pageSize: 25}
+---
+kind: View
 name: deal_pipeline
 displays:
   kanban: {route: /api/deals, type: json}
 entity: deal
 fields: [id, title, status, amount]
 policy: owned_records
+---
+kind: View
+name: deals_by_stage
+entity: deal
+fields: [status]
+groupBy:
+  - {field: status}
+aggregates:
+  - {function: count, field: id, alias: deal_count}
+policy: owned_records
+displays:
+  chart:
+    type: block
+    renderer: {type: chart, groupField: status, metricField: deal_count, metricLabel: Deals by stage}
+    pager: {type: none, pageSize: 200}
+    drill:
+      view: deal_records
+      display: page
+      bindings:
+        - {source: group, name: status, filter: stage}
+---
+kind: View
+name: pipeline_amount_by_stage
+entity: deal
+fields: [status]
+groupBy:
+  - {field: status}
+aggregates:
+  - {function: sum, field: amount, alias: pipeline_amount}
+policy: owned_records
+displays:
+  chart:
+    type: block
+    renderer: {type: chart, groupField: status, metricField: pipeline_amount, metricLabel: Pipeline amount by stage}
+    pager: {type: none, pageSize: 200}
+    drill:
+      view: deal_records
+      display: page
+      bindings:
+        - {source: group, name: status, filter: stage}
+---
+kind: View
+name: open_deal_records
+entity: deal
+fields: [id, title, status, amount, owner_id, updated_at]
+filter:
+  op: in
+  left: {source: record, name: status}
+  right: {source: literal, literal: [lead, qualified]}
+policy: owned_records
+sort:
+  - {field: updated_at, desc: true}
+displays:
+  page:
+    type: page
+    route: /open-deals
+    title: {text: Open deals}
+    renderer:
+      type: table
+      fields:
+        - {field: title, label: Deal}
+        - {field: status, label: Stage}
+        - {field: amount, label: Amount}
+    pager: {type: cursor, pageSize: 25}
+---
+kind: View
+name: open_pipeline_value
+entity: deal
+aggregates:
+  - {function: sum, field: amount, alias: pipeline_amount}
+filter:
+  op: in
+  left: {source: record, name: status}
+  right: {source: literal, literal: [lead, qualified]}
+policy: owned_records
+displays:
+  metric:
+    type: block
+    renderer: {type: metric, metricField: pipeline_amount, metricLabel: Open pipeline value}
+    pager: {type: none, pageSize: 1}
+    drill: {view: open_deal_records, display: page}
 ---
 kind: Action
 name: move_deal
@@ -94,8 +206,8 @@ transitions:
 ---
 kind: Role
 name: salesperson
-permissions: [contacts, deal_pipeline, move_deal]
+permissions: [contacts, deal_pipeline, deal_records, deals_by_stage, pipeline_amount_by_stage, open_deal_records, open_pipeline_value, move_deal]
 ---
 kind: Role
 name: manager
-permissions: [contacts, deal_pipeline, move_deal]
+permissions: [contacts, deal_pipeline, deal_records, deals_by_stage, pipeline_amount_by_stage, open_deal_records, open_pipeline_value, move_deal]

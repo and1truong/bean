@@ -78,6 +78,9 @@
         "emptyState": {
           "type": "string"
         },
+        "endField": {
+          "type": "string"
+        },
         "groupField": {
           "type": "string"
         },

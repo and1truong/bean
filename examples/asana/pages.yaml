@@ -35,7 +35,7 @@ name: project_panel
 layout: single-column
 regions:
   - name: main
-    blocks: [main_menu, project_summary, project_help, project_board, project_tree, create_root_task_block]
+    blocks: [main_menu, project_summary, project_help, project_status_chart, project_board, project_tree, create_root_task_block]
 ---
 kind: Panel
 name: task_panel
@@ -57,6 +57,14 @@ title: Project
 panel: project_panel
 context:
   id: {source: route, name: id, required: true}
+filters:
+  priority:
+    label: Priority
+    widget: select
+    targets:
+      - {block: project_status_chart, filter: priority}
+      - {block: project_board, filter: priority}
+      - {block: project_tree, filter: priority}
 ---
 kind: Page
 name: task

@@ -71,6 +71,10 @@ func ResolveDisplayBindings(display appir.Display, route, query map[string]strin
 
 func DisplayPageNode(app *appir.App, match DisplayMatch) render.Node {
 	view := app.Views[match.View]
+	display := match.Display
+	if len(display.Renderer.SearchFields) == 0 {
+		display.Renderer.SearchFields = append([]string{}, view.Search.Fields...)
+	}
 	trustedFormatted := map[string]bool{}
 	for fieldName := range view.FieldFilters {
 		trustedFormatted[fieldName] = true
@@ -88,7 +92,7 @@ func DisplayPageNode(app *appir.App, match DisplayMatch) render.Node {
 	}
 	sort.Strings(formatted)
 	props := map[string]any{
-		"name": match.Name, "view": match.View, "display": match.Display,
+		"name": match.Name, "view": match.View, "display": display, "displayName": match.Name,
 		"filters": view.ExposedFilters, "fieldTypes": FieldTypes(app, view), "formattedFields": formatted, "fileFields": displayFileFields(app, view), "maxRows": view.MaxLimit,
 	}
 	return render.Node{Component: "Page", Children: []render.Node{{Component: "ViewBlock", Props: props}}}

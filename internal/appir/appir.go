@@ -15,7 +15,8 @@ const (
 	RuleFormat      = "bean/appir/v3"
 	TestSuiteFormat = "bean/appir/v4"
 	ExtensionFormat = "bean/appir/v5"
-	CurrentFormat   = "bean/appir/v6"
+	DisplayFormat   = "bean/appir/v6"
+	CurrentFormat   = "bean/appir/v7"
 )
 
 type Field struct {
@@ -50,33 +51,72 @@ type ViewPager struct {
 type ViewRenderer struct {
 	Type, TitleField, BodyField, LinkRoute, LinkField, EmptyState string
 	GroupField, OrderField, ParentField, MoveAction               string
-	MetricField, MetricLabel, TimeField                           string
+	MetricField, MetricLabel, TimeField, EndField                 string
 	MetaFields, RichTextFields, Columns, SearchFields             []string
 	Fields                                                        []ViewColumn
 }
 type Display struct {
 	Type, Route, Description, EmptyState string
+	Selection                            string
+	Actions                              []string
 	Title                                DisplayTitle
 	Bindings                             map[string]ContextBinding
 	Renderer                             ViewRenderer
 	Controls                             []ViewControl
 	Pager                                ViewPager
+	Drill                                *ViewDrill
 }
+type ViewDrill struct {
+	View, Display, Route string
+	Bindings             []ViewDrillBinding
+}
+type ViewDrillBinding struct{ Source, Name, Filter string }
 type FilterStep struct{ Type string }
 type Filter struct {
 	Name  string
 	Steps []FilterStep
 }
+type ViewSearch struct {
+	Fields []string
+}
+type ViewGroup struct {
+	Field, As, Bucket string
+}
+
+func (g *ViewGroup) UnmarshalJSON(data []byte) error {
+	var field string
+	if err := json.Unmarshal(data, &field); err == nil {
+		g.Field = field
+		return nil
+	}
+	type encoded ViewGroup
+	var value encoded
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*g = ViewGroup(value)
+	return nil
+}
+
+func (g ViewGroup) Output() string {
+	if g.As != "" {
+		return g.As
+	}
+	return g.Field
+}
+
 type View struct {
 	Name, Entity           string
+	ResultShape            string
 	Fields                 []string
 	Relationships          []ViewRelationship
 	Filter                 *expr.Expr
 	ContextFilter          *expr.Expr
 	ExposedFilters         map[string]ViewFilter
+	Search                 ViewSearch
 	FieldFilters           map[string]string
 	Sort                   []Sort
-	GroupBy                []string
+	GroupBy                []ViewGroup
 	Aggregates             []Aggregate
 	Policy                 string
 	DefaultLimit, MaxLimit int
@@ -277,7 +317,7 @@ type Block struct {
 type ViewPresentation struct {
 	Mode, TitleField, BodyField, LinkRoute, LinkField, EmptyState string
 	GroupField, OrderField, ParentField, MoveAction               string
-	MetricField, MetricLabel, TimeField                           string
+	MetricField, MetricLabel, TimeField, EndField                 string
 	MetaFields, RichTextFields, Columns, SearchFields             []string
 }
 
@@ -285,7 +325,7 @@ func (r ViewRenderer) Presentation() ViewPresentation {
 	return ViewPresentation{
 		Mode: r.Type, TitleField: r.TitleField, BodyField: r.BodyField, LinkRoute: r.LinkRoute, LinkField: r.LinkField, EmptyState: r.EmptyState,
 		GroupField: r.GroupField, OrderField: r.OrderField, ParentField: r.ParentField, MoveAction: r.MoveAction,
-		MetricField: r.MetricField, MetricLabel: r.MetricLabel, TimeField: r.TimeField,
+		MetricField: r.MetricField, MetricLabel: r.MetricLabel, TimeField: r.TimeField, EndField: r.EndField,
 		MetaFields: r.MetaFields, RichTextFields: r.RichTextFields, Columns: r.Columns, SearchFields: r.SearchFields,
 	}
 }
@@ -294,7 +334,7 @@ func RendererFromPresentation(p ViewPresentation) ViewRenderer {
 	return ViewRenderer{
 		Type: p.Mode, TitleField: p.TitleField, BodyField: p.BodyField, LinkRoute: p.LinkRoute, LinkField: p.LinkField, EmptyState: p.EmptyState,
 		GroupField: p.GroupField, OrderField: p.OrderField, ParentField: p.ParentField, MoveAction: p.MoveAction,
-		MetricField: p.MetricField, MetricLabel: p.MetricLabel, TimeField: p.TimeField,
+		MetricField: p.MetricField, MetricLabel: p.MetricLabel, TimeField: p.TimeField, EndField: p.EndField,
 		MetaFields: p.MetaFields, RichTextFields: p.RichTextFields, Columns: p.Columns, SearchFields: p.SearchFields,
 	}
 }
@@ -310,7 +350,15 @@ type Panel struct {
 type Page struct {
 	Name, Route, Title, Policy, Panel, Description string
 	Context                                        map[string]ContextBinding
+	Filters                                        map[string]PageFilter
 }
+type PageFilter struct {
+	Label, Type, Widget string
+	Default             any
+	Options             []string
+	Targets             []PageFilterTarget
+}
+type PageFilterTarget struct{ Block, Filter string }
 type ContextBinding struct {
 	Source, Name string
 	Required     bool
@@ -382,7 +430,7 @@ func Empty() *App {
 	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Rules: map[string]Rule{}, TestSuites: map[string]TestSuite{}, Extensions: map[string]Extension{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
 }
 func (a *App) ValidateFormat() error {
-	if a.FormatVersion != LegacyFormat && a.FormatVersion != LifecycleFormat && a.FormatVersion != RuleFormat && a.FormatVersion != TestSuiteFormat && a.FormatVersion != ExtensionFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != LegacyFormat && a.FormatVersion != LifecycleFormat && a.FormatVersion != RuleFormat && a.FormatVersion != TestSuiteFormat && a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != CurrentFormat {
 		return fmt.Errorf("unsupported AppIR format %q", a.FormatVersion)
 	}
 	if a.FormatVersion == LegacyFormat {
@@ -410,13 +458,13 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != TestSuiteFormat && a.FormatVersion != ExtensionFormat && a.FormatVersion != CurrentFormat && len(a.TestSuites) > 0 {
+	if a.FormatVersion != TestSuiteFormat && a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != CurrentFormat && len(a.TestSuites) > 0 {
 		return fmt.Errorf("AppIR format %q cannot contain TestSuite definitions", a.FormatVersion)
 	}
-	if a.FormatVersion != ExtensionFormat && a.FormatVersion != CurrentFormat && len(a.Extensions) > 0 {
+	if a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != CurrentFormat && len(a.Extensions) > 0 {
 		return fmt.Errorf("AppIR format %q cannot contain Extension definitions", a.FormatVersion)
 	}
-	if a.FormatVersion != ExtensionFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != CurrentFormat {
 		for _, action := range a.Actions {
 			for _, step := range action.Steps {
 				if step.Op == "extension" || step.Extension != "" {
@@ -432,7 +480,7 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != DisplayFormat && a.FormatVersion != CurrentFormat {
 		for _, view := range a.Views {
 			for _, filter := range view.ExposedFilters {
 				if filter.Field != "" || filter.Operator != "" {
@@ -450,6 +498,26 @@ func (a *App) ValidateFormat() error {
 		for _, block := range a.Blocks {
 			if block.Display != "" {
 				return fmt.Errorf("AppIR format %q cannot contain View display-bound Blocks", a.FormatVersion)
+			}
+		}
+	}
+	if a.FormatVersion != CurrentFormat {
+		for _, view := range a.Views {
+			if len(view.Search.Fields) > 0 {
+				return fmt.Errorf("AppIR format %q cannot contain View-owned search semantics", a.FormatVersion)
+			}
+			if view.ResultShape != "" {
+				return fmt.Errorf("AppIR format %q cannot contain explicit View result shapes", a.FormatVersion)
+			}
+			for _, group := range view.GroupBy {
+				if group.As != "" || group.Bucket != "" {
+					return fmt.Errorf("AppIR format %q cannot contain typed View grouping semantics", a.FormatVersion)
+				}
+			}
+			for _, display := range view.Displays {
+				if display.Selection != "" || len(display.Actions) > 0 || display.Drill != nil {
+					return fmt.Errorf("AppIR format %q cannot contain Explore interactions", a.FormatVersion)
+				}
 			}
 		}
 	}

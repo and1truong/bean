@@ -23,6 +23,7 @@ import (
 	"github.com/beanruntime/bean/internal/audit"
 	"github.com/beanruntime/bean/internal/auth"
 	"github.com/beanruntime/bean/internal/block"
+	"github.com/beanruntime/bean/internal/compiler"
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/definition"
@@ -68,6 +69,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/views/{name}", s.view)
 	mux.HandleFunc("GET /api/files/{id}", s.file)
 	mux.HandleFunc("POST /api/actions/{name}", s.action)
+	mux.HandleFunc("POST /api/actions/{name}/batch", s.actionBatch)
 	mux.HandleFunc("POST /api/webforms/{name}/submit", s.form)
 	mux.HandleFunc("GET /api/admin/definitions", s.definitions)
 	mux.HandleFunc("GET /api/admin/manifest", s.adminManifest)
@@ -75,6 +77,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/admin/resources/{name}/{id}", s.adminResourceRecord)
 	mux.HandleFunc("POST /api/admin/definitions", s.saveDefinition)
 	mux.HandleFunc("PUT /api/admin/definitions/{id}", s.saveDefinition)
+	mux.HandleFunc("POST /api/admin/explore/preview", s.explorePreview)
 	mux.HandleFunc("POST /api/admin/releases/validate", s.validate)
 	mux.HandleFunc("POST /api/admin/releases/publish", s.publish)
 	mux.HandleFunc("GET /api/admin/releases", s.releases)
@@ -186,7 +189,7 @@ func (s *Server) adminResourceList(w http.ResponseWriter, r *http.Request) {
 	if result.NextCursor != "" {
 		w.Header().Set("Bean-Next-Cursor", result.NextCursor)
 	}
-	write(w, 200, map[string]any{"data": result.Rows, "nextCursor": result.NextCursor})
+	write(w, 200, map[string]any{"data": result.Rows, "nextCursor": result.NextCursor, "shape": result.Shape})
 }
 func (s *Server) adminResourceRecord(w http.ResponseWriter, r *http.Request) {
 	if !s.editor(w, r) {
@@ -304,11 +307,14 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request) {
 	delete(filters, "q")
 	searchFields := []string{}
 	if search != "" {
-		if display == nil || len(display.Renderer.SearchFields) == 0 {
+		searchFields = a.Views[r.PathValue("name")].Search.Fields
+		if len(searchFields) == 0 && display != nil {
+			searchFields = display.Renderer.SearchFields
+		}
+		if len(searchFields) == 0 {
 			problem(w, 400, "invalid_query", "Search is not configured for this View block.", requestID(r))
 			return
 		}
-		searchFields = display.Renderer.SearchFields
 	}
 	if display != nil {
 		enforceControls := r.URL.Query().Get("_display") != ""
@@ -324,6 +330,17 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request) {
 		}
 		for name := range bound {
 			allowed[name] = true
+		}
+		if blockName := r.URL.Query().Get("_block"); blockName != "" {
+			if pageDefinition, _, matched := page.Match(a, r.URL.Query().Get("_page")); matched {
+				for _, pageFilter := range pageDefinition.Filters {
+					for _, target := range pageFilter.Targets {
+						if target.Block == blockName {
+							allowed[target.Filter] = true
+						}
+					}
+				}
+			}
 		}
 		for name := range filters {
 			if enforceControls && !allowed[name] {
@@ -361,7 +378,7 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request) {
 	if result.NextCursor != "" {
 		w.Header().Set("Bean-Next-Cursor", result.NextCursor)
 	}
-	write(w, 200, map[string]any{"data": result.Rows, "nextCursor": result.NextCursor})
+	write(w, 200, map[string]any{"data": result.Rows, "nextCursor": result.NextCursor, "shape": result.Shape})
 }
 func (s *Server) file(w http.ResponseWriter, r *http.Request) {
 	a, active := s.Kernel.Active()
@@ -465,6 +482,61 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request) {
 	}
 	write(w, 200, map[string]any{"data": out})
 }
+func (s *Server) actionBatch(w http.ResponseWriter, r *http.Request) {
+	a, ok := s.Kernel.Active()
+	if !ok {
+		problem(w, 503, "not_ready", "No active release.", requestID(r))
+		return
+	}
+	c, session, authed := s.requestContext(r)
+	if authed && !csrf(r, session.CSRF) {
+		problem(w, 403, "csrf", "CSRF validation failed.", requestID(r))
+		return
+	}
+	name := r.PathValue("name")
+	definition, exists := a.Actions[name]
+	if !exists || definition.Operation == "register_local_user" {
+		problem(w, 404, "not_found", "Action not found.", requestID(r))
+		return
+	}
+	var input struct {
+		IDs    []string       `json:"ids"`
+		Values map[string]any `json:"values"`
+	}
+	if !decode(w, r, &input) {
+		return
+	}
+	if len(input.IDs) == 0 || len(input.IDs) > 200 {
+		problem(w, 400, "invalid_batch", "Action batch must contain between 1 and 200 record IDs.", requestID(r))
+		return
+	}
+	seen := map[string]bool{}
+	results := make([]map[string]any, 0, len(input.IDs))
+	for _, id := range input.IDs {
+		if id == "" || seen[id] {
+			problem(w, 400, "invalid_batch", "Action batch record IDs must be nonempty and unique.", requestID(r))
+			return
+		}
+		seen[id] = true
+		values := map[string]any{"id": id}
+		for key, value := range input.Values {
+			if key != "id" {
+				values[key] = value
+			}
+		}
+		result, err := s.Actions.Execute(r.Context(), a, name, values, c)
+		if err == nil {
+			results = append(results, map[string]any{"id": id, "ok": true, "data": result})
+			continue
+		}
+		code, message := "internal", "Action failed."
+		if typed, typedOK := err.(*dbal.Error); typedOK {
+			code, message = string(typed.Code), typed.Message
+		}
+		results = append(results, map[string]any{"id": id, "ok": false, "error": map[string]string{"code": code, "message": message}})
+	}
+	write(w, 200, map[string]any{"data": map[string]any{"results": results}})
+}
 func (s *Server) form(w http.ResponseWriter, r *http.Request) {
 	a, ok := s.Kernel.Active()
 	if !ok {
@@ -553,6 +625,45 @@ func (s *Server) saveDefinition(w http.ResponseWriter, r *http.Request) {
 	}
 	write(w, 200, map[string]bool{"saved": true})
 }
+
+type explorePreviewRequest struct {
+	Name   string         `json:"name"`
+	Spec   map[string]any `json:"spec"`
+	Filter map[string]any `json:"filter"`
+	Search string         `json:"search"`
+	Limit  int            `json:"limit"`
+	Cursor string         `json:"cursor"`
+}
+
+func (s *Server) explorePreview(w http.ResponseWriter, r *http.Request) {
+	if !s.adminMutation(w, r) {
+		return
+	}
+	var input explorePreviewRequest
+	if !decode(w, r, &input) {
+		return
+	}
+	active, ok := s.Kernel.Active()
+	if !ok {
+		problem(w, 503, "not_ready", "No active release.", requestID(r))
+		return
+	}
+	compiled := compiler.CompileViewCandidate(active, input.Name, input.Spec)
+	if len(compiled.Diagnostics) > 0 {
+		write(w, 400, map[string]any{"valid": false, "diagnostics": compiled.Diagnostics})
+		return
+	}
+	candidate := compiled.App.Views[input.Name]
+	result, err := s.Views.RunPage(r.Context(), compiled.App, input.Name, view.Params{
+		Filter: input.Filter, Search: input.Search, SearchFields: candidate.Search.Fields,
+		Limit: input.Limit, Cursor: input.Cursor,
+	}, s.ctx(r))
+	if err != nil {
+		respondError(w, r, err)
+		return
+	}
+	write(w, 200, map[string]any{"valid": true, "view": candidate, "data": result.Rows, "nextCursor": result.NextCursor, "shape": result.Shape})
+}
 func (s *Server) validate(w http.ResponseWriter, r *http.Request) {
 	if !s.adminMutation(w, r) {
 		return
@@ -562,7 +673,11 @@ func (s *Server) validate(w http.ResponseWriter, r *http.Request) {
 		respondError(w, r, e)
 		return
 	}
-	write(w, 200, map[string]any{"valid": len(result.Diagnostics) == 0, "diagnostics": result.Diagnostics, "schema": result.Schema, "migration": migrationPlan})
+	var active *appir.App
+	if current, ok := s.Kernel.Active(); ok {
+		active = current
+	}
+	write(w, 200, map[string]any{"valid": len(result.Diagnostics) == 0, "diagnostics": result.Diagnostics, "schema": result.Schema, "migration": migrationPlan, "changes": compiler.DefinitionDiff(active, result.App)})
 }
 func (s *Server) publish(w http.ResponseWriter, r *http.Request) {
 	if !s.adminMutation(w, r) {
@@ -870,8 +985,12 @@ func (s *Server) boundViewInputs(r *http.Request, a *appir.App, target string) (
 		if !exists || blockDefinition.Display == "" {
 			return bound, nil, requestContext, nil
 		}
-		display, exists := a.Views[target].Displays[blockDefinition.Display]
-		if !exists {
+		selectedDisplay := blockDefinition.Display
+		if requested := r.URL.Query().Get("_viewDisplay"); requested != "" {
+			selectedDisplay = requested
+		}
+		display, exists := a.Views[target].Displays[selectedDisplay]
+		if !exists || display.Type != "block" {
 			return nil, nil, requestContext, fmt.Errorf("bound View display was not found")
 		}
 		return bound, &display, requestContext, nil
@@ -1194,7 +1313,7 @@ func respondError(w http.ResponseWriter, r *http.Request, e error) {
 		switch x.Code {
 		case dbal.NotFound:
 			status = 404
-		case dbal.InvalidQuery:
+		case dbal.InvalidQuery, dbal.ResultLimitExceeded:
 			status = 400
 		case dbal.Conflict, dbal.UniqueViolation, dbal.ForeignKeyViolation:
 			status = 409

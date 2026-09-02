@@ -6,6 +6,8 @@ Bean is a modular Go monolith with an embedded React application and a selected 
 YAML / typed visual Studio -> canonical definitions -> validation
                            -> additive migration preview
                            -> immutable AppIR -> active release
+Entity -> Explore candidate View -> canonical compiler/View preview
+                               -> ordinary Studio draft definition
 
 Lifecycle -> canonical state graph -> Policy-aware Action transition
 Rule -> canonical typed AST -> bounded I/O-free evaluation
@@ -21,6 +23,12 @@ UI   <- typed manifest/render tree
 Admin <- AdminResource data plane + protected System control plane
 ```
 
+Bean Explore is an authoring coordinator, not another runtime. `View` owns search, filters, projection, sorting, pagination, grouping, and aggregation. `Display` owns compatible presentation and typed drill/selection metadata. `Page`/`Panel`/`Block` owns layout and explicit page-filter fan-out. `Action` owns every mutation and effect, `Lifecycle` constrains state transitions, and `Policy` controls visible records and permitted writes. Preview compiles an ephemeral candidate View against the active application and executes the same `view.Service`; saving creates a normal revision in the existing Studio draft lifecycle.
+
+View execution applies actor, tenant, owner, and Policy predicates before grouping or aggregation. The DBAL pushes the typed query to SQLite or PostgreSQL with deterministic null/order behavior, UTC day/week/month buckets, parameterized values, and a limit-plus-one overflow probe. Record, metric, and grouped result shapes are compiler-derived. Display compatibility is checked at publication; the browser cannot introduce query fields, authorization, joins, or aggregate semantics.
+
+Typed drill-down compiles a source group/filter binding to an exposed filter on a named record View and derives its route from the target page Display. Page filters similarly compile explicit Page name -> Block -> View-filter mappings. Both paths re-run the target View under its own Policy. Selected record Actions call the ordinary Action service; a bulk call is bounded to 200 unique IDs, executes sequentially and non-atomically, returns ordered per-record results, and preserves per-record Policy, Lifecycle, Rule, optimistic concurrency, audit, and idempotency behavior.
+
 Definitions, revisions, release AppIR, and the active pointer are persisted. Normal requests use one validated immutable AppIR snapshot from the kernel. Publication compiles the complete draft, applies a deterministic additive migration transaction, then commits the release record, migration journal, and active pointer together. A crash between those commits leaves the previous release active with storage potentially ahead; retry inspects physical columns, skips already-applied additive work, and activates a complete new release. Startup resolves the pointer and validates every active Entity column and relation table before kernel activation.
 
 SQLite uses foreign keys, WAL, `synchronous=FULL`, and a bounded busy timeout. PostgreSQL uses pgx through `database/sql`, numbered parameters, information-schema inspection, transactional migrations, and SQLSTATE-based portable errors. Backend-specific SQL is confined to DBAL and migration adapters. The supported v0.4 deployment is one Bean process; clustering and simultaneous application writers are not qualified.
@@ -31,7 +39,7 @@ An Extension is immutable typed metadata for one HTTP endpoint, not an in-proces
 
 The application Admin is metadata-driven rather than a raw-table editor: AdminResources select a compiled View, CRUD Actions, list/form fields, and domain Actions. Its shadcn Table and form components preserve server-driven query and mutation semantics rather than introducing a client-side data model. The separate System section exposes only curated operational columns. User-role changes and eligible queue retry/cancel mutations require administrator authentication, CSRF, confirmation in the UI, affected-row checks, and audit records; password hashes and session secrets are never selected.
 
-Studio visual editors mutate the normal definition `spec` for Entity, View, Action, Policy, and AdminResource. Reference choices come from current draft definitions. The advanced JSON view reads and writes the same object, so there is no second visual metadata format and supported fields survive round trips. Validate returns compiler diagnostics, target schema, and migration preview before publish.
+Studio visual editors mutate the normal definition `spec` for Entity, View, Page, Action, Policy, and AdminResource. The common Explore path includes search, grouping, aggregates, compatible renderers, page filters, drill bindings, selection, and record Actions. Reference choices come from current draft definitions. The advanced JSON view reads and writes the same object, so there is no second visual metadata format and supported fields survive round trips. Validate returns compiler diagnostics, a definition-level semantic change summary, target schema, and migration preview before publish.
 
 Board and tree rendering are typed View presentations: the compiler verifies selected grouping, parent, order, title, and transition references before activation. The browser resolves a board Action's canonical Lifecycle graph from normalized manifest metadata, reads rows through the declared View, and writes movement through the declared Action.
 

@@ -1,0 +1,30 @@
+[
+  {
+    "prompt": "Show candidates grouped by stage.",
+    "example": "ats",
+    "artifacts": [{"kind": "View", "name": "candidates_by_stage", "semantics": ["groups", "chart", "typed_drill"]}]
+  },
+  {
+    "prompt": "Create a recruiting operations dashboard.",
+    "example": "ats",
+    "artifacts": [{"kind": "Page", "name": "home", "semantics": ["page_filters", "dashboard_composition"]}]
+  },
+  {
+    "prompt": "Show pipeline value by deal stage.",
+    "example": "crm",
+    "artifacts": [{"kind": "View", "name": "pipeline_amount_by_stage", "semantics": ["groups", "money_sum", "policy", "typed_drill"]}]
+  },
+  {
+    "prompt": "Show paid orders that have not been fulfilled.",
+    "example": "commerce",
+    "artifacts": [
+      {"kind": "View", "name": "paid_unfulfilled_orders", "semantics": ["fixed_filter", "records"]},
+      {"kind": "View", "name": "paid_unfulfilled_count", "semantics": ["metric", "typed_drill"]}
+    ]
+  },
+  {
+    "prompt": "Add an action for moving selected candidates to interview.",
+    "example": "ats",
+    "artifacts": [{"kind": "View", "name": "candidate_records", "semantics": ["multiple_selection", "record_action", "lifecycle_action"]}]
+  }
+]

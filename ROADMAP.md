@@ -74,7 +74,7 @@ Presentation remains a separately reported score so a technically correct but un
 
 ## Current engineering goal
 
-Bean v0.14 First-class View Displays is complete. It makes View the complete public read-and-presentation primitive: one canonical View query owns named page, block, and serializer displays. The first slice adds public table rendering, display-owned exposed controls, cursor pager configuration, page titles, compatibility for existing Block presentation metadata, and focused Studio authoring. Query planning remains internal; slides and presentation export remain deferred.
+Bean v0.15 Explore is complete after the v0.14 View Displays foundation. It turns existing Entity models into operational applications through one typed loop: explore records, save ordinary Views, visualize compatible result shapes, compose dashboards, drill into exact Policy-visible contributors, and execute authorized Actions. Explore adds no Question/Dataset/Visualization abstraction or parallel query runtime.
 
 ## Roadmap
 
@@ -90,9 +90,10 @@ Bean v0.14 First-class View Displays is complete. It makes View the complete pub
 | 7 | v0.12 | Generated tests from semantic primitives and rules | complete |
 | 8 | v0.13 | Typed extension boundary for external effects | complete |
 | 9 | v0.14 | First-class View displays for reusable page, block, table, filter, pager, title, and serializer output | complete |
-| 10 | v1.0 | Qualification of one explicit production envelope | planned |
-| 11 | post-v1.0 | Bean Cloud preview environments | exploratory |
-| 12 | post-v1.0 | Composable application-pattern ecosystem | exploratory |
+| 10 | v0.15 | Bean Explore for typed exploration, aggregates, dashboards, drill-down, and operational Actions | complete |
+| 11 | v1.0 | Qualification of one explicit production envelope | planned |
+| 12 | post-v1.0 | Bean Cloud preview environments | exploratory |
+| 13 | post-v1.0 | Composable application-pattern ecosystem | exploratory |
 
 ### Phase 0 — Application runtime (complete)
 
@@ -493,7 +494,26 @@ Exit criteria:
 - Studio authors the common display path without raw JSON, and metadata-only blog/ATS slices prove reuse without application-specific core branches.
 - Sequence/slide rendering, presentation diagnostics, and HTML/PDF/PPTX export remain deferred behind the generic display seam.
 
-### Phase 10 — v1.0: production qualification
+### Phase 10 — v0.15: Bean Explore
+
+Turn the completed View-display seam into an operational product loop over existing Bean models:
+
+```text
+Entity -> typed exploration -> saved View/Display -> dashboard -> drill -> Action
+```
+
+Explore is a first-party authoring surface and reusable application pattern, backed by small compiler-known additions for View-owned search, typed grouping and aggregation, result-shape/display compatibility, page filters, drill targets, selection, and Action availability. Saved output remains ordinary View, Display, Page, Panel, Block, Action, Policy, and Lifecycle definitions. Preview and published reads share the existing Policy-preserving View service.
+
+Exit criteria:
+
+- ATS is a complete recruiting operations application with deterministic filters, metrics, charts, drill-down, and candidate Actions.
+- CRM proves authorization is applied before grouping/aggregation and that drills return exact visible contribution sets for salesperson and manager actors on SQLite and PostgreSQL.
+- Commerce proves observe -> inspect -> authorized Action -> refreshed dashboard without unsupported relation aggregation.
+- Explore, Studio, and agents author the same inspectable, validated, diffable, testable, versioned definitions.
+- Existing Entities plus deterministic DemoSeed provide a measured approximately five-minute onboarding path.
+- Arbitrary SQL, a separate semantic layer, BI/reporting features, data federation, and duplicate Question/Dataset/Visualization abstractions remain excluded.
+
+### Phase 11 — v1.0: production qualification
 
 Qualify Bean for one deliberately narrow production envelope only after the agent-to-demo loop is strong:
 
@@ -503,7 +523,7 @@ Qualify backup/restore, secrets, migration and upgrade behavior, observability, 
 
 The phase must publish explicit supported topologies, failure models, SLO evidence, restore drills, compatibility windows, and known exclusions. Bean consumes managed databases, storage, identity, and orchestration; it does not become a Kubernetes platform, distributed database, Kafka clone, S3 clone, or identity provider.
 
-### Phase 11 — Bean Cloud
+### Phase 12 — Bean Cloud
 
 Only after the local engine and production contract are proven, provide the narrow hosted loop:
 
@@ -513,7 +533,7 @@ git or prompt -> Bean build -> preview environment -> shareable URL
 
 The minimum platform supplies PostgreSQL, object storage, secrets, domains, logs, deployments, and expiring previews. It does not expand into a general backend-as-a-service or functions platform.
 
-### Phase 12 — application-pattern ecosystem
+### Phase 13 — application-pattern ecosystem
 
 Once the definition and extension compatibility contracts are stable, allow agents to discover and compose versioned packages such as approval workflows, kanban, comments, tenant ownership, and activity feeds.
 

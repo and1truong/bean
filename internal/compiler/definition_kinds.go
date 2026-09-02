@@ -18,6 +18,11 @@ type DefinitionReference struct {
 	Name string `json:"name"`
 }
 
+type DefinitionChange struct {
+	Operation string `json:"operation"`
+	Path      string `json:"path"`
+}
+
 type definitionKind struct {
 	Specification       reflect.Type
 	Storage             reflect.Type
@@ -149,7 +154,13 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 	pageKind := mappedDefinitionKind(appir.Page{}, func(app *appir.App) map[string]appir.Page { return app.Pages }, nameValue[appir.Page](func(value *appir.Page, name string) { value.Name = name }))
 	pageKind.References = func(app *appir.App, name string) []DefinitionReference {
 		item := app.Pages[name]
-		return references(reference("panel", "Panel", item.Panel), reference("policy", "Policy", item.Policy))
+		out := []DefinitionReference{reference("panel", "Panel", item.Panel), reference("policy", "Policy", item.Policy)}
+		for filterName, filter := range item.Filters {
+			for index, target := range filter.Targets {
+				out = append(out, reference(fmt.Sprintf("filters.%s.targets.%d.block", filterName, index), "Block", target.Block))
+			}
+		}
+		return references(out...)
 	}
 	role := mappedDefinitionKind(appir.Role{}, func(app *appir.App) map[string]appir.Role { return app.Roles }, nameValue[appir.Role](func(value *appir.Role, name string) { value.Name = name }))
 	role.ReferenceCandidates = true
@@ -331,6 +342,14 @@ func normalizeViews(app *appir.App) {
 			}
 			relationships[relationship.Name] = relationship
 		}
+		switch {
+		case len(view.GroupBy) > 0:
+			view.ResultShape = "groups"
+		case len(view.Aggregates) > 0:
+			view.ResultShape = "metric"
+		default:
+			view.ResultShape = "records"
+		}
 		for filterName, filter := range view.ExposedFilters {
 			target := filter.Target(filterName)
 			if filter.Field == "" {
@@ -369,7 +388,7 @@ func normalizeViews(app *appir.App) {
 				display.Renderer.EmptyState = display.EmptyState
 			}
 			if display.Pager.Type == "" {
-				if display.Renderer.Type == "detail" || display.Renderer.Type == "metric" || display.Renderer.Type == "board" || display.Renderer.Type == "tree" {
+				if display.Renderer.Type == "detail" || display.Renderer.Type == "metric" || display.Renderer.Type == "board" || display.Renderer.Type == "tree" || display.Renderer.Type == "chart" || display.Renderer.Type == "calendar" {
 					display.Pager.Type = "none"
 				} else {
 					display.Pager.Type = "cursor"
@@ -384,6 +403,17 @@ func normalizeViews(app *appir.App) {
 				}
 			}
 			view.Displays[displayName] = display
+		}
+		app.Views[name] = view
+	}
+	for name, view := range app.Views {
+		for displayName, display := range view.Displays {
+			if display.Drill != nil {
+				drill := *display.Drill
+				drill.Route = app.Views[drill.View].Displays[drill.Display].Route
+				display.Drill = &drill
+				view.Displays[displayName] = display
+			}
 		}
 		app.Views[name] = view
 	}
@@ -568,6 +598,43 @@ func CompiledDefinitionNames(app *appir.App, kind string) []string {
 	return registered.Names(app)
 }
 
+// DefinitionDiff gives authoring clients a deterministic, definition-level
+// semantic summary. The Agent Protocol retains its field-level diff.
+func DefinitionDiff(current, candidate *appir.App) []DefinitionChange {
+	if current == nil {
+		current = appir.Empty()
+	}
+	if candidate == nil {
+		candidate = appir.Empty()
+	}
+	out := []DefinitionChange{}
+	for _, kind := range definitionKindRegistry().Names() {
+		registered, _ := definitionKindRegistry().Lookup(kind)
+		names := append(registered.Names(current), registered.Names(candidate)...)
+		sort.Strings(names)
+		for index, name := range names {
+			if index > 0 && names[index-1] == name {
+				continue
+			}
+			before, beforeExists := registered.Lookup(current, name)
+			after, afterExists := registered.Lookup(candidate, name)
+			operation := ""
+			switch {
+			case !beforeExists && afterExists:
+				operation = "add"
+			case beforeExists && !afterExists:
+				operation = "remove"
+			case beforeExists && afterExists && !reflect.DeepEqual(before, after):
+				operation = "replace"
+			}
+			if operation != "" {
+				out = append(out, DefinitionChange{Operation: operation, Path: "definitions." + kind + "." + name})
+			}
+		}
+	}
+	return out
+}
+
 func reference(path, kind, name string) DefinitionReference {
 	return DefinitionReference{Path: path, Kind: kind, Name: name}
 }
@@ -616,6 +683,12 @@ func viewReferences(app *appir.App, name string) []DefinitionReference {
 	}
 	for displayName, display := range item.Displays {
 		out = append(out, reference("displays."+displayName+".renderer.moveAction", "Action", display.Renderer.MoveAction))
+		for index, action := range display.Actions {
+			out = append(out, reference(fmt.Sprintf("displays.%s.actions.%d", displayName, index), "Action", action))
+		}
+		if display.Drill != nil {
+			out = append(out, reference("displays."+displayName+".drill.view", "View", display.Drill.View))
+		}
 	}
 	return references(out...)
 }

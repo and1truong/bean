@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -57,6 +58,36 @@ func Compile(appID string, version int, defs []definition.Definition) Result {
 // validating dependencies that may be absent from an unrecovered source file.
 func CompileRecovered(appID string, version int, defs []definition.Definition) Result {
 	return compile(appID, version, defs, false)
+}
+
+// CompileViewCandidate compiles one unsaved View against an immutable active
+// application. Explore preview uses this seam so previewed and persisted Views
+// share decoding, normalization, validation, and AppIR semantics.
+func CompileViewCandidate(active *appir.App, name string, spec map[string]any) Result {
+	if active == nil {
+		return Result{Diagnostics: []definition.Diagnostic{definition.NewDiagnostic(definition.RuleGeneral, "View", name, "spec", "requires an active application")}}
+	}
+	app, err := active.Clone()
+	if err != nil {
+		return Result{Diagnostics: []definition.Diagnostic{definition.NewDiagnostic(definition.RuleGeneral, "View", name, "spec", "cannot clone the active application")}}
+	}
+	app.FormatVersion = appir.CurrentFormat
+	source := definition.Definition{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Namespace: "default", Name: name}, Spec: spec}
+	diagnostics := definition.ValidateEnvelope(source)
+	registered, _ := definitionKindRegistry().Lookup("View")
+	if len(diagnostics) == 0 {
+		diagnostics = append(diagnostics, registered.Compile(app, source)...)
+		registered.Normalize(app)
+		state := &validationState{routes: map[string]string{}}
+		pageKind, _ := definitionKindRegistry().Lookup("Page")
+		blockKind, _ := definitionKindRegistry().Lookup("Block")
+		diagnostics = append(diagnostics, pageKind.Validate(app, state)...)
+		diagnostics = append(diagnostics, registered.Validate(app, state)...)
+		diagnostics = append(diagnostics, blockKind.Validate(app, state)...)
+	}
+	enrichDiagnosticCandidates(app, diagnostics)
+	definition.ClassifyDiagnostics(diagnostics)
+	return Result{App: app, Diagnostics: diagnostics}
 }
 
 func compile(appID string, version int, defs []definition.Definition, validateGraph bool) (r Result) {
@@ -826,6 +857,16 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 		for _, field := range v.Fields {
 			selected[field] = true
 		}
+		searchable := map[string]bool{"email": true, "richtext": true, "slug": true, "string": true, "text": true, "url": true}
+		for index, fieldName := range v.Search.Fields {
+			path := fmt.Sprintf("spec.search.fields.%d", index)
+			fieldType, exists := viewFieldType(fieldName, e, relationships, a)
+			if !selected[fieldName] {
+				out = append(out, invalidReferenceDiagnostic("View", name, path, "must reference a selected View field"))
+			} else if !exists || !searchable[fieldType] {
+				out = append(out, invalidReferenceDiagnostic("View", name, path, "must reference a searchable text field"))
+			}
+		}
 		for fieldName, filterName := range v.FieldFilters {
 			path := "spec.fieldFilters." + fieldName
 			if !selected[fieldName] {
@@ -843,37 +884,74 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 		if len(v.GroupBy) == 0 && len(v.Aggregates) == 0 && !selected["id"] {
 			out = append(out, requiredDiagnostic("View", name, "spec.fields", "must include id for deterministic cursor pagination"))
 		}
-		for _, group := range v.GroupBy {
-			if !validViewField(group, fields, relationships, a) {
-				out = append(out, missingFieldDiagnostic("View", name, "spec.groupBy", group, false))
+		groupOutputs := map[string]bool{}
+		for i, group := range v.GroupBy {
+			path := fmt.Sprintf("spec.groupBy.%d", i)
+			if !validViewField(group.Field, fields, relationships, a) {
+				out = append(out, missingFieldDiagnostic("View", name, path+".field", group.Field, false))
+				continue
+			}
+			output := group.Output()
+			if output == "" || groupOutputs[output] || !viewDisplayName.MatchString(output) {
+				out = append(out, diagnostic("View", name, path+".as", "must produce a unique machine name"))
+			}
+			groupOutputs[output] = true
+			fieldType, _ := viewFieldType(group.Field, e, relationships, a)
+			if group.Bucket != "" && !map[string]bool{"day": true, "week": true, "month": true}[group.Bucket] {
+				out = append(out, diagnostic("View", name, path+".bucket", "must be day, week, or month"))
+			} else if group.Bucket != "" && fieldType != "date" && fieldType != "datetime" {
+				out = append(out, diagnostic("View", name, path+".bucket", "requires a date or datetime field"))
+			}
+			if viewRelationshipIsToMany(group.Field, e, relationships) {
+				out = append(out, diagnostic("View", name, path+".field", "cannot traverse a to-many relationship for grouping"))
 			}
 		}
 		aliases := map[string]bool{}
 		for i, aggregate := range v.Aggregates {
 			path := fmt.Sprintf("spec.aggregates.%d", i)
-			if !map[string]bool{"count": true, "sum": true, "min": true, "max": true, "average": true, "avg": true}[strings.ToLower(aggregate.Function)] {
+			function := strings.ToLower(aggregate.Function)
+			if !map[string]bool{"count": true, "sum": true, "min": true, "max": true, "average": true, "avg": true}[function] {
 				out = append(out, diagnostic("View", name, path+".function", "has no query-plan implementation"))
 			}
 			if !validViewField(aggregate.Field, fields, relationships, a) {
 				out = append(out, missingFieldDiagnostic("View", name, path+".field", aggregate.Field, false))
+			} else {
+				fieldType, _ := viewFieldType(aggregate.Field, e, relationships, a)
+				numeric := map[string]bool{"integer": true, "decimal": true, "money": true}
+				ordered := map[string]bool{"date": true, "datetime": true, "decimal": true, "email": true, "enum": true, "integer": true, "money": true, "slug": true, "string": true, "text": true, "url": true, "uuid": true}
+				if (function == "sum" || function == "avg" || function == "average") && !numeric[fieldType] {
+					out = append(out, diagnostic("View", name, path+".function", "requires an integer, decimal, or money field"))
+				}
+				if (function == "avg" || function == "average") && fieldType == "money" {
+					out = append(out, diagnostic("View", name, path+".function", "does not support money; use sum or a decimal field"))
+				}
+				if (function == "min" || function == "max") && !ordered[fieldType] {
+					out = append(out, diagnostic("View", name, path+".function", "requires an ordered field"))
+				}
 			}
-			if aggregate.Alias == "" || aliases[aggregate.Alias] {
+			if viewRelationshipIsToMany(aggregate.Field, e, relationships) {
+				out = append(out, diagnostic("View", name, path+".field", "cannot traverse a to-many relationship for aggregation"))
+			}
+			if aggregate.Alias == "" || aliases[aggregate.Alias] || selected[aggregate.Alias] || groupOutputs[aggregate.Alias] || !viewDisplayName.MatchString(aggregate.Alias) {
 				out = append(out, diagnostic("View", name, path+".alias", "must be a unique machine name"))
 			}
 			aliases[aggregate.Alias] = true
 		}
 		for i, order := range v.Sort {
-			if !validViewField(order.Field, fields, relationships, a) && !aliases[order.Field] {
+			if !validViewField(order.Field, fields, relationships, a) && !aliases[order.Field] && !groupOutputs[order.Field] {
 				out = append(out, missingFieldDiagnostic("View", name, fmt.Sprintf("spec.sort.%d.field", i), order.Field, false))
-			} else if !selected[order.Field] && !aliases[order.Field] {
+			} else if !selected[order.Field] && !aliases[order.Field] && !groupOutputs[order.Field] {
 				out = append(out, diagnostic("View", name, fmt.Sprintf("spec.sort.%d.field", i), "must be selected so cursor state is stable"))
 			}
 		}
 		if len(v.Aggregates) > 0 && len(v.Sort) == 0 {
 			for _, group := range v.GroupBy {
-				v.Sort = append(v.Sort, appir.Sort{Field: group})
+				v.Sort = append(v.Sort, appir.Sort{Field: group.Output()})
 			}
 			a.Views[name] = v
+		}
+		if len(v.Aggregates) > 0 && len(v.GroupBy) == 0 && (len(v.Aggregates) != 1 || len(v.Fields) != 0) {
+			out = append(out, diagnostic("View", name, "spec.aggregates", "an ungrouped metric must select exactly one aggregate and no record fields"))
 		}
 		for key, exposed := range v.ExposedFilters {
 			if reservedViewTransportParameter(key) {
@@ -913,6 +991,21 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 		}
 		if policyName != "" && policyExists {
 			redacted := nameSet(policyDefinition.Redact)
+			for index, group := range v.GroupBy {
+				if redacted[group.Field] {
+					out = append(out, diagnostic("View", name, fmt.Sprintf("spec.groupBy.%d.field", index), "redacted fields cannot control grouping"))
+				}
+			}
+			for index, aggregate := range v.Aggregates {
+				if redacted[aggregate.Field] {
+					out = append(out, diagnostic("View", name, fmt.Sprintf("spec.aggregates.%d.field", index), "redacted fields cannot be aggregated"))
+				}
+			}
+			for index, fieldName := range v.Search.Fields {
+				if redacted[fieldName] {
+					out = append(out, diagnostic("View", name, fmt.Sprintf("spec.search.fields.%d", index), "redacted fields cannot be searched"))
+				}
+			}
 			for i, order := range v.Sort {
 				if redacted[order.Field] {
 					out = append(out, diagnostic("View", name, fmt.Sprintf("spec.sort.%d.field", i), "redacted fields cannot control ordering"))
@@ -991,8 +1084,27 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 	base := "spec.displays." + displayName
 	out := []definition.Diagnostic{}
 	selected := nameSet(view.Fields)
+	aggregates := map[string]appir.Aggregate{}
+	for _, aggregate := range view.Aggregates {
+		selected[aggregate.Alias] = true
+		aggregates[aggregate.Alias] = aggregate
+	}
+	groups := map[string]appir.ViewGroup{}
+	for _, group := range view.GroupBy {
+		selected[group.Output()] = true
+		groups[group.Output()] = group
+	}
 	redacted := nameSet(app.Policies[policy.EffectiveViewPolicyName(view, entity)].Redact)
 	renderer := display.Renderer
+	compatible := map[string]map[string]bool{
+		"records": {"board": true, "calendar": true, "cards": true, "detail": true, "list": true, "table": true, "timeline": true, "tree": true},
+		"detail":  {"detail": true},
+		"metric":  {"metric": true},
+		"groups":  {"chart": true, "table": true},
+	}
+	if !compatible[view.ResultShape][renderer.Type] {
+		out = append(out, diagnostic("View", viewName, base+".renderer.type", "is incompatible with View result shape "+view.ResultShape))
+	}
 	if !nameSet(viewRendererNames())[renderer.Type] {
 		out = append(out, diagnostic("View", viewName, base+".renderer.type", "has no registered renderer"))
 	} else if renderer.Type == "table" {
@@ -1016,6 +1128,29 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 				}
 			}
 		}
+	} else if renderer.Type == "chart" {
+		if groups[renderer.GroupField].Field == "" {
+			out = append(out, requiredDiagnostic("View", viewName, base+".renderer.groupField", "chart requires a grouped output field"))
+		}
+		aggregate, exists := aggregates[renderer.MetricField]
+		if !exists {
+			out = append(out, requiredDiagnostic("View", viewName, base+".renderer.metricField", "chart requires an aggregate output field"))
+		} else if strings.EqualFold(aggregate.Function, "min") || strings.EqualFold(aggregate.Function, "max") {
+			fieldType, _ := viewFieldType(aggregate.Field, entity, relationships, app)
+			if !map[string]bool{"decimal": true, "integer": true, "money": true}[fieldType] {
+				out = append(out, diagnostic("View", viewName, base+".renderer.metricField", "chart values must be numeric"))
+			}
+		}
+	} else if renderer.Type == "calendar" {
+		for path, fieldName := range map[string]string{"timeField": renderer.TimeField, "endField": renderer.EndField} {
+			fieldType, exists := viewFieldType(fieldName, entity, relationships, app)
+			if fieldName == "" || !selected[fieldName] || !exists || fieldType != "date" && fieldType != "datetime" {
+				out = append(out, requiredDiagnostic("View", viewName, base+".renderer."+path, "calendar requires selected date or datetime start and end fields"))
+			}
+		}
+		if renderer.TitleField == "" || !selected[renderer.TitleField] {
+			out = append(out, requiredDiagnostic("View", viewName, base+".renderer.titleField", "calendar requires a selected title field"))
+		}
 	} else {
 		legacy := validatePresentation(viewName, appir.Block{View: viewName, Presentation: renderer.Presentation()}, app)
 		for _, item := range legacy {
@@ -1026,6 +1161,74 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 	}
 	if display.Title.Text != "" && display.Title.Field != "" {
 		out = append(out, diagnostic("View", viewName, base+".title", "must use text or a result field, not both"))
+	}
+	if display.Drill != nil {
+		drill := display.Drill
+		targetView, viewExists := app.Views[drill.View]
+		if !viewExists {
+			out = append(out, missingReferenceDiagnostic("View", viewName, base+".drill.view", "View", drill.View))
+		} else {
+			targetDisplay, displayExists := targetView.Displays[drill.Display]
+			if !displayExists || targetDisplay.Type != "page" {
+				out = append(out, invalidReferenceDiagnostic("View", viewName, base+".drill.display", "must reference a page Display on target View "+drill.View))
+			}
+			seenTargets := map[string]bool{}
+			for index, binding := range drill.Bindings {
+				path := fmt.Sprintf("%s.drill.bindings.%d", base, index)
+				targetFilter, targetExists := targetView.ExposedFilters[binding.Filter]
+				if !targetExists {
+					out = append(out, invalidReferenceDiagnostic("View", viewName, path+".filter", "must reference a target View exposed filter"))
+					continue
+				}
+				if seenTargets[binding.Filter] {
+					out = append(out, duplicateDiagnostic("View", viewName, path+".filter", "duplicates another drill target filter"))
+				}
+				seenTargets[binding.Filter] = true
+				sourceType := ""
+				switch binding.Source {
+				case "group":
+					if group, exists := groups[binding.Name]; exists {
+						sourceType, _ = viewFieldType(group.Field, entity, relationships, app)
+					}
+				case "filter":
+					if filter, exists := view.ExposedFilters[binding.Name]; exists {
+						sourceType = filter.Type
+					}
+				default:
+					out = append(out, diagnostic("View", viewName, path+".source", "must be group or filter"))
+				}
+				if sourceType == "" {
+					out = append(out, invalidReferenceDiagnostic("View", viewName, path+".name", "must reference a typed source group or filter"))
+				} else if sourceType != targetFilter.Type {
+					out = append(out, diagnostic("View", viewName, path, "source and target filter types must match"))
+				}
+			}
+		}
+	}
+	if display.Selection != "" && display.Selection != "none" && display.Selection != "single" && display.Selection != "multiple" {
+		out = append(out, diagnostic("View", viewName, base+".selection", "must be none, single, or multiple"))
+	}
+	if len(display.Actions) > 0 {
+		if view.ResultShape != "records" || !selected["id"] || renderer.Type != "table" && renderer.Type != "board" {
+			out = append(out, diagnostic("View", viewName, base+".actions", "record Actions require a record-shaped table or board with id selected"))
+		}
+		if display.Selection != "single" && display.Selection != "multiple" {
+			out = append(out, diagnostic("View", viewName, base+".selection", "record Actions require single or multiple selection"))
+		}
+		seenActions := map[string]bool{}
+		for index, actionName := range display.Actions {
+			path := fmt.Sprintf("%s.actions.%d", base, index)
+			actionDefinition, exists := app.Actions[actionName]
+			if !exists {
+				out = append(out, missingReferenceDiagnostic("View", viewName, path, "Action", actionName))
+			} else if actionDefinition.Entity != view.Entity {
+				out = append(out, diagnostic("View", viewName, path, "must target the View Entity "+view.Entity))
+			}
+			if seenActions[actionName] {
+				out = append(out, duplicateDiagnostic("View", viewName, path, "duplicates another Display Action"))
+			}
+			seenActions[actionName] = true
+		}
 	}
 	if display.Title.Field != "" {
 		if renderer.Type != "detail" {
@@ -2079,6 +2282,62 @@ func validatePages(a *appir.App, state *validationState) []definition.Diagnostic
 				out = append(out, diagnostic("Page", name, "spec.context."+key+".name", "must reference a parameter declared by the Page route"))
 			}
 		}
+		for filterName, pageFilter := range page.Filters {
+			path := "spec.filters." + filterName
+			if reservedViewTransportParameter(filterName) || routeParameters[filterName] {
+				out = append(out, diagnostic("Page", name, path, "conflicts with a reserved or immutable route parameter"))
+			}
+			if _, exists := page.Context[filterName]; exists {
+				out = append(out, diagnostic("Page", name, path, "conflicts with immutable Page context"))
+			}
+			if len(pageFilter.Targets) == 0 {
+				out = append(out, requiredDiagnostic("Page", name, path+".targets", "requires at least one Block filter target"))
+			}
+			var expected appir.ViewFilter
+			seen := map[string]bool{}
+			for index, target := range pageFilter.Targets {
+				targetPath := fmt.Sprintf("%s.targets.%d", path, index)
+				if seen[target.Block+"/"+target.Filter] {
+					out = append(out, duplicateDiagnostic("Page", name, targetPath, "duplicates another Page filter target"))
+				}
+				seen[target.Block+"/"+target.Filter] = true
+				blockDefinition, exists := a.Blocks[target.Block]
+				if !exists || blockDefinition.Type != "view" {
+					out = append(out, missingReferenceDiagnostic("Page", name, targetPath+".block", "View Block", target.Block))
+					continue
+				}
+				viewDefinition := a.Views[blockDefinition.View]
+				definition, exists := viewDefinition.ExposedFilters[target.Filter]
+				if !exists {
+					out = append(out, invalidReferenceDiagnostic("Page", name, targetPath+".filter", "has no matching exposed View filter"))
+					continue
+				}
+				if _, bound := blockDefinition.Bindings[target.Filter]; bound {
+					out = append(out, diagnostic("Page", name, targetPath+".filter", "cannot override an immutable Block binding"))
+				}
+				if expected.Type == "" {
+					expected = definition
+				} else if expected.Type != definition.Type || !reflect.DeepEqual(expected.Options, definition.Options) {
+					out = append(out, diagnostic("Page", name, targetPath+".filter", "must have the same type and options as every target"))
+				}
+			}
+			if expected.Type != "" {
+				pageFilter.Type = expected.Type
+				pageFilter.Options = append([]string{}, expected.Options...)
+				if pageFilter.Label == "" {
+					pageFilter.Label = expected.Label
+				}
+				if pageFilter.Default != nil {
+					definition := expected.Definition(filterName)
+					definition.Name = filterName
+					if err := field.Validate(definition, pageFilter.Default); err != nil {
+						out = append(out, diagnostic("Page", name, path+".default", "does not match the target filter type"))
+					}
+				}
+			}
+			page.Filters[filterName] = pageFilter
+		}
+		a.Pages[name] = page
 	}
 	return out
 }
@@ -2444,6 +2703,23 @@ func validViewField(name string, base map[string]bool, relationships map[string]
 func viewFieldType(name string, base appir.Entity, relationships map[string]appir.ViewRelationship, a *appir.App) (string, bool) {
 	definition, exists := viewFieldDefinition(name, base, relationships, a)
 	return definition.Type, exists
+}
+
+func viewRelationshipIsToMany(name string, base appir.Entity, relationships map[string]appir.ViewRelationship) bool {
+	parts := strings.Split(name, ".")
+	if len(parts) != 2 {
+		return false
+	}
+	relationship, exists := relationships[parts[0]]
+	if !exists {
+		return false
+	}
+	for _, field := range base.Fields {
+		if (field.Name == relationship.RelationField || field.Name == relationship.LocalField) && field.Relation != nil {
+			return field.Relation.Kind == "one-to-many" || field.Relation.Kind == "many-to-many"
+		}
+	}
+	return false
 }
 
 func resolveViewRelationship(entity appir.Entity, relationship appir.ViewRelationship) (appir.ViewRelationship, bool) {

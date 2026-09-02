@@ -79,3 +79,46 @@ it('authors a result-titled detail display with its immutable route binding',asy
     title:{field:'title',fallback:'Record'},renderer:{type:'detail'},
   })
 })
+
+it('authors Explore query, display, action, drill, and page-filter semantics visually',async()=>{
+  const exploreDefinitions=[
+    ...definitions,
+    {apiVersion:'bean/v1alpha1',kind:'Action',metadata:{name:'move_book'},spec:{entity:'book',operation:'update'}},
+    {apiVersion:'bean/v1alpha1',kind:'View',metadata:{name:'book_records'},spec:{entity:'book',fields:['id','title'],exposedFilters:{title:{field:'title',operator:'eq'}},displays:{table:{type:'page',route:'/books',renderer:{type:'table'}}}}},
+    {apiVersion:'bean/v1alpha1',kind:'Block',metadata:{name:'book_chart'},spec:{type:'view',view:'book_records',display:'table'}},
+    {apiVersion:'bean/v1alpha1',kind:'Panel',metadata:{name:'book_panel'},spec:{layout:'stack',regions:[]}},
+  ]
+  vi.spyOn(globalThis,'fetch').mockImplementation(async input=>new Response(JSON.stringify(String(input).endsWith('/definitions')?exploreDefinitions:[]),{status:200}))
+  render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter><Studio/></MemoryRouter></QueryClientProvider>)
+  await screen.findByText('Active release: none')
+  fireEvent.change(screen.getByTestId('definition-kind'),{target:{value:'View'}})
+  fireEvent.change(screen.getByTestId('view-entity'),{target:{value:'book'}})
+  fireEvent.click(screen.getByRole('checkbox',{name:'title'}))
+  fireEvent.change(screen.getByLabelText('Search fields'),{target:{value:'title'}})
+  fireEvent.change(screen.getByLabelText('Group field'),{target:{value:'title'}})
+  fireEvent.change(screen.getByLabelText('Aggregate'),{target:{value:'count'}})
+  fireEvent.click(screen.getByTestId('add-view-display'))
+  fireEvent.change(screen.getByLabelText('Explore renderer'),{target:{value:'chart'}})
+  fireEvent.change(screen.getByLabelText('Renderer group field'),{target:{value:'title'}})
+  fireEvent.change(screen.getByLabelText('Metric field'),{target:{value:'total'}})
+  fireEvent.change(screen.getByLabelText('Selection'),{target:{value:'multiple'}})
+  fireEvent.change(screen.getByLabelText('Record actions'),{target:{value:'move_book'}})
+  fireEvent.change(screen.getByLabelText('Target View'),{target:{value:'book_records'}})
+  fireEvent.change(screen.getByLabelText('Target Display'),{target:{value:'table'}})
+  fireEvent.change(screen.getByLabelText('Binding source'),{target:{value:'filter'}})
+  fireEvent.change(screen.getByLabelText('Binding source'),{target:{value:'group'}})
+  fireEvent.change(screen.getByLabelText('Source name'),{target:{value:'title'}})
+  fireEvent.change(screen.getByLabelText('Target filter'),{target:{value:'title'}})
+  fireEvent.click(screen.getByRole('checkbox',{name:'Advanced JSON'}))
+  const view=JSON.parse((screen.getByTestId('definition-spec') as HTMLTextAreaElement).value)
+  expect(view).toMatchObject({search:{fields:['title']},groupBy:[{field:'title',as:'title'}],aggregates:[{function:'count',field:'id',alias:'total'}],displays:{display_1:{renderer:{type:'chart',groupField:'title',metricField:'total'},selection:'multiple',actions:['move_book'],drill:{view:'book_records',display:'table',bindings:[{source:'group',name:'title',filter:'title'}]}}}})
+
+  fireEvent.click(screen.getByRole('checkbox',{name:'Advanced JSON'}))
+  fireEvent.change(screen.getByTestId('definition-kind'),{target:{value:'Page'}})
+  fireEvent.click(screen.getByRole('button',{name:'Add page filter'}))
+  fireEvent.change(screen.getByLabelText('Target Block'),{target:{value:'book_chart'}})
+  fireEvent.change(screen.getByLabelText('Target filter'),{target:{value:'title'}})
+  fireEvent.click(screen.getByRole('checkbox',{name:'Advanced JSON'}))
+  const page=JSON.parse((screen.getByTestId('definition-spec') as HTMLTextAreaElement).value)
+  expect(page.filters.filter_1.targets).toEqual([{block:'book_chart',filter:'title'}])
+})

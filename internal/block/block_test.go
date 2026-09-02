@@ -51,3 +51,21 @@ func TestRequiredTypedInputFailsSafely(t *testing.T) {
 		t.Fatal("missing required input accepted")
 	}
 }
+
+func TestViewOwnedSearchIsAvailableOnEverySwitchableDisplay(t *testing.T) {
+	app := appir.Empty()
+	app.Entities["article"] = appir.Entity{Name: "article", Fields: []appir.Field{{Name: "title", Type: "string"}}}
+	app.Views["articles"] = appir.View{Name: "articles", Entity: "article", Search: appir.ViewSearch{Fields: []string{"title"}}, Displays: map[string]appir.Display{
+		"list":  {Type: "block", Renderer: appir.ViewRenderer{Type: "list"}},
+		"cards": {Type: "block", Renderer: appir.ViewRenderer{Type: "cards"}},
+	}}
+	node, allowed, err := block.Node(app, appir.Block{Name: "articles", Type: "view", View: "articles", Display: "list"}, nil, beanctx.Request{})
+	if err != nil || !allowed {
+		t.Fatalf("allowed=%v err=%v", allowed, err)
+	}
+	for name, display := range node.Props["displays"].(map[string]appir.Display) {
+		if !reflect.DeepEqual(display.Renderer.SearchFields, []string{"title"}) {
+			t.Fatalf("display %s search fields=%v", name, display.Renderer.SearchFields)
+		}
+	}
+}

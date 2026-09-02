@@ -1,5 +1,5 @@
 import {afterEach,describe,expect,it,vi} from 'vitest'
-import {callActionBatch,encodeInput} from './action-client'
+import {callActionBatch,encodeInput,runActionBatch} from './action-client'
 
 afterEach(()=>vi.unstubAllGlobals())
 
@@ -12,17 +12,12 @@ describe('Action client',()=>{
     expect((multipart as FormData).get('file')).toBeInstanceOf(File)
   })
 
-  it('runs batches sequentially and aggregates field failures',async()=>{
-    const active:number[]=[];let concurrent=0;let maximum=0
-    vi.stubGlobal('fetch',vi.fn(async(_input:string|URL|Request,init?:RequestInit)=>{
-      const id=JSON.parse(String(init?.body)).id as string
-      concurrent++;maximum=Math.max(maximum,concurrent);active.push(Number(id))
-      await Promise.resolve();concurrent--
-      if(id==='2')return new Response(JSON.stringify({error:{message:'invalid',fields:{status:'is invalid'}}}),{status:400,headers:{'Content-Type':'application/json'}})
-      return new Response(JSON.stringify({data:{id}}),{status:200,headers:{'Content-Type':'application/json'}})
-    }))
-    await expect(callActionBatch('move',['1','2','3'],{})).rejects.toMatchObject({fields:{status:'is invalid'}})
-    expect(active).toEqual([1,2,3])
-    expect(maximum).toBe(1)
-  })
+	it('uses the bounded batch contract and preserves ordered partial results',async()=>{
+		const fetchMock=vi.fn(async(input:string|URL|Request,init?:RequestInit)=>{void input;void init;return new Response(JSON.stringify({data:{results:[{id:'1',ok:true},{id:'2',ok:false,error:{code:'conflict',message:'invalid'}},{id:'3',ok:true}]}}),{status:200,headers:{'Content-Type':'application/json'}})})
+		vi.stubGlobal('fetch',fetchMock)
+		const result=await runActionBatch('move',['1','2','3'],{status:'done'})
+		expect(result.results.map(item=>item.id)).toEqual(['1','2','3'])
+		await expect(callActionBatch('move',['1','2','3'],{status:'done'})).rejects.toThrow('2: invalid')
+		expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ids:['1','2','3'],values:{status:'done'}})
+	})
 })

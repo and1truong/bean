@@ -17,6 +17,7 @@ const (
 	SerializationFailure ErrorCode = "serialization_failure"
 	Unavailable          ErrorCode = "unavailable"
 	InvalidQuery         ErrorCode = "invalid_query"
+	ResultLimitExceeded  ErrorCode = "result_limit_exceeded"
 	Internal             ErrorCode = "internal"
 )
 
@@ -66,18 +67,20 @@ func Or(ps ...Predicate) Predicate  { return Predicate{Op: "or", Children: ps} }
 func Not(p Predicate) Predicate     { return Predicate{Op: "not", Children: []Predicate{p}} }
 
 type Order struct {
-	Column string
-	Desc   bool
+	Column    string
+	Desc      bool
+	NullsLast bool
 }
 type Join struct{ Table, Alias, Left, Right, Type string }
 type Aggregate struct{ Function, Column, Alias string }
+type Group struct{ Column, Alias, Bucket string }
 
 type Select struct {
 	Table         string
 	Columns       []string
 	Joins         []Join
 	Where         *Predicate
-	GroupBy       []string
+	GroupBy       []Group
 	Aggregates    []Aggregate
 	OrderBy       []Order
 	Limit, Offset int
