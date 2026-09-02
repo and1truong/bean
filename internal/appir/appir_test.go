@@ -34,6 +34,32 @@ func TestRejectsUnsupportedFormat(t *testing.T) {
 	}
 }
 
+func TestCloneAndDecodePreserveProviderMockIntegerPrecision(t *testing.T) {
+	app := appir.Empty()
+	app.TestSuites["notify"] = appir.TestSuite{Name: "notify", Tests: []appir.TestCase{{Providers: map[string][]appir.TestProviderResult{
+		"provider": {{Output: map[string]any{"sequence": json.Number("9007199254740993")}}},
+	}}}}
+	clone, err := app.Clone()
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := appir.Decode(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, candidate := range map[string]*appir.App{"clone": clone, "decode": decoded} {
+		sequence := candidate.TestSuites["notify"].Tests[0].Providers["provider"][0].Output["sequence"]
+		number, ok := sequence.(json.Number)
+		if !ok || number.String() != "9007199254740993" {
+			t.Fatalf("%s sequence=%v (%T)", name, sequence, sequence)
+		}
+	}
+}
+
 func TestLifecycleRequiresV2Format(t *testing.T) {
 	app := appir.Empty()
 	app.Lifecycles["order_fulfillment"] = appir.Lifecycle{

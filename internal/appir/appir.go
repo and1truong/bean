@@ -1,6 +1,7 @@
 package appir
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 
@@ -368,7 +369,13 @@ func (a *App) Clone() (*App, error) {
 	if e != nil {
 		return nil, e
 	}
+	return Decode(b)
+}
+
+func Decode(encoded []byte) (*App, error) {
 	var out App
-	e = json.Unmarshal(b, &out)
-	return &out, e
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.UseNumber()
+	err := decoder.Decode(&out)
+	return &out, err
 }
