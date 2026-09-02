@@ -241,6 +241,26 @@ describe('public rendering',()=>{
     expect(screen.getByText('Second page')).toBeInTheDocument()
   })
 
+  it('does not retain the previous Page tree while another path loads',async()=>{
+    let navigate:NavigateFunction=()=>{}
+    let resolveNextPage:(value:Response)=>void=()=>{}
+    const nextPage=new Promise<Response>(resolve=>{resolveNextPage=resolve})
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page')&&path.includes('%2Fnext'))return nextPage
+      if(path.includes('/api/system/page'))return response({tree:{component:'TextBlock',props:{text:'Previous page'}}})
+      return response({})
+    }))
+    render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter initialEntries={['/previous']}><NavigationDriver capture={value=>{navigate=value}}/><App/></MemoryRouter></QueryClientProvider>)
+    expect(await screen.findByText('Previous page')).toBeInTheDocument()
+    act(()=>navigate('/next'))
+    expect(screen.queryByText('Previous page')).not.toBeInTheDocument()
+    expect(screen.getByText('Loading…')).toBeInTheDocument()
+    await act(async()=>resolveNextPage(await response({tree:{component:'TextBlock',props:{text:'Next page'}}})))
+    expect(await screen.findByText('Next page')).toBeInTheDocument()
+  })
+
   it('resets View pagination when a reused block moves to another bound page',async()=>{
     let navigate:NavigateFunction=()=>{}
     const viewRequests:string[]=[]

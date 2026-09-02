@@ -222,7 +222,7 @@ function humanize(value:string){return value.replaceAll('_',' ').replace(/^./,le
 type PageResult={tree:Node}
 function loadPage(path:string,search:string){const query=new URLSearchParams(search);query.set('path',path);return api<PageResult>('/api/system/page?'+query)}
 function Public(){
-  const loc=useLocation();const pageKey=loc.search?['page',loc.pathname,loc.search]:['page',loc.pathname];const result=useQuery({queryKey:pageKey,queryFn:()=>loadPage(loc.pathname,loc.search),placeholderData:previous=>previous})
+  const loc=useLocation();const pageKey=loc.search?['page',loc.pathname,loc.search]:['page',loc.pathname];const result=useQuery({queryKey:pageKey,queryFn:()=>loadPage(loc.pathname,loc.search),placeholderData:(previous,query)=>query?.queryKey[1]===loc.pathname?previous:undefined})
   if(result.isPending)return <Shell><Page><LoadingState/></Page></Shell>
   if(result.error)return <Shell><Page><PageHeader title="Bean" description="Metadata-driven applications, compiled."/></Page></Shell>
   return <Shell><Page className="space-y-6"><Renderer node={result.data.tree}/></Page></Shell>
