@@ -967,6 +967,8 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 					out = append(out, requiredDiagnostic("View", name, "spec.displays."+displayName+".route", "page display route is required"))
 				} else if !canonicalRoutePath(display.Route) {
 					out = append(out, diagnostic("View", name, "spec.displays."+displayName+".route", "page display route must be a canonical absolute URL path"))
+				} else if duplicate := duplicateRouteParameter(display.Route); duplicate != "" {
+					out = append(out, diagnostic("View", name, "spec.displays."+displayName+".route", "route parameter "+duplicate+" must be unique"))
 				} else if reservedViewDisplayRoute(display.Route) {
 					out = append(out, diagnostic("View", name, "spec.displays."+displayName+".route", "page display route overlaps a built-in application route"))
 				} else if old := conflictingRoute(routes, display.Route); old != "" {
@@ -1001,8 +1003,8 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 			} else if redacted[column.Field] {
 				out = append(out, diagnostic("View", viewName, path+".field", "must not be redacted by View policy"))
 			}
-			if column.LinkRoute != "" && (!strings.HasPrefix(column.LinkRoute, "/") || strings.HasPrefix(column.LinkRoute, "//")) {
-				out = append(out, diagnostic("View", viewName, path+".linkRoute", "must be an absolute application route"))
+			if column.LinkRoute != "" && !canonicalRoutePath(column.LinkRoute) {
+				out = append(out, diagnostic("View", viewName, path+".linkRoute", "must be a canonical absolute application route"))
 			}
 			for _, match := range regexp.MustCompile(`:([a-zA-Z0-9_.]+)`).FindAllStringSubmatch(column.LinkRoute, -1) {
 				fieldName := match[1]
@@ -2037,6 +2039,8 @@ func validatePages(a *appir.App, state *validationState) []definition.Diagnostic
 		page := a.Pages[name]
 		if !canonicalRoutePath(page.Route) {
 			out = append(out, diagnostic("Page", name, "spec.route", "must be a canonical absolute URL path"))
+		} else if duplicate := duplicateRouteParameter(page.Route); duplicate != "" {
+			out = append(out, diagnostic("Page", name, "spec.route", "route parameter "+duplicate+" must be unique"))
 		} else if reservedServerRoute(page.Route) {
 			out = append(out, diagnostic("Page", name, "spec.route", "overlaps a built-in server route"))
 		} else if old := conflictingRoute(routes, page.Route); old != "" {
@@ -2249,6 +2253,9 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 				}
 			}
 		}
+	}
+	if presentation.LinkRoute != "" && !canonicalRoutePath(presentation.LinkRoute) {
+		out = append(out, diagnostic("Block", name, "spec.presentation.linkRoute", "must be a canonical absolute application route"))
 	}
 	for _, match := range regexp.MustCompile(`:([a-zA-Z0-9_.]+)`).FindAllStringSubmatch(presentation.LinkRoute, -1) {
 		fieldName := match[1]
@@ -2757,12 +2764,13 @@ func stableViewField(name string, base appir.Entity, relationships map[string]ap
 }
 
 func reservedServerRoute(route string) bool {
-	switch route {
-	case "/healthz", "/readyz", "/openapi.json", "/docs":
-		return true
+	for _, exact := range []string{"/healthz", "/readyz", "/openapi.json", "/docs"} {
+		if routesOverlap(route, exact) {
+			return true
+		}
 	}
 	for _, prefix := range []string{"/api/system", "/api/auth", "/api/views", "/api/files", "/api/actions", "/api/webforms", "/api/admin"} {
-		if route == prefix || strings.HasPrefix(route, prefix+"/") {
+		if routeOverlapsPrefix(route, prefix) {
 			return true
 		}
 	}
@@ -2773,8 +2781,21 @@ func reservedViewDisplayRoute(route string) bool {
 	if reservedServerRoute(route) {
 		return true
 	}
-	withoutTrailingSlash := strings.TrimSuffix(route, "/")
-	return withoutTrailingSlash == "/login" || withoutTrailingSlash == "/studio" || route == "/admin" || strings.HasPrefix(route, "/admin/")
+	for _, exact := range []string{"/login", "/studio"} {
+		if routesOverlap(route, exact) {
+			return true
+		}
+	}
+	return routeOverlapsPrefix(route, "/admin")
+}
+
+func routeOverlapsPrefix(route, prefix string) bool {
+	routeParts := strings.Split(strings.Trim(route, "/"), "/")
+	prefixParts := strings.Split(strings.Trim(prefix, "/"), "/")
+	if len(routeParts) < len(prefixParts) {
+		return false
+	}
+	return routesOverlap(strings.Join(routeParts[:len(prefixParts)], "/"), prefix)
 }
 
 func canonicalRoutePath(route string) bool {
@@ -2808,6 +2829,21 @@ func routeParameterNames(route string) map[string]bool {
 		}
 	}
 	return out
+}
+
+func duplicateRouteParameter(route string) string {
+	seen := map[string]bool{}
+	for _, segment := range strings.Split(strings.Trim(route, "/"), "/") {
+		if !strings.HasPrefix(segment, ":") || len(segment) == 1 {
+			continue
+		}
+		name := strings.TrimPrefix(segment, ":")
+		if seen[name] {
+			return name
+		}
+		seen[name] = true
+	}
+	return ""
 }
 
 func nameSet(values []string) map[string]bool {

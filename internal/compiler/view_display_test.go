@@ -273,10 +273,12 @@ func TestPageRoutesMustBeCanonicalURLPaths(t *testing.T) {
 		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "unicode"}, Spec: map[string]any{"route": "/café", "panel": "missing"}},
 		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "backslash"}, Spec: map[string]any{"route": "/\\evil.example/x", "panel": "missing"}},
 		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "server"}, Spec: map[string]any{"route": "/healthz", "panel": "missing"}},
+		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "dynamic_server"}, Spec: map[string]any{"route": "/:section", "panel": "missing"}},
+		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "duplicate_parameter"}, Spec: map[string]any{"route": "/projects/:id/tasks/:id", "panel": "missing"}},
 		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "binding"}, Spec: map[string]any{"route": "/reports/:slug", "panel": "missing", "context": map[string]any{"id": map[string]any{"source": "route", "name": "id"}}}},
 	}
 	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
-	for _, name := range []string{"query", "encoded", "unclean", "unicode", "backslash", "server"} {
+	for _, name := range []string{"query", "encoded", "unclean", "unicode", "backslash", "server", "dynamic_server", "duplicate_parameter"} {
 		if !hasViewDisplayDiagnostic(diagnostics, "Page", name, "spec.route") {
 			t.Errorf("missing Page/%s/spec.route: %v", name, diagnostics)
 		}
@@ -302,6 +304,7 @@ func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 					"title": map[string]any{"field": "status", "fallback": "Item"},
 					"renderer": map[string]any{"type": "table", "fields": []any{
 						map[string]any{"field": "missing"}, map[string]any{"field": "status"}, map[string]any{"field": "title", "linkRoute": "javascript:alert(1)"},
+						map[string]any{"field": "title", "linkRoute": "/\\evil.example/:id"},
 					}},
 					"controls": []any{map[string]any{"filter": "title", "widget": "checkbox"}, map[string]any{"filter": "missing", "widget": "future"}},
 					"pager":    map[string]any{"type": "offset", "pageSize": 999},
@@ -319,6 +322,8 @@ func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 				"client_api":     map[string]any{"type": "json", "route": "/login"},
 				"builtin_page":   map[string]any{"type": "page", "route": "/docs", "renderer": map[string]any{"type": "list"}},
 				"client_page":    map[string]any{"type": "page", "route": "/admin/reports", "renderer": map[string]any{"type": "list"}},
+				"dynamic_page":   map[string]any{"type": "page", "route": "/:section", "renderer": map[string]any{"type": "list"}},
+				"duplicate_page": map[string]any{"type": "page", "route": "/projects/:id/tasks/:id", "renderer": map[string]any{"type": "list"}},
 				"query_page":     map[string]any{"type": "page", "route": "/reports?format=full", "renderer": map[string]any{"type": "list"}},
 				"fragment_page":  map[string]any{"type": "page", "route": "/reports#latest", "renderer": map[string]any{"type": "list"}},
 				"unsafe_rich": map[string]any{
@@ -338,6 +343,7 @@ func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 		"View/items/spec.displays.index.renderer.fields.0.field",
 		"View/items/spec.displays.index.renderer.fields.1.field",
 		"View/items/spec.displays.index.renderer.fields.2.linkRoute",
+		"View/items/spec.displays.index.renderer.fields.3.linkRoute",
 		"View/items/spec.displays.index.title.field",
 		"View/items/spec.displays.index.controls.0.filter",
 		"View/items/spec.displays.index.controls.0.widget",
@@ -358,6 +364,8 @@ func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 		"View/items/spec.displays.client_api.route",
 		"View/items/spec.displays.builtin_page.route",
 		"View/items/spec.displays.client_page.route",
+		"View/items/spec.displays.dynamic_page.route",
+		"View/items/spec.displays.duplicate_page.route",
 		"View/items/spec.displays.query_page.route",
 		"View/items/spec.displays.fragment_page.route",
 		"View/items/spec.displays.unsafe_rich.renderer.richTextFields.0",

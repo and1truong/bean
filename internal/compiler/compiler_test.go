@@ -126,6 +126,11 @@ func TestBoardAndTreePresentationsValidateTypedFieldsAndActions(t *testing.T) {
 	if diagnostics = compiler.Compile("test", 1, badLink).Diagnostics; !hasDiagnostic(diagnostics, "tree", "spec.presentation.linkRoute") {
 		t.Fatalf("unselected presentation link field accepted: %v", diagnostics)
 	}
+	unsafeLink := append([]definition.Definition{}, defs...)
+	unsafeLink[4].Spec = map[string]any{"type": "view", "view": "tasks", "presentation": map[string]any{"mode": "tree", "titleField": "title", "parentField": "parent_id", "linkRoute": "/\\evil.example/:id"}}
+	if diagnostics = compiler.Compile("test", 1, unsafeLink).Diagnostics; !hasDiagnostic(diagnostics, "tree", "spec.presentation.linkRoute") {
+		t.Fatalf("browser-unstable presentation link route accepted: %v", diagnostics)
+	}
 	aggregateSorted := append([]definition.Definition{}, defs...)
 	aggregateSorted[1].Spec = map[string]any{"entity": "task", "fields": []any{"id", "title", "status", "position", "parent_id"}, "groupBy": []any{"id", "title", "status", "position", "parent_id"}, "aggregates": []any{map[string]any{"function": "count", "field": "id", "alias": "task_count"}}, "sort": []any{map[string]any{"field": "task_count"}}}
 	if diagnostics = compiler.Compile("test", 1, aggregateSorted).Diagnostics; !hasDiagnostic(diagnostics, "board", "spec.presentation.mode") || !hasDiagnostic(diagnostics, "tree", "spec.presentation.mode") {
