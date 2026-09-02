@@ -3,6 +3,7 @@ package extension_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -83,6 +84,24 @@ func TestHTTPProviderRejectsRedirectInvalidAndOversizedResponses(t *testing.T) {
 		assertDeliveryFailure(t, err, extension.FailureResponse, false)
 		server.Close()
 	}
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
+
+type interruptedBody struct{}
+
+func (interruptedBody) Read([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }
+func (interruptedBody) Close() error             { return nil }
+
+func TestHTTPProviderRetriesInterruptedResponseBody(t *testing.T) {
+	transport := roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Body: interruptedBody{}, Header: http.Header{}}, nil
+	})
+	definition := providerDefinition("https://provider.example/notify", "none")
+	_, err := extension.NewHTTPProvider(transport, nil).Call(context.Background(), definition, testInvocation(definition.Name))
+	assertDeliveryFailure(t, err, extension.FailureUnavailable, true)
 }
 
 func TestHTTPProviderRejectsFractionalAndOutOfRangeIntegerOutput(t *testing.T) {

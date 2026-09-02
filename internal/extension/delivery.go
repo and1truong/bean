@@ -226,7 +226,10 @@ func (p *HTTPProvider) Call(ctx context.Context, definition appir.Extension, inv
 	}
 	limited := io.LimitReader(response.Body, MaxResponseBytes+1)
 	body, err := io.ReadAll(limited)
-	if err != nil || len(body) > MaxResponseBytes {
+	if err != nil {
+		return nil, &DeliveryFailure{Code: FailureUnavailable, CanRetry: true}
+	}
+	if len(body) > MaxResponseBytes {
 		return nil, &DeliveryFailure{Code: FailureResponse}
 	}
 	var envelope struct {
