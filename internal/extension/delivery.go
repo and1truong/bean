@@ -103,7 +103,9 @@ func Deliver(ctx context.Context, app *appir.App, provider Provider, topic strin
 		return &DeliveryFailure{Code: FailureContract}
 	}
 	var invocation Invocation
-	if err = json.Unmarshal(encoded, &invocation); err != nil || invocation.APIVersion != APIVersion || invocation.Extension != name || invocation.InvocationID == "" || invocation.IdempotencyKey != invocation.InvocationID {
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.UseNumber()
+	if err = decoder.Decode(&invocation); err != nil || invocation.APIVersion != APIVersion || invocation.Extension != name || invocation.InvocationID == "" || invocation.IdempotencyKey != invocation.InvocationID {
 		return &DeliveryFailure{Code: FailureContract}
 	}
 	if err = ValidateValues(definition.Input, invocation.Input); err != nil {

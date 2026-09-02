@@ -102,6 +102,35 @@ func TestHTTPProviderRejectsFractionalAndOutOfRangeIntegerOutput(t *testing.T) {
 	}
 }
 
+func TestDeliveryPreservesIntegerInputPrecision(t *testing.T) {
+	definition := providerDefinition("https://provider.example/notify", "none")
+	definition.Input = map[string]appir.Field{"sequence": {Name: "sequence", Type: "integer", Required: true}}
+	app := appir.Empty()
+	app.Extensions[definition.Name] = definition
+	invocation := testInvocation(definition.Name)
+	invocation.Input = map[string]any{"sequence": int64(9007199254740993)}
+	encoded, err := json.Marshal(invocation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := map[string]any{}
+	decoder := json.NewDecoder(strings.NewReader(string(encoded)))
+	decoder.UseNumber()
+	if err = decoder.Decode(&payload); err != nil {
+		t.Fatal(err)
+	}
+	provider := providerFunc(func(_ context.Context, _ appir.Extension, delivered extension.Invocation) (map[string]any, error) {
+		number, ok := delivered.Input["sequence"].(json.Number)
+		if !ok || number.String() != "9007199254740993" {
+			t.Fatalf("sequence=%v (%T)", delivered.Input["sequence"], delivered.Input["sequence"])
+		}
+		return map[string]any{"accepted": true}, nil
+	})
+	if err = extension.Deliver(context.Background(), app, provider, extension.TopicPrefix+definition.Name, payload); err != nil {
+		t.Fatal(err)
+	}
+}
+
 type providerFunc func(context.Context, appir.Extension, extension.Invocation) (map[string]any, error)
 
 func (f providerFunc) Call(ctx context.Context, definition appir.Extension, invocation extension.Invocation) (map[string]any, error) {

@@ -106,4 +106,17 @@ func TestExtensionRequiresV5Format(t *testing.T) {
 	if err := app.ValidateFormat(); err == nil {
 		t.Fatal("v4 AppIR accepted Extension semantics that a v0.12 runtime would discard")
 	}
+
+	app = appir.Empty()
+	app.FormatVersion = appir.TestSuiteFormat
+	app.Actions["notify"] = appir.Action{Name: "notify", Steps: []appir.Step{{Op: "extension", Extension: "notify"}}}
+	if err := app.ValidateFormat(); err == nil {
+		t.Fatal("v4 AppIR accepted an Extension-bound Action")
+	}
+
+	app.Actions = map[string]appir.Action{}
+	app.TestSuites["notify"] = appir.TestSuite{Name: "notify", Tests: []appir.TestCase{{Providers: map[string][]appir.TestProviderResult{"notify": {{Output: map[string]any{}}}}}}}
+	if err := app.ValidateFormat(); err == nil {
+		t.Fatal("v4 AppIR accepted an Extension-bound TestSuite")
+	}
 }

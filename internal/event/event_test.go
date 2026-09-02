@@ -2,6 +2,7 @@ package event_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -12,6 +13,37 @@ import (
 	"github.com/beanruntime/bean/internal/event"
 	"github.com/beanruntime/bean/internal/migration"
 )
+
+func TestOutboxDeliveryPreservesIntegerPrecision(t *testing.T) {
+	ctx := context.Background()
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "outbox-integer.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err = db.ExecuteMigration(ctx, migration.MetadataSchema()); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)
+	if err = db.Transaction(ctx, func(tx dbal.Transaction) error {
+		_, enqueueErr := event.Enqueue(ctx, tx, "integer", map[string]any{"sequence": int64(9007199254740993)}, event.Options{CreatedAt: now})
+		return enqueueErr
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var sequence any
+	runner := event.Runner{DB: db, Now: func() time.Time { return now }, Deliver: func(_ context.Context, _ string, payload map[string]any) error {
+		sequence = payload["sequence"]
+		return nil
+	}}
+	if err = runner.RunOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	number, ok := sequence.(json.Number)
+	if !ok || number.String() != "9007199254740993" {
+		t.Fatalf("sequence=%v (%T)", sequence, sequence)
+	}
+}
 
 func TestOutboxDeliveryRetriesAndBecomesTerminal(t *testing.T) {
 	ctx := context.Background()

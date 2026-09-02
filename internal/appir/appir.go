@@ -345,6 +345,22 @@ func (a *App) ValidateFormat() error {
 	if a.FormatVersion != CurrentFormat && len(a.Extensions) > 0 {
 		return fmt.Errorf("AppIR format %q cannot contain Extension definitions", a.FormatVersion)
 	}
+	if a.FormatVersion != CurrentFormat {
+		for _, action := range a.Actions {
+			for _, step := range action.Steps {
+				if step.Op == "extension" || step.Extension != "" {
+					return fmt.Errorf("AppIR format %q cannot contain Extension-bound Actions", a.FormatVersion)
+				}
+			}
+		}
+		for _, suite := range a.TestSuites {
+			for _, test := range suite.Tests {
+				if len(test.Providers) > 0 || len(test.Expect.ProviderCalls) > 0 {
+					return fmt.Errorf("AppIR format %q cannot contain Extension-bound TestSuites", a.FormatVersion)
+				}
+			}
+		}
+	}
 	return nil
 }
 func (a *App) Clone() (*App, error) {

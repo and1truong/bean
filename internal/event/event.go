@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/beanruntime/bean/internal/dbal"
@@ -98,7 +99,9 @@ func (r Runner) run(ctx context.Context, row dbal.Row, now time.Time) error {
 	}
 	fault.Point("outbox.after_claim")
 	payload := map[string]any{}
-	if err = json.Unmarshal([]byte(fmt.Sprint(row["payload"])), &payload); err == nil {
+	decoder := json.NewDecoder(strings.NewReader(fmt.Sprint(row["payload"])))
+	decoder.UseNumber()
+	if err = decoder.Decode(&payload); err == nil {
 		err = r.Deliver(ctx, fmt.Sprint(row["topic"]), payload)
 	}
 	fault.Point("outbox.after_delivery")
