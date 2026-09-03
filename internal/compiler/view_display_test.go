@@ -135,6 +135,52 @@ func TestBoardDisplayRejectsUnsupportedSelectionActions(t *testing.T) {
 	}
 }
 
+func TestTableDisplayRejectsActionsWithoutRecordID(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"fields": []any{
+			map[string]any{"name": "title", "type": "string"},
+		}}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "create_article"}, Spec: map[string]any{
+			"entity": "article", "operation": "create",
+		}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "articles"}, Spec: map[string]any{
+			"entity": "article", "fields": []any{"id", "title"},
+			"displays": map[string]any{"table": map[string]any{
+				"type": "block", "selection": "multiple", "actions": []any{"create_article"},
+				"renderer": map[string]any{"type": "table", "fields": []any{map[string]any{"field": "title"}}},
+			}},
+		}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasDiagnosticMessage(diagnostics, "View", "articles", "spec.displays.table.actions.0", "record Action must accept a UUID id input") {
+		t.Fatalf("record id diagnostics=%v", diagnostics)
+	}
+}
+
+func TestTableDisplayRejectsToManyRelationActionInputs(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "tag"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "name", "type": "string"}}}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"fields": []any{
+			map[string]any{"name": "title", "type": "string"},
+			map[string]any{"name": "tags", "type": "relation", "relation": map[string]any{"entity": "tag", "kind": "many-to-many", "targetField": "id"}},
+		}}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "update_article"}, Spec: map[string]any{
+			"entity": "article", "operation": "update",
+		}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "articles"}, Spec: map[string]any{
+			"entity": "article", "fields": []any{"id", "title"},
+			"displays": map[string]any{"table": map[string]any{
+				"type": "block", "selection": "multiple", "actions": []any{"update_article"},
+				"renderer": map[string]any{"type": "table", "fields": []any{map[string]any{"field": "title"}}},
+			}},
+		}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasDiagnosticMessage(diagnostics, "View", "articles", "spec.displays.table.actions.0", "record Action input tags is not supported for selection Actions") {
+		t.Fatalf("to-many input diagnostics=%v", diagnostics)
+	}
+}
+
 func TestViewDisplayRejectsOverlappingRoutes(t *testing.T) {
 	entity := definition.Definition{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}}}}
 	t.Run("between displays", func(t *testing.T) {
@@ -451,6 +497,15 @@ func TestFirstClassViewDisplayRejectsUnsafeContracts(t *testing.T) {
 func hasViewDisplayDiagnostic(diagnostics []definition.Diagnostic, kind, name, path string) bool {
 	for _, diagnostic := range diagnostics {
 		if diagnostic.Kind == kind && diagnostic.Name == name && diagnostic.Path == path {
+			return true
+		}
+	}
+	return false
+}
+
+func hasDiagnosticMessage(diagnostics []definition.Diagnostic, kind, name, path, message string) bool {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Kind == kind && diagnostic.Name == name && diagnostic.Path == path && diagnostic.Message == message {
 			return true
 		}
 	}

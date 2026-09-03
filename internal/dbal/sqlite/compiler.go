@@ -14,6 +14,24 @@ type Compiler struct {
 	DateBucket func(string, string, string) (string, error)
 }
 
+func PostgreSQLDateBucket(bucket, column, fieldType string) (string, error) {
+	switch bucket {
+	case "day", "week", "month":
+	default:
+		return "", fmt.Errorf("invalid date bucket %q", bucket)
+	}
+	source := ""
+	switch fieldType {
+	case "date":
+		source = "CAST(" + column + " AS date)"
+	case "datetime":
+		source = "CAST(" + column + " AS timestamptz) AT TIME ZONE 'UTC'"
+	default:
+		return "", fmt.Errorf("invalid date bucket type %q", fieldType)
+	}
+	return "CAST(CAST(date_trunc('" + bucket + "', " + source + ") AS date) AS text)", nil
+}
+
 func (Compiler) QuoteIdentifier(s string) (string, error) {
 	parts := strings.Split(s, ".")
 	for i, p := range parts {

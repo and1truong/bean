@@ -183,7 +183,7 @@ describe('public rendering',()=>{
         {component:'ViewBlock',props:{name:'booking_calendar',view:'resource_calendar',display:{Type:'block',Renderer:{Type:'calendar',TitleField:'resource.name',TimeField:'start_at',EndField:'end_at'},Pager:{Type:'none'}}}},
         {component:'ViewBlock',props:{name:'milestone_calendar',view:'milestone_calendar',display:{Type:'block',Renderer:{Type:'calendar',TitleField:'title',TimeField:'starts_at'},Pager:{Type:'none'}}}},
       ]}})
-      if(path.includes('/api/views/candidates_by_stage'))return response({data:[{stage:'interview',candidate_count:4},{stage:'offer',candidate_count:2}],nextCursor:'',shape:'groups'})
+      if(path.includes('/api/views/candidates_by_stage'))return response({data:[{stage:'interview',candidate_count:4},{stage:'offer',candidate_count:2},{stage:'archived',candidate_count:null}],nextCursor:'',shape:'groups'})
       if(path.includes('/api/views/resource_calendar'))return response({data:[{id:'b1','resource.name':'Room A',start_at:'2026-09-03T09:00:00Z',end_at:'2026-09-03T10:00:00Z'}],nextCursor:'',shape:'records'})
       if(path.includes('/api/views/milestone_calendar'))return response({data:[{id:'m1',title:'Launch',starts_at:'2026-09-04T09:00:00Z'}],nextCursor:'',shape:'records'})
       return response({})
@@ -192,7 +192,9 @@ describe('public rendering',()=>{
     renderApp('/')
     expect(await screen.findByTestId('bar-chart')).toHaveAccessibleName('Candidates by stage')
     expect(screen.getByLabelText('interview: 4')).toBeInTheDocument()
+    expect(screen.getByLabelText('archived: No value')).toHaveTextContent('—')
     expect(screen.getByRole('link',{name:'Open interview records'})).toHaveAttribute('href','/candidates?stage=interview')
+    expect(screen.queryByRole('link',{name:'Open archived records'})).not.toBeInTheDocument()
     expect((await screen.findAllByTestId('calendar-view'))[0]).toHaveTextContent('Room A')
     expect(await screen.findByText('Sep 4, 2026')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Display'),{target:{value:'table'}})
@@ -266,6 +268,7 @@ describe('public rendering',()=>{
     fireEvent.click(await screen.findByRole('checkbox',{name:'Select Ada'}))
     fireEvent.change(screen.getByLabelText('Stage'),{target:{value:'interview'}})
     fireEvent.change(screen.getByLabelText('Priority'),{target:{value:'3'}})
+    expect(screen.getByLabelText('Score')).toHaveAttribute('step','any')
     fireEvent.change(screen.getByLabelText('Score'),{target:{value:'1.25'}})
     const scheduledAt='2026-09-04T10:30:00'
     fireEvent.change(screen.getByLabelText('Scheduled at'),{target:{value:scheduledAt}})
@@ -276,6 +279,47 @@ describe('public rendering',()=>{
     await waitFor(()=>expect(fetchMock.mock.calls.some(([input])=>String(input).includes('/api/actions/move_candidate/batch'))).toBe(true))
     const call=fetchMock.mock.calls.find(([input])=>String(input).includes('/api/actions/move_candidate/batch'))!
     expect(JSON.parse(String(call[1]?.body))).toEqual({ids:['c1'],values:{stage:'interview',notify:false,priority:3,score:'1.25',scheduled_at:new Date(scheduledAt).toISOString()}})
+  })
+
+  it('waits for Action metadata before enabling selected record submission',async()=>{
+    let resolveManifest:(value:Response)=>void=()=>{}
+    const manifest=new Promise<Response>(resolve=>{resolveManifest=resolve})
+    const fetchMock=vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:true,user:{Roles:['administrator']}})
+      if(path.includes('/api/system/manifest'))return manifest
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'ViewBlock',props:{name:'records',view:'candidate_records',display:{Type:'block',Selection:'multiple',Actions:['delete_candidate'],Renderer:{Type:'table',Fields:[{Field:'name',Label:'Candidate'}]},Pager:{Type:'none'}}}}]}})
+      if(path.includes('/api/views/candidate_records'))return response({data:[{id:'c1',name:'Ada'}],nextCursor:''})
+      if(path.includes('/api/actions/delete_candidate/batch'))return response({data:{results:[{id:'c1',ok:true}]}})
+      return response({})
+    })
+    vi.stubGlobal('fetch',fetchMock)
+    renderApp('/')
+    fireEvent.click(await screen.findByRole('checkbox',{name:'Select Ada'}))
+    const loading=screen.getByRole('button',{name:'Loading Action…'})
+    expect(loading).toBeDisabled()
+    fireEvent.submit(loading.closest('form')!)
+    expect(fetchMock.mock.calls.some(([input])=>String(input).includes('/api/actions/delete_candidate/batch'))).toBe(false)
+    await act(async()=>resolveManifest(await response({actions:{delete_candidate:{Name:'delete_candidate',Entity:'candidate',Operation:'delete',Confirm:'Delete selected candidates?',Input:{id:{Name:'id',Type:'uuid'}}}},lifecycles:{}})))
+    expect(await screen.findByRole('button',{name:'Run for 1'})).toBeEnabled()
+  })
+
+  it('resets selected rows and Action state when switching table displays',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:true,user:{Roles:['administrator']}})
+      if(path.includes('/api/system/manifest'))return response({actions:{move_candidate:{Name:'move_candidate',Entity:'candidate',Operation:'transition',Input:{id:{Name:'id',Type:'uuid'}}},delete_candidate:{Name:'delete_candidate',Entity:'candidate',Operation:'delete',Input:{id:{Name:'id',Type:'uuid'}}}},lifecycles:{}})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'ViewBlock',props:{name:'records',view:'candidate_records',displayName:'move',display:{Type:'block',Selection:'multiple',Actions:['move_candidate'],Renderer:{Type:'table',Fields:[{Field:'name',Label:'Candidate'}]},Pager:{Type:'none'}},displays:{move:{Type:'block',Selection:'multiple',Actions:['move_candidate'],Renderer:{Type:'table',Fields:[{Field:'name',Label:'Candidate'}]},Pager:{Type:'none'}},remove:{Type:'block',Selection:'single',Actions:['delete_candidate'],Renderer:{Type:'table',Fields:[{Field:'name',Label:'Candidate'}]},Pager:{Type:'none'}}}}}]}})
+      if(path.includes('/api/views/candidate_records'))return response({data:[{id:'c1',name:'Ada'}],nextCursor:''})
+      return response({})
+    }))
+    renderApp('/')
+    fireEvent.click(await screen.findByRole('checkbox',{name:'Select Ada'}))
+    expect(screen.getByLabelText('Action')).toHaveValue('move_candidate')
+    fireEvent.change(screen.getByLabelText('Display'),{target:{value:'remove'}})
+    await waitFor(()=>expect(screen.queryByLabelText('Action')).not.toBeInTheDocument())
+    fireEvent.click(await screen.findByRole('checkbox',{name:'Select Ada'}))
+    expect(await screen.findByLabelText('Action')).toHaveValue('delete_candidate')
   })
 
   it('clears record selection when cursor paging changes the visible rows',async()=>{

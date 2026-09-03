@@ -1234,6 +1234,18 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 				out = append(out, missingReferenceDiagnostic("View", viewName, path, "Action", actionName))
 			} else if actionDefinition.Entity != view.Entity {
 				out = append(out, diagnostic("View", viewName, path, "must target the View Entity "+view.Entity))
+			} else {
+				id, hasID := actionDefinition.Input["id"]
+				if _, derived := actionDefinition.Derive["id"]; !hasID || id.Type != "uuid" || derived {
+					out = append(out, diagnostic("View", viewName, path, "record Action must accept a UUID id input"))
+				}
+				for _, fieldName := range keys(actionDefinition.Input) {
+					field := actionDefinition.Input[fieldName]
+					_, derived := actionDefinition.Derive[fieldName]
+					if !derived && field.Type == "relation" && field.Relation != nil && (field.Relation.Kind == "one-to-many" || field.Relation.Kind == "many-to-many") {
+						out = append(out, diagnostic("View", viewName, path, "record Action input "+fieldName+" is not supported for selection Actions"))
+					}
+				}
 			}
 			if seenActions[actionName] {
 				out = append(out, duplicateDiagnostic("View", viewName, path, "duplicates another Display Action"))
