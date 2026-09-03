@@ -75,6 +75,36 @@ func TestPageFiltersRequireMatchingTargetOperators(t *testing.T) {
 	}
 }
 
+func TestPageFiltersValidateDerivedWidgetCompatibility(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "candidate"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "stage", "type": "enum", "options": []any{"applied", "interview"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "candidates"}, Spec: map[string]any{"entity": "candidate", "fields": []any{"id", "stage"}, "exposedFilters": map[string]any{"stage": map[string]any{"field": "stage"}}, "displays": map[string]any{"list": map[string]any{"type": "block", "renderer": map[string]any{"type": "list", "titleField": "id"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "Block", Metadata: definition.Metadata{Name: "candidate_list"}, Spec: map[string]any{"type": "view", "view": "candidates", "display": "list"}},
+		{APIVersion: definition.APIVersion, Kind: "Panel", Metadata: definition.Metadata{Name: "overview"}, Spec: map[string]any{"layout": "single-column", "regions": []any{map[string]any{"name": "main", "blocks": []any{"candidate_list"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "overview"}, Spec: map[string]any{"route": "/", "panel": "overview", "filters": map[string]any{"stage": map[string]any{"widget": "number", "targets": []any{map[string]any{"block": "candidate_list", "filter": "stage"}}}}}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasDiagnosticMessage(diagnostics, "Page", "overview", "spec.filters.stage.widget", "is incompatible with field type enum") {
+		t.Fatalf("Page filter widget diagnostics=%v", diagnostics)
+	}
+	definitions[4].Spec["filters"].(map[string]any)["stage"].(map[string]any)["widget"] = "unknown"
+	diagnostics = compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasDiagnosticMessage(diagnostics, "Page", "overview", "spec.filters.stage.widget", "has no registered control widget") {
+		t.Fatalf("unknown Page filter widget diagnostics=%v", diagnostics)
+	}
+}
+
+func TestGroupedViewRejectsNonGroupedSelectedFields(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "candidate"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "name", "type": "string"}, map[string]any{"name": "stage", "type": "string"}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "candidates_by_stage"}, Spec: map[string]any{"entity": "candidate", "fields": []any{"stage", "name"}, "groupBy": []any{"stage"}, "aggregates": []any{map[string]any{"function": "count", "field": "id", "alias": "candidate_count"}}}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasDiagnosticMessage(diagnostics, "View", "candidates_by_stage", "spec.fields.1", "grouped Views may only select grouped fields") {
+		t.Fatalf("grouped projection diagnostics=%v", diagnostics)
+	}
+}
+
 func TestATSExploreCandidateCompilesAgainstActiveApplication(t *testing.T) {
 	bundle, err := examples.Load("ats")
 	if err != nil {

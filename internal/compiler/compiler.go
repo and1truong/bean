@@ -891,9 +891,10 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 		if len(v.GroupBy) == 0 && len(v.Aggregates) == 0 && !selected["id"] {
 			out = append(out, requiredDiagnostic("View", name, "spec.fields", "must include id for deterministic cursor pagination"))
 		}
-		groupOutputs := map[string]bool{}
+		groupFields, groupOutputs := map[string]bool{}, map[string]bool{}
 		for i, group := range v.GroupBy {
 			path := fmt.Sprintf("spec.groupBy.%d", i)
+			groupFields[group.Field] = true
 			if !validViewField(group.Field, fields, relationships, a) {
 				out = append(out, missingFieldDiagnostic("View", name, path+".field", group.Field, false))
 				continue
@@ -911,6 +912,13 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 			}
 			if viewRelationshipIsToMany(group.Field, e, relationships) {
 				out = append(out, diagnostic("View", name, path+".field", "cannot traverse a to-many relationship for grouping"))
+			}
+		}
+		if len(v.GroupBy) > 0 {
+			for index, fieldName := range v.Fields {
+				if !groupFields[fieldName] {
+					out = append(out, diagnostic("View", name, fmt.Sprintf("spec.fields.%d", index), "grouped Views may only select grouped fields"))
+				}
 			}
 		}
 		aliases := map[string]bool{}
@@ -1180,6 +1188,10 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 			out = append(out, missingReferenceDiagnostic("View", viewName, base+".drill.view", "View", drill.View))
 		} else {
 			targetDisplay, displayExists := targetView.Displays[drill.Display]
+			targetControls := map[string]bool{}
+			for _, control := range targetDisplay.Controls {
+				targetControls[control.Filter] = true
+			}
 			if !displayExists || targetDisplay.Type != "page" {
 				out = append(out, invalidReferenceDiagnostic("View", viewName, base+".drill.display", "must reference a page Display on target View "+drill.View))
 			} else if len(routeParameterNames(targetDisplay.Route)) > 0 {
@@ -1197,6 +1209,11 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 					out = append(out, duplicateDiagnostic("View", viewName, path+".filter", "duplicates another drill target filter"))
 				}
 				seenTargets[binding.Filter] = true
+				if displayExists && targetDisplay.Type == "page" {
+					if _, bound := targetDisplay.Bindings[binding.Filter]; bound || !targetControls[binding.Filter] {
+						out = append(out, diagnostic("View", viewName, path+".filter", "must reference an unbound target Display control"))
+					}
+				}
 				sourceType, sourceOperator := "", ""
 				switch binding.Source {
 				case "group":
@@ -1310,7 +1327,6 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 		}
 	}
 	seenControls := map[string]bool{}
-	widgets := map[string]bool{"auto": true, "text": true, "select": true, "checkbox": true, "number": true, "date": true}
 	for index, control := range display.Controls {
 		path := fmt.Sprintf("%s.controls.%d", base, index)
 		filter, exists := view.ExposedFilters[control.Filter]
@@ -1328,25 +1344,9 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 		if bound[control.Filter] {
 			out = append(out, diagnostic("View", viewName, path+".filter", "cannot expose an immutable bound input"))
 		}
-		if !widgets[control.Widget] {
-			out = append(out, diagnostic("View", viewName, path+".widget", "has no registered control widget"))
-		}
 		definition := filter.Definition(control.Filter)
-		compatible := map[string]bool{"auto": true}
-		switch definition.Type {
-		case "boolean":
-			compatible["checkbox"] = true
-		case "enum":
-			compatible["select"] = true
-		case "integer", "decimal", "money":
-			compatible["number"] = true
-		case "date", "datetime":
-			compatible["date"] = true
-		case "email", "richtext", "slug", "string", "text", "url", "uuid":
-			compatible["text"] = true
-		}
-		if widgets[control.Widget] && !compatible[control.Widget] {
-			out = append(out, diagnostic("View", viewName, path+".widget", "is incompatible with field type "+definition.Type))
+		if message := viewControlWidgetError(control.Widget, definition.Type); message != "" {
+			out = append(out, diagnostic("View", viewName, path+".widget", message))
 		}
 		if control.Default != nil {
 			if err := field.Validate(definition, control.Default); err != nil {
@@ -2420,6 +2420,12 @@ func validatePages(a *appir.App, state *validationState) []definition.Diagnostic
 			if expected.Type != "" {
 				pageFilter.Type = expected.Type
 				pageFilter.Options = append([]string{}, expected.Options...)
+				if pageFilter.Widget == "" {
+					pageFilter.Widget = "auto"
+				}
+				if message := viewControlWidgetError(pageFilter.Widget, expected.Type); message != "" {
+					out = append(out, diagnostic("Page", name, path+".widget", message))
+				}
 				if pageFilter.Label == "" {
 					pageFilter.Label = expected.Label
 				}
@@ -2436,6 +2442,29 @@ func validatePages(a *appir.App, state *validationState) []definition.Diagnostic
 		a.Pages[name] = page
 	}
 	return out
+}
+
+func viewControlWidgetError(widget, fieldType string) string {
+	if !nameSet(viewControlWidgets())[widget] {
+		return "has no registered control widget"
+	}
+	compatible := map[string]bool{"auto": true}
+	switch fieldType {
+	case "boolean":
+		compatible["checkbox"] = true
+	case "enum":
+		compatible["select"] = true
+	case "integer", "decimal", "money":
+		compatible["number"] = true
+	case "date", "datetime":
+		compatible["date"] = true
+	case "email", "relation", "richtext", "slug", "string", "text", "url", "uuid":
+		compatible["text"] = true
+	}
+	if !compatible[widget] {
+		return "is incompatible with field type " + fieldType
+	}
+	return ""
 }
 
 func validateSequences(a *appir.App, state *validationState) []definition.Diagnostic {

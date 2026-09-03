@@ -43,6 +43,7 @@ it('previews and saves an ordinary typed View definition',async()=>{
   const save=calls.find(call=>call.path.endsWith('/api/admin/definitions')&&call.init?.method==='POST')
   const saved=JSON.parse(String(save?.init?.body))
   expect(saved).toMatchObject({kind:'View',metadata:{name:'candidate_explore'},spec:{entity:'candidate',displays:{table:{type:'block',renderer:{type:'table'}}}}})
+  expect(new Headers(save?.init?.headers).get('If-Match')).toBe('"draft-1"')
   await waitFor(()=>expect(calls.filter(call=>call.path.endsWith('/api/admin/definitions')).length).toBeGreaterThan(1))
 })
 
@@ -105,4 +106,4 @@ it('authors a grouped chart as an ordinary View',async()=>{
   expect(saved.spec).toMatchObject({fields:['stage'],groupBy:[{field:'stage',as:'stage'}],aggregates:[{function:'count',field:'id',alias:'total'}],displays:{chart:{type:'page',route:'/candidate-stages',renderer:{type:'chart',groupField:'stage',metricField:'total'}}}})
 })
 
-function response(body:any,status=200){return Promise.resolve(new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json'}}))}
+function response(body:any,status=200){return Promise.resolve(new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json','ETag':'"draft-1"'}}))}

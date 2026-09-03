@@ -57,7 +57,9 @@ func TestActionBatchIsOrderedBoundedAndNonAtomic(t *testing.T) {
 	var session map[string]any
 	decodeResponse(t, login, &session)
 	cookie, csrf := login.Result().Cookies()[0], session["csrfToken"].(string)
-	response := serve(t, handler, http.MethodPost, "/api/actions/advance_order/batch", map[string]any{"ids": []string{pending, fulfilled}, "values": map[string]any{"status": "paid"}}, cookie, csrf)
+	batch := map[string]any{"ids": []string{pending, fulfilled}, "values": map[string]any{"status": "paid"}}
+	headers := map[string]string{"Idempotency-Key": "advance-selected-orders"}
+	response := serveWithHeaders(t, handler, http.MethodPost, "/api/actions/advance_order/batch", batch, cookie, csrf, headers)
 	if response.Code != http.StatusOK {
 		t.Fatalf("batch status=%d body=%s", response.Code, response.Body.String())
 	}
@@ -73,6 +75,19 @@ func TestActionBatchIsOrderedBoundedAndNonAtomic(t *testing.T) {
 	decodeResponse(t, response, &result)
 	if len(result.Data.Results) != 2 || result.Data.Results[0].ID != pending || !result.Data.Results[0].OK || result.Data.Results[1].ID != fulfilled || result.Data.Results[1].OK {
 		t.Fatalf("batch result=%+v", result.Data.Results)
+	}
+	replay := serveWithHeaders(t, handler, http.MethodPost, "/api/actions/advance_order/batch", batch, cookie, csrf, headers)
+	var replayResult struct {
+		Data struct {
+			Results []struct {
+				ID string `json:"id"`
+				OK bool   `json:"ok"`
+			} `json:"results"`
+		} `json:"data"`
+	}
+	decodeResponse(t, replay, &replayResult)
+	if replay.Code != http.StatusOK || len(replayResult.Data.Results) != 2 || replayResult.Data.Results[0].ID != pending || !replayResult.Data.Results[0].OK {
+		t.Fatalf("batch replay status=%d result=%+v", replay.Code, replayResult.Data.Results)
 	}
 	updated, err := runtime.DB.Select(ctx, dbal.Select{Table: "order", Columns: []string{"id", "status"}, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: pending}, Limit: 1})
 	if err != nil || len(updated) != 1 || updated[0]["status"] != "paid" {

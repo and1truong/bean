@@ -3,7 +3,9 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -515,6 +517,7 @@ func (s *Server) actionBatch(w http.ResponseWriter, r *http.Request) {
 	}
 	seen := map[string]bool{}
 	results := make([]map[string]any, 0, len(input.IDs))
+	batchKey := r.Header.Get("Idempotency-Key")
 	for _, id := range input.IDs {
 		if id == "" || seen[id] {
 			problem(w, 400, "invalid_batch", "Action batch record IDs must be nonempty and unique.", requestID(r))
@@ -526,6 +529,9 @@ func (s *Server) actionBatch(w http.ResponseWriter, r *http.Request) {
 			if key != "id" {
 				values[key] = value
 			}
+		}
+		if batchKey != "" {
+			values["_idempotencyKey"] = batchIdempotencyKey(batchKey, id)
 		}
 		result, err := s.Actions.Execute(r.Context(), a, name, values, c)
 		if err == nil {
@@ -539,6 +545,11 @@ func (s *Server) actionBatch(w http.ResponseWriter, r *http.Request) {
 		results = append(results, map[string]any{"id": id, "ok": false, "error": map[string]string{"code": code, "message": message}})
 	}
 	write(w, 200, map[string]any{"data": map[string]any{"results": results}})
+}
+
+func batchIdempotencyKey(batchKey, recordID string) string {
+	sum := sha256.Sum256([]byte(batchKey + "\x00" + recordID))
+	return "batch:" + hex.EncodeToString(sum[:])
 }
 func (s *Server) form(w http.ResponseWriter, r *http.Request) {
 	a, ok := s.Kernel.Active()
@@ -607,11 +618,17 @@ func (s *Server) definitions(w http.ResponseWriter, r *http.Request) {
 	if !s.admin(w, r) {
 		return
 	}
+	token, e := s.Store.DraftToken(r.Context(), "default")
+	if e != nil {
+		respondError(w, r, e)
+		return
+	}
 	defs, e := s.Store.Draft(r.Context(), "default")
 	if e != nil {
 		respondError(w, r, e)
 		return
 	}
+	w.Header().Set("ETag", `"`+token+`"`)
 	write(w, 200, defs)
 }
 func (s *Server) saveDefinition(w http.ResponseWriter, r *http.Request) {
@@ -622,7 +639,17 @@ func (s *Server) saveDefinition(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &d) {
 		return
 	}
-	if e := s.Store.SaveDefinition(r.Context(), "default", d); e != nil {
+	var e error
+	if expected := r.Header.Get("If-Match"); expected != "" {
+		if len(expected) < 2 || expected[0] != '"' || expected[len(expected)-1] != '"' {
+			problem(w, 400, "invalid_precondition", "If-Match must contain the quoted draft token.", requestID(r))
+			return
+		}
+		e = s.Store.SaveDefinitionIfDraftToken(r.Context(), "default", d, expected[1:len(expected)-1])
+	} else {
+		e = s.Store.SaveDefinition(r.Context(), "default", d)
+	}
+	if e != nil {
 		respondError(w, r, e)
 		return
 	}

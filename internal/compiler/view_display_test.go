@@ -174,6 +174,16 @@ func TestViewDisplayRejectsParameterizedDrillTarget(t *testing.T) {
 	}
 }
 
+func TestViewDisplayRequiresDrillTargetControl(t *testing.T) {
+	definitions := drillDefinitions("eq", "eq", "/events")
+	targetDisplay := definitions[1].Spec["displays"].(map[string]any)["page"].(map[string]any)
+	delete(targetDisplay, "controls")
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasDiagnosticMessage(diagnostics, "View", "events_by_status", "spec.displays.chart.drill.bindings.0.filter", "must reference an unbound target Display control") {
+		t.Fatalf("unconsumed drill diagnostics=%v", diagnostics)
+	}
+}
+
 func TestViewDisplayRejectsDrillOperatorMismatch(t *testing.T) {
 	t.Run("group requires equality", func(t *testing.T) {
 		diagnostics := compiler.Compile("test", 1, drillDefinitions("eq", "contains", "/events")).Diagnostics
@@ -199,7 +209,7 @@ func drillDefinitions(sourceOperator, targetOperator, targetRoute string) []defi
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "event"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "status", "type": "string"}}}},
 		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "event_records"}, Spec: map[string]any{
 			"entity": "event", "fields": []any{"id", "status"}, "exposedFilters": map[string]any{"status": map[string]any{"field": "status", "operator": targetOperator}},
-			"displays": map[string]any{"page": map[string]any{"type": "page", "route": targetRoute, "renderer": map[string]any{"type": "table", "fields": []any{map[string]any{"field": "status"}}}}},
+			"displays": map[string]any{"page": map[string]any{"type": "page", "route": targetRoute, "renderer": map[string]any{"type": "table", "fields": []any{map[string]any{"field": "status"}}}, "controls": []any{map[string]any{"filter": "status", "widget": "text"}}}},
 		}},
 		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "events_by_status"}, Spec: map[string]any{
 			"entity": "event", "fields": []any{"status"}, "groupBy": []any{"status"}, "aggregates": []any{map[string]any{"function": "count", "field": "id", "alias": "event_count"}},

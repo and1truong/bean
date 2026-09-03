@@ -79,9 +79,18 @@ func TestExplorePreviewCompilesExecutesAndSavesOrdinaryView(t *testing.T) {
 	if len(before) != 2 {
 		t.Fatalf("preview persisted a definition: %+v", before)
 	}
-	saved := serve(t, handler, http.MethodPost, "/api/admin/definitions", definition.Definition{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Namespace: "default", Name: "candidate_records"}, Spec: spec}, cookie, csrf)
+	draftToken := definitions.Header().Get("ETag")
+	if draftToken == "" {
+		t.Fatal("definitions response omitted draft ETag")
+	}
+	candidateDefinition := definition.Definition{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Namespace: "default", Name: "candidate_records"}, Spec: spec}
+	saved := serveWithHeaders(t, handler, http.MethodPost, "/api/admin/definitions", candidateDefinition, cookie, csrf, map[string]string{"If-Match": draftToken})
 	if saved.Code != http.StatusOK {
 		t.Fatalf("save status=%d body=%s", saved.Code, saved.Body.String())
+	}
+	stale := serveWithHeaders(t, handler, http.MethodPost, "/api/admin/definitions", candidateDefinition, cookie, csrf, map[string]string{"If-Match": draftToken})
+	if stale.Code != http.StatusConflict {
+		t.Fatalf("stale save status=%d body=%s", stale.Code, stale.Body.String())
 	}
 	definitions = serve(t, handler, http.MethodGet, "/api/admin/definitions", nil, cookie, "")
 	var after []definition.Definition

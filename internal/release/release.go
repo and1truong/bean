@@ -2,6 +2,8 @@ package release
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -60,6 +62,17 @@ func (s *Store) EnsureApp(ctx context.Context, id, name string) error {
 	return e
 }
 func (s *Store) SaveDefinition(ctx context.Context, appID string, d definition.Definition) error {
+	return s.saveDefinition(ctx, appID, d, "")
+}
+
+func (s *Store) SaveDefinitionIfDraftToken(ctx context.Context, appID string, d definition.Definition, expectedToken string) error {
+	if expectedToken == "" {
+		return &dbal.Error{Code: dbal.InvalidQuery, Message: "draft token is required"}
+	}
+	return s.saveDefinition(ctx, appID, d, expectedToken)
+}
+
+func (s *Store) saveDefinition(ctx context.Context, appID string, d definition.Definition, expectedToken string) error {
 	if ds := definition.ValidateEnvelope(d); len(ds) > 0 {
 		return ds[0]
 	}
@@ -68,31 +81,63 @@ func (s *Store) SaveDefinition(ctx context.Context, appID string, d definition.D
 		ns = "default"
 	}
 	where := dbal.And(dbal.Predicate{Op: dbal.OpEQ, Column: "app_id", Value: appID}, dbal.Predicate{Op: dbal.OpEQ, Column: "kind", Value: d.Kind}, dbal.Predicate{Op: dbal.OpEQ, Column: "namespace", Value: ns}, dbal.Predicate{Op: dbal.OpEQ, Column: "name", Value: d.Metadata.Name})
-	rows, e := s.DB.Select(ctx, dbal.Select{Table: "bean_definition", Where: &where, Limit: 1})
-	if e != nil {
-		return e
-	}
-	id := uid.New()
-	rev := 1
-	if len(rows) > 0 {
-		id = fmt.Sprint(rows[0]["id"])
-		rev = int(asInt(rows[0]["current_revision"])) + 1
-	}
 	body, _ := json.Marshal(d)
 	sum, _ := definition.Checksum(d)
 	return s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
+		rows, err := tx.Select(ctx, dbal.Select{Table: "bean_definition", Where: &where, Limit: 1})
+		if err != nil {
+			return err
+		}
+		if expectedToken != "" {
+			currentToken, err := draftToken(ctx, tx, appID)
+			if err != nil {
+				return err
+			}
+			if currentToken != expectedToken {
+				return &dbal.Error{Code: dbal.Conflict, Message: "draft changed since it was loaded"}
+			}
+		}
+		id, rev := uid.New(), 1
+		currentRevision := 0
+		if len(rows) > 0 {
+			id = fmt.Sprint(rows[0]["id"])
+			currentRevision = int(asInt(rows[0]["current_revision"]))
+			rev = currentRevision + 1
+		}
 		if len(rows) == 0 {
 			if _, e := tx.Insert(ctx, dbal.Insert{Table: "bean_definition", Values: map[string]dbal.Value{"id": id, "app_id": appID, "kind": d.Kind, "namespace": ns, "name": d.Metadata.Name, "current_revision": rev}}); e != nil {
 				return e
 			}
 		} else {
-			if _, e := tx.Update(ctx, dbal.Update{Table: "bean_definition", Values: map[string]dbal.Value{"current_revision": rev}, Where: dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id}, ExpectedRows: 1}); e != nil {
+			updateWhere := dbal.And(dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id}, dbal.Predicate{Op: dbal.OpEQ, Column: "current_revision", Value: currentRevision})
+			if _, e := tx.Update(ctx, dbal.Update{Table: "bean_definition", Values: map[string]dbal.Value{"current_revision": rev}, Where: updateWhere, ExpectedRows: 1}); e != nil {
 				return e
 			}
 		}
 		_, e := tx.Insert(ctx, dbal.Insert{Table: "bean_definition_revision", Values: map[string]dbal.Value{"definition_id": id, "revision": rev, "checksum": sum, "body": string(body), "created_at": time.Now().UTC().Format(time.RFC3339Nano)}})
 		return e
 	})
+}
+
+func (s *Store) DraftToken(ctx context.Context, appID string) (string, error) {
+	return draftToken(ctx, s.DB, appID)
+}
+
+type draftSelector interface {
+	Select(context.Context, dbal.Select) ([]dbal.Row, error)
+}
+
+func draftToken(ctx context.Context, selector draftSelector, appID string) (string, error) {
+	rows, err := selector.Select(ctx, dbal.Select{Table: "bean_definition", Columns: []string{"kind", "namespace", "name", "current_revision"}, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "app_id", Value: appID}, OrderBy: []dbal.Order{{Column: "kind"}, {Column: "namespace"}, {Column: "name"}}})
+	if err != nil {
+		return "", err
+	}
+	parts := make([]string, 0, len(rows))
+	for _, row := range rows {
+		parts = append(parts, fmt.Sprint(row["kind"], "\x00", row["namespace"], "\x00", row["name"], "\x00", row["current_revision"]))
+	}
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	return hex.EncodeToString(sum[:]), nil
 }
 func (s *Store) SaveBundle(ctx context.Context, appID string, b definition.Bundle) error {
 	if e := s.EnsureApp(ctx, appID, b.Name); e != nil {
