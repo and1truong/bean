@@ -13,6 +13,8 @@ import (
 	"github.com/beanruntime/bean/internal/valuesource"
 )
 
+const MaxSections = 32
+
 func ResolveContext(p appir.Page, route, query map[string]string, c beanctx.Request) (map[string]any, error) {
 	out := map[string]any{}
 	for key, binding := range p.Context {
@@ -83,15 +85,18 @@ func routeBefore(left, right appir.Page) bool {
 func routeParts(route string) []string { return strings.Split(strings.Trim(route, "/"), "/") }
 
 func Protected(a *appir.App, p appir.Page) bool {
-	return p.Policy != "" || a.Panels[p.Panel].Policy != ""
+	if p.Policy != "" {
+		return true
+	}
+	for _, panelName := range p.PanelNames() {
+		if a.Panels[panelName].Policy != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func Node(a *appir.App, p appir.Page, ctx map[string]any, c beanctx.Request) (render.Node, bool, error) {
-	panelDefinition := a.Panels[p.Panel]
-	child, allowed, e := panel.Node(a, panelDefinition, ctx, c)
-	if e != nil || !allowed {
-		return render.Node{}, allowed, e
-	}
 	pageTargets := map[string]map[string]string{}
 	for pageFilterName, definition := range p.Filters {
 		for _, target := range definition.Targets {
@@ -101,8 +106,25 @@ func Node(a *appir.App, p appir.Page, ctx map[string]any, c beanctx.Request) (re
 			pageTargets[target.Block][target.Filter] = pageFilterName
 		}
 	}
-	applyPageFilterTargets(&child, pageTargets)
-	return render.Node{Component: "Page", Props: map[string]any{"title": p.Title, "description": p.Description, "protected": Protected(a, p), "filters": p.Filters}, Children: []render.Node{child}}, true, nil
+	children := []render.Node{}
+	for _, section := range p.OrderedSections() {
+		child, allowed, err := panel.Node(a, a.Panels[section.Panel], ctx, c)
+		if err != nil {
+			return render.Node{}, false, err
+		}
+		if !allowed {
+			continue
+		}
+		applyPageFilterTargets(&child, pageTargets)
+		if section.Identity != "" {
+			child.Props["pageSection"] = section.Identity
+		}
+		children = append(children, child)
+	}
+	if len(children) == 0 {
+		return render.Node{}, false, nil
+	}
+	return render.Node{Component: "Page", Props: map[string]any{"title": p.Title, "description": p.Description, "protected": Protected(a, p), "filters": p.Filters}, Children: children}, true, nil
 }
 
 func applyPageFilterTargets(node *render.Node, targets map[string]map[string]string) {

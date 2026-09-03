@@ -422,6 +422,13 @@ func TestLocalRegistrationRouteMustRenderItsSelectedAction(t *testing.T) {
 	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) != 0 {
 		t.Fatalf("valid registration route diagnostics=%v", result.Diagnostics)
 	}
+	delete(defs[5].Spec, "panel")
+	defs[5].Spec["sections"] = []any{map[string]any{"panel": "signup_panel"}, map[string]any{"panel": "signup_panel"}}
+	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) != 0 {
+		t.Fatalf("registration Webform in Page sections diagnostics=%v", result.Diagnostics)
+	}
+	delete(defs[5].Spec, "sections")
+	defs[5].Spec["panel"] = "signup_panel"
 	displayName := defs[2].Spec["elements"].([]any)[0].(map[string]any)
 	displayName["visible"] = map[string]any{"op": "eq", "left": map[string]any{"source": "literal", "literal": true}, "right": map[string]any{"source": "literal", "literal": false}}
 	if result := compiler.Compile("test", 1, defs); len(result.Diagnostics) == 0 {

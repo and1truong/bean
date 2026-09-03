@@ -47,6 +47,21 @@ func TestJourneyChecksExerciseStaticPagesAndViewRoutes(t *testing.T) {
 	if len(diagnostics) != 0 || len(checks) != 2 || checks[0].ID != "generated/journey/Page/home" || checks[1].ID != "generated/journey/View/notes/api" {
 		t.Fatalf("checks=%+v diagnostics=%v", checks, diagnostics)
 	}
+	app.Panels["footer"] = appir.Panel{Name: "footer", Regions: []appir.Region{{Name: "main"}}}
+	app.Pages["home"] = appir.Page{Name: "home", Route: "/", Sections: []appir.PageSection{{Panel: "home"}, {Panel: "footer"}}}
+	checks, diagnostics = generatedtest.JourneyChecks(context.Background(), app, handler)
+	if len(diagnostics) != 0 || len(checks) != 2 || checks[0].ID != "generated/journey/Page/home" {
+		t.Fatalf("multi-section Page was not exercised: checks=%+v diagnostics=%v", checks, diagnostics)
+	}
+	app.Policies["members"] = appir.Policy{Name: "members", Authenticated: true}
+	footer := app.Panels["footer"]
+	footer.Policy = "members"
+	app.Panels["footer"] = footer
+	checks, diagnostics = generatedtest.JourneyChecks(context.Background(), app, handler)
+	if len(diagnostics) != 0 || len(checks) != 1 || checks[0].ID != "generated/journey/View/notes/api" {
+		t.Fatalf("mixed-policy Page was not conservatively omitted: checks=%+v diagnostics=%v", checks, diagnostics)
+	}
+	app.Pages["home"] = appir.Page{Name: "home", Route: "/", Panel: "home"}
 	failing := http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		response.WriteHeader(http.StatusInternalServerError)
 	})

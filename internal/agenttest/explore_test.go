@@ -110,8 +110,12 @@ func exploreSemantic(app *appir.App, kind, name, semantic string) bool {
 	case "page_filters":
 		return kind == "Page" && len(app.Pages[name].Filters) >= 3
 	case "dashboard_composition":
-		page := app.Pages[name]
-		return page.Panel != "" && len(app.Panels[page.Panel].Regions) > 0
+		for _, panelName := range app.Pages[name].PanelNames() {
+			if len(app.Panels[panelName].Regions) > 0 {
+				return true
+			}
+		}
+		return false
 	}
 	return false
 }

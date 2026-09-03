@@ -1109,7 +1109,14 @@ func (s *Server) boundBlockInputs(r *http.Request, a *appir.App, kind, target st
 	if p.Policy != "" && !policy.Can(a.Policies[p.Policy], false, requestContext, nil) {
 		return nil, requestContext, fmt.Errorf("bound page is unavailable")
 	}
-	if !panelContainsBlock(a.Panels[p.Panel], blockName) {
+	containingPanels := []appir.Panel{}
+	for _, panelName := range p.PanelNames() {
+		panelDefinition := a.Panels[panelName]
+		if panelContainsBlock(panelDefinition, blockName) {
+			containingPanels = append(containingPanels, panelDefinition)
+		}
+	}
+	if len(containingPanels) == 0 {
 		return nil, requestContext, fmt.Errorf("bound block does not match this request")
 	}
 	query := map[string]string{}
@@ -1124,16 +1131,17 @@ func (s *Server) boundBlockInputs(r *http.Request, a *appir.App, kind, target st
 	}
 	requestContext.RouteParams = routeParams
 	requestContext.Values = contextValues
-	panelDefinition := a.Panels[p.Panel]
-	if panelDefinition.Policy != "" && !policy.Can(a.Policies[panelDefinition.Policy], false, requestContext, nil) {
-		return nil, requestContext, fmt.Errorf("bound page is unavailable")
+	for _, panelDefinition := range containingPanels {
+		if panelDefinition.Policy != "" && !policy.Can(a.Policies[panelDefinition.Policy], false, requestContext, nil) {
+			continue
+		}
+		node, allowed, err := block.Node(a, definition, contextValues, requestContext)
+		if err == nil && allowed {
+			inputs, _ := node.Props["inputs"].(map[string]any)
+			return inputs, requestContext, nil
+		}
 	}
-	node, allowed, err := block.Node(a, definition, contextValues, requestContext)
-	if err != nil || !allowed {
-		return nil, requestContext, fmt.Errorf("bound block is unavailable")
-	}
-	inputs, _ := node.Props["inputs"].(map[string]any)
-	return inputs, requestContext, nil
+	return nil, requestContext, fmt.Errorf("bound block is unavailable")
 }
 
 func panelContainsBlock(panelDefinition appir.Panel, name string) bool {

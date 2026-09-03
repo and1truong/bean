@@ -56,7 +56,13 @@ func StructuralChecks(bundle definition.Bundle, app *appir.App) []Check {
 	}
 	for _, name := range sortedKeys(app.Pages) {
 		item := app.Pages[name]
-		checks = append(checks, passedCheck("generated/route/Page/"+name, "Page", name, map[string]any{"route": item.Route, "panel": item.Panel}))
+		evidence := map[string]any{"route": item.Route}
+		if item.Sections == nil {
+			evidence["panel"] = item.Panel
+		} else {
+			evidence["panels"] = item.PanelNames()
+		}
+		checks = append(checks, passedCheck("generated/route/Page/"+name, "Page", name, evidence))
 	}
 	for _, name := range sortedKeys(app.Views) {
 		for _, displayName := range sortedKeys(app.Views[name].Displays) {
@@ -134,18 +140,24 @@ func staticAnonymousPage(app *appir.App, item appir.Page) bool {
 		return false
 	}
 	request := beanctx.Request{Values: contextValues}
-	panel, exists := app.Panels[item.Panel]
-	if !exists || !anonymousPolicyForRequest(app, panel.Policy, request) {
+	panels := item.PanelNames()
+	if len(panels) == 0 {
 		return false
 	}
-	for _, region := range panel.Regions {
-		for _, item := range region.OrderedItems() {
-			block, exists := item.ResolveBlock(app)
-			if !exists || !anonymousPolicyForRequest(app, block.Policy, request) {
-				return false
-			}
-			if len(block.Inputs) > 0 {
-				return false
+	for _, panelName := range panels {
+		panel, exists := app.Panels[panelName]
+		if !exists || !anonymousPolicyForRequest(app, panel.Policy, request) {
+			return false
+		}
+		for _, region := range panel.Regions {
+			for _, item := range region.OrderedItems() {
+				block, exists := item.ResolveBlock(app)
+				if !exists || !anonymousPolicyForRequest(app, block.Policy, request) {
+					return false
+				}
+				if len(block.Inputs) > 0 {
+					return false
+				}
 			}
 		}
 	}

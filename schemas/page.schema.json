@@ -54,11 +54,49 @@
         }
       },
       "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_PageSection": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        },
+        "panel": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "panel"
+      ],
+      "type": "object"
     }
   },
   "$id": "https://bean.build/schemas/page.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "oneOf": [
+    {
+      "not": {
+        "required": [
+          "sections"
+        ]
+      },
+      "required": [
+        "panel"
+      ]
+    },
+    {
+      "not": {
+        "required": [
+          "panel"
+        ]
+      },
+      "required": [
+        "sections"
+      ]
+    }
+  ],
   "properties": {
     "apiVersion": {
       "const": "bean/v1alpha1"
@@ -96,6 +134,14 @@
     },
     "route": {
       "type": "string"
+    },
+    "sections": {
+      "items": {
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_PageSection"
+      },
+      "maxItems": 32,
+      "minItems": 1,
+      "type": "array"
     },
     "title": {
       "type": "string"

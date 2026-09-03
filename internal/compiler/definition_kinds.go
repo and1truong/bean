@@ -169,10 +169,22 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 	panel := panelDefinitionKind()
 	panel.References = panelReferences
 	panel.ReferenceCandidates = true
-	pageKind := mappedDefinitionKind(appir.Page{}, func(app *appir.App) map[string]appir.Page { return app.Pages }, nameValue[appir.Page](func(value *appir.Page, name string) { value.Name = name }))
+	pageKind := mappedDefinitionKind(appir.Page{}, func(app *appir.App) map[string]appir.Page { return app.Pages }, nameValue[appir.Page](func(value *appir.Page, name string) {
+		value.Name = name
+		for index := range value.Sections {
+			identity := fmt.Sprintf("%d", index)
+			if value.Sections[index].ID != "" {
+				identity = value.Sections[index].ID
+			}
+			value.Sections[index].Identity = "@section/" + name + "/" + identity
+		}
+	}))
 	pageKind.References = func(app *appir.App, name string) []DefinitionReference {
 		item := app.Pages[name]
 		out := []DefinitionReference{reference("panel", "Panel", item.Panel), reference("policy", "Policy", item.Policy)}
+		for index, section := range item.Sections {
+			out = append(out, reference(fmt.Sprintf("sections.%d.panel", index), "Panel", section.Panel))
+		}
 		for filterName, filter := range item.Filters {
 			for index, target := range filter.Targets {
 				out = append(out, reference(fmt.Sprintf("filters.%s.targets.%d.block", filterName, index), "Block", target.Block))

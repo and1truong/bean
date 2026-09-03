@@ -124,6 +124,43 @@ func TestViewSchemaAcceptsLegacyAndTypedGroups(t *testing.T) {
 	}
 }
 
+func TestPageSchemaAcceptsExactlyOneBoundedCompositionForm(t *testing.T) {
+	document := compiler.DefinitionSchemas()["Page"]
+	validator := jsonschema.NewCompiler()
+	location := document["$id"].(string)
+	if err := validator.AddResource(location, schemaJSONValue(t, document)); err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := validator.Compile(location)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, valid := range []map[string]any{
+		{"kind": "Page", "name": "legacy", "route": "/legacy", "panel": "body"},
+		{"kind": "Page", "name": "bands", "route": "/bands", "sections": []any{map[string]any{"id": "introduction", "panel": "hero"}, map[string]any{"panel": "body"}}},
+	} {
+		if err = compiled.Validate(valid); err != nil {
+			t.Fatalf("valid Page rejected: %#v: %v", valid, err)
+		}
+	}
+	tooMany := make([]any, 33)
+	for index := range tooMany {
+		tooMany[index] = map[string]any{"panel": "body"}
+	}
+	for _, invalid := range []map[string]any{
+		{"kind": "Page", "name": "missing", "route": "/missing"},
+		{"kind": "Page", "name": "both", "route": "/both", "panel": "body", "sections": []any{map[string]any{"panel": "hero"}}},
+		{"kind": "Page", "name": "empty", "route": "/empty", "sections": []any{}},
+		{"kind": "Page", "name": "incomplete", "route": "/incomplete", "sections": []any{map[string]any{}}},
+		{"kind": "Page", "name": "identity", "route": "/identity", "sections": []any{map[string]any{"id": "Bad ID", "panel": "body"}}},
+		{"kind": "Page", "name": "large", "route": "/large", "sections": tooMany},
+	} {
+		if err = compiled.Validate(invalid); err == nil {
+			t.Fatalf("schema accepted invalid Page: %#v", invalid)
+		}
+	}
+}
+
 func TestPanelSchemaAcceptsOrderedInlineContentAndRejectsAmbiguousItems(t *testing.T) {
 	document := compiler.DefinitionSchemas()["Panel"]
 	validator := jsonschema.NewCompiler()

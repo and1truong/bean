@@ -36,6 +36,22 @@ it('offers reference-aware core definition editors',async()=>{
   expect(screen.getByTestId('admin-entity')).toHaveTextContent('book')
 })
 
+it('preserves stable Page section IDs while editing Panel references visually',async()=>{
+  const pageDefinitions=[
+    ...definitions,
+    {apiVersion:'bean/v1alpha1',kind:'Panel',metadata:{name:'hero'},spec:{layout:'single-column',regions:[]}},
+    {apiVersion:'bean/v1alpha1',kind:'Panel',metadata:{name:'body'},spec:{layout:'single-column',regions:[]}},
+    {apiVersion:'bean/v1alpha1',kind:'Page',metadata:{name:'landing'},spec:{route:'/',sections:[{id:'introduction',panel:'hero'},{id:'content',panel:'body'}]}},
+  ]
+  vi.spyOn(globalThis,'fetch').mockImplementation(async input=>new Response(JSON.stringify(String(input).endsWith('/definitions')?pageDefinitions:[]),{status:200}))
+  render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter><Studio/></MemoryRouter></QueryClientProvider>)
+  fireEvent.click(await screen.findByRole('button',{name:'Page: landing'}))
+  fireEvent.change(screen.getByTestId('page-section-0'),{target:{value:'body'}})
+  fireEvent.click(screen.getByRole('checkbox',{name:'Advanced JSON'}))
+  const spec=JSON.parse((screen.getByTestId('definition-spec') as HTMLTextAreaElement).value)
+  expect(spec.sections).toEqual([{id:'introduction',panel:'body'},{id:'content',panel:'body'}])
+})
+
 it('authors the common View display path without Advanced JSON',async()=>{
   vi.spyOn(globalThis,'fetch').mockImplementation(async input=>new Response(JSON.stringify(String(input).endsWith('/definitions')?definitions:[]),{status:200}))
   render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter><Studio/></MemoryRouter></QueryClientProvider>)
@@ -115,10 +131,16 @@ it('authors Explore query, display, action, drill, and page-filter semantics vis
 
   fireEvent.click(screen.getByRole('checkbox',{name:'Advanced JSON'}))
   fireEvent.change(screen.getByTestId('definition-kind'),{target:{value:'Page'}})
+  fireEvent.change(screen.getByTestId('page-composition'),{target:{value:'sections'}})
+  fireEvent.change(screen.getByTestId('page-section-0'),{target:{value:'book_panel'}})
+  fireEvent.click(screen.getByTestId('add-page-section'))
+  fireEvent.change(screen.getByTestId('page-section-1'),{target:{value:'book_panel'}})
   fireEvent.click(screen.getByRole('button',{name:'Add page filter'}))
   fireEvent.change(screen.getByLabelText('Target Block'),{target:{value:'book_chart'}})
   fireEvent.change(screen.getByLabelText('Target filter'),{target:{value:'title'}})
   fireEvent.click(screen.getByRole('checkbox',{name:'Advanced JSON'}))
   const page=JSON.parse((screen.getByTestId('definition-spec') as HTMLTextAreaElement).value)
+  expect(page.panel).toBeUndefined()
+  expect(page.sections).toEqual([{panel:'book_panel'},{panel:'book_panel'}])
   expect(page.filters.filter_1.targets).toEqual([{block:'book_chart',filter:'title'}])
 })

@@ -1,6 +1,6 @@
 # Panel limitations and difficult composition cases
 
-Status: idea inventory; not scheduled or implemented.
+Status: idea inventory; responsive presets and multiple Page layout bands are implemented. Remaining cases are unscheduled.
 
 Related: [`panel-responsive-layout.md`](panel-responsive-layout.md).
 
@@ -22,7 +22,7 @@ A blog page may need several different layouts:
 └──────────────────────────────────────┘
 ```
 
-One Panel currently has one layout. It cannot directly express a full-width hero, a main/sidebar body, a peer-card grid, and another full-width section in one composition.
+Implemented with ordered Page sections. A Page may keep legacy `panel: name` or declare 1–32 ordered `sections: [{panel: hero}, {panel: article_with_sidebar}, ...]`. Each Panel retains its own responsive preset and Policy; source and accessible order stay authoritative. This deliberately avoids nested Panels.
 
 ## 2. Nested Panels
 
@@ -176,7 +176,7 @@ Users may want to hide, reorder, drag, or resize widgets and persist a personal 
 ## Candidate priorities
 
 1. Complete deterministic responsive behavior for existing presets. **Implemented** with fixed `48rem`/`64rem` runtime breakpoints.
-2. Support multiple layout bands on one Page without arbitrary nesting.
+2. Support multiple layout bands on one Page without arbitrary nesting. **Implemented** with ordered Page `sections` in AppIR v10.
 3. Add bounded main/sidebar spans and grid column counts if examples require them.
 4. Define empty-Region collapse after Policy filtering.
 5. Add semantic contained/wide/full-bleed widths.

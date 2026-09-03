@@ -64,6 +64,34 @@ func TestBoundBlockInputsEnforceEnclosingPageAndPanelPolicies(t *testing.T) {
 	}
 }
 
+func TestBoundBlockInputsEnforcePoliciesAcrossPageSections(t *testing.T) {
+	app := appir.Empty()
+	app.Policies["members"] = appir.Policy{Name: "members", Authenticated: true}
+	app.Views["items"] = appir.View{Name: "items"}
+	app.Blocks["public_items"] = appir.Block{Name: "public_items", Type: "view", View: "items"}
+	app.Blocks["private_items"] = appir.Block{Name: "private_items", Type: "view", View: "items"}
+	app.Panels["public"] = appir.Panel{Name: "public", Regions: []appir.Region{{Name: "main", Blocks: []string{"public_items"}}}}
+	app.Panels["private"] = appir.Panel{Name: "private", Policy: "members", Regions: []appir.Region{{Name: "main", Blocks: []string{"private_items"}}}}
+	app.Pages["home"] = appir.Page{Name: "home", Route: "/", Sections: []appir.PageSection{{Panel: "public"}, {Panel: "private"}}}
+	server := &Server{}
+
+	privateRequest := httptest.NewRequest("GET", "/api/views/items?_page=%2F&_block=private_items", nil)
+	if _, _, err := server.boundBlockInputs(privateRequest, app, "view", "items"); err == nil {
+		t.Fatal("bound request bypassed the containing section's Panel Policy")
+	}
+	publicRequest := httptest.NewRequest("GET", "/api/views/items?_page=%2F&_block=public_items", nil)
+	if _, _, err := server.boundBlockInputs(publicRequest, app, "view", "items"); err != nil {
+		t.Fatalf("public section Block was unavailable: %v", err)
+	}
+
+	publicPanel := app.Panels["public"]
+	publicPanel.Regions[0].Blocks = append(publicPanel.Regions[0].Blocks, "private_items")
+	app.Panels["public"] = publicPanel
+	if _, _, err := server.boundBlockInputs(privateRequest, app, "view", "items"); err != nil {
+		t.Fatalf("Block available in a public section was denied by another occurrence: %v", err)
+	}
+}
+
 func TestLoginLimiterBoundsDistinctClientEntries(t *testing.T) {
 	limiter := newLoginLimiter()
 	limiter.maxEntries = 2

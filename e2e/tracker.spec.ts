@@ -6,6 +6,9 @@ const test=base.extend<{}, {appName:string}>({appName:['tracker',{scope:'worker'
 test('Panel presets respond at fixed runtime breakpoints without changing source order',async({page,bean})=>{
   await page.setViewportSize({width:500,height:800})
   await page.goto(bean.baseURL+'/')
+  await expect(page.getByRole('heading',{name:'Operate the issue lifecycle'})).toBeVisible()
+  await expect(page.locator('section[data-component="Page"] > section[data-component="Panel"]').first()).toHaveAttribute('data-layout','single-column')
+  await expect(page.locator('section[data-component="Page"] > section[data-component="Panel"]').nth(1)).toHaveAttribute('data-layout','two-column')
   await page.evaluate(()=>{
     const fixture=document.createElement('div')
     fixture.id='panel-responsive-fixture'

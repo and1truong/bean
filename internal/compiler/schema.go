@@ -14,6 +14,7 @@ import (
 	"github.com/beanruntime/bean/internal/definition"
 	beanextension "github.com/beanruntime/bean/internal/extension"
 	"github.com/beanruntime/bean/internal/field"
+	beanpage "github.com/beanruntime/bean/internal/page"
 	"github.com/beanruntime/bean/internal/rule"
 	beansequence "github.com/beanruntime/bean/internal/sequence"
 	"github.com/beanruntime/bean/internal/testsuite"
@@ -45,6 +46,7 @@ type Capabilities struct {
 	ViewSelections          []string `json:"viewSelections"`
 	DisplaySerializers      []string `json:"displaySerializers"`
 	PanelLayouts            []string `json:"panelLayouts"`
+	MaxPageSections         int      `json:"maxPageSections"`
 	SequenceProfiles        []string `json:"sequenceProfiles"`
 	SequenceAspectRatios    []string `json:"sequenceAspectRatios"`
 	SequenceFrameLayouts    []string `json:"sequenceFrameLayouts"`
@@ -119,6 +121,7 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 		ViewSelections:          []string{"multiple", "none", "single"},
 		DisplaySerializers:      displaySerializerNames(),
 		PanelLayouts:            panelLayoutNames(),
+		MaxPageSections:         beanpage.MaxSections,
 		SequenceProfiles:        beansequence.Profiles(),
 		SequenceAspectRatios:    beansequence.AspectRatios(),
 		SequenceFrameLayouts:    beansequence.Layouts(),
@@ -247,6 +250,25 @@ func definitionSchema(kind string, specification reflect.Type) map[string]any {
 	if kind == "View" {
 		groupBy := properties["groupBy"].(map[string]any)
 		groupBy["items"] = map[string]any{"anyOf": []any{map[string]any{"type": "string"}, groupBy["items"]}}
+	}
+	if kind == "Page" {
+		document["oneOf"] = []any{
+			map[string]any{"required": []string{"panel"}, "not": map[string]any{"required": []string{"sections"}}},
+			map[string]any{"required": []string{"sections"}, "not": map[string]any{"required": []string{"panel"}}},
+		}
+		sections := properties["sections"].(map[string]any)
+		sections["minItems"] = 1
+		sections["maxItems"] = beanpage.MaxSections
+		for name, raw := range builder.definitions {
+			if strings.HasSuffix(name, "internal_appir_PageSection") {
+				section := raw.(map[string]any)
+				section["required"] = []string{"panel"}
+				sectionProperties := section["properties"].(map[string]any)
+				delete(sectionProperties, "identity")
+				delete(sectionProperties, "iD")
+				sectionProperties["id"] = map[string]any{"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}
+			}
+		}
 	}
 	if kind == "Panel" {
 		for name, raw := range builder.definitions {

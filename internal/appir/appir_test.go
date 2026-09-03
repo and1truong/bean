@@ -226,8 +226,35 @@ func TestInlinePanelContentRequiresV9Format(t *testing.T) {
 	if err != nil || clone.Panels["frame"].Regions[0].Items[0].Identity != "@inline/frame/main/item/0" {
 		t.Fatalf("clone=%+v err=%v", clone, err)
 	}
+	app.FormatVersion = appir.InlinePanelFormat
+	if err = app.ValidateFormat(); err != nil {
+		t.Fatalf("v9 AppIR rejected inline Panel region items: %v", err)
+	}
 	app.FormatVersion = appir.SequenceFormat
 	if err = app.ValidateFormat(); err == nil {
 		t.Fatal("v8 AppIR accepted inline Panel region items")
+	}
+}
+
+func TestOrderedPageSectionsRequireV10Format(t *testing.T) {
+	app := appir.Empty()
+	app.Pages["home"] = appir.Page{Name: "home", Route: "/", Sections: []appir.PageSection{{Panel: "hero"}, {Panel: "body"}}}
+	if err := app.ValidateFormat(); err != nil {
+		t.Fatal(err)
+	}
+	clone, err := app.Clone()
+	if err != nil || len(clone.Pages["home"].Sections) != 2 || clone.Pages["home"].Sections[1].Panel != "body" {
+		t.Fatalf("clone=%+v err=%v", clone, err)
+	}
+	app.FormatVersion = appir.InlinePanelFormat
+	if err = app.ValidateFormat(); err == nil {
+		t.Fatal("v9 AppIR accepted ordered Page sections")
+	}
+
+	legacy := appir.Empty()
+	legacy.FormatVersion = appir.InlinePanelFormat
+	legacy.Pages["home"] = appir.Page{Name: "home", Route: "/", Panel: "home"}
+	if err = legacy.ValidateFormat(); err != nil {
+		t.Fatalf("v9 AppIR rejected a legacy single-Panel Page: %v", err)
 	}
 }

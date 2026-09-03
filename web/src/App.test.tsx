@@ -26,22 +26,27 @@ describe('View datetime controls',()=>{
 })
 
 describe('public rendering',()=>{
-  it('preserves Panel source order with semantic layout hooks',async()=>{
+  it('preserves Page section and Panel Region source order with semantic layout hooks',async()=>{
     vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
       const path=String(input)
       if(path.includes('/api/system/session'))return response({authenticated:false})
-      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'Panel',props:{layout:'sidebar-main'},children:[
-        {component:'Region',props:{name:'sidebar'},children:[{component:'TextBlock',props:{text:'Sidebar first'}}]},
-        {component:'Region',props:{name:'main'},children:[{component:'TextBlock',props:{text:'Main second'}}]},
-      ]}]}})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[
+        {component:'Panel',props:{layout:'single-column'},children:[{component:'Region',props:{name:'main'},children:[{component:'TextBlock',props:{text:'Introduction band'}}]}]},
+        {component:'Panel',props:{layout:'sidebar-main'},children:[
+          {component:'Region',props:{name:'sidebar'},children:[{component:'TextBlock',props:{text:'Sidebar first'}}]},
+          {component:'Region',props:{name:'main'},children:[{component:'TextBlock',props:{text:'Main second'}}]},
+        ]},
+      ]}})
       return response({})
     }))
     renderApp('/')
     await screen.findByText('Sidebar first')
-    const panel=document.querySelector('[data-component="Panel"]')!
-    expect(panel).toHaveClass('bean-panel')
-    expect(Array.from(panel.children).map(child=>child.getAttribute('data-region'))).toEqual(['sidebar','main'])
-    expect(Array.from(panel.children).every(child=>child.classList.contains('bean-region'))).toBe(true)
+    const panels=Array.from(document.querySelectorAll('[data-component="Panel"]'))
+    expect(panels).toHaveLength(2)
+    expect(panels.map(panel=>panel.getAttribute('data-layout'))).toEqual(['single-column','sidebar-main'])
+    expect(panels.every(panel=>panel.classList.contains('bean-panel'))).toBe(true)
+    expect(Array.from(panels[1].children).map(child=>child.getAttribute('data-region'))).toEqual(['sidebar','main'])
+    expect(Array.from(panels[1].children).every(child=>child.classList.contains('bean-region'))).toBe(true)
   })
 
   it('renders and navigates an accessible semantic Sequence',async()=>{

@@ -24,7 +24,7 @@ import (
 	beanextension "github.com/beanruntime/bean/internal/extension"
 	"github.com/beanruntime/bean/internal/field"
 	"github.com/beanruntime/bean/internal/migration"
-	"github.com/beanruntime/bean/internal/page"
+	pagepkg "github.com/beanruntime/bean/internal/page"
 	"github.com/beanruntime/bean/internal/policy"
 	"github.com/beanruntime/bean/internal/rule"
 	beansequence "github.com/beanruntime/bean/internal/sequence"
@@ -2457,13 +2457,48 @@ func validatePages(a *appir.App, state *validationState) []definition.Diagnostic
 		} else {
 			routes[page.Route] = "Page/" + name
 		}
-		panelDefinition, panelExists := a.Panels[page.Panel]
-		if !panelExists {
-			out = append(out, missingReferenceDiagnostic("Page", name, "spec.panel", "Panel", page.Panel))
+		if page.Panel != "" && page.Sections != nil {
+			out = append(out, diagnostic("Page", name, "spec.sections", "cannot be declared with legacy panel"))
 		}
+		if page.Sections == nil && page.Panel == "" {
+			out = append(out, requiredDiagnostic("Page", name, "spec.panel", "is required when sections are not declared"))
+		}
+		if page.Sections != nil && (len(page.Sections) == 0 || len(page.Sections) > pagepkg.MaxSections) {
+			out = append(out, diagnostic("Page", name, "spec.sections", fmt.Sprintf("must contain between 1 and %d Panel sections", pagepkg.MaxSections)))
+		}
+		panelNames := page.PanelNames()
 		pageBlocks := map[string]bool{}
-		if panelExists {
-			pageBlocks = nameSet(sequencePanelBlocks(panelDefinition))
+		allPanelsExist := len(panelNames) > 0
+		seenSectionIDs := map[string]bool{}
+		for index, panelName := range panelNames {
+			panelPath := "spec.panel"
+			if page.Sections != nil {
+				sectionPath := fmt.Sprintf("spec.sections.%d", index)
+				panelPath = sectionPath + ".panel"
+				sectionID := page.Sections[index].ID
+				if sectionID != "" {
+					if !testCaseName.MatchString(sectionID) {
+						out = append(out, diagnostic("Page", name, sectionPath+".id", "must be a nonempty machine name"))
+					} else if seenSectionIDs[sectionID] {
+						out = append(out, duplicateDiagnostic("Page", name, sectionPath+".id", "duplicates another Page section id"))
+					}
+					seenSectionIDs[sectionID] = true
+				}
+			}
+			if strings.TrimSpace(panelName) == "" {
+				out = append(out, requiredDiagnostic("Page", name, panelPath, "is required"))
+				allPanelsExist = false
+				continue
+			}
+			panelDefinition, exists := a.Panels[panelName]
+			if !exists {
+				out = append(out, missingReferenceDiagnostic("Page", name, panelPath, "Panel", panelName))
+				allPanelsExist = false
+				continue
+			}
+			for _, blockName := range sequencePanelBlocks(panelDefinition) {
+				pageBlocks[blockName] = true
+			}
 		}
 		if page.Policy != "" {
 			if _, ok := a.Policies[page.Policy]; !ok {
@@ -2505,7 +2540,7 @@ func validatePages(a *appir.App, state *validationState) []definition.Diagnostic
 					out = append(out, missingReferenceDiagnostic("Page", name, targetPath+".block", "View Block", target.Block))
 					continue
 				}
-				if panelExists && !pageBlocks[target.Block] {
+				if allPanelsExist && !pageBlocks[target.Block] {
 					out = append(out, invalidReferenceDiagnostic("Page", name, targetPath+".block", "must belong to the Page Panel"))
 					continue
 				}
@@ -3264,54 +3299,54 @@ func validateRegistrationPage(a *appir.App, route, actionName string) string {
 	if registrationPage == nil {
 		return "must reference a Page containing a Webform for the registration Action"
 	}
-	panelDefinition := a.Panels[registrationPage.Panel]
 	anonymous := beanctx.Request{Route: route, RouteParams: map[string]string{}, Values: map[string]any{}}
 	if registrationPage.Policy != "" && !policy.Can(a.Policies[registrationPage.Policy], false, anonymous, nil) {
 		return "must reference a Page and Panel accessible to anonymous users"
 	}
-	resolvedContext, err := page.ResolveContext(*registrationPage, map[string]string{}, map[string]string{}, anonymous)
+	resolvedContext, err := pagepkg.ResolveContext(*registrationPage, map[string]string{}, map[string]string{}, anonymous)
 	if err != nil {
 		return "must resolve Page context for an anonymous request to the advertised static route"
 	}
 	anonymous.Values = resolvedContext
-	if _, allowed, renderErr := page.Node(a, *registrationPage, resolvedContext, anonymous); renderErr != nil || !allowed {
+	if _, allowed, renderErr := pagepkg.Node(a, *registrationPage, resolvedContext, anonymous); renderErr != nil || !allowed {
 		return "must render completely for an anonymous request to the advertised static route"
-	}
-	if panelDefinition.Policy != "" && !policy.Can(a.Policies[panelDefinition.Policy], false, anonymous, nil) {
-		return "must reference a Page and Panel accessible to anonymous users"
 	}
 	actionDefinition := a.Actions[actionName]
 	var missing []string
 	found := false
-	for _, region := range panelDefinition.Regions {
-		for _, item := range region.OrderedItems() {
-			if item.Block == "" {
-				continue
-			}
-			blockDefinition := a.Blocks[item.Block]
-			formDefinition := a.Webforms[blockDefinition.Webform]
-			specification, registered := blockcap.Lookup(blockDefinition.Type)
-			if !registered || specification.InputTarget != blockcap.WebformInputTarget || formDefinition.Action != actionName {
-				continue
-			}
-			found = true
-			if blockDefinition.Policy != "" && !policy.Can(a.Policies[blockDefinition.Policy], false, anonymous, nil) {
-				continue
-			}
-			fields := map[string]bool{}
-			for _, element := range formDefinition.Elements {
-				fields[element.Name] = element.Required && element.Visible == nil
-			}
-			missing = missing[:0]
-			for inputName, inputDefinition := range actionDefinition.Input {
-				if inputDefinition.Required && !fields[inputName] {
-					missing = append(missing, inputName)
+	for _, panelName := range registrationPage.PanelNames() {
+		panelDefinition := a.Panels[panelName]
+		panelAllowed := panelDefinition.Policy == "" || policy.Can(a.Policies[panelDefinition.Policy], false, anonymous, nil)
+		for _, region := range panelDefinition.Regions {
+			for _, item := range region.OrderedItems() {
+				if item.Block == "" {
+					continue
 				}
+				blockDefinition := a.Blocks[item.Block]
+				formDefinition := a.Webforms[blockDefinition.Webform]
+				specification, registered := blockcap.Lookup(blockDefinition.Type)
+				if !registered || specification.InputTarget != blockcap.WebformInputTarget || formDefinition.Action != actionName {
+					continue
+				}
+				found = true
+				if !panelAllowed || blockDefinition.Policy != "" && !policy.Can(a.Policies[blockDefinition.Policy], false, anonymous, nil) {
+					continue
+				}
+				fields := map[string]bool{}
+				for _, element := range formDefinition.Elements {
+					fields[element.Name] = element.Required && element.Visible == nil
+				}
+				missing = missing[:0]
+				for inputName, inputDefinition := range actionDefinition.Input {
+					if inputDefinition.Required && !fields[inputName] {
+						missing = append(missing, inputName)
+					}
+				}
+				if len(missing) == 0 {
+					return ""
+				}
+				sort.Strings(missing)
 			}
-			if len(missing) == 0 {
-				return ""
-			}
-			sort.Strings(missing)
 		}
 	}
 	if !found {

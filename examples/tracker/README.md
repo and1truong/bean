@@ -6,6 +6,7 @@ An issue-tracking application with projects, issues, and comments. It demonstrat
 
 - To-do, in-progress, and done workflow
 - Filterable issue table and kanban board
+- Ordered Page layout bands: single-column semantic introduction followed by two-column operations
 - Issue-count chart with drill-down
 - Project and assignee filtering
 - Deterministic `DemoSeed` data

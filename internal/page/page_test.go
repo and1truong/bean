@@ -45,6 +45,38 @@ func TestPageNodeExposesWhetherRouteMetadataIsProtected(t *testing.T) {
 	}
 }
 
+func TestPageNodeRendersOrderedPolicyVisiblePanelSectionsAndAppliesFilters(t *testing.T) {
+	app := appir.Empty()
+	app.Policies["members"] = appir.Policy{Name: "members", Authenticated: true}
+	app.Blocks["hero"] = appir.Block{Name: "hero", Type: "text", Text: "Hero"}
+	app.Blocks["results"] = appir.Block{Name: "results", Type: "view", View: "results"}
+	app.Blocks["private"] = appir.Block{Name: "private", Type: "text", Text: "Private"}
+	app.Panels["hero"] = appir.Panel{Name: "hero", Layout: "single-column", Regions: []appir.Region{{Name: "main", Blocks: []string{"hero"}}}}
+	app.Panels["body"] = appir.Panel{Name: "body", Layout: "grid", Regions: []appir.Region{{Name: "main", Blocks: []string{"results"}}}}
+	app.Panels["private"] = appir.Panel{Name: "private", Layout: "two-column", Policy: "members", Regions: []appir.Region{{Name: "left", Blocks: []string{"private"}}}}
+	definition := appir.Page{Sections: []appir.PageSection{{ID: "introduction", Panel: "hero", Identity: "@section/home/introduction"}, {Panel: "body", Identity: "@section/home/1"}, {Panel: "private", Identity: "@section/home/2"}}, Filters: map[string]appir.PageFilter{"status": {Targets: []appir.PageFilterTarget{{Block: "results", Filter: "state"}}}}}
+
+	node, allowed, err := page.Node(app, definition, nil, beanctx.Request{})
+	if err != nil || !allowed || len(node.Children) != 2 || node.Children[0].Props["layout"] != "single-column" || node.Children[0].Props["pageSection"] != "@section/home/introduction" || node.Children[1].Props["layout"] != "grid" || node.Children[1].Props["pageSection"] != "@section/home/1" {
+		t.Fatalf("anonymous node=%+v allowed=%v err=%v", node, allowed, err)
+	}
+	result := node.Children[1].Children[0].Children[0]
+	if result.Props["pageFilters"].(map[string]string)["state"] != "status" || node.Props["protected"] != true {
+		t.Fatalf("filtered node=%+v", node)
+	}
+
+	member := beanctx.Request{User: &beanctx.User{ID: "member"}}
+	node, allowed, err = page.Node(app, definition, nil, member)
+	if err != nil || !allowed || len(node.Children) != 3 || node.Children[2].Props["layout"] != "two-column" {
+		t.Fatalf("member node=%+v allowed=%v err=%v", node, allowed, err)
+	}
+
+	definition.Sections = []appir.PageSection{{Panel: "private", Identity: "@section/home/private"}}
+	if _, allowed, err = page.Node(app, definition, nil, beanctx.Request{}); err != nil || allowed {
+		t.Fatalf("fully denied Page allowed=%v err=%v", allowed, err)
+	}
+}
+
 func TestTypedContextResolution(t *testing.T) {
 	definition := appir.Page{Context: map[string]appir.ContextBinding{"record": {Source: "route", Name: "id", Required: true}, "tenant": {Source: "tenant", Required: true}}}
 	context, e := page.ResolveContext(definition, map[string]string{"id": "record-1"}, nil, beanctx.Request{TenantID: "tenant-1"})

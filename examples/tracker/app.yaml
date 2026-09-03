@@ -116,6 +116,17 @@ view: issue_kanban
 display: board
 ---
 kind: Panel
+name: tracker_intro
+layout: single-column
+regions:
+  - name: main
+    items:
+      - id: overview
+        content:
+          - {type: heading, text: "Operate the issue lifecycle"}
+          - {type: paragraph, text: "Review status distribution, then move authorized work across the board."}
+---
+kind: Panel
 name: tracker_operations
 layout: two-column
 regions:
@@ -126,4 +137,6 @@ kind: Page
 name: tracker_home
 route: /
 title: Issue operations
-panel: tracker_operations
+sections:
+  - {id: introduction, panel: tracker_intro}
+  - {id: operations, panel: tracker_operations}

@@ -18,6 +18,23 @@ Panel uses a closed responsive preset vocabulary; authors do not supply CSS, uti
 
 For `grid`, the columns apply to the ordered Blocks or inline content inside its `main` Region. Every preset preserves definition, DOM, keyboard, and screen-reader order at all widths. Tracks and Regions may shrink to contain wide children; individual Block and Display renderers remain responsible for local overflow. These fixed viewport thresholds are runtime-owned and require no schema or AppIR fields.
 
+## Page composition
+
+A Page may reference one legacy `panel`, or use `sections` to compose 1–32 Panels as successive layout bands. The forms are mutually exclusive. Section source order is render, DOM, keyboard, and screen-reader order; repeated Panel references are allowed. An optional machine `id` stabilizes internal section identity across nearby reordering, while omitted IDs derive deterministically from the Page name and section ordinal. This supports full-width → sidebar → grid compositions without nested Panels or arbitrary layout metadata:
+
+```yaml
+kind: Page
+name: article
+route: /articles/:id
+sections:
+  - {id: hero, panel: article_hero}
+  - {id: body, panel: article_with_sidebar}
+  - {panel: related_articles}
+  - {panel: comments}
+```
+
+Page context is resolved once and supplied to every section. Page filters may target named View Blocks in any declared Panel. The Page Policy remains the outer authorization boundary; each Panel and named Block then applies its own Policy. A denied Panel is omitted without changing the relative order of visible sections, and a Page with no visible sections is unavailable. Bound View and Webform requests must name a Block in a declared section and pass at least one containing Panel's Policy. Legacy `panel: name` remains unchanged in source and AppIR; ordered sections require AppIR v10.
+
 ## Sequences and semantic content
 
 A `Sequence` is a route-level ordered experience composed from existing Panels. The initial `presentation` profile supports `wide` and `standard` aspect ratios, stable frame identities, speaker notes, URL-addressed navigation, keyboard controls, progress, responsive HTML, and one-frame-per-page print structure. Sequence adds no data or mutation path: View Blocks still read through Views and Actions remain the only write boundary.
