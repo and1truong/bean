@@ -263,10 +263,29 @@ func TestQueryCarriesSelectedFieldTypesToDBAL(t *testing.T) {
 	}
 }
 
-type capturingDatabase struct{ query dbal.Select }
+func TestDecimalAggregateResultsUseCanonicalStrings(t *testing.T) {
+	app := appir.Empty()
+	app.Entities["item"] = appir.Entity{Name: "item", Fields: []appir.Field{{Name: "amount", Type: "decimal"}}}
+	app.Views["average"] = appir.View{Name: "average", Entity: "item", ResultShape: "metric", Aggregates: []appir.Aggregate{{Function: "avg", Field: "amount", Alias: "average"}}, MaxLimit: 1}
+	for _, value := range []any{float64(6), "6.0000000000000000"} {
+		database := &capturingDatabase{rows: []dbal.Row{{"average": value}}}
+		result, err := (view.Service{DB: database}).RunPage(context.Background(), app, "average", view.Params{}, beanctx.Request{})
+		if err != nil || len(result.Rows) != 1 || result.Rows[0]["average"] != "6" {
+			t.Fatalf("value=%T(%v) result=%v err=%v", value, value, result, err)
+		}
+	}
+}
+
+type capturingDatabase struct {
+	query dbal.Select
+	rows  []dbal.Row
+}
 
 func (d *capturingDatabase) Select(_ context.Context, query dbal.Select) ([]dbal.Row, error) {
 	d.query = query
+	if d.rows != nil {
+		return d.rows, nil
+	}
 	return []dbal.Row{{"month": "2026-09-01", "event_count": int64(1)}}, nil
 }
 func (*capturingDatabase) Insert(context.Context, dbal.Insert) (dbal.Result, error) {

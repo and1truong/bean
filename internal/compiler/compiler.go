@@ -862,9 +862,11 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 				out = append(out, diagnostic("View", name, path+".type", "must be inner or left"))
 			}
 		}
-		for _, f := range v.Fields {
+		for index, f := range v.Fields {
 			if !validViewField(f, fields, relationships, a) {
 				out = append(out, missingFieldDiagnostic("View", name, "spec.fields", f, false))
+			} else if definition, _ := viewFieldDefinition(f, e, relationships, a); definition.Sensitive {
+				out = append(out, diagnostic("View", name, fmt.Sprintf("spec.fields.%d", index), "sensitive fields cannot be selected"))
 			}
 		}
 		selected := map[string]bool{}
@@ -879,6 +881,8 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 				out = append(out, invalidReferenceDiagnostic("View", name, path, "must reference a selected View field"))
 			} else if !exists || !searchable[fieldType] {
 				out = append(out, invalidReferenceDiagnostic("View", name, path, "must reference a searchable text field"))
+			} else if definition, _ := viewFieldDefinition(fieldName, e, relationships, a); definition.Sensitive {
+				out = append(out, diagnostic("View", name, path, "sensitive fields cannot be searched"))
 			}
 		}
 		for fieldName, filterName := range v.FieldFilters {
@@ -973,7 +977,9 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 			aliases[aggregate.Alias] = true
 		}
 		for i, order := range v.Sort {
-			if !validViewField(order.Field, fields, relationships, a) && !aliases[order.Field] && !groupOutputs[order.Field] {
+			if len(v.GroupBy) > 0 && !aliases[order.Field] && !groupOutputs[order.Field] {
+				out = append(out, diagnostic("View", name, fmt.Sprintf("spec.sort.%d.field", i), "grouped Views must sort by an emitted group or aggregate field"))
+			} else if !validViewField(order.Field, fields, relationships, a) && !aliases[order.Field] && !groupOutputs[order.Field] {
 				out = append(out, missingFieldDiagnostic("View", name, fmt.Sprintf("spec.sort.%d.field", i), order.Field, false))
 			} else if !selected[order.Field] && !aliases[order.Field] && !groupOutputs[order.Field] {
 				out = append(out, diagnostic("View", name, fmt.Sprintf("spec.sort.%d.field", i), "must be selected so cursor state is stable"))
@@ -1191,6 +1197,8 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 				out = append(out, invalidReferenceDiagnostic("View", viewName, path, "must reference a selected View source field"))
 			} else if !exists || !searchable[field.Type] {
 				out = append(out, invalidReferenceDiagnostic("View", viewName, path, "must reference a searchable text field"))
+			} else if field.Sensitive {
+				out = append(out, diagnostic("View", viewName, path, "sensitive fields cannot be searched"))
 			} else if redacted[fieldName] {
 				out = append(out, diagnostic("View", viewName, path, "must not be redacted by View policy"))
 			}
@@ -2856,6 +2864,8 @@ func validatePresentation(name string, block appir.Block, a *appir.App) []defini
 			out = append(out, diagnostic("Block", name, path, "must be selected by View "+block.View))
 		} else if !exists || !searchable[field.Type] {
 			out = append(out, invalidReferenceDiagnostic("Block", name, path, "must reference a searchable text field"))
+		} else if field.Sensitive {
+			out = append(out, diagnostic("Block", name, path, "sensitive fields cannot be searched"))
 		} else if redacted[fieldName] {
 			out = append(out, diagnostic("Block", name, path, "must not be redacted by View policy "+policyName))
 		}
@@ -3430,7 +3440,9 @@ func nameSet(values []string) map[string]bool {
 func generate(a *appir.App, name string, e appir.Entity) {
 	fields := []string{"id"}
 	for _, f := range e.Fields {
-		fields = append(fields, f.Name)
+		if !f.Sensitive {
+			fields = append(fields, f.Name)
+		}
 	}
 	fields = append(fields, "created_at", "updated_at", "version")
 	if _, ok := a.Views[name+"_list"]; !ok {
@@ -3475,7 +3487,7 @@ func normalizeAdminResources(a *appir.App) {
 			resource.LabelField = "id"
 			for _, candidate := range []string{"title", "name", "email"} {
 				for _, field := range entity.Fields {
-					if field.Name == candidate {
+					if field.Name == candidate && !field.Sensitive {
 						resource.LabelField = candidate
 						break
 					}
@@ -3487,24 +3499,26 @@ func normalizeAdminResources(a *appir.App) {
 		}
 		if len(resource.List.Columns) == 0 {
 			resource.List.Columns = []string{"id"}
-			for i, field := range entity.Fields {
-				if i == 4 {
+			for _, field := range entity.Fields {
+				if len(resource.List.Columns) == 5 {
 					break
 				}
-				resource.List.Columns = append(resource.List.Columns, field.Name)
+				if !field.Sensitive {
+					resource.List.Columns = append(resource.List.Columns, field.Name)
+				}
 			}
 			resource.List.Columns = append(resource.List.Columns, "updated_at")
 		}
 		if len(resource.List.Search) == 0 {
 			for _, field := range entity.Fields {
-				if field.Type == "string" || field.Type == "text" || field.Type == "richtext" || field.Type == "email" || field.Type == "url" {
+				if !field.Sensitive && (field.Type == "string" || field.Type == "text" || field.Type == "richtext" || field.Type == "email" || field.Type == "url") {
 					resource.List.Search = append(resource.List.Search, field.Name)
 				}
 			}
 		}
 		if len(resource.List.Filters) == 0 {
 			for _, field := range entity.Fields {
-				if field.Type == "enum" || field.Type == "boolean" || field.Type == "relation" {
+				if !field.Sensitive && (field.Type == "enum" || field.Type == "boolean" || field.Type == "relation") {
 					resource.List.Filters = append(resource.List.Filters, field.Name)
 				}
 			}

@@ -102,7 +102,7 @@ function viewSpec(entity:string,fields:string[],searchFields:string[],filterFiel
   if(mode==='metric')return {...common,fields:[],aggregates:[{function:aggregateFunction,field:aggregateField,alias:aggregateAlias}],displays:{metric:{type:pageRoute?'page':'block',route:pageRoute||undefined,title:{text:humanize(entity)},renderer:{type:'metric',metricField:aggregateAlias,metricLabel:humanize(aggregateAlias)},pager:{type:'none'}}}}
   return {...common,fields,search:searchFields.length?{fields:searchFields}:undefined,sort:sortField?[{field:sortField,desc:descending}]:[],displays:{table:{type:pageRoute?'page':'block',route:pageRoute||undefined,title:{text:humanize(entity)},renderer:{type:'table',fields:fields.map(field=>({field,label:humanize(field)}))},pager:{type:'cursor',pageSize:25}}}}
 }
-function entityFields(entity?:Entity){return entity?[{Name:'id',Label:'ID',Type:'uuid'},...entity.Fields,{Name:'created_at',Label:'Created at',Type:'datetime'},{Name:'updated_at',Label:'Updated at',Type:'datetime'},{Name:'version',Label:'Version',Type:'integer'}]:[]}
+function entityFields(entity?:Entity){return entity?[{Name:'id',Label:'ID',Type:'uuid'},...entity.Fields.filter(field=>!field.Sensitive),{Name:'created_at',Label:'Created at',Type:'datetime'},{Name:'updated_at',Label:'Updated at',Type:'datetime'},{Name:'version',Label:'Version',Type:'integer'}]:[]}
 function fieldByName(entity:Entity|undefined,name:string){return entityFields(entity).find(field=>field.Name===name)}
 function searchable(type?:string){return ['email','richtext','slug','string','text','url'].includes(type||'')}
 function numeric(type?:string){return ['decimal','integer','money'].includes(type||'')}

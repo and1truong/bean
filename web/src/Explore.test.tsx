@@ -10,7 +10,7 @@ it('previews and saves an ordinary typed View definition',async()=>{
   const calls:Array<{path:string;init?:RequestInit}>=[]
   vi.spyOn(globalThis,'fetch').mockImplementation(async(input,init)=>{
     const path=String(input);calls.push({path,init})
-    if(path.endsWith('/api/admin/manifest'))return response({entities:{candidate:{Name:'candidate',Label:'Candidate',Fields:[{Name:'name',Label:'Name',Type:'string'},{Name:'stage',Label:'Stage',Type:'enum',Options:['applied','interview']}] }},actions:{},lifecycles:{},adminResources:{},systemAdmin:true})
+    if(path.endsWith('/api/admin/manifest'))return response({entities:{candidate:{Name:'candidate',Label:'Candidate',Fields:[{Name:'name',Label:'Name',Type:'string'},{Name:'stage',Label:'Stage',Type:'enum',Options:['applied','interview']},{Name:'secret',Label:'Secret',Type:'string',Sensitive:true}] }},actions:{},lifecycles:{},adminResources:{},systemAdmin:true})
     if(path.endsWith('/api/admin/definitions')){
       if(init?.method==='POST')return response({saved:true})
       return response([])
@@ -22,6 +22,7 @@ it('previews and saves an ordinary typed View definition',async()=>{
   render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}})}><MemoryRouter><Explore/></MemoryRouter></QueryClientProvider>)
   expect(await screen.findByTestId('explore-entity')).toHaveValue('candidate')
   expect(screen.getByTestId('explore-name')).toHaveValue('candidate_explore')
+  expect(screen.queryByLabelText('Secret')).not.toBeInTheDocument()
   fireEvent.change(screen.getByLabelText('Search preview'),{target:{value:'Avery'}})
   fireEvent.change(screen.getByLabelText('Filter field'),{target:{value:'stage'}})
   fireEvent.change(screen.getByLabelText('Filter value'),{target:{value:'interview'}})
@@ -43,6 +44,8 @@ it('previews and saves an ordinary typed View definition',async()=>{
   const save=calls.find(call=>call.path.endsWith('/api/admin/definitions')&&call.init?.method==='POST')
   const saved=JSON.parse(String(save?.init?.body))
   expect(saved).toMatchObject({kind:'View',metadata:{name:'candidate_explore'},spec:{entity:'candidate',displays:{table:{type:'block',renderer:{type:'table'}}}}})
+  expect(saved.spec.fields).not.toContain('secret')
+  expect(saved.spec.search.fields).not.toContain('secret')
   expect(new Headers(save?.init?.headers).get('If-Match')).toBe('"draft-1"')
   await waitFor(()=>expect(calls.filter(call=>call.path.endsWith('/api/admin/definitions')).length).toBeGreaterThan(1))
 })

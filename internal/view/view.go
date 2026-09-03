@@ -404,6 +404,13 @@ func ReadPage(ctx context.Context, reader Reader, app *appir.App, name string, o
 				delete(row, encoded)
 			}
 		}
+		for _, aggregate := range v.Aggregates {
+			definition, exists := groupField(aggregate.Field)
+			value, present := row[aggregate.Alias]
+			if exists && present && definition.Type == "decimal" && !strings.EqualFold(aggregate.Function, "count") {
+				row[aggregate.Alias] = canonicalDecimal(value)
+			}
+		}
 		for _, definition := range e.Fields {
 			if value, ok := row[definition.Name]; ok {
 				decoded := field.Decode(definition, value)
@@ -446,6 +453,33 @@ func ReadPage(ctx context.Context, reader Reader, app *appir.App, name string, o
 		}
 	}
 	return Result{Rows: rows, NextCursor: next, Shape: v.ResultShape}, nil
+}
+
+func canonicalDecimal(value any) any {
+	var text string
+	switch stored := value.(type) {
+	case string:
+		text = stored
+	case []byte:
+		text = string(stored)
+	case json.Number:
+		text = stored.String()
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		text = fmt.Sprint(stored)
+	case float32:
+		text = strconv.FormatFloat(float64(stored), 'f', -1, 32)
+	case float64:
+		text = strconv.FormatFloat(stored, 'f', -1, 64)
+	default:
+		return value
+	}
+	if !strings.ContainsAny(text, "eE") && strings.Contains(text, ".") {
+		text = strings.TrimRight(strings.TrimRight(text, "0"), ".")
+	}
+	if text == "-0" || text == "+0" {
+		return "0"
+	}
+	return text
 }
 
 func coerce(value any, fieldType string) any {

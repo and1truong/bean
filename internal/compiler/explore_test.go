@@ -187,6 +187,39 @@ func TestSensitiveFieldsCannotDriveGroupedSemantics(t *testing.T) {
 	}
 }
 
+func TestSensitiveFieldsCannotBeSelectedOrSearched(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "account"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "secret", "type": "string", "sensitive": true}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "accounts"}, Spec: map[string]any{"entity": "account", "fields": []any{"id", "secret"}, "search": map[string]any{"fields": []any{"secret"}}}},
+	}
+	result := compiler.Compile("test", 1, definitions)
+	diagnostics := result.Diagnostics
+	if !hasDiagnosticMessage(diagnostics, "View", "accounts", "spec.fields.1", "sensitive fields cannot be selected") {
+		t.Fatalf("sensitive projection accepted: %v", diagnostics)
+	}
+	if !hasDiagnosticMessage(diagnostics, "View", "accounts", "spec.search.fields.0", "sensitive fields cannot be searched") {
+		t.Fatalf("sensitive search accepted: %v", diagnostics)
+	}
+	if contains(result.App.Views["account_list"].Fields, "secret") || contains(result.App.AdminResources["account"].List.Columns, "secret") || contains(result.App.AdminResources["account"].List.Search, "secret") {
+		t.Fatalf("generated read surfaces expose sensitive field: view=%+v admin=%+v", result.App.Views["account_list"], result.App.AdminResources["account"])
+	}
+}
+
+func TestGroupedViewSortRequiresEmittedOutput(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "event"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "occurred_at", "type": "datetime"}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "events_by_month"}, Spec: map[string]any{"entity": "event", "fields": []any{"occurred_at"}, "groupBy": []any{map[string]any{"field": "occurred_at", "as": "month", "bucket": "month"}}, "aggregates": []any{map[string]any{"function": "count", "field": "id", "alias": "event_count"}}, "sort": []any{map[string]any{"field": "occurred_at"}}}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasDiagnosticMessage(diagnostics, "View", "events_by_month", "spec.sort.0.field", "grouped Views must sort by an emitted group or aggregate field") {
+		t.Fatalf("group source sort accepted: %v", diagnostics)
+	}
+	definitions[1].Spec["sort"].([]any)[0].(map[string]any)["field"] = "month"
+	if diagnostics = compiler.Compile("test", 1, definitions).Diagnostics; len(diagnostics) != 0 {
+		t.Fatalf("emitted group sort rejected: %v", diagnostics)
+	}
+}
+
 func TestATSExploreCandidateCompilesAgainstActiveApplication(t *testing.T) {
 	bundle, err := examples.Load("ats")
 	if err != nil {
