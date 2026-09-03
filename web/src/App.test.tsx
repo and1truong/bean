@@ -199,7 +199,7 @@ describe('public rendering',()=>{
         {component:'ViewBlock',props:{name:'booking_calendar',view:'resource_calendar',display:{Type:'block',Renderer:{Type:'calendar',TitleField:'resource.name',TimeField:'start_at',EndField:'end_at'},Pager:{Type:'none'}}}},
         {component:'ViewBlock',props:{name:'milestone_calendar',view:'milestone_calendar',display:{Type:'block',Renderer:{Type:'calendar',TitleField:'title',TimeField:'starts_at'},Pager:{Type:'none'}}}},
       ]}})
-      if(path.includes('/api/views/candidates_by_stage'))return response({data:[{stage:'interview',candidate_count:4},{stage:'offer',candidate_count:2},{stage:'archived',candidate_count:null}],nextCursor:'',shape:'groups'})
+      if(path.includes('/api/views/candidates_by_stage'))return response({data:[{stage:'interview',candidate_count:4},{stage:'offer',candidate_count:2},{stage:null,candidate_count:1},{stage:'archived',candidate_count:null}],nextCursor:'',shape:'groups'})
       if(path.includes('/api/views/resource_calendar'))return response({data:[{id:'b1','resource.name':'Room A',start_at:'2026-09-03T09:00:00Z',end_at:'2026-09-03T10:00:00Z'}],nextCursor:'',shape:'records'})
       if(path.includes('/api/views/milestone_calendar'))return response({data:[{id:'m1',title:'Launch',starts_at:'2026-09-04T09:00:00Z'}],nextCursor:'',shape:'records'})
       return response({})
@@ -210,6 +210,7 @@ describe('public rendering',()=>{
     expect(screen.getByLabelText('interview: 4')).toBeInTheDocument()
     expect(screen.getByLabelText('archived: No value')).toHaveTextContent('—')
     expect(screen.getByRole('link',{name:'Open interview records'})).toHaveAttribute('href','/candidates?stage=interview')
+    expect(screen.queryByRole('link',{name:'Open Unknown records'})).not.toBeInTheDocument()
     expect(screen.queryByRole('link',{name:'Open archived records'})).not.toBeInTheDocument()
     expect((await screen.findAllByTestId('calendar-view'))[0]).toHaveTextContent('Room A')
     expect(await screen.findByText('Sep 4, 2026')).toBeInTheDocument()
@@ -274,7 +275,7 @@ describe('public rendering',()=>{
       void init
       const path=String(input)
       if(path.includes('/api/system/session'))return response({authenticated:true,user:{Roles:['administrator']}})
-      if(path.includes('/api/system/manifest'))return response({actions:{move_candidate:{Name:'move_candidate',Entity:'candidate',Operation:'transition',Confirm:'Move selected candidates?',Input:{id:{Name:'id',Type:'uuid'},stage:{Name:'stage',Label:'Stage',Type:'enum',Options:['applied','interview']},notify:{Name:'notify',Label:'Notify recruiter',Type:'boolean',Required:true},priority:{Name:'priority',Label:'Priority',Type:'integer'},score:{Name:'score',Label:'Score',Type:'decimal'},scheduled_at:{Name:'scheduled_at',Label:'Scheduled at',Type:'datetime'}}}},lifecycles:{}})
+      if(path.includes('/api/system/manifest'))return response({actions:{move_candidate:{Name:'move_candidate',Entity:'candidate',Operation:'transition',Confirm:'Move selected candidates?',Input:{id:{Name:'id',Type:'uuid'},stage:{Name:'stage',Label:'Stage',Type:'enum',Options:['applied','interview']},notify:{Name:'notify',Label:'Notify recruiter',Type:'boolean',Required:true},priority:{Name:'priority',Label:'Priority',Type:'integer'},score:{Name:'score',Label:'Score',Type:'decimal'},scheduled_at:{Name:'scheduled_at',Label:'Scheduled at',Type:'datetime'},token:{Name:'token',Label:'Access token',Type:'string',Sensitive:true},password:{Name:'password',Label:'Password',Type:'password',Sensitive:true}}}},lifecycles:{}})
       if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'ViewBlock',props:{name:'records',view:'candidate_records',display:{Type:'block',Selection:'multiple',Actions:['move_candidate'],Renderer:{Type:'table',Fields:[{Field:'name',Label:'Candidate'},{Field:'stage',Label:'Stage'}]},Pager:{Type:'none'}}}}]}})
       if(path.includes('/api/actions/move_candidate/batch'))return response({data:{results:[{id:'c1',ok:true}]}})
       if(path.includes('/api/views/candidate_records'))return response({data:[{id:'c1',name:'Ada',stage:'applied'}],nextCursor:''})
@@ -286,6 +287,8 @@ describe('public rendering',()=>{
     fireEvent.change(screen.getByLabelText('Stage'),{target:{value:'interview'}})
     fireEvent.change(screen.getByLabelText('Priority'),{target:{value:'3'}})
     expect(screen.getByLabelText('Score')).toHaveAttribute('step','any')
+    expect(screen.getByLabelText('Access token')).toHaveAttribute('type','password')
+    expect(screen.getByLabelText('Password')).toHaveAttribute('type','password')
     fireEvent.change(screen.getByLabelText('Score'),{target:{value:'1.25'}})
     const scheduledAt='2026-09-04T10:30:00'
     fireEvent.change(screen.getByLabelText('Scheduled at'),{target:{value:scheduledAt}})

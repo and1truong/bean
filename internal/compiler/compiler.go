@@ -908,6 +908,10 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 			}
 			groupOutputs[output] = true
 			fieldType, _ := viewFieldType(group.Field, e, relationships, a)
+			fieldDefinition, _ := viewFieldDefinition(group.Field, e, relationships, a)
+			if fieldDefinition.Sensitive {
+				out = append(out, diagnostic("View", name, path+".field", "sensitive fields cannot control grouping"))
+			}
 			if group.Bucket != "" && !map[string]bool{"day": true, "week": true, "month": true}[group.Bucket] {
 				out = append(out, diagnostic("View", name, path+".bucket", "must be day, week, or month"))
 			} else if group.Bucket != "" && fieldType != "date" && fieldType != "datetime" {
@@ -934,7 +938,11 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 			if !validViewField(aggregate.Field, fields, relationships, a) {
 				out = append(out, missingFieldDiagnostic("View", name, path+".field", aggregate.Field, false))
 			} else {
-				fieldType, _ := viewFieldType(aggregate.Field, e, relationships, a)
+				fieldDefinition, _ := viewFieldDefinition(aggregate.Field, e, relationships, a)
+				fieldType := fieldDefinition.Type
+				if fieldDefinition.Sensitive {
+					out = append(out, diagnostic("View", name, path+".field", "sensitive fields cannot be aggregated"))
+				}
 				numeric := map[string]bool{"integer": true, "decimal": true, "money": true}
 				ordered := map[string]bool{"date": true, "datetime": true, "decimal": true, "email": true, "enum": true, "integer": true, "money": true, "slug": true, "string": true, "text": true, "url": true, "uuid": true}
 				if (function == "sum" || function == "avg" || function == "average") && !numeric[fieldType] {

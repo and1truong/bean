@@ -139,6 +139,20 @@ func TestGroupedOutputsCannotCollideWithRedactedFields(t *testing.T) {
 	}
 }
 
+func TestSensitiveFieldsCannotDriveGroupedSemantics(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "account"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "secret", "type": "string", "sensitive": true}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "accounts_by_secret"}, Spec: map[string]any{"entity": "account", "fields": []any{"secret"}, "groupBy": []any{"secret"}, "aggregates": []any{map[string]any{"function": "count", "field": "secret", "alias": "account_count"}}}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasDiagnosticMessage(diagnostics, "View", "accounts_by_secret", "spec.groupBy.0.field", "sensitive fields cannot control grouping") {
+		t.Fatalf("sensitive group source accepted: %v", diagnostics)
+	}
+	if !hasDiagnosticMessage(diagnostics, "View", "accounts_by_secret", "spec.aggregates.0.field", "sensitive fields cannot be aggregated") {
+		t.Fatalf("sensitive aggregate source accepted: %v", diagnostics)
+	}
+}
+
 func TestATSExploreCandidateCompilesAgainstActiveApplication(t *testing.T) {
 	bundle, err := examples.Load("ats")
 	if err != nil {

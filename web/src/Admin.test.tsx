@@ -29,6 +29,16 @@ describe('Admin',()=>{
     expect(screen.queryByTestId('field-file')).not.toBeInTheDocument()
   })
 
+  it('masks sensitive selection Action inputs',async()=>{
+    const actionManifest:any=structuredClone(manifest)
+    actionManifest.actions.rotate_token={Name:'rotate_token',Entity:'article',Operation:'update',Input:{id:{Name:'id',Type:'uuid'},token:{Name:'token',Label:'Access token',Type:'string',Sensitive:true}}}
+    actionManifest.adminResources.article.Actions=['rotate_token']
+    vi.spyOn(globalThis,'fetch').mockImplementation(async input=>{const url=String(input);if(url.includes('/api/admin/resources/article'))return new Response(JSON.stringify({data:[{id:'a1',title:'Bean ships',status:'draft'}],nextCursor:''}),{status:200});return new Response(JSON.stringify(actionManifest),{status:200})})
+    show('/article')
+    fireEvent.click(await screen.findByRole('checkbox',{name:'Select Bean ships'}))
+    expect(await screen.findByLabelText('Access token')).toHaveAttribute('type','password')
+  })
+
   it('surfaces server field errors on Admin inputs',async()=>{
     vi.spyOn(globalThis,'fetch').mockImplementation(async input=>{const url=String(input);if(url.includes('/api/actions/article_create'))return new Response(JSON.stringify({error:{message:'invalid input',fields:{title:'must be unique'}}}),{status:400,headers:{'Content-Type':'application/json'}});return new Response(JSON.stringify(manifest),{status:200,headers:{'Content-Type':'application/json'}})})
     show('/article/new')
