@@ -2,6 +2,8 @@
 
 ## Current
 
+Asana Lite composition modernization is complete. All legacy Block presentation moved into named View Displays; one-off narrative Blocks became ordered inline Panel content; and the home, project, and task routes now compose focused responsive Panel sections. Project priority filters still fan out across chart, board, and tree sections, while route bindings, Actions, Policies, hierarchy, and attachment behavior remain unchanged. The Asana browser journey proves real one-to-two-column responsive behavior and ordered layout bands while retaining anonymous creation, board movement, deep subtasks, and file download. Final `make check` passes all Go, race, 64 React, black-box, and 17/17 Playwright tests; `make build` passes.
+
 Policy-aware collapsible Panel Regions are complete. Opt-in `regions[].collapseWhenEmpty` only reacts to a zero-child server-authorized render tree, preserves existing Regions by default, expands a sole survivor across Panel tracks, makes an all-collapsed Panel unavailable, and stores the behavior in AppIR v11. AppIR/compiler/schema/diff, Panel/Page/Sequence, restart, React/CSS, and tracker browser coverage pass. Final `make check` passes all Go, race, 64 React, black-box, and 17/17 Playwright tests; `make build` passes.
 
 Ordered multi-Panel Page sections are complete. `sections: [{id?, panel}]` provides 1–32 ordered layout bands with stable internal identities, remains mutually exclusive with legacy `panel`, stores directly in immutable AppIR v10, and retains Page filters plus Page/Panel/Block Policy and bound-request validation. Compiler/schema/reference/diff, Page/HTTP/LocalRegistration, restart, Studio, React, and tracker browser coverage pass. Final `make check` passes all Go, race, 63 React, black-box, and 17/17 Playwright tests; `make build` passes.
@@ -148,7 +150,7 @@ The accepted slice is a local anonymous project/task application with generic st
 - The generic `file` field accepts only bounded multipart input, persists base64 content plus safe metadata in the Action transaction, cleans replacement/hard-delete blobs, and policy-checks live references before download.
 - Compiler-validated `board` presentation groups enum states and invokes a same-Entity transition Action; `tree` presentation renders a selected many-to-one self relation with arbitrary-depth expand/collapse behavior.
 - Anonymous-only compiled applications suppress authentication navigation without weakening protected application behavior.
-- `examples/asana` contains 38 definitions grouped across access, projects, tasks, attachments, and pages. Root task creation is project-bound; subtask creation derives project identity from its immutable parent binding.
+- `examples/asana` contains 43 definitions grouped across access, projects, tasks, attachments, and pages. Root task creation is project-bound; subtask creation derives project identity from its immutable parent binding.
 - Focused field, Action, HTTP, compiler, React, and all Go tests pass. The dedicated Playwright journey passes project creation, board movement, three nested task levels, multipart upload, and byte-identical download.
 - `make check` passes, including race tests and all 12 Playwright workflows; `make build` passes with the updated embedded frontend. The Asana Lite goal is complete.
 

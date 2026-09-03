@@ -8,53 +8,142 @@ name: main_menu
 type: menu
 menu: main_navigation
 ---
-kind: Block
-name: home_intro
-type: text
-text: Create a project, then manage its tasks without accounts or external services.
----
-kind: Block
-name: project_help
-type: text
-text: The board contains root tasks. The tree below includes every nested subtask up to the local 200-task project limit.
----
-kind: Block
-name: task_help
-type: text
-text: Add a subtask to create the next hierarchy level, or upload one or more small attachments.
----
 kind: Panel
-name: home_panel
+name: home_intro_panel
 layout: single-column
 regions:
   - name: main
-    blocks: [main_menu, home_intro, project_list, create_project]
+    items:
+      - block: main_menu
+      - id: introduction
+        content:
+          - {type: heading, text: Plan local work}
+          - {type: paragraph, text: "Create a project, then manage its tasks without accounts or external services."}
 ---
 kind: Panel
-name: project_panel
+name: home_workspace_panel
+layout: two-column
+regions:
+  - name: left
+    items:
+      - id: projects_heading
+        content:
+          - {type: heading, text: Projects}
+      - block: project_list
+  - name: right
+    items:
+      - id: create_heading
+        content:
+          - {type: heading, text: Create a project}
+      - block: create_project
+---
+kind: Panel
+name: project_header_panel
 layout: single-column
 regions:
   - name: main
-    blocks: [main_menu, project_summary, project_help, project_status_chart, project_board, project_tree, create_root_task_block]
+    items:
+      - block: main_menu
+      - block: project_summary
+      - id: project_scope
+        content:
+          - {type: paragraph, text: The board contains root tasks. The hierarchy includes every nested subtask up to the local 200-task project limit.}
 ---
 kind: Panel
-name: task_panel
+name: project_overview_panel
+layout: two-column
+regions:
+  - name: left
+    items:
+      - id: status_heading
+        content:
+          - {type: heading, text: Tasks by status}
+      - block: project_status_chart
+  - name: right
+    items:
+      - id: create_task_heading
+        content:
+          - {type: heading, text: Create a root task}
+      - block: create_root_task_block
+---
+kind: Panel
+name: project_board_panel
 layout: single-column
 regions:
   - name: main
-    blocks: [main_menu, task_summary, task_help, create_subtask_block, attachment_list, upload_attachment_block]
+    items:
+      - id: board_introduction
+        content:
+          - {type: heading, text: Root task board}
+          - {type: paragraph, text: "Move root tasks through todo, in progress, and done."}
+      - block: project_board
+---
+kind: Panel
+name: project_tree_panel
+layout: single-column
+regions:
+  - name: main
+    items:
+      - id: tree_introduction
+        content:
+          - {type: heading, text: Full task hierarchy}
+          - {type: paragraph, text: Expand a task to inspect every nested level in this project.}
+      - block: project_tree
+---
+kind: Panel
+name: task_header_panel
+layout: single-column
+regions:
+  - name: main
+    items:
+      - block: main_menu
+      - block: task_summary
+      - id: task_help
+        content:
+          - {type: paragraph, text: "Add a subtask to create the next hierarchy level, or upload one or more small attachments."}
+---
+kind: Panel
+name: task_actions_panel
+layout: two-column
+regions:
+  - name: left
+    items:
+      - id: subtask_introduction
+        content:
+          - {type: heading, text: Add a subtask}
+          - {type: paragraph, text: The project is derived from this task and cannot be overridden by the form.}
+      - block: create_subtask_block
+  - name: right
+    items:
+      - id: upload_introduction
+        content:
+          - {type: heading, text: Upload an attachment}
+          - {type: paragraph, text: Attach one local file up to the configured small-file limit.}
+      - block: upload_attachment_block
+---
+kind: Panel
+name: task_attachments_panel
+layout: single-column
+regions:
+  - name: main
+    items:
+      - id: attachments_heading
+        content:
+          - {type: heading, text: Attachments}
+      - block: attachment_list
 ---
 kind: Page
 name: home
 route: /
 title: Asana Lite
-panel: home_panel
+sections:
+  - {id: introduction, panel: home_intro_panel}
+  - {id: workspace, panel: home_workspace_panel}
 ---
 kind: Page
 name: project
 route: /projects/:id
 title: Project
-panel: project_panel
 context:
   id: {source: route, name: id, required: true}
 filters:
@@ -65,11 +154,19 @@ filters:
       - {block: project_status_chart, filter: priority}
       - {block: project_board, filter: priority}
       - {block: project_tree, filter: priority}
+sections:
+  - {id: header, panel: project_header_panel}
+  - {id: overview, panel: project_overview_panel}
+  - {id: board, panel: project_board_panel}
+  - {id: hierarchy, panel: project_tree_panel}
 ---
 kind: Page
 name: task
 route: /tasks/:id
 title: Task
-panel: task_panel
 context:
   id: {source: route, name: id, required: true}
+sections:
+  - {id: header, panel: task_header_panel}
+  - {id: actions, panel: task_actions_panel}
+  - {id: attachments, panel: task_attachments_panel}

@@ -940,8 +940,8 @@ func TestInspectionExposesCoreReferenceFamilies(t *testing.T) {
 		{"Action", "move_task", "policy", "Policy", "public_access"},
 		{"Webform", "create_root_task_form", "action", "Action", "create_root_task"},
 		{"Block", "project_board", "view", "View", "project_root_tasks"},
-		{"Block", "project_board", "presentation.moveAction", "Action", "move_task"},
-		{"Page", "project", "panel", "Panel", "project_panel"},
+		{"View", "project_root_tasks", "displays.board.renderer.moveAction", "Action", "move_task"},
+		{"Page", "project", "sections.1.panel", "Panel", "project_overview_panel"},
 	} {
 		_, references, exists := compiler.InspectDefinition(compiled.App, expected.kind, expected.name)
 		if !exists || !hasInspectedReference(references, expected.path, expected.targetKind, expected.targetName) {

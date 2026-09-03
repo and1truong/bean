@@ -10,6 +10,12 @@ kind: View
 name: projects
 entity: project
 fields: [id, name, description, created_at]
+displays:
+  list:
+    type: block
+    renderer: {type: list, titleField: name, bodyField: description, linkRoute: /projects/:id}
+    pager: {type: cursor, pageSize: 50}
+    emptyState: Create your first project below.
 sort:
   - {desc: true, field: created_at}
 ---
@@ -19,6 +25,12 @@ entity: project
 fields: [id, name, description, created_at]
 exposedFilters:
   id: {name: id, required: true, type: uuid}
+displays:
+  summary:
+    type: block
+    renderer: {type: detail, titleField: name, bodyField: description}
+    pager: {type: none, pageSize: 50}
+    emptyState: Project not found.
 ---
 kind: Webform
 name: create_project_form
@@ -32,12 +44,7 @@ kind: Block
 name: project_list
 type: view
 view: projects
-presentation:
-  mode: list
-  titleField: name
-  bodyField: description
-  linkRoute: /projects/:id
-  emptyState: Create your first project below.
+display: list
 ---
 kind: Block
 name: project_summary
@@ -47,10 +54,7 @@ inputs:
   id: {required: true, type: uuid}
 bindings:
   id: {source: context, name: id, required: true}
-presentation:
-  mode: detail
-  titleField: name
-  bodyField: description
+display: summary
 ---
 kind: Block
 name: create_project

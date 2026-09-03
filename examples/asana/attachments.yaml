@@ -23,6 +23,12 @@ exposedFilters:
     required: true
     type: relation
     relation: {entity: task, kind: many-to-one, targetField: id}
+displays:
+  list:
+    type: block
+    renderer: {type: list, titleField: label, bodyField: file, metaFields: [created_at]}
+    pager: {type: cursor, pageSize: 50}
+    emptyState: No attachments yet.
 sort:
   - {desc: true, field: created_at}
 ---
@@ -45,12 +51,7 @@ inputs:
     relation: {entity: task, kind: many-to-one, targetField: id}
 bindings:
   task_id: {source: context, name: id, required: true}
-presentation:
-  mode: list
-  titleField: label
-  bodyField: file
-  metaFields: [created_at]
-  emptyState: No attachments yet.
+display: list
 ---
 kind: Block
 name: upload_attachment_block

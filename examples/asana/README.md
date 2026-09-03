@@ -1,6 +1,6 @@
 # Asana Lite
 
-A metadata-only project and task management application. It demonstrates nested tasks, status-based task movement, project dashboards, attachments, forms, and public pages.
+A metadata-only project and task management application. It demonstrates nested tasks, status-based task movement, project dashboards, attachments, forms, named View Displays, inline Panel content, and responsive ordered Page sections.
 
 ## Definition layout
 
@@ -9,7 +9,7 @@ A metadata-only project and task management application. It demonstrates nested 
 - `projects.yaml` — projects, project Views, and project forms
 - `tasks.yaml` — task Actions, Views, forms, and dashboard Blocks
 - `attachments.yaml` — task attachments and upload form
-- `pages.yaml` — navigation, Panels, and Pages
+- `pages.yaml` — navigation, inline content, responsive Panels, and ordered multi-Panel Pages
 
 ## Run it
 

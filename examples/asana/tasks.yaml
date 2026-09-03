@@ -103,6 +103,21 @@ exposedFilters:
 filter:
   left: {source: record, name: parent_id}
   op: is_null
+displays:
+  board:
+    type: block
+    renderer:
+      type: board
+      titleField: title
+      bodyField: description
+      metaFields: [priority, due_date]
+      linkRoute: /tasks/:id
+      groupField: status
+      orderField: position
+      moveAction: move_task
+      columns: [todo, in_progress, done]
+    pager: {type: none, pageSize: 200}
+    emptyState: Create the first task below.
 sort:
   - {field: position}
 maxLimit: 200
@@ -119,6 +134,18 @@ exposedFilters:
     type: relation
     relation: {entity: project, kind: many-to-one, targetField: id}
   priority: {field: priority, operator: eq}
+displays:
+  tree:
+    type: block
+    renderer:
+      type: tree
+      titleField: title
+      parentField: parent_id
+      orderField: position
+      metaFields: [status, priority, due_date]
+      linkRoute: /tasks/:id
+    pager: {type: none, pageSize: 200}
+    emptyState: No task hierarchy yet.
 sort:
   - {field: position}
 maxLimit: 200
@@ -151,6 +178,12 @@ entity: task
 fields: [id, project_id, parent_id, title, description, status, priority, due_date, position, created_at, updated_at]
 exposedFilters:
   id: {name: id, required: true, type: uuid}
+displays:
+  summary:
+    type: block
+    renderer: {type: detail, titleField: title, bodyField: description, metaFields: [status, priority, due_date]}
+    pager: {type: none, pageSize: 50}
+    emptyState: Task not found.
 ---
 kind: Webform
 name: create_root_task_form
@@ -183,17 +216,7 @@ inputs:
     relation: {entity: project, kind: many-to-one, targetField: id}
 bindings:
   project_id: {source: context, name: id, required: true}
-presentation:
-  mode: board
-  titleField: title
-  bodyField: description
-  metaFields: [priority, due_date]
-  linkRoute: /tasks/:id
-  groupField: status
-  orderField: position
-  moveAction: move_task
-  columns: [todo, in_progress, done]
-  emptyState: Create the first task below.
+display: board
 ---
 kind: Block
 name: project_status_chart
@@ -219,14 +242,7 @@ inputs:
     relation: {entity: project, kind: many-to-one, targetField: id}
 bindings:
   project_id: {source: context, name: id, required: true}
-presentation:
-  mode: tree
-  titleField: title
-  parentField: parent_id
-  orderField: position
-  metaFields: [status, priority, due_date]
-  linkRoute: /tasks/:id
-  emptyState: No task hierarchy yet.
+display: tree
 ---
 kind: Block
 name: task_summary
@@ -236,11 +252,7 @@ inputs:
   id: {required: true, type: uuid}
 bindings:
   id: {source: context, name: id, required: true}
-presentation:
-  mode: detail
-  titleField: title
-  bodyField: description
-  metaFields: [status, priority, due_date]
+display: summary
 ---
 kind: Block
 name: create_root_task_block
