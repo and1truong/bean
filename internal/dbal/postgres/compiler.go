@@ -20,7 +20,7 @@ func (Compiler) CompileSelect(query dbal.Select) (string, []dbal.Value, error) {
 	dateBucket := func(bucket, column string) (string, error) {
 		switch bucket {
 		case "day", "week", "month":
-			return "date_trunc('" + bucket + "', " + column + ")", nil
+			return "date_trunc('" + bucket + "', CAST(" + column + " AS timestamptz) AT TIME ZONE 'UTC')", nil
 		default:
 			return "", fmt.Errorf("invalid date bucket %q", bucket)
 		}

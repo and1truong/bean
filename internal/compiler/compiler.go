@@ -1149,10 +1149,14 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 			}
 		}
 	} else if renderer.Type == "calendar" {
-		for path, fieldName := range map[string]string{"timeField": renderer.TimeField, "endField": renderer.EndField} {
-			fieldType, exists := viewFieldType(fieldName, entity, relationships, app)
-			if fieldName == "" || !selected[fieldName] || !exists || fieldType != "date" && fieldType != "datetime" {
-				out = append(out, requiredDiagnostic("View", viewName, base+".renderer."+path, "calendar requires selected date or datetime start and end fields"))
+		fieldType, exists := viewFieldType(renderer.TimeField, entity, relationships, app)
+		if renderer.TimeField == "" || !selected[renderer.TimeField] || !exists || fieldType != "date" && fieldType != "datetime" {
+			out = append(out, requiredDiagnostic("View", viewName, base+".renderer.timeField", "calendar requires a selected date or datetime start field"))
+		}
+		if renderer.EndField != "" {
+			fieldType, exists = viewFieldType(renderer.EndField, entity, relationships, app)
+			if !selected[renderer.EndField] || !exists || fieldType != "date" && fieldType != "datetime" {
+				out = append(out, diagnostic("View", viewName, base+".renderer.endField", "calendar end field must be a selected date or datetime field"))
 			}
 		}
 		if renderer.TitleField == "" || !selected[renderer.TitleField] {

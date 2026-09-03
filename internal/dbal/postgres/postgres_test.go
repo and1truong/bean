@@ -8,6 +8,7 @@ import (
 
 	"github.com/beanruntime/bean/internal/appir"
 	beanctx "github.com/beanruntime/bean/internal/context"
+	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/dbal/dbaltest"
 	"github.com/beanruntime/bean/internal/dbal/postgres"
 	"github.com/beanruntime/bean/internal/release"
@@ -54,6 +55,19 @@ func TestLegacyIntegerBooleanFailsStorageValidation(t *testing.T) {
 func TestCompilerUsesNumberedParameters(t *testing.T) {
 	if got := (postgres.Compiler{}).Placeholder(3); got != "$3" {
 		t.Fatalf("placeholder=%q", got)
+	}
+}
+
+func TestCompilerCastsTextTimestampsBeforeDateBucketing(t *testing.T) {
+	statement, _, err := (postgres.Compiler{}).CompileSelect(dbal.Select{
+		Table:   "event",
+		GroupBy: []dbal.Group{{Column: "occurred_at", Alias: "month", Bucket: "month"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(statement, `date_trunc('month', CAST("occurred_at" AS timestamptz) AT TIME ZONE 'UTC')`) {
+		t.Fatalf("statement=%q", statement)
 	}
 }
 

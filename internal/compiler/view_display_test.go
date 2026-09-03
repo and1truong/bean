@@ -93,6 +93,25 @@ func TestLegacyBlockPresentationNormalizesToPrivateViewDisplay(t *testing.T) {
 	}
 }
 
+func TestCalendarDisplayAllowsStartWithoutEnd(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "event"}, Spec: map[string]any{"fields": []any{
+			map[string]any{"name": "title", "type": "string"},
+			map[string]any{"name": "starts_at", "type": "datetime"},
+		}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "events"}, Spec: map[string]any{
+			"entity": "event", "fields": []any{"id", "title", "starts_at"},
+			"displays": map[string]any{"calendar": map[string]any{
+				"type": "block", "renderer": map[string]any{"type": "calendar", "titleField": "title", "timeField": "starts_at"},
+			}},
+		}},
+	}
+	result := compiler.Compile("test", 1, definitions)
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("diagnostics=%v", result.Diagnostics)
+	}
+}
+
 func TestViewDisplayRejectsOverlappingRoutes(t *testing.T) {
 	entity := definition.Definition{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}}}}
 	t.Run("between displays", func(t *testing.T) {

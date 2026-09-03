@@ -168,9 +168,11 @@ describe('public rendering',()=>{
       if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[
         {component:'ViewBlock',props:{name:'stage_chart',view:'candidates_by_stage',displayName:'chart',display:{Type:'block',Renderer:{Type:'chart',GroupField:'stage',MetricField:'candidate_count',MetricLabel:'Candidates by stage'},Pager:{Type:'none'},Drill:{View:'candidate_records',Display:'page',Route:'/candidates',Bindings:[{Source:'group',Name:'stage',Filter:'stage'}]}},displays:{chart:{Type:'block',Renderer:{Type:'chart',GroupField:'stage',MetricField:'candidate_count',MetricLabel:'Candidates by stage'},Pager:{Type:'none'},Drill:{View:'candidate_records',Display:'page',Route:'/candidates',Bindings:[{Source:'group',Name:'stage',Filter:'stage'}]}},table:{Type:'block',Renderer:{Type:'table',Fields:[{Field:'stage',Label:'Stage'},{Field:'candidate_count',Label:'Candidates'}]},Pager:{Type:'none'}}},fieldTypes:{candidate_count:'integer'}}},
         {component:'ViewBlock',props:{name:'booking_calendar',view:'resource_calendar',display:{Type:'block',Renderer:{Type:'calendar',TitleField:'resource.name',TimeField:'start_at',EndField:'end_at'},Pager:{Type:'none'}}}},
+        {component:'ViewBlock',props:{name:'milestone_calendar',view:'milestone_calendar',display:{Type:'block',Renderer:{Type:'calendar',TitleField:'title',TimeField:'starts_at'},Pager:{Type:'none'}}}},
       ]}})
       if(path.includes('/api/views/candidates_by_stage'))return response({data:[{stage:'interview',candidate_count:4},{stage:'offer',candidate_count:2}],nextCursor:'',shape:'groups'})
       if(path.includes('/api/views/resource_calendar'))return response({data:[{id:'b1','resource.name':'Room A',start_at:'2026-09-03T09:00:00Z',end_at:'2026-09-03T10:00:00Z'}],nextCursor:'',shape:'records'})
+      if(path.includes('/api/views/milestone_calendar'))return response({data:[{id:'m1',title:'Launch',starts_at:'2026-09-04T09:00:00Z'}],nextCursor:'',shape:'records'})
       return response({})
     })
     vi.stubGlobal('fetch',fetchMock)
@@ -178,7 +180,8 @@ describe('public rendering',()=>{
     expect(await screen.findByTestId('bar-chart')).toHaveAccessibleName('Candidates by stage')
     expect(screen.getByLabelText('interview: 4')).toBeInTheDocument()
     expect(screen.getByRole('link',{name:'Open interview records'})).toHaveAttribute('href','/candidates?stage=interview')
-    expect(await screen.findByTestId('calendar-view')).toHaveTextContent('Room A')
+    expect((await screen.findAllByTestId('calendar-view'))[0]).toHaveTextContent('Room A')
+    expect(await screen.findByText('Sep 4, 2026')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Display'),{target:{value:'table'}})
     expect(await screen.findByRole('columnheader',{name:'Candidates'})).toBeInTheDocument()
     await waitFor(()=>expect(fetchMock.mock.calls.some(([input])=>String(input).includes('_viewDisplay=table'))).toBe(true))
@@ -207,12 +210,39 @@ describe('public rendering',()=>{
     expect(viewRequests.filter(path=>path.includes('recent_activity')).every(path=>!path.includes('stage='))).toBe(true)
   })
 
+  it('applies page defaults, serializes datetimes, and resets targeted cursors',async()=>{
+    const fetchMock=vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',props:{filters:{pipeline_stage:{Label:'Stage',Type:'enum',Widget:'select',Options:['applied','interview'],Default:'interview'},applied_after:{Label:'Applied after',Type:'datetime',Widget:'date'}}},children:[
+        {component:'ViewBlock',props:{name:'candidates',view:'candidate_records',pageFilters:{stage:'pipeline_stage',applied_after:'applied_after'},display:{Type:'block',Renderer:{Type:'table',Fields:[{Field:'name',Label:'Candidate'}]},Pager:{Type:'cursor',PageSize:1}}}},
+      ]}})
+      if(path.includes('/api/views/candidate_records')&&path.includes('cursor=next'))return response({data:[{id:'c2',name:'Grace'}],nextCursor:''})
+      if(path.includes('/api/views/candidate_records'))return response({data:[{id:'c1',name:'Ada'}],nextCursor:'next'})
+      return response({})
+    })
+    vi.stubGlobal('fetch',fetchMock)
+    renderApp('/')
+    expect(await screen.findByText('Ada')).toBeInTheDocument()
+    const initialRequest=fetchMock.mock.calls.map(([input])=>String(input)).find(path=>path.includes('/api/views/candidate_records'))!
+    expect(initialRequest).toContain('stage=interview')
+    fireEvent.click(screen.getByRole('button',{name:'Next'}))
+    expect(await screen.findByText('Grace')).toBeInTheDocument()
+    const localDateTime='2026-09-01T09:30:00'
+    fireEvent.change(screen.getByLabelText('Applied after'),{target:{value:localDateTime}})
+    fireEvent.click(screen.getByRole('button',{name:'Apply filters'}))
+    await waitFor(()=>expect(fetchMock.mock.calls.some(([input])=>String(input).includes('applied_after='))).toBe(true))
+    const filteredRequests=fetchMock.mock.calls.map(([input])=>String(input)).filter(path=>path.includes('/api/views/candidate_records')&&path.includes('applied_after='))
+    expect(filteredRequests.every(path=>!path.includes('cursor='))).toBe(true)
+    expect(new URL(filteredRequests.at(-1)!,'http://bean').searchParams.get('applied_after')).toBe(new Date(localDateTime).toISOString())
+  })
+
   it('runs a selected record Action through the bounded batch contract',async()=>{
     const fetchMock=vi.fn(async(input:string|URL|Request,init?:RequestInit)=>{
       void init
       const path=String(input)
       if(path.includes('/api/system/session'))return response({authenticated:true,user:{Roles:['administrator']}})
-      if(path.includes('/api/system/manifest'))return response({actions:{move_candidate:{Name:'move_candidate',Entity:'candidate',Operation:'transition',Input:{id:{Name:'id',Type:'uuid'},stage:{Name:'stage',Label:'Stage',Type:'enum',Options:['applied','interview']}}}},lifecycles:{}})
+      if(path.includes('/api/system/manifest'))return response({actions:{move_candidate:{Name:'move_candidate',Entity:'candidate',Operation:'transition',Input:{id:{Name:'id',Type:'uuid'},stage:{Name:'stage',Label:'Stage',Type:'enum',Options:['applied','interview']},notify:{Name:'notify',Label:'Notify recruiter',Type:'boolean'},priority:{Name:'priority',Label:'Priority',Type:'integer'}}}},lifecycles:{}})
       if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'ViewBlock',props:{name:'records',view:'candidate_records',display:{Type:'block',Selection:'multiple',Actions:['move_candidate'],Renderer:{Type:'table',Fields:[{Field:'name',Label:'Candidate'},{Field:'stage',Label:'Stage'}]},Pager:{Type:'none'}}}}]}})
       if(path.includes('/api/actions/move_candidate/batch'))return response({data:{results:[{id:'c1',ok:true}]}})
       if(path.includes('/api/views/candidate_records'))return response({data:[{id:'c1',name:'Ada',stage:'applied'}],nextCursor:''})
@@ -222,10 +252,12 @@ describe('public rendering',()=>{
     renderApp('/')
     fireEvent.click(await screen.findByRole('checkbox',{name:'Select Ada'}))
     fireEvent.change(screen.getByLabelText('Stage'),{target:{value:'interview'}})
+    fireEvent.click(screen.getByRole('checkbox',{name:'Notify recruiter'}))
+    fireEvent.change(screen.getByLabelText('Priority'),{target:{value:'3'}})
     fireEvent.click(screen.getByRole('button',{name:'Run for 1'}))
     await waitFor(()=>expect(fetchMock.mock.calls.some(([input])=>String(input).includes('/api/actions/move_candidate/batch'))).toBe(true))
     const call=fetchMock.mock.calls.find(([input])=>String(input).includes('/api/actions/move_candidate/batch'))!
-    expect(JSON.parse(String(call[1]?.body))).toEqual({ids:['c1'],values:{stage:'interview'}})
+    expect(JSON.parse(String(call[1]?.body))).toEqual({ids:['c1'],values:{stage:'interview',notify:true,priority:3}})
   })
 
   it('renders allowed board movement and an arbitrary-depth task tree',async()=>{
