@@ -174,6 +174,22 @@ describe('public rendering',()=>{
     expect(screen.queryByTestId('metric-value')).not.toBeInTheDocument()
   })
 
+  it('renders all-negative chart aggregates on an absolute signed scale',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'ViewBlock',props:{name:'losses',view:'losses_by_kind',display:{Type:'block',Renderer:{Type:'chart',GroupField:'kind',MetricField:'amount',MetricLabel:'Losses'},Pager:{Type:'none'}}}}})
+      if(path.includes('/api/views/losses_by_kind'))return response({data:[{kind:'refunds',amount:-4},{kind:'credits',amount:-2}],nextCursor:''})
+      return response({})
+    }))
+    renderApp('/')
+    const refunds=await screen.findByLabelText('refunds: -4')
+    const credits=screen.getByLabelText('credits: -2')
+    expect(refunds.previousElementSibling?.firstElementChild).toHaveStyle({width:'100%'})
+    expect(credits.previousElementSibling?.firstElementChild).toHaveStyle({width:'50%'})
+    expect(refunds.previousElementSibling?.firstElementChild).toHaveClass('bg-destructive')
+  })
+
   it('switches compatible grouped displays and renders a calendar',async()=>{
     const fetchMock=vi.fn(async(input:string|URL|Request)=>{
       const path=String(input)
@@ -229,8 +245,8 @@ describe('public rendering',()=>{
     const fetchMock=vi.fn(async(input:string|URL|Request)=>{
       const path=String(input)
       if(path.includes('/api/system/session'))return response({authenticated:false})
-      if(path.includes('/api/system/page'))return response({tree:{component:'Page',props:{filters:{pipeline_stage:{Label:'Stage',Type:'enum',Widget:'select',Options:['applied','interview'],Default:'interview'},applied_after:{Label:'Applied after',Type:'datetime',Widget:'date'}}},children:[
-        {component:'ViewBlock',props:{name:'candidates',view:'candidate_records',pageFilters:{stage:'pipeline_stage',applied_after:'applied_after'},display:{Type:'block',Renderer:{Type:'table',Fields:[{Field:'name',Label:'Candidate'}]},Pager:{Type:'cursor',PageSize:1}}}},
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',props:{filters:{pipeline_stage:{Label:'Stage',Type:'enum',Widget:'select',Options:['applied','interview'],Default:'interview'},applied_after:{Label:'Applied after',Type:'datetime',Widget:'date'},minimum_score:{Label:'Minimum score',Type:'decimal',Widget:'number'}}},children:[
+        {component:'ViewBlock',props:{name:'candidates',view:'candidate_records',pageFilters:{stage:'pipeline_stage',applied_after:'applied_after',minimum_score:'minimum_score'},display:{Type:'block',Renderer:{Type:'table',Fields:[{Field:'name',Label:'Candidate'}]},Pager:{Type:'cursor',PageSize:1}}}},
       ]}})
       if(path.includes('/api/views/candidate_records')&&path.includes('cursor=next'))return response({data:[{id:'c2',name:'Grace'}],nextCursor:''})
       if(path.includes('/api/views/candidate_records'))return response({data:[{id:'c1',name:'Ada'}],nextCursor:'next'})
@@ -241,6 +257,7 @@ describe('public rendering',()=>{
     expect(await screen.findByText('Ada')).toBeInTheDocument()
     const initialRequest=fetchMock.mock.calls.map(([input])=>String(input)).find(path=>path.includes('/api/views/candidate_records'))!
     expect(initialRequest).toContain('stage=interview')
+    expect(screen.getByLabelText('Minimum score')).toHaveAttribute('step','any')
     fireEvent.click(screen.getByRole('button',{name:'Next'}))
     expect(await screen.findByText('Grace')).toBeInTheDocument()
     const localDateTime='2026-09-01T09:30:00'
@@ -272,7 +289,7 @@ describe('public rendering',()=>{
     fireEvent.change(screen.getByLabelText('Score'),{target:{value:'1.25'}})
     const scheduledAt='2026-09-04T10:30:00'
     fireEvent.change(screen.getByLabelText('Scheduled at'),{target:{value:scheduledAt}})
-    fireEvent.click(screen.getByRole('button',{name:'Run for 1'}))
+    fireEvent.click(await screen.findByRole('button',{name:'Run for 1'}))
     expect(await screen.findByText('Move selected candidates?')).toBeInTheDocument()
     expect(fetchMock.mock.calls.some(([input])=>String(input).includes('/api/actions/move_candidate/batch'))).toBe(false)
     fireEvent.click(screen.getByRole('button',{name:'Confirm'}))
@@ -302,6 +319,43 @@ describe('public rendering',()=>{
     expect(fetchMock.mock.calls.some(([input])=>String(input).includes('/api/actions/delete_candidate/batch'))).toBe(false)
     await act(async()=>resolveManifest(await response({actions:{delete_candidate:{Name:'delete_candidate',Entity:'candidate',Operation:'delete',Confirm:'Delete selected candidates?',Input:{id:{Name:'id',Type:'uuid'}}}},lifecycles:{}})))
     expect(await screen.findByRole('button',{name:'Run for 1'})).toBeEnabled()
+  })
+
+  it('blocks cached Action metadata while the manifest refreshes',async()=>{
+    let manifestCalls=0
+    let resolveRefresh:(value:Response)=>void=()=>{}
+    let resolveSecondRefresh:(value:Response)=>void=()=>{}
+    const refresh=new Promise<Response>(resolve=>{resolveRefresh=resolve})
+    const secondRefresh=new Promise<Response>(resolve=>{resolveSecondRefresh=resolve})
+    const stale={actions:{delete_candidate:{Name:'delete_candidate',Entity:'candidate',Operation:'delete',Input:{id:{Name:'id',Type:'uuid'}}}},lifecycles:{}}
+    const current={actions:{delete_candidate:{...stale.actions.delete_candidate,Confirm:'Delete with the current release?'}},lifecycles:{}}
+    const fetchMock=vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:true,user:{Roles:['administrator']}})
+      if(path.includes('/api/system/manifest')){manifestCalls++;return manifestCalls===1?response(stale):manifestCalls===2?refresh:secondRefresh}
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'ViewBlock',props:{name:'records',view:'candidate_records',display:{Type:'block',Selection:'multiple',Actions:['delete_candidate'],Renderer:{Type:'table',Fields:[{Field:'name',Label:'Candidate'}]},Pager:{Type:'none'}}}}]}})
+      if(path.includes('/api/views/candidate_records'))return response({data:[{id:'c1',name:'Ada'}],nextCursor:''})
+      if(path.includes('/api/actions/delete_candidate/batch'))return response({data:{results:[{id:'c1',ok:true}]}})
+      return response({})
+    })
+    vi.stubGlobal('fetch',fetchMock)
+    const client=renderApp('/')
+    fireEvent.click(await screen.findByRole('checkbox',{name:'Select Ada'}))
+    await waitFor(()=>expect(manifestCalls).toBe(2))
+    const loading=screen.getByRole('button',{name:'Loading Action…'})
+    expect(loading).toBeDisabled()
+    fireEvent.submit(loading.closest('form')!)
+    expect(fetchMock.mock.calls.some(([input])=>String(input).includes('/api/actions/delete_candidate/batch'))).toBe(false)
+    await act(async()=>resolveRefresh(await response(current)))
+    fireEvent.click(await screen.findByRole('button',{name:'Run for 1'}))
+    expect(await screen.findByText('Delete with the current release?')).toBeInTheDocument()
+    act(()=>{void client.invalidateQueries({queryKey:['manifest']})})
+    await waitFor(()=>expect(manifestCalls).toBe(3))
+    expect(screen.getByRole('button',{name:'Confirm'})).toBeDisabled()
+    fireEvent.click(screen.getByRole('button',{name:'Confirm'}))
+    expect(fetchMock.mock.calls.some(([input])=>String(input).includes('/api/actions/delete_candidate/batch'))).toBe(false)
+    await act(async()=>resolveSecondRefresh(await response(current)))
+    expect(await screen.findByRole('button',{name:'Confirm'})).toBeEnabled()
   })
 
   it('resets selected rows and Action state when switching table displays',async()=>{
@@ -335,7 +389,7 @@ describe('public rendering',()=>{
     vi.stubGlobal('fetch',fetchMock)
     renderApp('/')
     fireEvent.click(await screen.findByRole('checkbox',{name:'Select Ada'}))
-    expect(screen.getByRole('button',{name:'Run for 1'})).toBeInTheDocument()
+    expect(await screen.findByRole('button',{name:'Run for 1'})).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button',{name:'Next'}))
     expect(await screen.findByText('Grace')).toBeInTheDocument()
     await waitFor(()=>expect(screen.queryByRole('button',{name:'Run for 1'})).not.toBeInTheDocument())
@@ -808,7 +862,7 @@ describe('public rendering',()=>{
 })
 
 function NavigationDriver({capture}:{capture:(navigate:NavigateFunction)=>void}){capture(useNavigate());return null}
-function renderApp(path:string){render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter initialEntries={[path]}><App/></MemoryRouter></QueryClientProvider>)}
+function renderApp(path:string,client=new QueryClient({defaultOptions:{queries:{retry:false}}})){render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}><App/></MemoryRouter></QueryClientProvider>);return client}
 function response(body:any){return Promise.resolve(new Response(JSON.stringify(body),{status:200,headers:{'Content-Type':'application/json'}}))}
 
 afterEach(()=>vi.unstubAllGlobals())
