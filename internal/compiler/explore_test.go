@@ -51,6 +51,25 @@ func TestCompileViewCandidateChecksSequenceRouteConflicts(t *testing.T) {
 	}
 }
 
+func TestCompileViewCandidateRebuildsLegacyBlockDisplay(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "articles"}, Spec: map[string]any{"entity": "article", "fields": []any{"id", "title"}}},
+		{APIVersion: definition.APIVersion, Kind: "Block", Metadata: definition.Metadata{Name: "article_list"}, Spec: map[string]any{"type": "view", "view": "articles", "presentation": map[string]any{"mode": "list", "titleField": "title"}}},
+	}
+	active := compiler.Compile("test", 1, definitions)
+	if len(active.Diagnostics) != 0 {
+		t.Fatalf("active diagnostics=%v", active.Diagnostics)
+	}
+	result := compiler.CompileViewCandidate(active.App, "articles", map[string]any{"entity": "article", "fields": []any{"id", "title"}})
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("candidate diagnostics=%v", result.Diagnostics)
+	}
+	if result.App.Blocks["article_list"].Display != "_block_article_list" || result.App.Views["articles"].Displays["_block_article_list"].Renderer.Type != "list" {
+		t.Fatalf("legacy display was not rebuilt: block=%+v view=%+v", result.App.Blocks["article_list"], result.App.Views["articles"])
+	}
+}
+
 func TestPageFiltersCompileTypedExplicitTargets(t *testing.T) {
 	definitions := []definition.Definition{
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "candidate"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "stage", "type": "enum", "options": []any{"applied", "interview"}}}}},

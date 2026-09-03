@@ -81,6 +81,14 @@ func CompileViewCandidate(active *appir.App, name string, spec map[string]any) R
 	if len(diagnostics) == 0 {
 		diagnostics = append(diagnostics, registered.Compile(app, source)...)
 		registered.Normalize(app)
+		for blockName, block := range app.Blocks {
+			if block.View == name && block.Display == "_block_"+blockName {
+				block.Display = ""
+				app.Blocks[blockName] = block
+			}
+		}
+		blockKind, _ := definitionKindRegistry().Lookup("Block")
+		blockKind.Normalize(app)
 		state := &validationState{routes: map[string]string{}}
 		for _, kind := range []string{"Page", "View", "Sequence", "Block", "AdminResource"} {
 			dependent, _ := definitionKindRegistry().Lookup(kind)
