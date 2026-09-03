@@ -237,7 +237,7 @@ func ReadPage(ctx context.Context, reader Reader, app *appir.App, name string, o
 		} else {
 			column = qualify(column, v.Entity, joined)
 		}
-		orders = append(orders, dbal.Order{Column: column, Desc: o.Desc, NullsLast: groupAliases[o.Field] != ""})
+		orders = append(orders, dbal.Order{Column: column, Desc: o.Desc, NullsLast: aggregateAliases[o.Field] || groupAliases[o.Field] != ""})
 	}
 	if aggregateSort {
 		for _, group := range v.GroupBy {

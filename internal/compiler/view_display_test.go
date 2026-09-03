@@ -164,6 +164,24 @@ func TestViewDisplayRejectsBucketedGroupEqualityDrill(t *testing.T) {
 	}
 }
 
+func TestChartDisplayValidatesSearchFieldsAndGroupAxis(t *testing.T) {
+	definitions := drillDefinitions("eq", "eq", "/events")
+	entityFields := definitions[0].Spec["fields"].([]any)
+	definitions[0].Spec["fields"] = append(entityFields, map[string]any{"name": "category", "type": "string"})
+	source := definitions[2].Spec
+	source["fields"] = []any{"status", "category"}
+	source["groupBy"] = []any{"status", "category"}
+	renderer := source["displays"].(map[string]any)["chart"].(map[string]any)["renderer"].(map[string]any)
+	renderer["searchFields"] = []any{"event_count"}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasDiagnosticMessage(diagnostics, "View", "events_by_status", "spec.displays.chart.renderer.groupField", "chart requires exactly one grouped output field") {
+		t.Fatalf("multiple chart groups accepted: %v", diagnostics)
+	}
+	if !hasDiagnosticMessage(diagnostics, "View", "events_by_status", "spec.displays.chart.renderer.searchFields.0", "must reference a searchable text field") {
+		t.Fatalf("aggregate alias chart search accepted: %v", diagnostics)
+	}
+}
+
 func TestViewDisplayRejectsParameterizedDrillTarget(t *testing.T) {
 	definitions := drillDefinitions("eq", "eq", "/events/:status")
 	targetDisplay := definitions[1].Spec["displays"].(map[string]any)["page"].(map[string]any)
@@ -244,11 +262,12 @@ func TestTableDisplayRejectsActionsWithoutRecordID(t *testing.T) {
 	}
 }
 
-func TestTableDisplayRejectsToManyRelationActionInputs(t *testing.T) {
+func TestTableDisplayRejectsUnsupportedActionInputs(t *testing.T) {
 	definitions := []definition.Definition{
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "tag"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "name", "type": "string"}}}},
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"fields": []any{
 			map[string]any{"name": "title", "type": "string"},
+			map[string]any{"name": "attachment", "type": "file"},
 			map[string]any{"name": "tags", "type": "relation", "relation": map[string]any{"entity": "tag", "kind": "many-to-many", "targetField": "id"}},
 		}}},
 		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "update_article"}, Spec: map[string]any{
@@ -265,6 +284,9 @@ func TestTableDisplayRejectsToManyRelationActionInputs(t *testing.T) {
 	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
 	if !hasDiagnosticMessage(diagnostics, "View", "articles", "spec.displays.table.actions.0", "record Action input tags is not supported for selection Actions") {
 		t.Fatalf("to-many input diagnostics=%v", diagnostics)
+	}
+	if !hasDiagnosticMessage(diagnostics, "View", "articles", "spec.displays.table.actions.0", "record Action input attachment is not supported for selection Actions") {
+		t.Fatalf("file input diagnostics=%v", diagnostics)
 	}
 }
 

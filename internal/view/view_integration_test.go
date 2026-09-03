@@ -248,7 +248,7 @@ func TestQueryCarriesSelectedFieldTypesToDBAL(t *testing.T) {
 	database := &capturingDatabase{}
 	app := appir.Empty()
 	app.Entities["event"] = appir.Entity{Name: "event", Fields: []appir.Field{{Name: "occurred_at", Type: "datetime"}, {Name: "amount", Type: "decimal"}}}
-	app.Views["events_by_month"] = appir.View{Name: "events_by_month", Entity: "event", ResultShape: "groups", Fields: []string{"occurred_at"}, GroupBy: []appir.ViewGroup{{Field: "occurred_at", As: "month", Bucket: "month"}}, Aggregates: []appir.Aggregate{{Function: "count", Field: "id", Alias: "event_count"}, {Function: "sum", Field: "amount", Alias: "total"}}, MaxLimit: 3}
+	app.Views["events_by_month"] = appir.View{Name: "events_by_month", Entity: "event", ResultShape: "groups", Fields: []string{"occurred_at"}, GroupBy: []appir.ViewGroup{{Field: "occurred_at", As: "month", Bucket: "month"}}, Aggregates: []appir.Aggregate{{Function: "count", Field: "id", Alias: "event_count"}, {Function: "sum", Field: "amount", Alias: "total"}}, Sort: []appir.Sort{{Field: "total", Desc: true}}, MaxLimit: 3}
 	if _, err := (view.Service{DB: database}).RunPage(context.Background(), app, "events_by_month", view.Params{}, beanctx.Request{}); err != nil {
 		t.Fatal(err)
 	}
@@ -257,6 +257,9 @@ func TestQueryCarriesSelectedFieldTypesToDBAL(t *testing.T) {
 	}
 	if len(database.query.Aggregates) != 2 || database.query.Aggregates[1].Type != "decimal" {
 		t.Fatalf("aggregates=%+v", database.query.Aggregates)
+	}
+	if len(database.query.OrderBy) == 0 || database.query.OrderBy[0].Column != "total" || !database.query.OrderBy[0].NullsLast {
+		t.Fatalf("aggregate order=%+v", database.query.OrderBy)
 	}
 }
 

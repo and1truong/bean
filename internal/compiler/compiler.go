@@ -1160,6 +1160,9 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 			}
 		}
 	} else if renderer.Type == "chart" {
+		if len(view.GroupBy) != 1 {
+			out = append(out, diagnostic("View", viewName, base+".renderer.groupField", "chart requires exactly one grouped output field"))
+		}
 		if groups[renderer.GroupField].Field == "" {
 			out = append(out, requiredDiagnostic("View", viewName, base+".renderer.groupField", "chart requires a grouped output field"))
 		}
@@ -1170,6 +1173,18 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 			fieldType, _ := viewFieldType(aggregate.Field, entity, relationships, app)
 			if !map[string]bool{"decimal": true, "integer": true, "money": true}[fieldType] {
 				out = append(out, diagnostic("View", viewName, base+".renderer.metricField", "chart values must be numeric"))
+			}
+		}
+		searchable := map[string]bool{"email": true, "richtext": true, "slug": true, "string": true, "text": true, "url": true}
+		for index, fieldName := range renderer.SearchFields {
+			field, exists := viewFieldDefinition(fieldName, entity, relationships, app)
+			path := fmt.Sprintf("%s.renderer.searchFields.%d", base, index)
+			if !selected[fieldName] {
+				out = append(out, diagnostic("View", viewName, path, "must be selected by View "+viewName))
+			} else if !exists || !searchable[field.Type] {
+				out = append(out, invalidReferenceDiagnostic("View", viewName, path, "must reference a searchable text field"))
+			} else if redacted[fieldName] {
+				out = append(out, diagnostic("View", viewName, path, "must not be redacted by View policy"))
 			}
 		}
 	} else if renderer.Type == "calendar" {
@@ -1285,7 +1300,7 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 				for _, fieldName := range keys(actionDefinition.Input) {
 					field := actionDefinition.Input[fieldName]
 					_, derived := actionDefinition.Derive[fieldName]
-					if !derived && field.Type == "relation" && field.Relation != nil && (field.Relation.Kind == "one-to-many" || field.Relation.Kind == "many-to-many") {
+					if !derived && (field.Type == "file" || field.Type == "relation" && field.Relation != nil && (field.Relation.Kind == "one-to-many" || field.Relation.Kind == "many-to-many")) {
 						out = append(out, diagnostic("View", viewName, path, "record Action input "+fieldName+" is not supported for selection Actions"))
 					}
 				}
