@@ -456,7 +456,14 @@
     },
     "groupBy": {
       "items": {
-        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ViewGroup"
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ViewGroup"
+          }
+        ]
       },
       "type": "array"
     },

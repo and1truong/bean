@@ -164,6 +164,54 @@ func TestViewDisplayRejectsBucketedGroupEqualityDrill(t *testing.T) {
 	}
 }
 
+func TestViewDisplayRejectsParameterizedDrillTarget(t *testing.T) {
+	definitions := drillDefinitions("eq", "eq", "/events/:status")
+	targetDisplay := definitions[1].Spec["displays"].(map[string]any)["page"].(map[string]any)
+	targetDisplay["bindings"] = map[string]any{"status": map[string]any{"source": "route", "name": "status", "required": true}}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasDiagnosticMessage(diagnostics, "View", "events_by_status", "spec.displays.chart.drill.display", "must reference a page Display with a static route") {
+		t.Fatalf("parameterized drill diagnostics=%v", diagnostics)
+	}
+}
+
+func TestViewDisplayRejectsDrillOperatorMismatch(t *testing.T) {
+	t.Run("group requires equality", func(t *testing.T) {
+		diagnostics := compiler.Compile("test", 1, drillDefinitions("eq", "contains", "/events")).Diagnostics
+		if !hasDiagnosticMessage(diagnostics, "View", "events_by_status", "spec.displays.chart.drill.bindings.0", "source and target filter operators must match") {
+			t.Fatalf("group operator diagnostics=%v", diagnostics)
+		}
+	})
+	t.Run("filters preserve their operator", func(t *testing.T) {
+		definitions := drillDefinitions("contains", "eq", "/events")
+		source := definitions[2].Spec
+		source["exposedFilters"] = map[string]any{"status": map[string]any{"field": "status", "operator": "contains"}}
+		drill := source["displays"].(map[string]any)["chart"].(map[string]any)["drill"].(map[string]any)
+		drill["bindings"] = []any{map[string]any{"source": "filter", "name": "status", "filter": "status"}}
+		diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+		if !hasDiagnosticMessage(diagnostics, "View", "events_by_status", "spec.displays.chart.drill.bindings.0", "source and target filter operators must match") {
+			t.Fatalf("filter operator diagnostics=%v", diagnostics)
+		}
+	})
+}
+
+func drillDefinitions(sourceOperator, targetOperator, targetRoute string) []definition.Definition {
+	return []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "event"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "status", "type": "string"}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "event_records"}, Spec: map[string]any{
+			"entity": "event", "fields": []any{"id", "status"}, "exposedFilters": map[string]any{"status": map[string]any{"field": "status", "operator": targetOperator}},
+			"displays": map[string]any{"page": map[string]any{"type": "page", "route": targetRoute, "renderer": map[string]any{"type": "table", "fields": []any{map[string]any{"field": "status"}}}}},
+		}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "events_by_status"}, Spec: map[string]any{
+			"entity": "event", "fields": []any{"status"}, "groupBy": []any{"status"}, "aggregates": []any{map[string]any{"function": "count", "field": "id", "alias": "event_count"}},
+			"exposedFilters": map[string]any{"status": map[string]any{"field": "status", "operator": sourceOperator}},
+			"displays": map[string]any{"chart": map[string]any{
+				"type": "block", "renderer": map[string]any{"type": "chart", "groupField": "status", "metricField": "event_count"},
+				"drill": map[string]any{"view": "event_records", "display": "page", "bindings": []any{map[string]any{"source": "group", "name": "status", "filter": "status"}}},
+			}},
+		}},
+	}
+}
+
 func TestTableDisplayRejectsActionsWithoutRecordID(t *testing.T) {
 	definitions := []definition.Definition{
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"fields": []any{

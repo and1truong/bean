@@ -27,6 +27,12 @@ it('previews and saves an ordinary typed View definition',async()=>{
   fireEvent.change(screen.getByLabelText('Filter value'),{target:{value:'interview'}})
   fireEvent.click(screen.getByTestId('explore-preview'))
   expect(await screen.findByText('Avery Nguyen')).toBeInTheDocument()
+  fireEvent.change(screen.getByLabelText('Search preview'),{target:{value:'Morgan'}})
+  expect(screen.getByTestId('explore-save')).toBeDisabled()
+  expect(screen.queryByText('Avery Nguyen')).not.toBeInTheDocument()
+  fireEvent.change(screen.getByLabelText('Search preview'),{target:{value:'Avery'}})
+  fireEvent.click(screen.getByTestId('explore-preview'))
+  expect(await screen.findByText('Avery Nguyen')).toBeInTheDocument()
   fireEvent.click(screen.getByTestId('explore-save'))
   expect(await screen.findByText('Saved View candidate_explore to the deterministic Studio draft.')).toBeInTheDocument()
   expect(await screen.findByText('Draft validates. Semantic changes: 1.')).toBeInTheDocument()
@@ -38,6 +44,42 @@ it('previews and saves an ordinary typed View definition',async()=>{
   const saved=JSON.parse(String(save?.init?.body))
   expect(saved).toMatchObject({kind:'View',metadata:{name:'candidate_explore'},spec:{entity:'candidate',displays:{table:{type:'block',renderer:{type:'table'}}}}})
   await waitFor(()=>expect(calls.filter(call=>call.path.endsWith('/api/admin/definitions')).length).toBeGreaterThan(1))
+})
+
+it('fails closed when draft conflicts cannot be loaded',async()=>{
+  vi.spyOn(globalThis,'fetch').mockImplementation(async(input,init)=>{
+    const path=String(input)
+    if(path.endsWith('/api/admin/manifest'))return response({entities:{candidate:{Name:'candidate',Label:'Candidate',Fields:[]}},actions:{},lifecycles:{},adminResources:{},systemAdmin:true})
+    if(path.endsWith('/api/admin/definitions')&&!init?.method)return response({error:{message:'Definitions unavailable'}},503)
+    if(path.endsWith('/api/admin/explore/preview'))return response({valid:true,data:[{id:'candidate-1'}]})
+    return response({})
+  })
+  render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}})}><MemoryRouter><Explore/></MemoryRouter></QueryClientProvider>)
+  await screen.findByTestId('explore-entity')
+  fireEvent.click(screen.getByTestId('explore-preview'))
+  await screen.findByText('candidate-1')
+  expect(await screen.findByText('Definitions unavailable')).toBeInTheDocument()
+  expect(screen.getByTestId('explore-save')).toBeDisabled()
+})
+
+it('does not accept an in-flight preview after the candidate changes',async()=>{
+  let finishPreview:(value:Response)=>void=()=>{}
+  const pendingPreview=new Promise<Response>(resolve=>{finishPreview=resolve})
+  vi.spyOn(globalThis,'fetch').mockImplementation(async(input,init)=>{
+    const path=String(input)
+    if(path.endsWith('/api/admin/manifest'))return response({entities:{candidate:{Name:'candidate',Label:'Candidate',Fields:[{Name:'name',Label:'Name',Type:'string'}]}},actions:{},lifecycles:{},adminResources:{},systemAdmin:true})
+    if(path.endsWith('/api/admin/definitions')&&!init?.method)return response([])
+    if(path.endsWith('/api/admin/explore/preview'))return pendingPreview
+    return response({})
+  })
+  render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}})}><MemoryRouter><Explore/></MemoryRouter></QueryClientProvider>)
+  await screen.findByTestId('explore-entity')
+  fireEvent.click(screen.getByTestId('explore-preview'))
+  fireEvent.change(screen.getByLabelText('Search preview'),{target:{value:'changed'}})
+  finishPreview(new Response(JSON.stringify({valid:true,data:[{id:'candidate-1',name:'Old preview'}]}),{status:200,headers:{'Content-Type':'application/json'}}))
+  await waitFor(()=>expect(screen.getByTestId('explore-preview')).toBeEnabled())
+  expect(screen.queryByText('Old preview')).not.toBeInTheDocument()
+  expect(screen.getByTestId('explore-save')).toBeDisabled()
 })
 
 it('authors a grouped chart as an ordinary View',async()=>{

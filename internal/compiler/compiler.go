@@ -1182,6 +1182,8 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 			targetDisplay, displayExists := targetView.Displays[drill.Display]
 			if !displayExists || targetDisplay.Type != "page" {
 				out = append(out, invalidReferenceDiagnostic("View", viewName, base+".drill.display", "must reference a page Display on target View "+drill.View))
+			} else if len(routeParameterNames(targetDisplay.Route)) > 0 {
+				out = append(out, diagnostic("View", viewName, base+".drill.display", "must reference a page Display with a static route"))
 			}
 			seenTargets := map[string]bool{}
 			for index, binding := range drill.Bindings {
@@ -1195,7 +1197,7 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 					out = append(out, duplicateDiagnostic("View", viewName, path+".filter", "duplicates another drill target filter"))
 				}
 				seenTargets[binding.Filter] = true
-				sourceType := ""
+				sourceType, sourceOperator := "", ""
 				switch binding.Source {
 				case "group":
 					if group, exists := groups[binding.Name]; exists {
@@ -1204,10 +1206,12 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 							continue
 						}
 						sourceType, _ = viewFieldType(group.Field, entity, relationships, app)
+						sourceOperator = "eq"
 					}
 				case "filter":
 					if filter, exists := view.ExposedFilters[binding.Name]; exists {
 						sourceType = filter.Type
+						sourceOperator = filter.Operator
 					}
 				default:
 					out = append(out, diagnostic("View", viewName, path+".source", "must be group or filter"))
@@ -1216,6 +1220,8 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 					out = append(out, invalidReferenceDiagnostic("View", viewName, path+".name", "must reference a typed source group or filter"))
 				} else if sourceType != targetFilter.Type {
 					out = append(out, diagnostic("View", viewName, path, "source and target filter types must match"))
+				} else if sourceOperator != targetFilter.Operator {
+					out = append(out, diagnostic("View", viewName, path, "source and target filter operators must match"))
 				}
 			}
 		}
@@ -2344,8 +2350,13 @@ func validatePages(a *appir.App, state *validationState) []definition.Diagnostic
 		} else {
 			routes[page.Route] = "Page/" + name
 		}
-		if _, ok := a.Panels[page.Panel]; !ok {
+		panelDefinition, panelExists := a.Panels[page.Panel]
+		if !panelExists {
 			out = append(out, missingReferenceDiagnostic("Page", name, "spec.panel", "Panel", page.Panel))
+		}
+		pageBlocks := map[string]bool{}
+		if panelExists {
+			pageBlocks = nameSet(sequencePanelBlocks(panelDefinition))
 		}
 		if page.Policy != "" {
 			if _, ok := a.Policies[page.Policy]; !ok {
@@ -2387,6 +2398,10 @@ func validatePages(a *appir.App, state *validationState) []definition.Diagnostic
 					out = append(out, missingReferenceDiagnostic("Page", name, targetPath+".block", "View Block", target.Block))
 					continue
 				}
+				if panelExists && !pageBlocks[target.Block] {
+					out = append(out, invalidReferenceDiagnostic("Page", name, targetPath+".block", "must belong to the Page Panel"))
+					continue
+				}
 				viewDefinition := a.Views[blockDefinition.View]
 				definition, exists := viewDefinition.ExposedFilters[target.Filter]
 				if !exists {
@@ -2398,8 +2413,8 @@ func validatePages(a *appir.App, state *validationState) []definition.Diagnostic
 				}
 				if expected.Type == "" {
 					expected = definition
-				} else if expected.Type != definition.Type || !reflect.DeepEqual(expected.Options, definition.Options) {
-					out = append(out, diagnostic("Page", name, targetPath+".filter", "must have the same type and options as every target"))
+				} else if expected.Type != definition.Type || expected.Operator != definition.Operator || !reflect.DeepEqual(expected.Options, definition.Options) {
+					out = append(out, diagnostic("Page", name, targetPath+".filter", "must have the same type, operator, and options as every target"))
 				}
 			}
 			if expected.Type != "" {

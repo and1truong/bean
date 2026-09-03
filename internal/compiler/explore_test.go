@@ -52,6 +52,27 @@ func TestPageFiltersCompileTypedExplicitTargets(t *testing.T) {
 	if filter.Type != "enum" || len(filter.Options) != 2 || len(filter.Targets) != 1 {
 		t.Fatalf("filter=%+v", filter)
 	}
+	definitions[3].Spec["regions"] = []any{map[string]any{"name": "main", "blocks": []any{}}}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasDiagnosticMessage(diagnostics, "Page", "overview", "spec.filters.pipeline_stage.targets.0.block", "must belong to the Page Panel") {
+		t.Fatalf("off-page filter target diagnostics=%v", diagnostics)
+	}
+}
+
+func TestPageFiltersRequireMatchingTargetOperators(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "candidate"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "score", "type": "integer"}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "minimum_candidates"}, Spec: map[string]any{"entity": "candidate", "fields": []any{"id", "score"}, "exposedFilters": map[string]any{"score": map[string]any{"field": "score", "operator": "gte"}}, "displays": map[string]any{"list": map[string]any{"type": "block", "renderer": map[string]any{"type": "list", "titleField": "id"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "maximum_candidates"}, Spec: map[string]any{"entity": "candidate", "fields": []any{"id", "score"}, "exposedFilters": map[string]any{"score": map[string]any{"field": "score", "operator": "lte"}}, "displays": map[string]any{"list": map[string]any{"type": "block", "renderer": map[string]any{"type": "list", "titleField": "id"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "Block", Metadata: definition.Metadata{Name: "minimum_list"}, Spec: map[string]any{"type": "view", "view": "minimum_candidates", "display": "list"}},
+		{APIVersion: definition.APIVersion, Kind: "Block", Metadata: definition.Metadata{Name: "maximum_list"}, Spec: map[string]any{"type": "view", "view": "maximum_candidates", "display": "list"}},
+		{APIVersion: definition.APIVersion, Kind: "Panel", Metadata: definition.Metadata{Name: "overview"}, Spec: map[string]any{"layout": "single-column", "regions": []any{map[string]any{"name": "main", "blocks": []any{"minimum_list", "maximum_list"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "overview"}, Spec: map[string]any{"route": "/", "panel": "overview", "filters": map[string]any{"score": map[string]any{"targets": []any{map[string]any{"block": "minimum_list", "filter": "score"}, map[string]any{"block": "maximum_list", "filter": "score"}}}}}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasDiagnosticMessage(diagnostics, "Page", "overview", "spec.filters.score.targets.1.filter", "must have the same type, operator, and options as every target") {
+		t.Fatalf("operator mismatch diagnostics=%v", diagnostics)
+	}
 }
 
 func TestATSExploreCandidateCompilesAgainstActiveApplication(t *testing.T) {

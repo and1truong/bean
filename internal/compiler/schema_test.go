@@ -105,6 +105,25 @@ func TestCanonicalSchemaRejectsUnknownPropertiesByContract(t *testing.T) {
 	}
 }
 
+func TestViewSchemaAcceptsLegacyAndTypedGroups(t *testing.T) {
+	document := compiler.DefinitionSchemas()["View"]
+	validator := jsonschema.NewCompiler()
+	location := document["$id"].(string)
+	if err := validator.AddResource(location, schemaJSONValue(t, document)); err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := validator.Compile(location)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, group := range []any{"status", map[string]any{"field": "status", "as": "pipeline_stage"}} {
+		definition := map[string]any{"kind": "View", "name": "candidate_groups", "entity": "candidate", "groupBy": []any{group}}
+		if err = compiled.Validate(definition); err != nil {
+			t.Fatalf("groupBy entry %#v rejected: %v", group, err)
+		}
+	}
+}
+
 func TestCanonicalManifestSchemaValidatesContract(t *testing.T) {
 	document := compiler.ManifestSchema()
 	validator := jsonschema.NewCompiler()
