@@ -137,7 +137,7 @@ func TestDecimalAggregatesUseNumericStorageSemantics(t *testing.T) {
 	if err != nil || len(rows) != 1 || fmt.Sprint(rows[0]["average"]) != "0.3333333333333333" {
 		t.Fatalf("repeating average rows=%v err=%v", rows, err)
 	}
-	for _, invalid := range []string{"NaN", " 1.5 ", "10e4096"} {
+	for _, invalid := range []string{"NaN", " 1.5 ", "10e4096", "0.1e4097"} {
 		if err = database.ExecuteMigration(ctx, []string{`DELETE FROM decimal_item`}); err != nil {
 			t.Fatal(err)
 		}

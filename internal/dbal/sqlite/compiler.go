@@ -37,8 +37,10 @@ func PostgreSQLDecimal(column string) string {
 	const grammar = `^[+-]{0,1}([0-9]+(\.[0-9]*){0,1}|\.[0-9]+)([eE][+-]{0,1}[0-9]+){0,1}$`
 	numeric := "CAST(" + column + " AS NUMERIC)"
 	invalid := "CAST(" + column + " || ' invalid Bean decimal' AS NUMERIC)"
+	exponent := "SUBSTRING(" + column + " FROM '[eE]([+-]{0,1}[0-9]+)$')"
+	explicitExponentBounded := exponent + " IS NULL OR CAST(" + exponent + " AS INTEGER) BETWEEN -4096 AND 4096"
 	bounded := numeric + " = 0 OR (ABS(" + numeric + ") >= 1e-4096 AND ABS(" + numeric + ") < 1e4097)"
-	return "CASE WHEN " + column + " IS NULL THEN NULL WHEN octet_length(" + column + ") <= 4096 AND " + column + " ~ '" + grammar + "' THEN CASE WHEN (" + bounded + ") THEN " + numeric + " ELSE " + invalid + " END ELSE " + invalid + " END"
+	return "CASE WHEN " + column + " IS NULL THEN NULL WHEN octet_length(" + column + ") <= 4096 AND " + column + " ~ '" + grammar + "' AND (" + explicitExponentBounded + ") THEN CASE WHEN (" + bounded + ") THEN " + numeric + " ELSE " + invalid + " END ELSE " + invalid + " END"
 }
 
 func (Compiler) QuoteIdentifier(s string) (string, error) {
