@@ -82,11 +82,10 @@ func CompileViewCandidate(active *appir.App, name string, spec map[string]any) R
 		diagnostics = append(diagnostics, registered.Compile(app, source)...)
 		registered.Normalize(app)
 		state := &validationState{routes: map[string]string{}}
-		pageKind, _ := definitionKindRegistry().Lookup("Page")
-		blockKind, _ := definitionKindRegistry().Lookup("Block")
-		diagnostics = append(diagnostics, pageKind.Validate(app, state)...)
-		diagnostics = append(diagnostics, registered.Validate(app, state)...)
-		diagnostics = append(diagnostics, blockKind.Validate(app, state)...)
+		for _, kind := range []string{"Page", "View", "Sequence", "Block", "AdminResource"} {
+			dependent, _ := definitionKindRegistry().Lookup(kind)
+			diagnostics = append(diagnostics, dependent.Validate(app, state)...)
+		}
 	}
 	enrichDiagnosticCandidates(app, diagnostics)
 	definition.ClassifyDiagnostics(diagnostics)
@@ -1176,11 +1175,12 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 			}
 		}
 		searchable := map[string]bool{"email": true, "richtext": true, "slug": true, "string": true, "text": true, "url": true}
+		sourceFields := nameSet(view.Fields)
 		for index, fieldName := range renderer.SearchFields {
 			field, exists := viewFieldDefinition(fieldName, entity, relationships, app)
 			path := fmt.Sprintf("%s.renderer.searchFields.%d", base, index)
-			if !selected[fieldName] {
-				out = append(out, diagnostic("View", viewName, path, "must be selected by View "+viewName))
+			if !sourceFields[fieldName] {
+				out = append(out, invalidReferenceDiagnostic("View", viewName, path, "must reference a selected View source field"))
 			} else if !exists || !searchable[field.Type] {
 				out = append(out, invalidReferenceDiagnostic("View", viewName, path, "must reference a searchable text field"))
 			} else if redacted[fieldName] {
@@ -1300,7 +1300,7 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 				for _, fieldName := range keys(actionDefinition.Input) {
 					field := actionDefinition.Input[fieldName]
 					_, derived := actionDefinition.Derive[fieldName]
-					if !derived && (field.Type == "file" || field.Type == "relation" && field.Relation != nil && (field.Relation.Kind == "one-to-many" || field.Relation.Kind == "many-to-many")) {
+					if !derived && (field.Type == "file" || field.Type == "json" || field.Type == "relation" && field.Relation != nil && (field.Relation.Kind == "one-to-many" || field.Relation.Kind == "many-to-many")) {
 						out = append(out, diagnostic("View", viewName, path, "record Action input "+fieldName+" is not supported for selection Actions"))
 					}
 				}

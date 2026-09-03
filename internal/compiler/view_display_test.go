@@ -177,8 +177,20 @@ func TestChartDisplayValidatesSearchFieldsAndGroupAxis(t *testing.T) {
 	if !hasDiagnosticMessage(diagnostics, "View", "events_by_status", "spec.displays.chart.renderer.groupField", "chart requires exactly one grouped output field") {
 		t.Fatalf("multiple chart groups accepted: %v", diagnostics)
 	}
-	if !hasDiagnosticMessage(diagnostics, "View", "events_by_status", "spec.displays.chart.renderer.searchFields.0", "must reference a searchable text field") {
+	if !hasDiagnosticMessage(diagnostics, "View", "events_by_status", "spec.displays.chart.renderer.searchFields.0", "must reference a selected View source field") {
 		t.Fatalf("aggregate alias chart search accepted: %v", diagnostics)
+	}
+
+	definitions = drillDefinitions("eq", "eq", "/events")
+	source = definitions[2].Spec
+	source["groupBy"] = []any{map[string]any{"field": "status", "as": "category"}}
+	display := source["displays"].(map[string]any)["chart"].(map[string]any)
+	delete(display, "drill")
+	renderer = display["renderer"].(map[string]any)
+	renderer["groupField"] = "category"
+	renderer["searchFields"] = []any{"status"}
+	if diagnostics = compiler.Compile("test", 1, definitions).Diagnostics; len(diagnostics) != 0 {
+		t.Fatalf("aliased group source search rejected: %v", diagnostics)
 	}
 }
 
@@ -268,6 +280,7 @@ func TestTableDisplayRejectsUnsupportedActionInputs(t *testing.T) {
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"fields": []any{
 			map[string]any{"name": "title", "type": "string"},
 			map[string]any{"name": "attachment", "type": "file"},
+			map[string]any{"name": "metadata", "type": "json"},
 			map[string]any{"name": "tags", "type": "relation", "relation": map[string]any{"entity": "tag", "kind": "many-to-many", "targetField": "id"}},
 		}}},
 		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "update_article"}, Spec: map[string]any{
@@ -287,6 +300,9 @@ func TestTableDisplayRejectsUnsupportedActionInputs(t *testing.T) {
 	}
 	if !hasDiagnosticMessage(diagnostics, "View", "articles", "spec.displays.table.actions.0", "record Action input attachment is not supported for selection Actions") {
 		t.Fatalf("file input diagnostics=%v", diagnostics)
+	}
+	if !hasDiagnosticMessage(diagnostics, "View", "articles", "spec.displays.table.actions.0", "record Action input metadata is not supported for selection Actions") {
+		t.Fatalf("json input diagnostics=%v", diagnostics)
 	}
 }
 

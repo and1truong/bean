@@ -36,6 +36,21 @@ func TestCompileViewCandidateUsesCanonicalViewContract(t *testing.T) {
 	}
 }
 
+func TestCompileViewCandidateChecksSequenceRouteConflicts(t *testing.T) {
+	definitions := append(validSequenceDefinitions(), definition.Definition{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "candidate"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "name", "type": "string"}}}})
+	active := compiler.Compile("test", 1, definitions)
+	if len(active.Diagnostics) != 0 {
+		t.Fatalf("active diagnostics=%v", active.Diagnostics)
+	}
+	result := compiler.CompileViewCandidate(active.App, "candidate_records", map[string]any{
+		"entity": "candidate", "fields": []any{"id", "name"},
+		"displays": map[string]any{"table": map[string]any{"type": "page", "route": "/presentations/bean", "renderer": map[string]any{"type": "table", "fields": []any{map[string]any{"field": "name"}}}}},
+	})
+	if !hasDiagnosticMessage(result.Diagnostics, "Sequence", "bean_intro", "spec.route", "overlaps route used by View/candidate_records") {
+		t.Fatalf("Sequence route conflict accepted: %v", result.Diagnostics)
+	}
+}
+
 func TestPageFiltersCompileTypedExplicitTargets(t *testing.T) {
 	definitions := []definition.Definition{
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "candidate"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "stage", "type": "enum", "options": []any{"applied", "interview"}}}}},
