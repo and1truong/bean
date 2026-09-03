@@ -1,47 +1,40 @@
-# Goal: Ordered multi-Panel Page sections
+# Goal: Policy-aware collapsible Panel Regions
 
 Status: complete
 
-Allow one Page to compose multiple ordered Panels so authors can build full-width, sidebar, grid, and other layout bands without nested Panels or arbitrary layout code.
+Allow authors to opt a Panel Region into collapsing when authorization removes every rendered child, preventing empty sidebar or column tracks without moving Policy decisions into the browser.
 
 ## Design
 
-A Page may use either the legacy single-Panel field:
-
 ```yaml
-panel: article_body
+kind: Panel
+name: article
+layout: sidebar-main
+regions:
+  - {name: sidebar, blocks: [editor_tools], collapseWhenEmpty: true}
+  - {name: main, blocks: [article_body]}
 ```
 
-or ordered sections:
+`collapseWhenEmpty` is an optional Region boolean and defaults to `false` for full compatibility. A Region is empty only when its server-authorized render tree contains zero Block nodes. It does not collapse merely because a View returns no rows, is loading, or presents an error state.
 
-```yaml
-sections:
-  - {id: hero, panel: hero}
-  - {id: body, panel: article_body}
-  - {id: related, panel: related_grid}
-  - {id: comments, panel: comments}
-```
+The Panel renderer evaluates Blocks and their Policies in source order. An empty opted-in Region is omitted. If one Region remains after another collapses, the server marks it expanded and the runtime spans it across every Panel track. If every Region collapses, the Panel is unavailable; enclosing Pages and Sequences retain their existing visible-child behavior. Errors and unresolved references still fail rather than collapsing.
 
-`panel` and `sections` are mutually exclusive. `sections` contains 1–32 Panel references and source order is render order. An optional machine `id` stabilizes section identity across nearby reorderings; otherwise identity derives from the Page and ordinal. Reusing a Panel in multiple sections is allowed. Legacy `panel` remains stored and rendered unchanged rather than being rewritten.
-
-AppIR v10 stores ordered `PageSection` values. The compiler validates every reference and treats Blocks across all sections as Page members for filter targets. Rendering resolves Page context once, applies Page filters to every rendered section, checks each Panel Policy independently, omits denied sections, and hides the Page only when no section is visible. Page Policy remains the outer authority.
-
-Bound View/Webform requests may resolve only Blocks belonging to the Page's declared Panels and must pass the containing Panel's Policy. Generated tests and LocalRegistration inspect all declared sections conservatively. No runtime YAML parsing is added.
+The field is stored in immutable AppIR v11. AppIR v10 Page sections and all earlier formats remain loadable; only v11 may contain `collapseWhenEmpty: true`. Bound View/Webform authorization remains based on declared composition and does not infer access from visual collapse.
 
 ## Acceptance criteria
 
-- A Page renders 1–32 Panels in deterministic source order with stable internal section identities.
-- Different responsive Panel presets can form successive layout bands.
-- Legacy `panel` source and runtime behavior remain unchanged.
-- Compiler schema, diagnostics, references, inspect/diff, and AppIR compatibility cover `sections`.
-- Page filters can target named View Blocks in any declared section.
-- Page and per-Panel Policy behavior fails closed, including bound Block requests.
-- The tracker example demonstrates a single-column introduction followed by its existing two-column operational band.
+- `collapseWhenEmpty: true` omits a Region with zero authorized children.
+- The sole remaining Region spans the full Panel width at every responsive breakpoint.
+- `collapseWhenEmpty` omitted or `false` preserves existing empty Region tracks.
+- A Panel with all Regions collapsed is unavailable to Page and Sequence composition.
+- Block errors are surfaced and never mistaken for empty authorization output.
+- Source, DOM, keyboard, and screen-reader order of surviving Regions is unchanged.
+- Schema, AppIR compatibility, compiler, semantic diff, server render, React/CSS, and browser coverage are deterministic.
 - `make check` and `make build` pass.
 
 ## Non-goals
 
-- Nested Panels, arbitrary depth, or cycle detection.
-- Per-section CSS, widths, gaps, responsive overrides, conditional visibility, or interaction state.
-- Shared View-result scopes across Blocks.
-- Changes to View reads, Action writes, SQL, SQLite, or migrations.
+- Collapsing a Block because its View query returns zero rows.
+- Client-side Policy evaluation or visibility decisions.
+- Fallback Blocks, Region reordering, animation, sticky behavior, spans, arbitrary CSS, or custom breakpoints.
+- Changes to reads, writes, SQL, SQLite, or migrations.

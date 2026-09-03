@@ -28,6 +28,7 @@
 | Semantic content | Closed heading, paragraph, bullets, quote, code, callout, image, and ordered-diagram content without executable markup | complete | schema/compiler/content/React safety contracts |
 | Inline Panel content | AppIR v9 nested ordered region items interleave frame-local semantic content and named Blocks; legacy `blocks` remains compatible | complete | AppIR/compiler/schema/Panel/Sequence/policy contracts |
 | Ordered Page sections | AppIR v10 composes 1–32 ordered Panel layout bands while preserving legacy `panel`, Page filters, and Page/Panel/Block Policy boundaries | complete | compiler/schema/Page/HTTP/release/React/tracker browser contracts |
+| Policy-aware Region collapse | AppIR v11 opt-in `collapseWhenEmpty` omits zero-child authorized Regions and expands a sole survivor without client Policy logic | complete | AppIR/compiler/Panel/Page/Sequence/React/CSS/browser contracts |
 | Responsive Panels | Fixed viewport-owned single/two/sidebar/grid presets preserve source order and bounded tracks without author CSS | complete | React semantic-hook and Playwright computed-layout contracts |
 | HTML presentation profile | Wide/standard frames, URL state, keyboard/buttons/picker, progress, notes, responsive bounds, and print page breaks | complete | React and presentation Playwright journey |
 | Presentation agent slice | Ten-frame Bean introduction with stable repair diagnostics and a real grouped View/chart | complete | presentation source, agent rubric, restart, package, and browser evidence |

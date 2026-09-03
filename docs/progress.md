@@ -2,6 +2,8 @@
 
 ## Current
 
+Policy-aware collapsible Panel Regions are complete. Opt-in `regions[].collapseWhenEmpty` only reacts to a zero-child server-authorized render tree, preserves existing Regions by default, expands a sole survivor across Panel tracks, makes an all-collapsed Panel unavailable, and stores the behavior in AppIR v11. AppIR/compiler/schema/diff, Panel/Page/Sequence, restart, React/CSS, and tracker browser coverage pass. Final `make check` passes all Go, race, 64 React, black-box, and 17/17 Playwright tests; `make build` passes.
+
 Ordered multi-Panel Page sections are complete. `sections: [{id?, panel}]` provides 1–32 ordered layout bands with stable internal identities, remains mutually exclusive with legacy `panel`, stores directly in immutable AppIR v10, and retains Page filters plus Page/Panel/Block Policy and bound-request validation. Compiler/schema/reference/diff, Page/HTTP/LocalRegistration, restart, Studio, React, and tracker browser coverage pass. Final `make check` passes all Go, race, 63 React, black-box, and 17/17 Playwright tests; `make build` passes.
 
 Deterministic responsive Panel presets are complete. Existing layout names now map to fixed runtime-owned small/medium/large viewport behavior at `48rem` and `64rem`, preserve source and accessibility order, bound tracks and Regions around wide content, and add no schema or AppIR fields. Focused React semantic-hook tests and Playwright computed-layout checks cover all five presets. `make check` passes all Go, race, 62 React, black-box, and 17/17 Playwright tests; `make build` passes.

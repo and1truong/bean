@@ -49,6 +49,23 @@ describe('public rendering',()=>{
     expect(Array.from(panels[1].children).every(child=>child.classList.contains('bean-region'))).toBe(true)
   })
 
+  it('renders a server-expanded Region without restoring collapsed siblings',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'Panel',props:{layout:'sidebar-main'},children:[
+        {component:'Region',props:{name:'main',expanded:true},children:[{component:'TextBlock',props:{text:'Public article'}}]},
+      ]}]}})
+      return response({})
+    }))
+    renderApp('/')
+    await screen.findByText('Public article')
+    const regions=document.querySelectorAll('[data-component="Region"]')
+    expect(regions).toHaveLength(1)
+    expect(regions[0]).toHaveAttribute('data-region','main')
+    expect(regions[0]).toHaveAttribute('data-expanded','true')
+  })
+
   it('renders and navigates an accessible semantic Sequence',async()=>{
     const print=vi.fn();vi.stubGlobal('print',print)
     vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{

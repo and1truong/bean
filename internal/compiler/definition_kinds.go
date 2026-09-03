@@ -30,9 +30,10 @@ type panelSource struct {
 }
 
 type panelRegionSource struct {
-	Name   string
-	Blocks []string
-	Items  []panelRegionItemSource
+	Name              string
+	CollapseWhenEmpty bool
+	Blocks            []string
+	Items             []panelRegionItemSource
 }
 
 type panelRegionItemSource struct {
@@ -341,7 +342,7 @@ func panelDefinitionKind() definitionKind {
 			}
 			panel := appir.Panel{Name: source.Metadata.Name, Layout: decoded.Layout, Policy: decoded.Policy, Regions: make([]appir.Region, len(decoded.Regions))}
 			for regionIndex, sourceRegion := range decoded.Regions {
-				region := appir.Region{Name: sourceRegion.Name, Blocks: sourceRegion.Blocks}
+				region := appir.Region{Name: sourceRegion.Name, CollapseWhenEmpty: sourceRegion.CollapseWhenEmpty, Blocks: sourceRegion.Blocks}
 				if sourceRegion.Items != nil {
 					region.Items = make([]appir.RegionItem, len(sourceRegion.Items))
 					for itemIndex, sourceItem := range sourceRegion.Items {

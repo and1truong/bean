@@ -58,6 +58,24 @@ func TestPanelInlineContentCompilesToDeterministicOrderedAppIR(t *testing.T) {
 	}
 }
 
+func TestPanelCollapseWhenEmptyCompilesIntoAppIR(t *testing.T) {
+	definitions := []definition.Definition{{APIVersion: definition.APIVersion, Kind: "Panel", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{
+		"layout": "sidebar-main",
+		"regions": []any{
+			map[string]any{"name": "sidebar", "collapseWhenEmpty": true, "blocks": []any{}},
+			map[string]any{"name": "main", "blocks": []any{}},
+		},
+	}}}
+	result := compiler.Compile("collapse", 1, definitions)
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("diagnostics=%v", result.Diagnostics)
+	}
+	regions := result.App.Panels["article"].Regions
+	if len(regions) != 2 || !regions[0].CollapseWhenEmpty || regions[1].CollapseWhenEmpty {
+		t.Fatalf("regions=%+v", regions)
+	}
+}
+
 func TestPanelInlineContentDiagnosticsUseExactSourcePathsAndLocations(t *testing.T) {
 	filesystem := fstest.MapFS{
 		"app.yaml": {Data: []byte("apiVersion: bean/v1alpha1\nname: Inline\nresources: [panel.yaml]\n")},

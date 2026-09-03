@@ -17,7 +17,7 @@ func TestNodeBuildsDeterministicPolicyVisibleComposition(t *testing.T) {
 	app.Blocks["block_private"] = appir.Block{Name: "block_private", Type: "content", Policy: "managers", Content: []appir.ContentElement{{Type: "paragraph", Text: "Block hidden"}}}
 	app.Panels["opening"] = appir.Panel{Name: "opening", Layout: "single-column", Regions: []appir.Region{{Name: "main", Blocks: []string{"public"}}}}
 	app.Panels["internal"] = appir.Panel{Name: "internal", Layout: "single-column", Policy: "managers", Regions: []appir.Region{{Name: "main", Blocks: []string{"private"}}}}
-	app.Panels["block_internal"] = appir.Panel{Name: "block_internal", Layout: "single-column", Regions: []appir.Region{{Name: "main", Blocks: []string{"block_private"}}}}
+	app.Panels["block_internal"] = appir.Panel{Name: "block_internal", Layout: "single-column", Regions: []appir.Region{{Name: "main", CollapseWhenEmpty: true, Blocks: []string{"block_private"}}}}
 	item := appir.Sequence{Name: "bean", Route: "/presentations/bean", Title: "Bean", Profile: "presentation", AspectRatio: "wide", Frames: []appir.SequenceFrame{
 		{Name: "opening", Title: "Bean", Layout: "title", Panel: "opening", Notes: "Public note"},
 		{Name: "internal", Title: "Internal", Layout: "section", Panel: "internal", Notes: "Secret note"},

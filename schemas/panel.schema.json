@@ -103,6 +103,9 @@
           },
           "type": "array"
         },
+        "collapseWhenEmpty": {
+          "type": "boolean"
+        },
         "items": {
           "items": {
             "$ref": "#/$defs/github_com_beanruntime_bean_internal_compiler_panelRegionItemSource"

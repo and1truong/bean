@@ -77,6 +77,25 @@ func TestPageNodeRendersOrderedPolicyVisiblePanelSectionsAndAppliesFilters(t *te
 	}
 }
 
+func TestPageNodeOmitsAllCollapsedPanelSection(t *testing.T) {
+	app := appir.Empty()
+	app.Policies["members"] = appir.Policy{Name: "members", Authenticated: true}
+	app.Blocks["member_tools"] = appir.Block{Name: "member_tools", Type: "text", Text: "tools", Policy: "members"}
+	app.Blocks["article"] = appir.Block{Name: "article", Type: "text", Text: "article"}
+	app.Panels["tools"] = appir.Panel{Name: "tools", Layout: "single-column", Regions: []appir.Region{{Name: "main", CollapseWhenEmpty: true, Blocks: []string{"member_tools"}}}}
+	app.Panels["article"] = appir.Panel{Name: "article", Layout: "single-column", Regions: []appir.Region{{Name: "main", Blocks: []string{"article"}}}}
+	definition := appir.Page{Sections: []appir.PageSection{{Panel: "tools", Identity: "@section/home/tools"}, {Panel: "article", Identity: "@section/home/article"}}}
+
+	node, allowed, err := page.Node(app, definition, nil, beanctx.Request{})
+	if err != nil || !allowed || len(node.Children) != 1 || node.Children[0].Props["pageSection"] != "@section/home/article" {
+		t.Fatalf("anonymous tree=%+v allowed=%v err=%v", node, allowed, err)
+	}
+	definition.Sections = definition.Sections[:1]
+	if _, allowed, err = page.Node(app, definition, nil, beanctx.Request{}); err != nil || allowed {
+		t.Fatalf("all-collapsed Page allowed=%v err=%v", allowed, err)
+	}
+}
+
 func TestTypedContextResolution(t *testing.T) {
 	definition := appir.Page{Context: map[string]appir.ContextBinding{"record": {Source: "route", Name: "id", Required: true}, "tenant": {Source: "tenant", Required: true}}}
 	context, e := page.ResolveContext(definition, map[string]string{"id": "record-1"}, nil, beanctx.Request{TenantID: "tenant-1"})

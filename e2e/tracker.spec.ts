@@ -3,7 +3,7 @@ import {action,login} from './helpers/api'
 
 const test=base.extend<{}, {appName:string}>({appName:['tracker',{scope:'worker'}]})
 
-test('Panel presets respond at fixed runtime breakpoints without changing source order',async({page,bean})=>{
+test('Panel presets and collapsed Region expansion preserve responsive source order',async({page,bean})=>{
   await page.setViewportSize({width:500,height:800})
   await page.goto(bean.baseURL+'/')
   await expect(page.getByRole('heading',{name:'Operate the issue lifecycle'})).toBeVisible()
@@ -17,6 +17,7 @@ test('Panel presets respond at fixed runtime breakpoints without changing source
       <section id="single" class="bean-panel" data-component="Panel" data-layout="single-column"><section class="bean-region" data-component="Region" data-region="main"><div>one</div></section></section>
       <section id="two" class="bean-panel" data-component="Panel" data-layout="two-column"><section class="bean-region" data-component="Region" data-region="left"><div>left</div></section><section class="bean-region" data-component="Region" data-region="right"><div>right</div></section></section>
       <section id="sidebar-main" class="bean-panel" data-component="Panel" data-layout="sidebar-main"><section class="bean-region" data-component="Region" data-region="sidebar"><div>sidebar</div></section><section class="bean-region" data-component="Region" data-region="main"><div>main</div></section></section>
+      <section id="collapsed-sidebar-main" class="bean-panel" data-component="Panel" data-layout="sidebar-main"><section class="bean-region" data-component="Region" data-region="main" data-expanded="true"><div>expanded main</div></section></section>
       <section id="main-sidebar" class="bean-panel" data-component="Panel" data-layout="main-sidebar"><section class="bean-region" data-component="Region" data-region="main"><div>main</div></section><section class="bean-region" data-component="Region" data-region="sidebar"><div>sidebar</div></section></section>
       <section id="grid" class="bean-panel" data-component="Panel" data-layout="grid"><section class="bean-region" data-component="Region" data-region="main"><div style="width:2000px">wide</div><div>two</div><div>three</div></section></section>`
     document.body.append(fixture)
@@ -25,6 +26,7 @@ test('Panel presets respond at fixed runtime breakpoints without changing source
     const element=(selector:string)=>document.querySelector<HTMLElement>(selector)!
     const tracks=(selector:string)=>getComputedStyle(element(selector)).gridTemplateColumns.split(' ').filter(Boolean).length
     const sidebarMain=element('#sidebar-main'),sidebar=element('#sidebar-main > [data-region="sidebar"]'),main=element('#sidebar-main > [data-region="main"]')
+    const collapsedPanel=element('#collapsed-sidebar-main'),expandedMain=element('#collapsed-sidebar-main > [data-region="main"]')
     const reverseMain=element('#main-sidebar > [data-region="main"]'),reverseSidebar=element('#main-sidebar > [data-region="sidebar"]')
     const grid=element('#grid'),gridRegion=element('#grid > [data-region="main"]')
     return {
@@ -32,6 +34,8 @@ test('Panel presets respond at fixed runtime breakpoints without changing source
       sidebarMainOrder:Array.from(sidebarMain.children).map(child=>child.getAttribute('data-region')),
       mainSidebarOrder:Array.from(element('#main-sidebar').children).map(child=>child.getAttribute('data-region')),
       sidebarRatio:main.getBoundingClientRect().width/sidebar.getBoundingClientRect().width,
+      expandedMainWidth:expandedMain.getBoundingClientRect().width,
+      collapsedPanelWidth:collapsedPanel.getBoundingClientRect().width,
       mainSidebarRatio:reverseMain.getBoundingClientRect().width/reverseSidebar.getBoundingClientRect().width,
       regionMinWidth:getComputedStyle(gridRegion).minWidth,
       gridRegionWidth:gridRegion.getBoundingClientRect().width,
@@ -46,6 +50,7 @@ test('Panel presets respond at fixed runtime breakpoints without changing source
   const large=await snapshot()
   expect(large).toMatchObject({single:1,two:2,sidebarMain:3,mainSidebar:3,grid:3,sidebarMainOrder:['sidebar','main'],mainSidebarOrder:['main','sidebar'],regionMinWidth:'0px'})
   expect(large.sidebarRatio).toBeGreaterThan(1.9)
+  expect(large.expandedMainWidth).toBeGreaterThan(large.collapsedPanelWidth-1)
   expect(large.mainSidebarRatio).toBeGreaterThan(1.9)
   expect(large.gridRegionWidth).toBeLessThanOrEqual(large.gridPanelWidth)
 })

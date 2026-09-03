@@ -30,6 +30,57 @@ func TestNodeRendersInlineAndNamedBlocksInDeclaredOrder(t *testing.T) {
 	}
 }
 
+func TestNodeCollapsesAuthorizedEmptyRegionAndExpandsSoleSurvivor(t *testing.T) {
+	app := appir.Empty()
+	app.Policies["members"] = appir.Policy{Name: "members", Authenticated: true}
+	app.Blocks["tools"] = appir.Block{Name: "tools", Type: "text", Text: "tools", Policy: "members"}
+	app.Blocks["article"] = appir.Block{Name: "article", Type: "text", Text: "article"}
+	definition := appir.Panel{Name: "article", Layout: "sidebar-main", Regions: []appir.Region{
+		{Name: "sidebar", CollapseWhenEmpty: true, Blocks: []string{"tools"}},
+		{Name: "main", Blocks: []string{"article"}},
+	}}
+
+	node, allowed, err := panel.Node(app, definition, nil, beanctx.Request{})
+	if err != nil || !allowed || len(node.Children) != 1 || node.Children[0].Props["name"] != "main" || node.Children[0].Props["expanded"] != true {
+		t.Fatalf("anonymous tree=%+v allowed=%v err=%v", node, allowed, err)
+	}
+	member := beanctx.Request{User: &beanctx.User{ID: "member"}}
+	node, allowed, err = panel.Node(app, definition, nil, member)
+	if err != nil || !allowed || len(node.Children) != 2 || node.Children[0].Props["name"] != "sidebar" {
+		t.Fatalf("member tree=%+v allowed=%v err=%v", node, allowed, err)
+	}
+	if _, exists := node.Children[0].Props["expanded"]; exists {
+		t.Fatalf("fully populated Region was expanded: %+v", node.Children)
+	}
+}
+
+func TestNodePreservesEmptyRegionByDefaultAndHidesAllCollapsedPanel(t *testing.T) {
+	app := appir.Empty()
+	app.Policies["members"] = appir.Policy{Name: "members", Authenticated: true}
+	app.Blocks["tools"] = appir.Block{Name: "tools", Type: "text", Text: "tools", Policy: "members"}
+	definition := appir.Panel{Name: "tools", Layout: "two-column", Regions: []appir.Region{{Name: "left", Blocks: []string{"tools"}}, {Name: "right"}}}
+
+	node, allowed, err := panel.Node(app, definition, nil, beanctx.Request{})
+	if err != nil || !allowed || len(node.Children) != 2 || len(node.Children[0].Children) != 0 {
+		t.Fatalf("default empty Region changed: tree=%+v allowed=%v err=%v", node, allowed, err)
+	}
+	definition.Regions[0].CollapseWhenEmpty = true
+	definition.Regions[1].CollapseWhenEmpty = true
+	if _, allowed, err = panel.Node(app, definition, nil, beanctx.Request{}); err != nil || allowed {
+		t.Fatalf("all-collapsed Panel allowed=%v err=%v", allowed, err)
+	}
+
+	definition.Regions = []appir.Region{{Name: "left", CollapseWhenEmpty: true, Blocks: []string{"missing"}}}
+	if _, _, err = panel.Node(app, definition, nil, beanctx.Request{}); err == nil {
+		t.Fatal("unresolved Block was collapsed instead of reported")
+	}
+	app.Blocks["bound"] = appir.Block{Name: "bound", Type: "text", Text: "bound", Inputs: map[string]appir.Field{"id": {Name: "id", Type: "uuid", Required: true}}}
+	definition.Regions[0].Blocks = []string{"bound"}
+	if _, _, err = panel.Node(app, definition, nil, beanctx.Request{}); err == nil {
+		t.Fatal("Block render error was collapsed instead of reported")
+	}
+}
+
 func TestInlineContentInheritsPanelPolicyWhileNamedBlockPolicyRemainsIndependent(t *testing.T) {
 	app := appir.Empty()
 	app.Policies["members"] = appir.Policy{Name: "members", Authenticated: true}

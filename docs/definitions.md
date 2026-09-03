@@ -18,6 +18,19 @@ Panel uses a closed responsive preset vocabulary; authors do not supply CSS, uti
 
 For `grid`, the columns apply to the ordered Blocks or inline content inside its `main` Region. Every preset preserves definition, DOM, keyboard, and screen-reader order at all widths. Tracks and Regions may shrink to contain wide children; individual Block and Display renderers remain responsible for local overflow. These fixed viewport thresholds are runtime-owned and require no schema or AppIR fields.
 
+A Region may opt into server-authorized empty collapse:
+
+```yaml
+kind: Panel
+name: article
+layout: sidebar-main
+regions:
+  - {name: sidebar, blocks: [editor_tools], collapseWhenEmpty: true}
+  - {name: main, blocks: [article_body]}
+```
+
+After normal Block Policy evaluation, an opted-in Region with no rendered Block nodes is omitted. If it leaves one Region in a multi-Region Panel, that survivor spans every layout track; if all Regions collapse, the Panel is unavailable to its Page or Sequence. Omitted or false `collapseWhenEmpty` preserves the existing empty track. This behavior does not react to a View returning zero rows, loading, or rendering an error, and unresolved Blocks or render errors still fail. Declared composition remains authoritative for inspection, Page-filter membership, generated checks, and bound HTTP authorization. Collapsible Regions require AppIR v11.
+
 ## Page composition
 
 A Page may reference one legacy `panel`, or use `sections` to compose 1–32 Panels as successive layout bands. The forms are mutually exclusive. Section source order is render, DOM, keyboard, and screen-reader order; repeated Panel references are allowed. An optional machine `id` stabilizes internal section identity across nearby reordering, while omitted IDs derive deterministically from the Page name and section ordinal. This supports full-width → sidebar → grid compositions without nested Panels or arbitrary layout metadata:

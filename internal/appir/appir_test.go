@@ -246,6 +246,10 @@ func TestOrderedPageSectionsRequireV10Format(t *testing.T) {
 	if err != nil || len(clone.Pages["home"].Sections) != 2 || clone.Pages["home"].Sections[1].Panel != "body" {
 		t.Fatalf("clone=%+v err=%v", clone, err)
 	}
+	app.FormatVersion = appir.PageSectionFormat
+	if err = app.ValidateFormat(); err != nil {
+		t.Fatalf("v10 AppIR rejected ordered Page sections: %v", err)
+	}
 	app.FormatVersion = appir.InlinePanelFormat
 	if err = app.ValidateFormat(); err == nil {
 		t.Fatal("v9 AppIR accepted ordered Page sections")
@@ -256,5 +260,27 @@ func TestOrderedPageSectionsRequireV10Format(t *testing.T) {
 	legacy.Pages["home"] = appir.Page{Name: "home", Route: "/", Panel: "home"}
 	if err = legacy.ValidateFormat(); err != nil {
 		t.Fatalf("v9 AppIR rejected a legacy single-Panel Page: %v", err)
+	}
+}
+
+func TestCollapsiblePanelRegionsRequireV11Format(t *testing.T) {
+	app := appir.Empty()
+	app.Panels["article"] = appir.Panel{Name: "article", Regions: []appir.Region{{Name: "sidebar", CollapseWhenEmpty: true}, {Name: "main"}}}
+	if err := app.ValidateFormat(); err != nil {
+		t.Fatal(err)
+	}
+	clone, err := app.Clone()
+	if err != nil || !clone.Panels["article"].Regions[0].CollapseWhenEmpty {
+		t.Fatalf("clone=%+v err=%v", clone, err)
+	}
+	app.FormatVersion = appir.PageSectionFormat
+	if err = app.ValidateFormat(); err == nil {
+		t.Fatal("v10 AppIR accepted collapsible Panel Regions")
+	}
+	panel := app.Panels["article"]
+	panel.Regions[0].CollapseWhenEmpty = false
+	app.Panels["article"] = panel
+	if err = app.ValidateFormat(); err != nil {
+		t.Fatalf("v10 AppIR rejected legacy Panel Regions: %v", err)
 	}
 }

@@ -19,7 +19,8 @@ const (
 	ExploreFormat     = "bean/appir/v7"
 	SequenceFormat    = "bean/appir/v8"
 	InlinePanelFormat = "bean/appir/v9"
-	CurrentFormat     = "bean/appir/v10"
+	PageSectionFormat = "bean/appir/v10"
+	CurrentFormat     = "bean/appir/v11"
 )
 
 type Field struct {
@@ -355,9 +356,10 @@ type RegionItem struct {
 }
 
 type Region struct {
-	Name   string
-	Blocks []string
-	Items  []RegionItem
+	Name              string
+	CollapseWhenEmpty bool
+	Blocks            []string
+	Items             []RegionItem
 }
 
 // OrderedItems returns the canonical ordered region composition while keeping
@@ -510,7 +512,7 @@ func Empty() *App {
 	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Rules: map[string]Rule{}, TestSuites: map[string]TestSuite{}, Extensions: map[string]Extension{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Sequences: map[string]Sequence{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
 }
 func (a *App) ValidateFormat() error {
-	if a.FormatVersion != LegacyFormat && a.FormatVersion != LifecycleFormat && a.FormatVersion != RuleFormat && a.FormatVersion != TestSuiteFormat && a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != LegacyFormat && a.FormatVersion != LifecycleFormat && a.FormatVersion != RuleFormat && a.FormatVersion != TestSuiteFormat && a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != CurrentFormat {
 		return fmt.Errorf("unsupported AppIR format %q", a.FormatVersion)
 	}
 	if a.FormatVersion == LegacyFormat {
@@ -538,13 +540,13 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != TestSuiteFormat && a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != CurrentFormat && len(a.TestSuites) > 0 {
+	if a.FormatVersion != TestSuiteFormat && a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != CurrentFormat && len(a.TestSuites) > 0 {
 		return fmt.Errorf("AppIR format %q cannot contain TestSuite definitions", a.FormatVersion)
 	}
-	if a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != CurrentFormat && len(a.Extensions) > 0 {
+	if a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != CurrentFormat && len(a.Extensions) > 0 {
 		return fmt.Errorf("AppIR format %q cannot contain Extension definitions", a.FormatVersion)
 	}
-	if a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != CurrentFormat {
 		for _, action := range a.Actions {
 			for _, step := range action.Steps {
 				if step.Op == "extension" || step.Extension != "" {
@@ -560,7 +562,7 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != CurrentFormat {
 		for _, view := range a.Views {
 			for _, filter := range view.ExposedFilters {
 				if filter.Field != "" || filter.Operator != "" {
@@ -581,7 +583,7 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != CurrentFormat {
 		for _, view := range a.Views {
 			if len(view.Search.Fields) > 0 {
 				return fmt.Errorf("AppIR format %q cannot contain View-owned search semantics", a.FormatVersion)
@@ -601,7 +603,7 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != CurrentFormat {
 		if len(a.Sequences) > 0 {
 			return fmt.Errorf("AppIR format %q cannot contain Sequence definitions", a.FormatVersion)
 		}
@@ -611,7 +613,7 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != InlinePanelFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != CurrentFormat {
 		for _, panel := range a.Panels {
 			for _, region := range panel.Regions {
 				if region.Items != nil {
@@ -620,10 +622,19 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != PageSectionFormat && a.FormatVersion != CurrentFormat {
 		for _, page := range a.Pages {
 			if page.Sections != nil {
 				return fmt.Errorf("AppIR format %q cannot contain ordered Page sections", a.FormatVersion)
+			}
+		}
+	}
+	if a.FormatVersion != CurrentFormat {
+		for _, panel := range a.Panels {
+			for _, region := range panel.Regions {
+				if region.CollapseWhenEmpty {
+					return fmt.Errorf("AppIR format %q cannot contain collapsible Panel Regions", a.FormatVersion)
+				}
 			}
 		}
 	}

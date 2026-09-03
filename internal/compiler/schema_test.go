@@ -172,7 +172,7 @@ func TestPanelSchemaAcceptsOrderedInlineContentAndRejectsAmbiguousItems(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	valid := map[string]any{"kind": "Panel", "name": "frame", "layout": "single-column", "regions": []any{map[string]any{"name": "main", "items": []any{
+	valid := map[string]any{"kind": "Panel", "name": "frame", "layout": "single-column", "regions": []any{map[string]any{"name": "main", "collapseWhenEmpty": true, "items": []any{
 		map[string]any{"id": "intro", "content": []any{map[string]any{"type": "heading", "text": "Inline"}}},
 		map[string]any{"block": "chart"},
 	}}}}
@@ -183,6 +183,7 @@ func TestPanelSchemaAcceptsOrderedInlineContentAndRejectsAmbiguousItems(t *testi
 		{"kind": "Panel", "name": "frame", "regions": []any{map[string]any{"name": "main", "blocks": []any{"chart"}, "items": []any{map[string]any{"block": "chart"}}}}},
 		{"kind": "Panel", "name": "frame", "regions": []any{map[string]any{"name": "main", "items": []any{map[string]any{"block": "chart", "content": []any{map[string]any{"type": "heading", "text": "Inline"}}}}}}},
 		{"kind": "Panel", "name": "frame", "regions": []any{map[string]any{"name": "main", "items": []any{map[string]any{"content": []any{}}}}}},
+		{"kind": "Panel", "name": "frame", "regions": []any{map[string]any{"name": "main", "collapseWhenEmpty": "yes"}}},
 	} {
 		if err = compiled.Validate(invalid); err == nil {
 			t.Fatalf("schema accepted ambiguous Panel: %#v", invalid)

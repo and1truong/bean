@@ -131,7 +131,7 @@ name: tracker_operations
 layout: two-column
 regions:
   - {name: left, blocks: [issue_status_chart]}
-  - {name: right, blocks: [issue_board]}
+  - {name: right, blocks: [issue_board], collapseWhenEmpty: true}
 ---
 kind: Page
 name: tracker_home

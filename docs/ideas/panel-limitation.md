@@ -1,6 +1,6 @@
 # Panel limitations and difficult composition cases
 
-Status: idea inventory; responsive presets and multiple Page layout bands are implemented. Remaining cases are unscheduled.
+Status: idea inventory; responsive presets, multiple Page layout bands, and policy-aware empty-Region collapse are implemented. Remaining cases are unscheduled.
 
 Related: [`panel-responsive-layout.md`](panel-responsive-layout.md).
 
@@ -89,13 +89,13 @@ Desktop and mobile designs sometimes request different ordering or splitting one
 
 A sidebar may contain only editor-restricted Blocks. For an anonymous actor, every child can be removed by server-side Policy evaluation. The layout contract does not say whether the empty Region should retain its track, collapse, allow `main` to expand, or render a fallback.
 
-A possible future semantic is:
+Implemented as an opt-in Region semantic:
 
 ```yaml
 collapseWhenEmpty: true
 ```
 
-Any decision must use the authorized server render tree, not client-only hiding.
+The authorized server render tree omits a zero-child opted-in Region, expands a sole survivor across all Panel tracks, and makes an all-collapsed Panel unavailable. View result emptiness does not trigger structural collapse, and client-only hiding is not used.
 
 ## 9. Empty, loading, and error states affecting reflow
 
@@ -178,7 +178,7 @@ Users may want to hide, reorder, drag, or resize widgets and persist a personal 
 1. Complete deterministic responsive behavior for existing presets. **Implemented** with fixed `48rem`/`64rem` runtime breakpoints.
 2. Support multiple layout bands on one Page without arbitrary nesting. **Implemented** with ordered Page `sections` in AppIR v10.
 3. Add bounded main/sidebar spans and grid column counts if examples require them.
-4. Define empty-Region collapse after Policy filtering.
+4. Define empty-Region collapse after Policy filtering. **Implemented** as opt-in `collapseWhenEmpty` in AppIR v11.
 5. Add semantic contained/wide/full-bleed widths.
 6. Improve typed detail/form field layout instead of using one Block per field.
 
