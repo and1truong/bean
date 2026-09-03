@@ -892,6 +892,7 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 			out = append(out, requiredDiagnostic("View", name, "spec.fields", "must include id for deterministic cursor pagination"))
 		}
 		groupFields, groupOutputs := map[string]bool{}, map[string]bool{}
+		redactedOutputs := nameSet(a.Policies[policy.EffectiveViewPolicyName(v, e)].Redact)
 		for i, group := range v.GroupBy {
 			path := fmt.Sprintf("spec.groupBy.%d", i)
 			groupFields[group.Field] = true
@@ -900,7 +901,9 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 				continue
 			}
 			output := group.Output()
-			if output == "" || groupOutputs[output] || !viewDisplayName.MatchString(output) {
+			if redactedOutputs[output] {
+				out = append(out, diagnostic("View", name, path+".as", "must not collide with a redacted field"))
+			} else if output == "" || groupOutputs[output] || !viewDisplayName.MatchString(output) {
 				out = append(out, diagnostic("View", name, path+".as", "must produce a unique machine name"))
 			}
 			groupOutputs[output] = true
@@ -947,7 +950,9 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 			if viewRelationshipIsToMany(aggregate.Field, e, relationships) {
 				out = append(out, diagnostic("View", name, path+".field", "cannot traverse a to-many relationship for aggregation"))
 			}
-			if aggregate.Alias == "" || aliases[aggregate.Alias] || selected[aggregate.Alias] || groupOutputs[aggregate.Alias] || !viewDisplayName.MatchString(aggregate.Alias) {
+			if redactedOutputs[aggregate.Alias] {
+				out = append(out, diagnostic("View", name, path+".alias", "must not collide with a redacted field"))
+			} else if aggregate.Alias == "" || aliases[aggregate.Alias] || selected[aggregate.Alias] || groupOutputs[aggregate.Alias] || !viewDisplayName.MatchString(aggregate.Alias) {
 				out = append(out, diagnostic("View", name, path+".alias", "must be a unique machine name"))
 			}
 			aliases[aggregate.Alias] = true

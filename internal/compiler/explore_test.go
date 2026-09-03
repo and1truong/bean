@@ -120,6 +120,25 @@ func TestGroupedTableUsesEmittedGroupAliases(t *testing.T) {
 	}
 }
 
+func TestGroupedOutputsCannotCollideWithRedactedFields(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Policy", Metadata: definition.Metadata{Name: "candidate_policy"}, Spec: map[string]any{"redact": []any{"secret"}}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "candidate"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "stage", "type": "string"}, map[string]any{"name": "secret", "type": "string"}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "candidates_by_stage"}, Spec: map[string]any{"entity": "candidate", "policy": "candidate_policy", "fields": []any{"stage"}, "groupBy": []any{map[string]any{"field": "stage", "as": "secret"}}, "aggregates": []any{map[string]any{"function": "count", "field": "id", "alias": "candidate_count"}}}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasDiagnosticMessage(diagnostics, "View", "candidates_by_stage", "spec.groupBy.0.as", "must not collide with a redacted field") {
+		t.Fatalf("redacted group output collision accepted: %v", diagnostics)
+	}
+	view := definitions[2].Spec
+	view["groupBy"].([]any)[0].(map[string]any)["as"] = "stage_name"
+	view["aggregates"].([]any)[0].(map[string]any)["alias"] = "secret"
+	diagnostics = compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasDiagnosticMessage(diagnostics, "View", "candidates_by_stage", "spec.aggregates.0.alias", "must not collide with a redacted field") {
+		t.Fatalf("redacted aggregate output collision accepted: %v", diagnostics)
+	}
+}
+
 func TestATSExploreCandidateCompilesAgainstActiveApplication(t *testing.T) {
 	bundle, err := examples.Load("ats")
 	if err != nil {

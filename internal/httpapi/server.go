@@ -516,14 +516,16 @@ func (s *Server) actionBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	seen := map[string]bool{}
-	results := make([]map[string]any, 0, len(input.IDs))
-	batchKey := r.Header.Get("Idempotency-Key")
 	for _, id := range input.IDs {
 		if id == "" || seen[id] {
 			problem(w, 400, "invalid_batch", "Action batch record IDs must be nonempty and unique.", requestID(r))
 			return
 		}
 		seen[id] = true
+	}
+	results := make([]map[string]any, 0, len(input.IDs))
+	batchKey := r.Header.Get("Idempotency-Key")
+	for _, id := range input.IDs {
 		values := map[string]any{"id": id}
 		for key, value := range input.Values {
 			if key != "id" {

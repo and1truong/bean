@@ -57,6 +57,16 @@ func TestActionBatchIsOrderedBoundedAndNonAtomic(t *testing.T) {
 	var session map[string]any
 	decodeResponse(t, login, &session)
 	cookie, csrf := login.Result().Cookies()[0], session["csrfToken"].(string)
+	for _, invalidIDs := range [][]string{{pending, pending}, {pending, ""}} {
+		invalid := serve(t, handler, http.MethodPost, "/api/actions/advance_order/batch", map[string]any{"ids": invalidIDs, "values": map[string]any{"status": "paid"}}, cookie, csrf)
+		if invalid.Code != http.StatusBadRequest {
+			t.Fatalf("invalid batch status=%d body=%s", invalid.Code, invalid.Body.String())
+		}
+		unchanged, selectErr := runtime.DB.Select(ctx, dbal.Select{Table: "order", Columns: []string{"status"}, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: pending}, Limit: 1})
+		if selectErr != nil || len(unchanged) != 1 || unchanged[0]["status"] != "pending_payment" {
+			t.Fatalf("invalid batch executed an earlier item: rows=%v err=%v", unchanged, selectErr)
+		}
+	}
 	batch := map[string]any{"ids": []string{pending, fulfilled}, "values": map[string]any{"status": "paid"}}
 	headers := map[string]string{"Idempotency-Key": "advance-selected-orders"}
 	response := serveWithHeaders(t, handler, http.MethodPost, "/api/actions/advance_order/batch", batch, cookie, csrf, headers)
