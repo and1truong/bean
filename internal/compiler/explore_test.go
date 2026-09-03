@@ -105,6 +105,21 @@ func TestGroupedViewRejectsNonGroupedSelectedFields(t *testing.T) {
 	}
 }
 
+func TestGroupedTableUsesEmittedGroupAliases(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "candidate"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "stage", "type": "string"}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "candidates_by_stage"}, Spec: map[string]any{"entity": "candidate", "fields": []any{"stage"}, "groupBy": []any{map[string]any{"field": "stage", "as": "stage_name"}}, "aggregates": []any{map[string]any{"function": "count", "field": "id", "alias": "candidate_count"}}, "displays": map[string]any{"table": map[string]any{"type": "block", "renderer": map[string]any{"type": "table", "fields": []any{map[string]any{"field": "stage"}, map[string]any{"field": "candidate_count"}}}}}}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasDiagnosticMessage(diagnostics, "View", "candidates_by_stage", "spec.displays.table.renderer.fields.0.field", "must be selected by View candidates_by_stage") {
+		t.Fatalf("source group field accepted as emitted output: %v", diagnostics)
+	}
+	definitions[1].Spec["displays"].(map[string]any)["table"].(map[string]any)["renderer"].(map[string]any)["fields"].([]any)[0].(map[string]any)["field"] = "stage_name"
+	if diagnostics = compiler.Compile("test", 1, definitions).Diagnostics; len(diagnostics) != 0 {
+		t.Fatalf("group alias rejected: %v", diagnostics)
+	}
+}
+
 func TestATSExploreCandidateCompilesAgainstActiveApplication(t *testing.T) {
 	bundle, err := examples.Load("ats")
 	if err != nil {

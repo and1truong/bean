@@ -296,6 +296,35 @@ describe('public rendering',()=>{
     await waitFor(()=>expect(fetchMock.mock.calls.some(([input])=>String(input).includes('/api/actions/move_candidate/batch'))).toBe(true))
     const call=fetchMock.mock.calls.find(([input])=>String(input).includes('/api/actions/move_candidate/batch'))!
     expect(JSON.parse(String(call[1]?.body))).toEqual({ids:['c1'],values:{stage:'interview',notify:false,priority:3,score:'1.25',scheduled_at:new Date(scheduledAt).toISOString()}})
+    expect(new Headers(call[1]?.headers).get('Idempotency-Key')).toBeTruthy()
+  })
+
+  it('reuses a batch idempotency key until the logical operation changes',async()=>{
+    const fetchMock=vi.fn(async(input:string|URL|Request,init?:RequestInit)=>{
+      void init
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:true,user:{Roles:['administrator']}})
+      if(path.includes('/api/system/manifest'))return response({actions:{move_candidate:{Name:'move_candidate',Entity:'candidate',Operation:'transition',Input:{id:{Name:'id',Type:'uuid'},stage:{Name:'stage',Label:'Stage',Type:'enum',Options:['applied','interview']}}}},lifecycles:{}})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'ViewBlock',props:{name:'records',view:'candidate_records',display:{Type:'block',Selection:'multiple',Actions:['move_candidate'],Renderer:{Type:'table',Fields:[{Field:'name',Label:'Candidate'}]},Pager:{Type:'none'}}}}]}})
+      if(path.includes('/api/actions/move_candidate/batch'))return response({data:{results:[{id:'c1',ok:false,error:{code:'conflict',message:'retry'}}]}})
+      if(path.includes('/api/views/candidate_records'))return response({data:[{id:'c1',name:'Ada'}],nextCursor:''})
+      return response({})
+    })
+    vi.stubGlobal('fetch',fetchMock)
+    renderApp('/')
+    fireEvent.click(await screen.findByRole('checkbox',{name:'Select Ada'}))
+    fireEvent.change(screen.getByLabelText('Stage'),{target:{value:'applied'}})
+    fireEvent.click(await screen.findByRole('button',{name:'Run for 1'}))
+    await waitFor(()=>expect(fetchMock.mock.calls.filter(([input])=>String(input).includes('/api/actions/move_candidate/batch'))).toHaveLength(1))
+    fireEvent.click(screen.getByRole('button',{name:'Run for 1'}))
+    await waitFor(()=>expect(fetchMock.mock.calls.filter(([input])=>String(input).includes('/api/actions/move_candidate/batch'))).toHaveLength(2))
+    fireEvent.change(screen.getByLabelText('Stage'),{target:{value:'interview'}})
+    fireEvent.click(screen.getByRole('button',{name:'Run for 1'}))
+    await waitFor(()=>expect(fetchMock.mock.calls.filter(([input])=>String(input).includes('/api/actions/move_candidate/batch'))).toHaveLength(3))
+    const calls=fetchMock.mock.calls.filter(([input])=>String(input).includes('/api/actions/move_candidate/batch'))
+    const keys=calls.map(([,init])=>new Headers(init?.headers).get('Idempotency-Key'))
+    expect(keys[0]).toBe(keys[1])
+    expect(keys[2]).not.toBe(keys[1])
   })
 
   it('waits for Action metadata before enabling selected record submission',async()=>{

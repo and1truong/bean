@@ -299,6 +299,23 @@ func ReadPage(ctx context.Context, reader Reader, app *appir.App, name string, o
 		definition, _ := entityField(fieldEntity, fieldName)
 		return definition.Type
 	}
+	groupField := func(path string) (appir.Field, bool) {
+		fieldName := path
+		fieldEntity := e
+		parts := strings.SplitN(path, ".", 2)
+		if len(parts) == 2 {
+			fieldName = parts[1]
+			if parts[0] != v.Entity {
+				for _, relationship := range v.Relationships {
+					if relationship.Name == parts[0] {
+						fieldEntity = app.Entities[relationship.Entity]
+						break
+					}
+				}
+			}
+		}
+		return entityField(fieldEntity, fieldName)
+	}
 	aggregates := []dbal.Aggregate{}
 	for _, aggregate := range v.Aggregates {
 		function := aggregate.Function
@@ -375,8 +392,15 @@ func ReadPage(ctx context.Context, reader Reader, app *appir.App, name string, o
 		}
 		for _, group := range v.GroupBy {
 			encoded := groupAliases[group.Output()]
+			value, exists := row[encoded]
+			if !exists {
+				continue
+			}
+			if definition, ok := groupField(group.Field); ok {
+				value = field.Decode(definition, value)
+			}
+			row[group.Output()] = value
 			if encoded != group.Output() {
-				row[group.Output()] = row[encoded]
 				delete(row, encoded)
 			}
 		}

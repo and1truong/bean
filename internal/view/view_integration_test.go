@@ -84,6 +84,36 @@ func TestCompiledQueryPlanAndOpaqueCursor(t *testing.T) {
 	}
 }
 
+func TestGroupedAliasDecodesUsingSourceFieldType(t *testing.T) {
+	ctx := context.Background()
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "group-alias.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err = db.ExecuteMigration(ctx, []string{`CREATE TABLE feature (id TEXT PRIMARY KEY, enabled INTEGER NOT NULL)`}); err != nil {
+		t.Fatal(err)
+	}
+	for _, insert := range []dbal.Insert{
+		{Table: "feature", Values: map[string]dbal.Value{"id": "a", "enabled": 0}},
+		{Table: "feature", Values: map[string]dbal.Value{"id": "b", "enabled": 1}},
+	} {
+		if _, err = db.Insert(ctx, insert); err != nil {
+			t.Fatal(err)
+		}
+	}
+	app := appir.Empty()
+	app.Entities["feature"] = appir.Entity{Name: "feature", Fields: []appir.Field{{Name: "enabled", Type: "boolean"}}}
+	app.Views["features_by_state"] = appir.View{Name: "features_by_state", Entity: "feature", ResultShape: "groups", Fields: []string{"enabled"}, GroupBy: []appir.ViewGroup{{Field: "enabled", As: "enabled_state"}}, Aggregates: []appir.Aggregate{{Function: "count", Field: "id", Alias: "feature_count"}}, Sort: []appir.Sort{{Field: "enabled_state"}}, MaxLimit: 10}
+	result, err := (view.Service{DB: db}).RunPage(ctx, app, "features_by_state", view.Params{}, beanctx.Request{})
+	if err != nil || len(result.Rows) != 2 {
+		t.Fatalf("grouped rows=%v err=%v", result.Rows, err)
+	}
+	if result.Rows[0]["enabled_state"] != false || result.Rows[1]["enabled_state"] != true {
+		t.Fatalf("group aliases were not decoded as booleans: %v", result.Rows)
+	}
+}
+
 func TestTenantIsolationInjectedIntoView(t *testing.T) {
 	ctx := context.Background()
 	db, e := sqlite.Open(filepath.Join(t.TempDir(), "tenant.db"))

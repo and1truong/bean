@@ -165,6 +165,40 @@ func TestSaveBundleExactIsNotCappedAtTwoHundredDefinitions(t *testing.T) {
 	}
 }
 
+func TestDraftTokenChangesWhenDefinitionIdentityIsRecreated(t *testing.T) {
+	ctx := context.Background()
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "draft-token.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := &release.Store{DB: db, Migrations: db, Kernel: kernel.New(), OpenAPI: openapi.Generate}
+	if err = store.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	role := definition.Definition{APIVersion: definition.APIVersion, Kind: "Role", Metadata: definition.Metadata{Name: "operator"}, Spec: map[string]any{"permissions": []any{}}}
+	if err = store.SaveBundleExact(ctx, "default", definition.Bundle{Name: "before", Definitions: []definition.Definition{role}}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := store.DraftToken(ctx, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = store.SaveBundleExact(ctx, "default", definition.Bundle{Name: "empty"}); err != nil {
+		t.Fatal(err)
+	}
+	if err = store.SaveBundleExact(ctx, "default", definition.Bundle{Name: "after", Definitions: []definition.Definition{role}}); err != nil {
+		t.Fatal(err)
+	}
+	after, err := store.DraftToken(ctx, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before == after {
+		t.Fatal("recreated definition reused a stale draft token")
+	}
+}
+
 type previewBarrierDatabase struct {
 	*sqlite.DB
 	ready chan struct{}

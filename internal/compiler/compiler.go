@@ -1098,7 +1098,10 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 func validateViewDisplay(viewName, displayName string, view appir.View, display appir.Display, entity appir.Entity, relationships map[string]appir.ViewRelationship, app *appir.App) []definition.Diagnostic {
 	base := "spec.displays." + displayName
 	out := []definition.Diagnostic{}
-	selected := nameSet(view.Fields)
+	selected := map[string]bool{}
+	if len(view.GroupBy) == 0 {
+		selected = nameSet(view.Fields)
+	}
 	aggregates := map[string]appir.Aggregate{}
 	for _, aggregate := range view.Aggregates {
 		selected[aggregate.Alias] = true

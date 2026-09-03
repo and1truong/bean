@@ -29,14 +29,14 @@ export class ActionBatchError extends APIError{
   }
 }
 
-export async function runActionBatch(name:string,ids:string[],values:Input):Promise<ActionBatchResult>{
+export async function runActionBatch(name:string,ids:string[],values:Input,idempotencyKey:string):Promise<ActionBatchResult>{
 	if(ids.length<1||ids.length>200)throw new APIError('Action batch must contain between 1 and 200 record IDs.')
-	const response=await api<{data:ActionBatchResult}>('/api/actions/'+name+'/batch',{method:'POST',body:JSON.stringify({ids,values})})
+	const response=await api<{data:ActionBatchResult}>('/api/actions/'+name+'/batch',{method:'POST',headers:{'Idempotency-Key':idempotencyKey},body:JSON.stringify({ids,values})})
 	return response.data
 }
 
-export async function callActionBatch(name:string,ids:string[],values:Input):Promise<void>{
-	const result=await runActionBatch(name,ids,values)
+export async function callActionBatch(name:string,ids:string[],values:Input,idempotencyKey:string=globalThis.crypto.randomUUID()):Promise<void>{
+	const result=await runActionBatch(name,ids,values,idempotencyKey)
 	const failures:Failure[]=result.results.filter(item=>!item.ok).map(item=>({id:item.id,error:new APIError(item.error?.message||'Action failed.')}))
 	if(failures.length)throw new ActionBatchError(failures)
 }

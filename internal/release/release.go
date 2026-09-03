@@ -128,13 +128,13 @@ type draftSelector interface {
 }
 
 func draftToken(ctx context.Context, selector draftSelector, appID string) (string, error) {
-	rows, err := selector.Select(ctx, dbal.Select{Table: "bean_definition", Columns: []string{"kind", "namespace", "name", "current_revision"}, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "app_id", Value: appID}, OrderBy: []dbal.Order{{Column: "kind"}, {Column: "namespace"}, {Column: "name"}}})
+	rows, err := selector.Select(ctx, dbal.Select{Table: "bean_definition", Columns: []string{"id", "kind", "namespace", "name", "current_revision"}, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "app_id", Value: appID}, OrderBy: []dbal.Order{{Column: "kind"}, {Column: "namespace"}, {Column: "name"}}})
 	if err != nil {
 		return "", err
 	}
 	parts := make([]string, 0, len(rows))
 	for _, row := range rows {
-		parts = append(parts, fmt.Sprint(row["kind"], "\x00", row["namespace"], "\x00", row["name"], "\x00", row["current_revision"]))
+		parts = append(parts, fmt.Sprint(row["id"], "\x00", row["kind"], "\x00", row["namespace"], "\x00", row["name"], "\x00", row["current_revision"]))
 	}
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return hex.EncodeToString(sum[:]), nil
