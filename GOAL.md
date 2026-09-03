@@ -1,35 +1,43 @@
-# Goal: Ergonomic inline semantic Panel content
+# Goal: Deterministic responsive Panel presets
 
 Status: complete
 
-Allow frame-local headings, paragraphs, bullets, diagrams, and other semantic content to be authored directly in a Panel region without requiring a globally named Block, while preserving named Blocks for reuse and data-backed behavior.
+Make every existing Panel layout produce a documented, predictable responsive composition without adding author-controlled CSS or changing application metadata.
 
 ## Design
 
-A region may use one of two source forms:
+This source-compatible stage keeps the existing closed `layout` field and AppIR unchanged. The browser maps it to runtime-owned viewport thresholds:
 
-- legacy `blocks: [name, ...]`, unchanged;
-- canonical ordered `items`, where each item contains exactly one `block: name` reference or one non-empty `content: [...]` semantic-content list. An inline content item may have an optional region-local machine `id`.
+- small: below `48rem`;
+- medium: `48rem` through below `64rem`;
+- large: `64rem` and above.
 
-`items` is the only form for interleaving inline content and named Blocks, so source order is render order. A region cannot declare both `blocks` and `items`.
+Preset behavior is fixed:
 
-The compiler lowers every inline item into an immutable nested AppIR region item with an internal identity `@inline/<panel>/<region>/<id-or-ordinal>`. Explicit `id` keeps identity stable when nearby items are reordered; otherwise the item ordinal is deterministic. Internal identities are not global Block definitions or valid authoring references.
+| Layout | Small | Medium | Large |
+| --- | --- | --- | --- |
+| `single-column` | 1 column | 1 column | 1 column |
+| `two-column` | stacked | 2 equal columns | 2 equal columns |
+| `sidebar-main` | stacked | stacked | `1fr 2fr` |
+| `main-sidebar` | stacked | stacked | `2fr 1fr` |
+| `grid` | 1 item per row | 2 items per row | 3 items per row |
 
-Inline content has no independent policy. It is visible whenever its enclosing Panel (and Page or Sequence) is visible. Referenced named Blocks retain their own Policy checks. Diagnostics are owned by the Panel and use index-based source paths such as `spec.regions.0.items.1.content.0.alt`.
+Regions and Blocks retain source/DOM order at every width. Tracks use `minmax(0, …)` and Regions use `min-width: 0` so wide Block content remains locally responsible for overflow. `grid` lays out the ordered children of its existing `main` Region.
+
+Viewport queries are deliberate for this first stage because Panels are route-level compositions in the current runtime. Container queries and metadata-controlled sizing remain deferred until nested or constrained Panels provide evidence.
 
 ## Acceptance criteria
 
-- Panel regions render inline semantic content through the existing `ContentBlock` renderer.
-- Ordered `items` deterministically interleave inline content and named Block references.
-- Inline content receives the same vocabulary, accessibility, count, code, diagram, and Sequence density validation as named content Blocks.
-- Sequence Block counts, feature checks, and render visibility include inline items.
-- Generated identities are deterministic, inspectable in AppIR, and unavailable as global references.
-- Legacy `regions[].blocks` and named content Blocks remain compatible.
-- `examples/presentation` uses inline content while retaining a reusable named content Block and the live View/chart Block.
+- Ordinary Page Panels implement all five preset mappings at the fixed thresholds.
+- Presentation `two-column` behavior remains compatible.
+- Source, DOM, keyboard, and screen-reader order never changes across breakpoints.
+- No definition schema, AppIR, Policy, View, Action, SQL, or migration behavior changes.
+- Focused React/CSS and browser evidence covers responsive layout and overflow containment.
+- Canonical Panel documentation states the runtime contract.
 - `make check` and `make build` pass.
 
 ## Non-goals
 
-- A Presentation/Slide runtime or raw-YAML runtime parsing.
-- Inline View, Webform, Action, or independently policy-bound Blocks.
-- Changes to View reads, Action writes, SQL, SQLite, or migrations.
+- Per-Panel breakpoints, columns, spans, gaps, widths, or responsive metadata.
+- Breakpoint-specific visibility or visual reordering.
+- Nested Panels, multiple layout bands, drawers, tabs, accordions, carousels, or arbitrary CSS.

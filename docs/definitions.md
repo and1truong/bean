@@ -4,6 +4,20 @@ An application source starts with an `app.yaml` manifest containing `apiVersion:
 
 Compilation validates envelopes, names, fields, references, relation kinds, limits, Action steps, Panel regions, and route uniqueness. Diagnostics identify the source file, line, column, kind, name, field path, and a corrective message. Generated CRUD is emitted as Views and Actions inside AppIR.
 
+## Panel layouts
+
+Panel uses a closed responsive preset vocabulary; authors do not supply CSS, utility classes, media queries, or breakpoint-specific order. Existing metadata maps to this runtime contract:
+
+| Layout | Below `48rem` | `48rem`–below `64rem` | `64rem` and above |
+| --- | --- | --- | --- |
+| `single-column` | one column | one column | one column |
+| `two-column` | Regions stack | two equal columns | two equal columns |
+| `sidebar-main` | Regions stack | Regions stack | sidebar one-third, main two-thirds |
+| `main-sidebar` | Regions stack | Regions stack | main two-thirds, sidebar one-third |
+| `grid` | one item per row | two items per row | three items per row |
+
+For `grid`, the columns apply to the ordered Blocks or inline content inside its `main` Region. Every preset preserves definition, DOM, keyboard, and screen-reader order at all widths. Tracks and Regions may shrink to contain wide children; individual Block and Display renderers remain responsible for local overflow. These fixed viewport thresholds are runtime-owned and require no schema or AppIR fields.
+
 ## Sequences and semantic content
 
 A `Sequence` is a route-level ordered experience composed from existing Panels. The initial `presentation` profile supports `wide` and `standard` aspect ratios, stable frame identities, speaker notes, URL-addressed navigation, keyboard controls, progress, responsive HTML, and one-frame-per-page print structure. Sequence adds no data or mutation path: View Blocks still read through Views and Actions remain the only write boundary.

@@ -119,6 +119,17 @@
   .rich-text code { @apply rounded bg-muted px-1 py-0.5 font-mono text-sm; }
   .rich-text pre { @apply overflow-x-auto rounded-lg bg-muted p-4; }
 
+  .bean-panel { display: grid; gap: 1rem; }
+  .bean-region { display: flex; min-width: 0; flex-direction: column; gap: 1rem; }
+  .bean-panel[data-layout="single-column"],
+  .bean-panel[data-layout="two-column"],
+  .bean-panel[data-layout="sidebar-main"],
+  .bean-panel[data-layout="main-sidebar"] { grid-template-columns: minmax(0, 1fr); }
+  .bean-panel[data-layout="grid"] > .bean-region[data-region="main"] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .bean-sequence { @apply flex min-h-screen flex-col bg-muted/50; }
   .bean-sequence-toolbar { @apply flex flex-col gap-3 border-b bg-background px-4 py-3 lg:flex-row lg:items-center lg:justify-between; }
   .bean-sequence-stage { @apply flex flex-1 items-center justify-center p-3 sm:p-6; }
@@ -153,6 +164,33 @@
   .bean-content-diagram li > span:first-child { @apply rounded-xl border bg-accent px-5 py-4 text-center font-semibold; }
   .bean-speaker-notes { @apply mt-5 rounded-lg border border-dashed bg-muted p-4 text-sm; }
   .bean-speaker-notes h2 { @apply mb-1 font-semibold; }
+}
+
+@media (min-width: 48rem) {
+  .bean-panel[data-layout="two-column"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .bean-panel[data-layout="grid"] > .bean-region[data-region="main"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 64rem) {
+  .bean-panel[data-layout="sidebar-main"],
+  .bean-panel[data-layout="main-sidebar"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .bean-panel[data-layout="sidebar-main"] > .bean-region[data-region="sidebar"],
+  .bean-panel[data-layout="main-sidebar"] > .bean-region[data-region="sidebar"] {
+    grid-column: span 1;
+  }
+  .bean-panel[data-layout="sidebar-main"] > .bean-region[data-region="main"],
+  .bean-panel[data-layout="main-sidebar"] > .bean-region[data-region="main"] {
+    grid-column: span 2;
+  }
+  .bean-panel[data-layout="grid"] > .bean-region[data-region="main"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media print {

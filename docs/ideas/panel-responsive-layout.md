@@ -1,6 +1,6 @@
 # Idea: Responsive Panel layouts
 
-Status: idea; not scheduled or implemented.
+Status: Stage 1 implemented; optional sizing metadata is not scheduled.
 
 ## Problem
 
@@ -12,9 +12,9 @@ A Panel currently describes semantic composition through a closed `layout` name 
 - `main-sidebar` → `main`, `sidebar`
 - `grid` → `main`
 
-The compiler validates these names, but the definition does not specify what happens at small, medium, or large screen sizes. It also cannot express grid column count, region span, gap, minimum width, or when a multi-column layout should collapse.
+The compiler validates these names. Stage 1 now gives every name a fixed responsive runtime contract while deliberately leaving author-controlled grid columns, region spans, gaps, and breakpoints unsupported.
 
-The public Page renderer currently preserves `data-layout` and `data-region` semantics but does not provide a complete responsive visual mapping for ordinary Panels. The presentation renderer has one concrete behavior for `two-column`: one column below `md`, two columns from `md` upward. This is an implementation detail rather than a complete Panel contract.
+The public Page renderer preserves `data-layout` and `data-region` semantics and maps them through runtime-owned Panel and Region classes. Presentation `two-column` uses the same collapse threshold with presentation-specific spacing.
 
 ## Desired outcome
 
@@ -30,9 +30,9 @@ An author should be able to answer:
 
 ## Suggested staged design
 
-### Stage 1: freeze responsive preset semantics
+### Stage 1: freeze responsive preset semantics — implemented
 
-First, make existing layout names useful without adding author-controlled sizing:
+Existing layout names are useful without author-controlled sizing. Medium begins at `48rem` and large at `64rem`; below medium is small:
 
 | Layout | Small | Medium | Large |
 | --- | --- | --- | --- |
@@ -42,9 +42,7 @@ First, make existing layout names useful without adding author-controlled sizing
 | `main-sidebar` | stacked in source order | stacked | `2fr 1fr` |
 | `grid` | one cell per row | two cells per row | three cells per row |
 
-Exact breakpoint values should be part of the Theme/runtime contract rather than inferred from whichever CSS framework is in use. A likely initial vocabulary is `small`, `medium`, and `large`, with fixed runtime-owned thresholds.
-
-This stage can remain source-compatible: existing definitions gain deterministic responsive rendering without schema changes.
+The breakpoints are explicit runtime constants rather than inferred from CSS-framework defaults. Existing definitions gained deterministic responsive rendering without schema or AppIR changes. Regions use `min-width: 0`, tracks use `minmax(0, ...)`, and source/DOM order remains authoritative.
 
 ### Stage 2: optional bounded sizing metadata
 
@@ -126,8 +124,8 @@ Container queries may eventually be preferable to viewport media queries because
 
 ## Open questions
 
-1. Are deterministic presets sufficient, or is per-Panel `responsive` metadata justified by maintained examples?
-2. Should breakpoint thresholds belong to Theme, be runtime constants, or use container sizes?
+1. Do maintained applications demonstrate that the implemented deterministic presets are insufficient enough to justify per-Panel `responsive` metadata?
+2. Should a future nested/constrained Panel contract migrate the runtime-owned viewport thresholds to container sizes?
 3. Does `grid` arrange Region children, or should it eventually support multiple named regions?
 4. Should gap be a small semantic vocabulary such as `compact`, `normal`, and `spacious`, rather than a number?
 5. Should sidebar width use integer spans, semantic sizes such as `narrow`/`wide`, or both?

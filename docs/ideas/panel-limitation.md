@@ -175,7 +175,7 @@ Users may want to hide, reorder, drag, or resize widgets and persist a personal 
 
 ## Candidate priorities
 
-1. Complete deterministic responsive behavior for existing presets.
+1. Complete deterministic responsive behavior for existing presets. **Implemented** with fixed `48rem`/`64rem` runtime breakpoints.
 2. Support multiple layout bands on one Page without arbitrary nesting.
 3. Add bounded main/sidebar spans and grid column counts if examples require them.
 4. Define empty-Region collapse after Policy filtering.

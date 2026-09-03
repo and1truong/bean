@@ -26,6 +26,24 @@ describe('View datetime controls',()=>{
 })
 
 describe('public rendering',()=>{
+  it('preserves Panel source order with semantic layout hooks',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'Panel',props:{layout:'sidebar-main'},children:[
+        {component:'Region',props:{name:'sidebar'},children:[{component:'TextBlock',props:{text:'Sidebar first'}}]},
+        {component:'Region',props:{name:'main'},children:[{component:'TextBlock',props:{text:'Main second'}}]},
+      ]}]}})
+      return response({})
+    }))
+    renderApp('/')
+    await screen.findByText('Sidebar first')
+    const panel=document.querySelector('[data-component="Panel"]')!
+    expect(panel).toHaveClass('bean-panel')
+    expect(Array.from(panel.children).map(child=>child.getAttribute('data-region'))).toEqual(['sidebar','main'])
+    expect(Array.from(panel.children).every(child=>child.classList.contains('bean-region'))).toBe(true)
+  })
+
   it('renders and navigates an accessible semantic Sequence',async()=>{
     const print=vi.fn();vi.stubGlobal('print',print)
     vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
