@@ -602,6 +602,24 @@ describe('public rendering',()=>{
     expect(categoryBRequest).not.toContain('cursor=')
   })
 
+  it('restores the session CSRF token before an authenticated Admin mutation',async()=>{
+    sessionStorage.removeItem('bean_csrf')
+    let submittedCSRF:string|null=null
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request,init?:RequestInit)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:true,csrfToken:'session-csrf',user:{Roles:['editor']}})
+      if(path.includes('/api/admin/manifest'))return response({entities:{category:{Name:'category',Label:'Category',Fields:[{Name:'name',Label:'Name',Type:'string',Required:true}]}},actions:{category_create:{Name:'category_create',Entity:'category',Operation:'create',Input:{}}},lifecycles:{},adminResources:{category:{Name:'category',Entity:'category',Label:'Category',Description:'Categories',LabelField:'name',View:'category_list',CreateAction:'category_create',UpdateAction:'',DeleteAction:'',List:{Columns:['name'],Search:[],Filters:[],Sort:[],PageSize:25},Form:{Fields:['name'],Readonly:[]},Actions:[]}},systemAdmin:false,version:1,releaseId:'release-1'})
+      if(path.includes('/api/actions/category_create')){submittedCSRF=new Headers(init?.headers).get('X-CSRF-Token');return response({data:{id:'category-1',name:'Engineering'}})}
+      return response({})
+    }))
+    renderApp('/admin/category/new')
+    fireEvent.change(await screen.findByTestId('field-name'),{target:{value:'Engineering'}})
+    await waitFor(()=>expect(sessionStorage.getItem('bean_csrf')).toBe('session-csrf'))
+    fireEvent.click(screen.getByTestId('create-category'))
+    await waitFor(()=>expect(submittedCSRF).toBe('session-csrf'))
+    sessionStorage.removeItem('bean_csrf')
+  })
+
   it('clears cached data from the previous identity before navigating after login',async()=>{
     vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
       const path=String(input)

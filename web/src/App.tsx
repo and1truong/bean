@@ -45,6 +45,7 @@ function Shell({children,chrome=true}:{children:React.ReactNode;chrome?:boolean}
   const loc=useLocation();const nav=useNavigate();const qc=useQueryClient();const currentPath=useContext(CurrentPath);const logoutStarted=useRef(false)
   const session=useQuery({queryKey:['session'],queryFn:()=>api<Session>('/api/system/session')})
   const manifest=useQuery({queryKey:['manifest'],queryFn:()=>api<Manifest>('/api/system/manifest')})
+  useEffect(()=>{if(session.data?.authenticated&&session.data.csrfToken)sessionStorage.setItem('bean_csrf',session.data.csrfToken)},[session.data?.authenticated,session.data?.csrfToken])
   const roles=session.data?.user?.Roles||[]
   const editor=roles.includes('editor')||roles.includes('administrator')
   const administrator=roles.includes('administrator')

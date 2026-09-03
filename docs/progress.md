@@ -2,6 +2,10 @@
 
 ## Current
 
+The focused post-v0.16 CSRF continuity fix is complete. The reported failure was reproduced: an HttpOnly session cookie authenticated a direct or reloaded Admin tab, but missing tab-local `bean_csrf` state caused every Action submission to fail exact server CSRF validation. The Shell now restores the token returned by `/api/system/session`; focused React evidence proves the restored token is sent by the next Admin Action, and the Blog Playwright journey creates a category after explicitly clearing tab storage and reloading. Server CSRF validation remains unchanged. `make check` passes all Go, race, React, black-box, and 16/16 Playwright tests; `make build` passes.
+
+## v0.16 completed state
+
 Bean v0.16 Semantic Sequences is complete on branch `v0.16-presentations`, based on the completed v0.15 Explore commit. Milestones 0–5 are done.
 
 Repository evidence led to one generic `Sequence` definition instead of a presentation-specific parallel runtime. AppIR v8 stores a route and ordered frames referencing existing Panels. Panels/Regions/Blocks remain the composition tree; View Displays remain the data rendering path; Theme remains the visual token contract; Policy remains authoritative. One generic `content` Block supplies bounded headings, paragraphs, bullets, quotes, code, callouts, accessible images, and ordered diagrams without arbitrary markup or scripts.

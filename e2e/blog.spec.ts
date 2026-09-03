@@ -7,6 +7,10 @@ test('complete blog editorial, identity, and moderation journey',async({page,bea
   await expect(page.getByRole('heading',{name:'Administration'})).toBeVisible()
   await expect(page.getByRole('link',{name:'System'})).toHaveCount(0)
 
+  await page.evaluate(()=>sessionStorage.removeItem('bean_csrf'))
+  await page.reload()
+  await expect(page.getByRole('heading',{name:'Administration'})).toBeVisible()
+
   await page.getByRole('link',{name:/Category/}).click()
   await page.getByRole('link',{name:'Add Category'}).click()
   await page.getByTestId('field-name').fill('Engineering')
