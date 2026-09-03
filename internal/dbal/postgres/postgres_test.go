@@ -83,6 +83,19 @@ func TestCompilerCastsTextTimestampsBeforeDateBucketing(t *testing.T) {
 	}
 }
 
+func TestCompilerDoesNotNumberDecimalGrammarQuantifiers(t *testing.T) {
+	statement, arguments, err := (postgres.Compiler{}).CompileSelect(dbal.Select{
+		Table:      "item",
+		Aggregates: []dbal.Aggregate{{Function: "sum", Column: "amount", Alias: "total", Type: "decimal"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(arguments) != 0 || strings.Contains(statement, "$1") {
+		t.Fatalf("statement=%q arguments=%v", statement, arguments)
+	}
+}
+
 func TestDecimalAggregatesUseNumericStorageSemantics(t *testing.T) {
 	databaseURL := os.Getenv("BEAN_TEST_POSTGRES_URL")
 	if databaseURL == "" {
@@ -123,6 +136,17 @@ func TestDecimalAggregatesUseNumericStorageSemantics(t *testing.T) {
 	rows, err = database.Select(ctx, dbal.Select{Table: "decimal_item", Aggregates: []dbal.Aggregate{{Function: "avg", Column: "amount", Alias: "average", Type: "decimal"}}})
 	if err != nil || len(rows) != 1 || fmt.Sprint(rows[0]["average"]) != "0.3333333333333333" {
 		t.Fatalf("repeating average rows=%v err=%v", rows, err)
+	}
+	for _, invalid := range []string{"NaN", " 1.5 ", "10e4096"} {
+		if err = database.ExecuteMigration(ctx, []string{`DELETE FROM decimal_item`}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = database.Insert(ctx, dbal.Insert{Table: "decimal_item", Values: map[string]dbal.Value{"id": "legacy", "amount": invalid}}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = database.Select(ctx, dbal.Select{Table: "decimal_item", Aggregates: []dbal.Aggregate{{Function: "sum", Column: "amount", Alias: "total", Type: "decimal"}}}); err == nil {
+			t.Fatalf("legacy decimal %q was silently aggregated", invalid)
+		}
 	}
 }
 

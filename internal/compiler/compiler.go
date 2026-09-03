@@ -858,6 +858,9 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 			if !fieldSet(target)[relationship.TargetField] {
 				out = append(out, missingFieldDiagnostic("View", name, path+".targetField", relationship.TargetField, true))
 			}
+			if sensitiveViewRelationship(e, relationship, a) {
+				out = append(out, diagnostic("View", name, path, "sensitive fields cannot define View relationships"))
+			}
 			if relationship.Type != "inner" && relationship.Type != "left" {
 				out = append(out, diagnostic("View", name, path+".type", "must be inner or left"))
 			}
@@ -3105,6 +3108,10 @@ func sensitiveViewField(name string, base appir.Entity, relationships map[string
 	if !exists {
 		return false
 	}
+	return sensitiveViewRelationship(base, relationship, a)
+}
+
+func sensitiveViewRelationship(base appir.Entity, relationship appir.ViewRelationship, a *appir.App) bool {
 	for _, field := range base.Fields {
 		if (field.Name == relationship.RelationField || field.Name == relationship.LocalField) && field.Sensitive {
 			return true

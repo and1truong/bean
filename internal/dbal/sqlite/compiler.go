@@ -33,6 +33,14 @@ func PostgreSQLDateBucket(bucket, column, fieldType string) (string, error) {
 	return "CAST(CAST(date_trunc('" + bucket + "', " + source + ") AS date) AS text)", nil
 }
 
+func PostgreSQLDecimal(column string) string {
+	const grammar = `^[+-]{0,1}([0-9]+(\.[0-9]*){0,1}|\.[0-9]+)([eE][+-]{0,1}[0-9]+){0,1}$`
+	numeric := "CAST(" + column + " AS NUMERIC)"
+	invalid := "CAST(" + column + " || ' invalid Bean decimal' AS NUMERIC)"
+	bounded := numeric + " = 0 OR (ABS(" + numeric + ") >= 1e-4096 AND ABS(" + numeric + ") < 1e4097)"
+	return "CASE WHEN " + column + " IS NULL THEN NULL WHEN octet_length(" + column + ") <= 4096 AND " + column + " ~ '" + grammar + "' THEN CASE WHEN (" + bounded + ") THEN " + numeric + " ELSE " + invalid + " END ELSE " + invalid + " END"
+}
+
 func (Compiler) QuoteIdentifier(s string) (string, error) {
 	parts := strings.Split(s, ".")
 	for i, p := range parts {
@@ -105,7 +113,7 @@ func (c Compiler) CompileSelect(q dbal.Select) (string, []dbal.Value, error) {
 		if a.Type == "decimal" && fn != "COUNT" {
 			decimalAliases[a.Alias] = true
 			if c.NativeDecimal {
-				expression := fn + "(CAST(" + col + " AS NUMERIC))"
+				expression := fn + "(" + PostgreSQLDecimal(col) + ")"
 				if fn == "AVG" {
 					expression = fmt.Sprintf("ROUND(%s, %d)", expression, dbal.DecimalAverageScale)
 				}

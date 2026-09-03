@@ -248,6 +248,21 @@ func TestSensitiveRelationshipEdgesCannotControlViewFilters(t *testing.T) {
 	}
 }
 
+func TestSensitiveRelationshipDeclarationsCannotAffectBaseAggregates(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "person"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "name", "type": "string"}}}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "account"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "private_people", "type": "relation", "sensitive": true, "relation": map[string]any{"entity": "person", "kind": "many-to-many", "targetField": "id"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "account_total"}, Spec: map[string]any{
+			"entity": "account", "relationships": []any{map[string]any{"name": "people", "relationField": "private_people"}},
+			"aggregates": []any{map[string]any{"function": "count", "field": "id", "alias": "account_count"}},
+		}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasDiagnosticMessage(diagnostics, "View", "account_total", "spec.relationships.0", "sensitive fields cannot define View relationships") {
+		t.Fatalf("unused sensitive relationship accepted: %v", diagnostics)
+	}
+}
+
 func TestGroupedViewSortRequiresEmittedOutput(t *testing.T) {
 	definitions := []definition.Definition{
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "event"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "occurred_at", "type": "datetime"}}}},
