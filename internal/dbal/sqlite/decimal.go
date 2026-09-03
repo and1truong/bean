@@ -10,7 +10,10 @@ import (
 	modernsqlite "modernc.org/sqlite"
 )
 
-const decimalAverageScale = 16
+const (
+	decimalAverageScale = 16
+	decimalValueBytes   = 4096
+)
 
 type decimalAggregate struct {
 	function string
@@ -102,8 +105,11 @@ func parseDecimal(value driver.Value) (*big.Rat, int, error) {
 	default:
 		return nil, 0, fmt.Errorf("invalid decimal value %T", value)
 	}
-	if len(text) > 4096 {
-		return nil, 0, fmt.Errorf("decimal value exceeds 4096 characters")
+	if len(text) > decimalValueBytes {
+		return nil, 0, fmt.Errorf("decimal value exceeds %d characters", decimalValueBytes)
+	}
+	if !boundedDecimalExponent(text) {
+		return nil, 0, fmt.Errorf("decimal exponent exceeds normalized limit")
 	}
 	rational, ok := new(big.Rat).SetString(text)
 	if !ok {
@@ -114,6 +120,31 @@ func parseDecimal(value driver.Value) (*big.Rat, int, error) {
 		return nil, 0, fmt.Errorf("decimal value is not finite")
 	}
 	return rational, scale, nil
+}
+
+func boundedDecimalExponent(text string) bool {
+	unsigned := strings.TrimPrefix(strings.TrimPrefix(text, "-"), "+")
+	exponent := 0
+	if index := strings.IndexAny(unsigned, "eE"); index >= 0 {
+		parsed, err := strconv.Atoi(unsigned[index+1:])
+		if err != nil || parsed < -decimalValueBytes || parsed > decimalValueBytes {
+			return false
+		}
+		exponent = parsed
+		unsigned = unsigned[:index]
+	}
+	point := strings.IndexByte(unsigned, '.')
+	if point < 0 {
+		point = len(unsigned)
+		unsigned += "."
+	}
+	digits := unsigned[:point] + unsigned[point+1:]
+	first := strings.IndexFunc(digits, func(character rune) bool { return character != '0' })
+	if first < 0 {
+		return true
+	}
+	normalized := exponent + point - first - 1
+	return normalized >= -decimalValueBytes && normalized <= decimalValueBytes
 }
 
 func finiteDecimal(value *big.Rat) (string, bool) {

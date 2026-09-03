@@ -985,7 +985,7 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 				out = append(out, diagnostic("View", name, fmt.Sprintf("spec.sort.%d.field", i), "must be selected so cursor state is stable"))
 			}
 		}
-		if len(v.Aggregates) > 0 && len(v.Sort) == 0 {
+		if len(v.GroupBy) > 0 && len(v.Sort) == 0 {
 			for _, group := range v.GroupBy {
 				v.Sort = append(v.Sort, appir.Sort{Field: group.Output()})
 			}

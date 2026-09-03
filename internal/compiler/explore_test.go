@@ -299,6 +299,21 @@ func TestCompileViewCandidateDerivesTypedGroupShape(t *testing.T) {
 	}
 }
 
+func TestGroupedViewWithoutAggregatesGetsDeterministicSort(t *testing.T) {
+	app := appir.Empty()
+	app.Entities["candidate"] = appir.Entity{Name: "candidate", Fields: []appir.Field{{Name: "stage", Type: "string"}}}
+	result := compiler.CompileViewCandidate(app, "candidate_stages", map[string]any{
+		"entity": "candidate", "fields": []any{"stage"}, "groupBy": []any{"stage"},
+	})
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("diagnostics=%+v", result.Diagnostics)
+	}
+	view := result.App.Views["candidate_stages"]
+	if len(view.Sort) != 1 || view.Sort[0].Field != "stage" {
+		t.Fatalf("group sort=%+v", view.Sort)
+	}
+}
+
 func TestCompileViewCandidateRejectsInvalidAggregates(t *testing.T) {
 	app := appir.Empty()
 	app.Entities["deal"] = appir.Entity{Name: "deal", Fields: []appir.Field{{Name: "title", Type: "string"}, {Name: "amount", Type: "money"}}}
