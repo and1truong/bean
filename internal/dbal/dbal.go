@@ -72,7 +72,7 @@ type Order struct {
 	NullsLast bool
 }
 type Join struct{ Table, Alias, Left, Right, Type string }
-type Aggregate struct{ Function, Column, Alias string }
+type Aggregate struct{ Function, Column, Alias, Type string }
 type Group struct{ Column, Alias, Bucket, Type string }
 
 type Select struct {

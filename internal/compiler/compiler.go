@@ -1199,6 +1199,10 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 				switch binding.Source {
 				case "group":
 					if group, exists := groups[binding.Name]; exists {
+						if group.Bucket != "" {
+							out = append(out, diagnostic("View", viewName, path+".name", "bucketed groups cannot bind equality drills"))
+							continue
+						}
 						sourceType, _ = viewFieldType(group.Field, entity, relationships, app)
 					}
 				case "filter":

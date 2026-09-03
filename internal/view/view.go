@@ -281,19 +281,10 @@ func ReadPage(ctx context.Context, reader Reader, app *appir.App, name string, o
 			joins = append(joins, dbal.Join{Table: relationship.Entity, Alias: relationship.Name, Type: relationship.Type, Left: v.Entity + "." + relationship.LocalField, Right: relationship.Name + "." + relationship.TargetField})
 		}
 	}
-	aggregates := []dbal.Aggregate{}
-	for _, aggregate := range v.Aggregates {
-		function := aggregate.Function
-		if function == "average" {
-			function = "avg"
-		}
-		aggregates = append(aggregates, dbal.Aggregate{Function: function, Column: qualify(aggregate.Field, v.Entity, joined), Alias: aggregate.Alias})
-	}
-	groups := make([]dbal.Group, 0, len(v.GroupBy))
-	for _, group := range v.GroupBy {
-		fieldName := group.Field
+	fieldType := func(path string) string {
+		fieldName := path
 		fieldEntity := e
-		parts := strings.SplitN(group.Field, ".", 2)
+		parts := strings.SplitN(path, ".", 2)
 		if len(parts) == 2 {
 			fieldName = parts[1]
 			if parts[0] != v.Entity {
@@ -306,7 +297,19 @@ func ReadPage(ctx context.Context, reader Reader, app *appir.App, name string, o
 			}
 		}
 		definition, _ := entityField(fieldEntity, fieldName)
-		groups = append(groups, dbal.Group{Column: qualify(group.Field, v.Entity, joined), Alias: groupAliases[group.Output()], Bucket: group.Bucket, Type: definition.Type})
+		return definition.Type
+	}
+	aggregates := []dbal.Aggregate{}
+	for _, aggregate := range v.Aggregates {
+		function := aggregate.Function
+		if function == "average" {
+			function = "avg"
+		}
+		aggregates = append(aggregates, dbal.Aggregate{Function: function, Column: qualify(aggregate.Field, v.Entity, joined), Alias: aggregate.Alias, Type: fieldType(aggregate.Field)})
+	}
+	groups := make([]dbal.Group, 0, len(v.GroupBy))
+	for _, group := range v.GroupBy {
+		groups = append(groups, dbal.Group{Column: qualify(group.Field, v.Entity, joined), Alias: groupAliases[group.Output()], Bucket: group.Bucket, Type: fieldType(group.Field)})
 	}
 	var where *dbal.Predicate
 	if len(predicates) == 1 {

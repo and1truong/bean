@@ -33,6 +33,16 @@ func TestCompilerRejectsIdentifiersAndParameterizes(t *testing.T) {
 	}
 }
 
+func TestCompilerCastsDecimalAggregates(t *testing.T) {
+	statement, _, err := (sqlite.Compiler{}).CompileSelect(dbal.Select{Table: "sale", Aggregates: []dbal.Aggregate{{Function: "sum", Column: "amount", Alias: "total", Type: "decimal"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if statement != `SELECT SUM(CAST("amount" AS NUMERIC)) AS "total" FROM "sale"` {
+		t.Fatalf("statement=%q", statement)
+	}
+}
+
 func TestQueryPlanJoinsGroupsAndAggregates(t *testing.T) {
 	ctx := context.Background()
 	d, e := sqlite.Open(filepath.Join(t.TempDir(), "plan.sqlite"))

@@ -324,9 +324,9 @@ describe('public rendering',()=>{
   it('blocks cached Action metadata while the manifest refreshes',async()=>{
     let manifestCalls=0
     let resolveRefresh:(value:Response)=>void=()=>{}
-    let resolveSecondRefresh:(value:Response)=>void=()=>{}
+    let rejectSecondRefresh:(reason?:unknown)=>void=()=>{}
     const refresh=new Promise<Response>(resolve=>{resolveRefresh=resolve})
-    const secondRefresh=new Promise<Response>(resolve=>{resolveSecondRefresh=resolve})
+    const secondRefresh=new Promise<Response>((_,reject)=>{rejectSecondRefresh=reject})
     const stale={actions:{delete_candidate:{Name:'delete_candidate',Entity:'candidate',Operation:'delete',Input:{id:{Name:'id',Type:'uuid'}}}},lifecycles:{}}
     const current={actions:{delete_candidate:{...stale.actions.delete_candidate,Confirm:'Delete with the current release?'}},lifecycles:{}}
     const fetchMock=vi.fn(async(input:string|URL|Request)=>{
@@ -354,8 +354,10 @@ describe('public rendering',()=>{
     expect(screen.getByRole('button',{name:'Confirm'})).toBeDisabled()
     fireEvent.click(screen.getByRole('button',{name:'Confirm'}))
     expect(fetchMock.mock.calls.some(([input])=>String(input).includes('/api/actions/delete_candidate/batch'))).toBe(false)
-    await act(async()=>resolveSecondRefresh(await response(current)))
-    expect(await screen.findByRole('button',{name:'Confirm'})).toBeEnabled()
+    await act(async()=>rejectSecondRefresh(new Error('manifest refresh failed')))
+    await waitFor(()=>expect(client.getQueryState(['manifest'])?.fetchStatus).toBe('idle'))
+    expect(client.getQueryState(['manifest'])?.error).toBeTruthy()
+    expect(screen.getByRole('button',{name:'Confirm'})).toBeDisabled()
   })
 
   it('resets selected rows and Action state when switching table displays',async()=>{

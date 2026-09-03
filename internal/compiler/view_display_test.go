@@ -135,6 +135,35 @@ func TestBoardDisplayRejectsUnsupportedSelectionActions(t *testing.T) {
 	}
 }
 
+func TestViewDisplayRejectsBucketedGroupEqualityDrill(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "event"}, Spec: map[string]any{"fields": []any{
+			map[string]any{"name": "title", "type": "string"},
+			map[string]any{"name": "occurred_on", "type": "date"},
+		}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "event_records"}, Spec: map[string]any{
+			"entity": "event", "fields": []any{"id", "title", "occurred_on"},
+			"exposedFilters": map[string]any{"occurred_on": map[string]any{"field": "occurred_on", "operator": "eq"}},
+			"displays": map[string]any{"page": map[string]any{
+				"type": "page", "route": "/events", "renderer": map[string]any{"type": "table", "fields": []any{map[string]any{"field": "title"}}},
+			}},
+		}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "events_by_month"}, Spec: map[string]any{
+			"entity": "event", "fields": []any{"occurred_on"},
+			"groupBy":    []any{map[string]any{"field": "occurred_on", "as": "month", "bucket": "month"}},
+			"aggregates": []any{map[string]any{"function": "count", "field": "id", "alias": "event_count"}},
+			"displays": map[string]any{"chart": map[string]any{
+				"type": "block", "renderer": map[string]any{"type": "chart", "groupField": "month", "metricField": "event_count"},
+				"drill": map[string]any{"view": "event_records", "display": "page", "bindings": []any{map[string]any{"source": "group", "name": "month", "filter": "occurred_on"}}},
+			}},
+		}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasDiagnosticMessage(diagnostics, "View", "events_by_month", "spec.displays.chart.drill.bindings.0.name", "bucketed groups cannot bind equality drills") {
+		t.Fatalf("bucketed drill diagnostics=%v", diagnostics)
+	}
+}
+
 func TestTableDisplayRejectsActionsWithoutRecordID(t *testing.T) {
 	definitions := []definition.Definition{
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"fields": []any{

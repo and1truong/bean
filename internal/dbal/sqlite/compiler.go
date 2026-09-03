@@ -100,6 +100,9 @@ func (c Compiler) CompileSelect(q dbal.Select) (string, []dbal.Value, error) {
 		if e != nil {
 			return "", nil, e
 		}
+		if a.Type == "decimal" && fn != "COUNT" {
+			col = "CAST(" + col + " AS NUMERIC)"
+		}
 		cols = append(cols, fn+"("+col+") AS "+alias)
 	}
 	for _, group := range q.GroupBy {

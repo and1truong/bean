@@ -2,6 +2,7 @@ package postgres_test
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"os"
 	"strings"
@@ -79,6 +80,37 @@ func TestCompilerCastsTextTimestampsBeforeDateBucketing(t *testing.T) {
 	}
 	if !strings.Contains(dateStatement, `CAST(CAST(date_trunc('month', CAST("occurred_on" AS date)) AS date) AS text)`) || strings.Contains(dateStatement, "timestamptz") {
 		t.Fatalf("date statement=%q", dateStatement)
+	}
+}
+
+func TestDecimalAggregatesUseNumericStorageSemantics(t *testing.T) {
+	databaseURL := os.Getenv("BEAN_TEST_POSTGRES_URL")
+	if databaseURL == "" {
+		t.Skip("set BEAN_TEST_POSTGRES_URL to run PostgreSQL contracts")
+	}
+	database, err := postgres.Open(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	ctx := context.Background()
+	if err = database.ExecuteMigration(ctx, []string{`DROP TABLE IF EXISTS decimal_item`, `CREATE TABLE decimal_item (id TEXT PRIMARY KEY, amount TEXT)`}); err != nil {
+		t.Fatal(err)
+	}
+	defer database.ExecuteMigration(ctx, []string{`DROP TABLE IF EXISTS decimal_item`})
+	for id, amount := range map[string]string{"one": "2", "two": "10"} {
+		if _, err = database.Insert(ctx, dbal.Insert{Table: "decimal_item", Values: map[string]dbal.Value{"id": id, "amount": amount}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, err := database.Select(ctx, dbal.Select{Table: "decimal_item", Aggregates: []dbal.Aggregate{
+		{Function: "sum", Column: "amount", Alias: "total", Type: "decimal"},
+		{Function: "avg", Column: "amount", Alias: "average", Type: "decimal"},
+		{Function: "min", Column: "amount", Alias: "minimum", Type: "decimal"},
+		{Function: "max", Column: "amount", Alias: "maximum", Type: "decimal"},
+	}})
+	if err != nil || len(rows) != 1 || fmt.Sprint(rows[0]["total"]) != "12" || fmt.Sprint(rows[0]["average"]) != "6.0000000000000000" || fmt.Sprint(rows[0]["minimum"]) != "2" || fmt.Sprint(rows[0]["maximum"]) != "10" {
+		t.Fatalf("rows=%v err=%v", rows, err)
 	}
 }
 
