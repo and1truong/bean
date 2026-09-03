@@ -105,7 +105,11 @@ func (c Compiler) CompileSelect(q dbal.Select) (string, []dbal.Value, error) {
 		if a.Type == "decimal" && fn != "COUNT" {
 			decimalAliases[a.Alias] = true
 			if c.NativeDecimal {
-				cols = append(cols, fn+"(CAST("+col+" AS NUMERIC)) AS "+alias)
+				expression := fn + "(CAST(" + col + " AS NUMERIC))"
+				if fn == "AVG" {
+					expression = fmt.Sprintf("ROUND(%s, %d)", expression, dbal.DecimalAverageScale)
+				}
+				cols = append(cols, expression+" AS "+alias)
 			} else {
 				cols = append(cols, "BEAN_DECIMAL_"+fn+"("+col+") AS "+alias)
 			}

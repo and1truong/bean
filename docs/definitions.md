@@ -108,7 +108,7 @@ Exposed filters map public input names to selected fields and accept `eq`, textu
 - `metric`: exactly one aggregate and no group; one row, no pager;
 - `groups`: at least one group and aggregate; bounded to the View maximum and fails with `result_limit_exceeded` rather than truncating.
 
-Policy predicates and fixed/exposed filters apply before grouping. `count` over an empty contribution set is zero; other empty aggregates are null. Money sums preserve minor units. Storage adapters push down grouping and aggregation and produce backend-equivalent ordering.
+Policy predicates and fixed/exposed filters apply before grouping. `count` over an empty contribution set is zero; other empty aggregates are null. Money sums preserve minor units. Decimal `sum`, `min`, and `max` remain exact; decimal averages round to 16 fractional digits before canonical trailing-zero removal. Storage adapters push down grouping and aggregation and produce backend-equivalent values and ordering.
 
 ```yaml
 kind: View

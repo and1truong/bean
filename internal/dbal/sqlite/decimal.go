@@ -4,21 +4,21 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"math/big"
+	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/beanruntime/bean/internal/dbal"
 	modernsqlite "modernc.org/sqlite"
 )
 
-const (
-	decimalAverageScale = 16
-	decimalValueBytes   = 4096
-)
+const decimalValueBytes = 4096
+
+var decimalText = regexp.MustCompile(`^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$`)
 
 type decimalAggregate struct {
 	function string
 	count    int64
-	scale    int
 	value    *big.Rat
 }
 
@@ -40,12 +40,9 @@ func (a *decimalAggregate) Step(_ *modernsqlite.FunctionContext, arguments []dri
 	if len(arguments) != 1 || arguments[0] == nil {
 		return nil
 	}
-	value, scale, err := parseDecimal(arguments[0])
+	value, err := parseDecimal(arguments[0])
 	if err != nil {
 		return err
-	}
-	if scale > a.scale {
-		a.scale = scale
 	}
 	a.count++
 	if a.value == nil {
@@ -78,20 +75,17 @@ func (a *decimalAggregate) WindowValue(*modernsqlite.FunctionContext) (driver.Va
 	value := new(big.Rat).Set(a.value)
 	if a.function == "avg" {
 		value.Quo(value, new(big.Rat).SetInt64(a.count))
+		return canonicalDecimalText(value.FloatString(dbal.DecimalAverageScale)), nil
 	}
 	if text, ok := finiteDecimal(value); ok {
 		return text, nil
 	}
-	scale := a.scale
-	if scale < decimalAverageScale {
-		scale = decimalAverageScale
-	}
-	return canonicalDecimalText(value.FloatString(scale)), nil
+	return nil, fmt.Errorf("decimal aggregate result is not finite")
 }
 
 func (*decimalAggregate) Final(*modernsqlite.FunctionContext) {}
 
-func parseDecimal(value driver.Value) (*big.Rat, int, error) {
+func parseDecimal(value driver.Value) (*big.Rat, error) {
 	var text string
 	switch typed := value.(type) {
 	case string:
@@ -103,23 +97,26 @@ func parseDecimal(value driver.Value) (*big.Rat, int, error) {
 	case float64:
 		text = strconv.FormatFloat(typed, 'f', -1, 64)
 	default:
-		return nil, 0, fmt.Errorf("invalid decimal value %T", value)
+		return nil, fmt.Errorf("invalid decimal value %T", value)
 	}
 	if len(text) > decimalValueBytes {
-		return nil, 0, fmt.Errorf("decimal value exceeds %d characters", decimalValueBytes)
+		return nil, fmt.Errorf("decimal value exceeds %d characters", decimalValueBytes)
+	}
+	if !decimalText.MatchString(text) {
+		return nil, fmt.Errorf("invalid decimal value %q", text)
 	}
 	if !boundedDecimalExponent(text) {
-		return nil, 0, fmt.Errorf("decimal exponent exceeds normalized limit")
+		return nil, fmt.Errorf("decimal exponent exceeds normalized limit")
 	}
 	rational, ok := new(big.Rat).SetString(text)
 	if !ok {
-		return nil, 0, fmt.Errorf("invalid decimal value %q", text)
+		return nil, fmt.Errorf("invalid decimal value %q", text)
 	}
-	scale, ok := finiteDecimalScale(rational)
+	_, ok = finiteDecimalScale(rational)
 	if !ok {
-		return nil, 0, fmt.Errorf("decimal value is not finite")
+		return nil, fmt.Errorf("decimal value is not finite")
 	}
-	return rational, scale, nil
+	return rational, nil
 }
 
 func boundedDecimalExponent(text string) bool {

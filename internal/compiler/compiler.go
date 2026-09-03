@@ -865,7 +865,7 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 		for index, f := range v.Fields {
 			if !validViewField(f, fields, relationships, a) {
 				out = append(out, missingFieldDiagnostic("View", name, "spec.fields", f, false))
-			} else if definition, _ := viewFieldDefinition(f, e, relationships, a); definition.Sensitive {
+			} else if sensitiveViewField(f, e, relationships, a) {
 				out = append(out, diagnostic("View", name, fmt.Sprintf("spec.fields.%d", index), "sensitive fields cannot be selected"))
 			}
 		}
@@ -881,7 +881,7 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 				out = append(out, invalidReferenceDiagnostic("View", name, path, "must reference a selected View field"))
 			} else if !exists || !searchable[fieldType] {
 				out = append(out, invalidReferenceDiagnostic("View", name, path, "must reference a searchable text field"))
-			} else if definition, _ := viewFieldDefinition(fieldName, e, relationships, a); definition.Sensitive {
+			} else if sensitiveViewField(fieldName, e, relationships, a) {
 				out = append(out, diagnostic("View", name, path, "sensitive fields cannot be searched"))
 			}
 		}
@@ -919,8 +919,7 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 			}
 			groupOutputs[output] = true
 			fieldType, _ := viewFieldType(group.Field, e, relationships, a)
-			fieldDefinition, _ := viewFieldDefinition(group.Field, e, relationships, a)
-			if fieldDefinition.Sensitive {
+			if sensitiveViewField(group.Field, e, relationships, a) {
 				out = append(out, diagnostic("View", name, path+".field", "sensitive fields cannot control grouping"))
 			}
 			if group.Bucket != "" && !map[string]bool{"day": true, "week": true, "month": true}[group.Bucket] {
@@ -951,7 +950,7 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 			} else {
 				fieldDefinition, _ := viewFieldDefinition(aggregate.Field, e, relationships, a)
 				fieldType := fieldDefinition.Type
-				if fieldDefinition.Sensitive {
+				if sensitiveViewField(aggregate.Field, e, relationships, a) {
 					out = append(out, diagnostic("View", name, path+".field", "sensitive fields cannot be aggregated"))
 				}
 				numeric := map[string]bool{"integer": true, "decimal": true, "money": true}
@@ -1003,8 +1002,7 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 				out = append(out, missingFieldDiagnostic("View", name, "spec.exposedFilters."+key, fieldName, false))
 				continue
 			}
-			fieldDefinition, _ := viewFieldDefinition(fieldName, e, relationships, a)
-			if fieldDefinition.Sensitive {
+			if sensitiveViewField(fieldName, e, relationships, a) {
 				out = append(out, diagnostic("View", name, "spec.exposedFilters."+key+".field", "sensitive fields cannot be exposed as filters"))
 			}
 			fieldType, _ := viewFieldType(fieldName, e, relationships, a)
@@ -1031,7 +1029,7 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 				out = append(out, validationDiagnostic("View", name, item.path, er))
 			}
 			for _, fieldName := range recordFields(item.expression) {
-				if definition, exists := viewFieldDefinition(fieldName, e, relationships, a); exists && definition.Sensitive {
+				if sensitiveViewField(fieldName, e, relationships, a) {
 					out = append(out, diagnostic("View", name, item.path, "sensitive fields cannot control filtering"))
 				}
 			}
@@ -3092,6 +3090,33 @@ func viewFieldDefinition(name string, base appir.Entity, relationships map[strin
 		}
 	}
 	return appir.Field{}, false
+}
+
+func sensitiveViewField(name string, base appir.Entity, relationships map[string]appir.ViewRelationship, a *appir.App) bool {
+	definition, exists := viewFieldDefinition(name, base, relationships, a)
+	if exists && definition.Sensitive {
+		return true
+	}
+	parts := strings.Split(name, ".")
+	if len(parts) != 2 {
+		return false
+	}
+	relationship, exists := relationships[parts[0]]
+	if !exists {
+		return false
+	}
+	for _, field := range base.Fields {
+		if (field.Name == relationship.RelationField || field.Name == relationship.LocalField) && field.Sensitive {
+			return true
+		}
+	}
+	target := a.Entities[relationship.Entity]
+	for _, field := range target.Fields {
+		if field.Name == relationship.TargetField && field.Sensitive {
+			return true
+		}
+	}
+	return false
 }
 
 func stepValueFields(specification actionstep.Specification, entity appir.Entity, action appir.Action) map[string]bool {

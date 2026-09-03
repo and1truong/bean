@@ -112,6 +112,18 @@ func TestDecimalAggregatesUseNumericStorageSemantics(t *testing.T) {
 	if err != nil || len(rows) != 1 || fmt.Sprint(rows[0]["total"]) != "12" || fmt.Sprint(rows[0]["average"]) != "6.0000000000000000" || fmt.Sprint(rows[0]["minimum"]) != "2" || fmt.Sprint(rows[0]["maximum"]) != "10" {
 		t.Fatalf("rows=%v err=%v", rows, err)
 	}
+	if err = database.ExecuteMigration(ctx, []string{`DELETE FROM decimal_item`}); err != nil {
+		t.Fatal(err)
+	}
+	for id, amount := range map[string]string{"one": "1", "two": "0", "three": "0"} {
+		if _, err = database.Insert(ctx, dbal.Insert{Table: "decimal_item", Values: map[string]dbal.Value{"id": id, "amount": amount}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, err = database.Select(ctx, dbal.Select{Table: "decimal_item", Aggregates: []dbal.Aggregate{{Function: "avg", Column: "amount", Alias: "average", Type: "decimal"}}})
+	if err != nil || len(rows) != 1 || fmt.Sprint(rows[0]["average"]) != "0.3333333333333333" {
+		t.Fatalf("repeating average rows=%v err=%v", rows, err)
+	}
 }
 
 func TestDateBucketsAreTypeAwareAcrossSessionTimezones(t *testing.T) {

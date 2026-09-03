@@ -69,6 +69,42 @@ func TestDecimalAggregatesPreserveExactValues(t *testing.T) {
 	}
 }
 
+func TestRepeatingDecimalAverageUsesPortableScale(t *testing.T) {
+	ctx := context.Background()
+	database, err := sqlite.Open(filepath.Join(t.TempDir(), "decimal-average.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err = database.ExecuteMigration(ctx, []string{`CREATE TABLE item (id TEXT PRIMARY KEY, amount TEXT)`}); err != nil {
+		t.Fatal(err)
+	}
+	for id, amount := range map[string]string{"one": "1", "two": "0", "three": "0"} {
+		if _, err = database.Insert(ctx, dbal.Insert{Table: "item", Values: map[string]dbal.Value{"id": id, "amount": amount}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, err := database.Select(ctx, dbal.Select{Table: "item", Aggregates: []dbal.Aggregate{{Function: "avg", Column: "amount", Alias: "average", Type: "decimal"}}})
+	if err != nil || len(rows) != 1 || rows[0]["average"] != "0.3333333333333333" {
+		t.Fatalf("rows=%v err=%v", rows, err)
+	}
+}
+
+func TestDecimalAggregatesRejectLegacyRationalText(t *testing.T) {
+	ctx := context.Background()
+	database, err := sqlite.Open(filepath.Join(t.TempDir(), "invalid-decimal.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err = database.ExecuteMigration(ctx, []string{`CREATE TABLE item (id TEXT PRIMARY KEY, amount TEXT)`, `INSERT INTO item (id, amount) VALUES ('legacy', '1/2')`}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Select(ctx, dbal.Select{Table: "item", Aggregates: []dbal.Aggregate{{Function: "sum", Column: "amount", Alias: "total", Type: "decimal"}}}); err == nil {
+		t.Fatal("legacy rational decimal was silently aggregated")
+	}
+}
+
 func TestDecimalAggregateOrderingIsNumeric(t *testing.T) {
 	ctx := context.Background()
 	database, err := sqlite.Open(filepath.Join(t.TempDir(), "decimal-order.sqlite"))

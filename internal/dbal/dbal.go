@@ -37,6 +37,8 @@ func IsCode(err error, code ErrorCode) bool {
 type Value any
 type Row map[string]Value
 
+const DecimalAverageScale = 16
+
 type Operator string
 
 const (

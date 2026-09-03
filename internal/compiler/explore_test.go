@@ -233,6 +233,21 @@ func TestSensitiveFieldsCannotControlViewFilterExpressions(t *testing.T) {
 	}
 }
 
+func TestSensitiveRelationshipEdgesCannotControlViewFilters(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "person"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "email", "type": "email"}}}},
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "account"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "private_owner", "type": "relation", "sensitive": true, "relation": map[string]any{"entity": "person", "kind": "many-to-one", "targetField": "id"}}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "accounts"}, Spec: map[string]any{
+			"entity": "account", "fields": []any{"id"}, "relationships": []any{map[string]any{"name": "owner", "relationField": "private_owner"}},
+			"filter": map[string]any{"op": "eq", "left": map[string]any{"source": "record", "name": "owner.email"}, "right": map[string]any{"source": "input", "name": "email"}},
+		}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasDiagnosticMessage(diagnostics, "View", "accounts", "spec.filter", "sensitive fields cannot control filtering") {
+		t.Fatalf("sensitive relationship filter accepted: %v", diagnostics)
+	}
+}
+
 func TestGroupedViewSortRequiresEmittedOutput(t *testing.T) {
 	definitions := []definition.Definition{
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "event"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "occurred_at", "type": "datetime"}}}},
