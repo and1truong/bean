@@ -17,8 +17,8 @@ export function SectionCard({title,description,action,children,className}:{title
   return <Card className={cn('mb-6',className)}>{(title||description||action)&&<CardHeader><CardTitle>{title}</CardTitle>{description&&<CardDescription>{description}</CardDescription>}{action}</CardHeader>}<CardContent>{children}</CardContent></Card>
 }
 
-export function Field({id,label,children,hint,error,className}:{id?:string;label:ReactNode;children:ReactNode;hint?:ReactNode;error?:string;className?:string}){
-  return <div className={cn('grid gap-2',className)}><Label htmlFor={id}>{label}</Label>{children}{hint&&<p className="text-xs text-muted-foreground">{hint}</p>}{error&&<p className="text-sm text-destructive" role="alert">{error}</p>}</div>
+export function Field({id,label,children,hint,error,className,required=false}:{id?:string;label:ReactNode;children:ReactNode;hint?:ReactNode;error?:string;className?:string;required?:boolean}){
+  return <div className={cn('grid gap-2',className)}><Label htmlFor={id}>{label}{required&&<span className="text-destructive" aria-hidden="true"> *</span>}</Label>{children}{hint&&<p className="text-xs text-muted-foreground">{hint}</p>}{error&&<p className="text-sm text-destructive" role="alert">{error}</p>}</div>
 }
 
 export function ErrorAlert({error}:{error:Error|string}){

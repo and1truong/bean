@@ -23,7 +23,12 @@ describe('Admin',()=>{
     vi.spyOn(globalThis,'fetch').mockResolvedValue(new Response(JSON.stringify(manifest),{status:200}))
     show('/article/new')
     expect(await screen.findByRole('heading',{name:'Add Article'})).toBeInTheDocument()
-    expect(screen.getByTestId('field-title')).toBeRequired()
+    const title=screen.getByTestId('field-title') as HTMLInputElement
+    expect(title).toBeRequired()
+    const requiredMarker=title.labels?.[0]?.querySelector('[aria-hidden="true"]')
+    expect(title.labels?.[0]).toHaveTextContent(/^Title \*$/)
+    expect(requiredMarker).toHaveTextContent('*')
+    expect(requiredMarker).toHaveClass('text-destructive')
     expect(screen.getByTestId('field-status').tagName).toBe('SELECT')
     expect(screen.getByTestId('field-status')).toHaveValue('draft')
     expect(screen.queryByTestId('field-file')).not.toBeInTheDocument()
@@ -52,7 +57,9 @@ describe('Admin',()=>{
     show('/article/a1')
     const download=await screen.findByRole('link',{name:'Download current file'})
     expect(download).toHaveAttribute('href','/api/files/blob-1?view=article_list')
-    expect(screen.getByLabelText('Status')).toHaveAttribute('readonly')
+    const status=screen.getByRole('textbox',{name:'Status'}) as HTMLInputElement
+    expect(status).toHaveAttribute('readonly')
+    expect(status.labels?.[0]).toHaveTextContent(/^Status \*$/)
     expect(screen.queryByTestId('field-title')).not.toBeInTheDocument()
   })
 

@@ -2,7 +2,9 @@
 
 ## Current
 
-The focused post-v0.16 CSRF continuity fix is complete. The reported failure was reproduced: an HttpOnly session cookie authenticated a direct or reloaded Admin tab, but missing tab-local `bean_csrf` state caused every Action submission to fail exact server CSRF validation. The Shell now restores the token returned by `/api/system/session`; focused React evidence proves the restored token is sent by the next Admin Action, and the Blog Playwright journey creates a category after explicitly clearing tab storage and reloading. Server CSRF validation remains unchanged. `make check` passes all Go, race, React, black-box, and 16/16 Playwright tests; `make build` passes.
+The focused required Entity form marker is complete. Metadata-driven Admin controls now render a destructive-theme red `*` directly after labels when the Entity field has `Required: true`, including text, numeric, sensitive, enum, relation, boolean, textarea, file, and read-only controls. The marker is hidden from assistive technology, preserving accessible field names and existing native required semantics; optional fields remain unmarked. Focused Admin React evidence verifies order and styling. `make check` passes all Go, race, 61 React, black-box, and 16/16 Playwright tests; `make build` passes.
+
+The post-v0.16 CSRF continuity fix is also complete. An HttpOnly session cookie can authenticate a direct or reloaded Admin tab while the Shell restores missing tab-local `bean_csrf` state from `/api/system/session`; the next Admin Action carries the restored token without weakening server validation.
 
 ## v0.16 completed state
 
