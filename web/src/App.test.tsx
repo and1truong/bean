@@ -161,6 +161,19 @@ describe('public rendering',()=>{
 	expect(fetchMock.mock.calls.some(([input])=>String(input).includes('q=Jane'))).toBe(true)
   })
 
+  it('renders a null aggregate metric as the declared empty state',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'ViewBlock',props:{name:'pipeline',view:'pipeline_value',display:{Type:'block',EmptyState:'No pipeline value.',Renderer:{Type:'metric',MetricField:'pipeline_amount',MetricLabel:'Pipeline value'},Pager:{Type:'none'}}}}]}})
+      if(path.includes('/api/views/pipeline_value'))return response({data:[{pipeline_amount:null}],nextCursor:''})
+      return response({})
+    }))
+    renderApp('/')
+    expect(await screen.findByText('No pipeline value.')).toBeInTheDocument()
+    expect(screen.queryByTestId('metric-value')).not.toBeInTheDocument()
+  })
+
   it('switches compatible grouped displays and renders a calendar',async()=>{
     const fetchMock=vi.fn(async(input:string|URL|Request)=>{
       const path=String(input)
@@ -242,7 +255,7 @@ describe('public rendering',()=>{
       void init
       const path=String(input)
       if(path.includes('/api/system/session'))return response({authenticated:true,user:{Roles:['administrator']}})
-      if(path.includes('/api/system/manifest'))return response({actions:{move_candidate:{Name:'move_candidate',Entity:'candidate',Operation:'transition',Input:{id:{Name:'id',Type:'uuid'},stage:{Name:'stage',Label:'Stage',Type:'enum',Options:['applied','interview']},notify:{Name:'notify',Label:'Notify recruiter',Type:'boolean'},priority:{Name:'priority',Label:'Priority',Type:'integer'}}}},lifecycles:{}})
+      if(path.includes('/api/system/manifest'))return response({actions:{move_candidate:{Name:'move_candidate',Entity:'candidate',Operation:'transition',Confirm:'Move selected candidates?',Input:{id:{Name:'id',Type:'uuid'},stage:{Name:'stage',Label:'Stage',Type:'enum',Options:['applied','interview']},notify:{Name:'notify',Label:'Notify recruiter',Type:'boolean',Required:true},priority:{Name:'priority',Label:'Priority',Type:'integer'},score:{Name:'score',Label:'Score',Type:'decimal'},scheduled_at:{Name:'scheduled_at',Label:'Scheduled at',Type:'datetime'}}}},lifecycles:{}})
       if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'ViewBlock',props:{name:'records',view:'candidate_records',display:{Type:'block',Selection:'multiple',Actions:['move_candidate'],Renderer:{Type:'table',Fields:[{Field:'name',Label:'Candidate'},{Field:'stage',Label:'Stage'}]},Pager:{Type:'none'}}}}]}})
       if(path.includes('/api/actions/move_candidate/batch'))return response({data:{results:[{id:'c1',ok:true}]}})
       if(path.includes('/api/views/candidate_records'))return response({data:[{id:'c1',name:'Ada',stage:'applied'}],nextCursor:''})
@@ -252,12 +265,36 @@ describe('public rendering',()=>{
     renderApp('/')
     fireEvent.click(await screen.findByRole('checkbox',{name:'Select Ada'}))
     fireEvent.change(screen.getByLabelText('Stage'),{target:{value:'interview'}})
-    fireEvent.click(screen.getByRole('checkbox',{name:'Notify recruiter'}))
     fireEvent.change(screen.getByLabelText('Priority'),{target:{value:'3'}})
+    fireEvent.change(screen.getByLabelText('Score'),{target:{value:'1.25'}})
+    const scheduledAt='2026-09-04T10:30:00'
+    fireEvent.change(screen.getByLabelText('Scheduled at'),{target:{value:scheduledAt}})
     fireEvent.click(screen.getByRole('button',{name:'Run for 1'}))
+    expect(await screen.findByText('Move selected candidates?')).toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(([input])=>String(input).includes('/api/actions/move_candidate/batch'))).toBe(false)
+    fireEvent.click(screen.getByRole('button',{name:'Confirm'}))
     await waitFor(()=>expect(fetchMock.mock.calls.some(([input])=>String(input).includes('/api/actions/move_candidate/batch'))).toBe(true))
     const call=fetchMock.mock.calls.find(([input])=>String(input).includes('/api/actions/move_candidate/batch'))!
-    expect(JSON.parse(String(call[1]?.body))).toEqual({ids:['c1'],values:{stage:'interview',notify:true,priority:3}})
+    expect(JSON.parse(String(call[1]?.body))).toEqual({ids:['c1'],values:{stage:'interview',notify:false,priority:3,score:'1.25',scheduled_at:new Date(scheduledAt).toISOString()}})
+  })
+
+  it('clears record selection when cursor paging changes the visible rows',async()=>{
+    const fetchMock=vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:true,user:{Roles:['administrator']}})
+      if(path.includes('/api/system/manifest'))return response({actions:{move_candidate:{Name:'move_candidate',Entity:'candidate',Operation:'transition',Input:{id:{Name:'id',Type:'uuid'}}}},lifecycles:{}})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'ViewBlock',props:{name:'records',view:'candidate_records',display:{Type:'block',Selection:'multiple',Actions:['move_candidate'],Renderer:{Type:'table',Fields:[{Field:'name',Label:'Candidate'}]},Pager:{Type:'cursor',PageSize:1}}}}]}})
+      if(path.includes('/api/views/candidate_records')&&path.includes('cursor=next'))return response({data:[{id:'c2',name:'Grace'}],nextCursor:''})
+      if(path.includes('/api/views/candidate_records'))return response({data:[{id:'c1',name:'Ada'}],nextCursor:'next'})
+      return response({})
+    })
+    vi.stubGlobal('fetch',fetchMock)
+    renderApp('/')
+    fireEvent.click(await screen.findByRole('checkbox',{name:'Select Ada'}))
+    expect(screen.getByRole('button',{name:'Run for 1'})).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button',{name:'Next'}))
+    expect(await screen.findByText('Grace')).toBeInTheDocument()
+    await waitFor(()=>expect(screen.queryByRole('button',{name:'Run for 1'})).not.toBeInTheDocument())
   })
 
   it('renders allowed board movement and an arbitrary-depth task tree',async()=>{

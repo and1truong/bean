@@ -213,3 +213,36 @@ func TestDateBucketsAndGroupOverflow(t *testing.T) {
 		t.Fatalf("group overflow accepted: %v", err)
 	}
 }
+
+func TestDateBucketCarriesTheSelectedFieldTypeToDBAL(t *testing.T) {
+	database := &capturingDatabase{}
+	app := appir.Empty()
+	app.Entities["event"] = appir.Entity{Name: "event", Fields: []appir.Field{{Name: "occurred_at", Type: "datetime"}}}
+	app.Views["events_by_month"] = appir.View{Name: "events_by_month", Entity: "event", ResultShape: "groups", Fields: []string{"occurred_at"}, GroupBy: []appir.ViewGroup{{Field: "occurred_at", As: "month", Bucket: "month"}}, Aggregates: []appir.Aggregate{{Function: "count", Field: "id", Alias: "event_count"}}, MaxLimit: 3}
+	if _, err := (view.Service{DB: database}).RunPage(context.Background(), app, "events_by_month", view.Params{}, beanctx.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(database.query.GroupBy) != 1 || database.query.GroupBy[0].Type != "datetime" {
+		t.Fatalf("groups=%+v", database.query.GroupBy)
+	}
+}
+
+type capturingDatabase struct{ query dbal.Select }
+
+func (d *capturingDatabase) Select(_ context.Context, query dbal.Select) ([]dbal.Row, error) {
+	d.query = query
+	return []dbal.Row{{"month": "2026-09-01", "event_count": int64(1)}}, nil
+}
+func (*capturingDatabase) Insert(context.Context, dbal.Insert) (dbal.Result, error) {
+	panic("unexpected insert")
+}
+func (*capturingDatabase) Update(context.Context, dbal.Update) (dbal.Result, error) {
+	panic("unexpected update")
+}
+func (*capturingDatabase) Delete(context.Context, dbal.Delete) (dbal.Result, error) {
+	panic("unexpected delete")
+}
+func (*capturingDatabase) Transaction(context.Context, func(dbal.Transaction) error) error {
+	panic("unexpected transaction")
+}
+func (*capturingDatabase) Close() error { return nil }

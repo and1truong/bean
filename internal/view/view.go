@@ -291,7 +291,22 @@ func ReadPage(ctx context.Context, reader Reader, app *appir.App, name string, o
 	}
 	groups := make([]dbal.Group, 0, len(v.GroupBy))
 	for _, group := range v.GroupBy {
-		groups = append(groups, dbal.Group{Column: qualify(group.Field, v.Entity, joined), Alias: groupAliases[group.Output()], Bucket: group.Bucket})
+		fieldName := group.Field
+		fieldEntity := e
+		parts := strings.SplitN(group.Field, ".", 2)
+		if len(parts) == 2 {
+			fieldName = parts[1]
+			if parts[0] != v.Entity {
+				for _, relationship := range v.Relationships {
+					if relationship.Name == parts[0] {
+						fieldEntity = app.Entities[relationship.Entity]
+						break
+					}
+				}
+			}
+		}
+		definition, _ := entityField(fieldEntity, fieldName)
+		groups = append(groups, dbal.Group{Column: qualify(group.Field, v.Entity, joined), Alias: groupAliases[group.Output()], Bucket: group.Bucket, Type: definition.Type})
 	}
 	var where *dbal.Predicate
 	if len(predicates) == 1 {

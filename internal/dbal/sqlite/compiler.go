@@ -11,7 +11,7 @@ import (
 var identifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 type Compiler struct {
-	DateBucket func(string, string) (string, error)
+	DateBucket func(string, string, string) (string, error)
 }
 
 func (Compiler) QuoteIdentifier(s string) (string, error) {
@@ -35,7 +35,7 @@ func (c Compiler) groupExpression(group dbal.Group) (string, error) {
 		return column, nil
 	}
 	if c.DateBucket != nil {
-		return c.DateBucket(group.Bucket, column)
+		return c.DateBucket(group.Bucket, column, group.Type)
 	}
 	switch group.Bucket {
 	case "day":

@@ -1220,8 +1220,8 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 		out = append(out, diagnostic("View", viewName, base+".selection", "must be none, single, or multiple"))
 	}
 	if len(display.Actions) > 0 {
-		if view.ResultShape != "records" || !selected["id"] || renderer.Type != "table" && renderer.Type != "board" {
-			out = append(out, diagnostic("View", viewName, base+".actions", "record Actions require a record-shaped table or board with id selected"))
+		if view.ResultShape != "records" || !selected["id"] || renderer.Type != "table" {
+			out = append(out, diagnostic("View", viewName, base+".actions", "record Actions require a record-shaped table with id selected"))
 		}
 		if display.Selection != "single" && display.Selection != "multiple" {
 			out = append(out, diagnostic("View", viewName, base+".selection", "record Actions require single or multiple selection"))

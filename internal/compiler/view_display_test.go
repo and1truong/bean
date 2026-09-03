@@ -112,6 +112,29 @@ func TestCalendarDisplayAllowsStartWithoutEnd(t *testing.T) {
 	}
 }
 
+func TestBoardDisplayRejectsUnsupportedSelectionActions(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "issue"}, Spec: map[string]any{"fields": []any{
+			map[string]any{"name": "title", "type": "string"},
+			map[string]any{"name": "status", "type": "enum", "options": []any{"todo", "done"}},
+		}}},
+		{APIVersion: definition.APIVersion, Kind: "Action", Metadata: definition.Metadata{Name: "move_issue"}, Spec: map[string]any{
+			"entity": "issue", "operation": "transition", "transitions": map[string]any{"todo": []any{"done"}},
+		}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "issues"}, Spec: map[string]any{
+			"entity": "issue", "fields": []any{"id", "title", "status"},
+			"displays": map[string]any{"board": map[string]any{
+				"type": "block", "selection": "multiple", "actions": []any{"move_issue"},
+				"renderer": map[string]any{"type": "board", "titleField": "title", "groupField": "status", "columns": []any{"todo", "done"}, "moveAction": "move_issue"},
+			}},
+		}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasViewDisplayDiagnostic(diagnostics, "View", "issues", "spec.displays.board.actions") {
+		t.Fatalf("board actions diagnostics=%v", diagnostics)
+	}
+}
+
 func TestViewDisplayRejectsOverlappingRoutes(t *testing.T) {
 	entity := definition.Definition{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "article"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "title", "type": "string"}}}}
 	t.Run("between displays", func(t *testing.T) {

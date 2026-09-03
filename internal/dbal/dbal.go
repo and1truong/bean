@@ -73,7 +73,7 @@ type Order struct {
 }
 type Join struct{ Table, Alias, Left, Right, Type string }
 type Aggregate struct{ Function, Column, Alias string }
-type Group struct{ Column, Alias, Bucket string }
+type Group struct{ Column, Alias, Bucket, Type string }
 
 type Select struct {
 	Table         string

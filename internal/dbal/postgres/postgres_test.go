@@ -2,6 +2,7 @@ package postgres_test
 
 import (
 	"context"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -59,15 +60,68 @@ func TestCompilerUsesNumberedParameters(t *testing.T) {
 }
 
 func TestCompilerCastsTextTimestampsBeforeDateBucketing(t *testing.T) {
-	statement, _, err := (postgres.Compiler{}).CompileSelect(dbal.Select{
+	datetimeStatement, _, err := (postgres.Compiler{}).CompileSelect(dbal.Select{
 		Table:   "event",
-		GroupBy: []dbal.Group{{Column: "occurred_at", Alias: "month", Bucket: "month"}},
+		GroupBy: []dbal.Group{{Column: "occurred_at", Alias: "month", Bucket: "month", Type: "datetime"}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(statement, `date_trunc('month', CAST("occurred_at" AS timestamptz) AT TIME ZONE 'UTC')`) {
-		t.Fatalf("statement=%q", statement)
+	if !strings.Contains(datetimeStatement, `CAST(CAST(date_trunc('month', CAST("occurred_at" AS timestamptz) AT TIME ZONE 'UTC') AS date) AS text)`) {
+		t.Fatalf("datetime statement=%q", datetimeStatement)
+	}
+	dateStatement, _, err := (postgres.Compiler{}).CompileSelect(dbal.Select{
+		Table:   "event",
+		GroupBy: []dbal.Group{{Column: "occurred_on", Alias: "month", Bucket: "month", Type: "date"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(dateStatement, `CAST(CAST(date_trunc('month', CAST("occurred_on" AS date)) AS date) AS text)`) || strings.Contains(dateStatement, "timestamptz") {
+		t.Fatalf("date statement=%q", dateStatement)
+	}
+}
+
+func TestDateBucketsAreTypeAwareAcrossSessionTimezones(t *testing.T) {
+	databaseURL := os.Getenv("BEAN_TEST_POSTGRES_URL")
+	if databaseURL == "" {
+		t.Skip("set BEAN_TEST_POSTGRES_URL to run PostgreSQL contracts")
+	}
+	connection, err := url.Parse(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := connection.Query()
+	query.Set("timezone", "Australia/Brisbane")
+	connection.RawQuery = query.Encode()
+	database, err := postgres.Open(connection.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	ctx := context.Background()
+	if err = database.ExecuteMigration(ctx, []string{`DROP TABLE IF EXISTS bucket_event`, `CREATE TABLE bucket_event (id TEXT PRIMARY KEY, occurred_on TEXT NOT NULL, occurred_at TEXT NOT NULL)`}); err != nil {
+		t.Fatal(err)
+	}
+	defer database.ExecuteMigration(ctx, []string{`DROP TABLE IF EXISTS bucket_event`})
+	if _, err = database.Insert(ctx, dbal.Insert{Table: "bucket_event", Values: map[string]dbal.Value{"id": "1", "occurred_on": "2026-09-01", "occurred_at": "2026-08-31T16:30:00Z"}}); err != nil {
+		t.Fatal(err)
+	}
+	for name, group := range map[string]dbal.Group{
+		"date":     {Column: "occurred_on", Alias: "month", Bucket: "month", Type: "date"},
+		"datetime": {Column: "occurred_at", Alias: "month", Bucket: "month", Type: "datetime"},
+	} {
+		rows, selectErr := database.Select(ctx, dbal.Select{Table: "bucket_event", GroupBy: []dbal.Group{group}, Aggregates: []dbal.Aggregate{{Function: "count", Column: "id", Alias: "event_count"}}, Limit: 2})
+		if selectErr != nil || len(rows) != 1 {
+			t.Fatalf("%s rows=%v err=%v", name, rows, selectErr)
+		}
+		want := "2026-09-01"
+		if name == "datetime" {
+			want = "2026-08-01"
+		}
+		if rows[0]["month"] != want {
+			t.Fatalf("%s month=%v want=%s", name, rows[0]["month"], want)
+		}
 	}
 }
 
