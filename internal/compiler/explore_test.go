@@ -216,6 +216,23 @@ func TestSensitiveFieldsCannotBeExposedAsFilters(t *testing.T) {
 	}
 }
 
+func TestSensitiveFieldsCannotControlViewFilterExpressions(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "account"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "secret", "type": "string", "sensitive": true}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "accounts"}, Spec: map[string]any{
+			"entity": "account", "fields": []any{"id"},
+			"filter":        map[string]any{"op": "eq", "left": map[string]any{"source": "record", "name": "secret"}, "right": map[string]any{"source": "input", "name": "secret"}},
+			"contextFilter": map[string]any{"op": "eq", "left": map[string]any{"source": "record", "name": "secret"}, "right": map[string]any{"source": "context", "name": "secret"}},
+		}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	for _, path := range []string{"spec.filter", "spec.contextFilter"} {
+		if !hasDiagnosticMessage(diagnostics, "View", "accounts", path, "sensitive fields cannot control filtering") {
+			t.Fatalf("sensitive %s accepted: %v", path, diagnostics)
+		}
+	}
+}
+
 func TestGroupedViewSortRequiresEmittedOutput(t *testing.T) {
 	definitions := []definition.Definition{
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "event"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "occurred_at", "type": "datetime"}}}},

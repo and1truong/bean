@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	stdhtml "html"
+	"math/big"
 	"net/mail"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,8 +17,12 @@ import (
 
 var uuid = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
 var slug = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+var decimal = regexp.MustCompile(`^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$`)
 
-const MaxFileBytes = 5 << 20
+const (
+	MaxFileBytes   = 5 << 20
+	maxDecimalSize = 4096
+)
 
 func Types() []string {
 	return []string{"boolean", "date", "datetime", "decimal", "email", "enum", "file", "integer", "json", "money", "password", "relation", "richtext", "slug", "string", "text", "url", "uuid"}
@@ -52,8 +58,9 @@ func Validate(f appir.Field, v any) error {
 			return typeError(f)
 		}
 	case "decimal":
-		if _, ok := v.(string); !ok {
-			return fmt.Errorf("%s decimal must be a string", f.Name)
+		value, ok := v.(string)
+		if !ok || !validDecimal(value) {
+			return fmt.Errorf("%s must be a bounded decimal string", f.Name)
 		}
 	case "boolean":
 		if _, ok := v.(bool); !ok {
@@ -143,6 +150,39 @@ func Validate(f appir.Field, v any) error {
 		return fmt.Errorf("unknown field type %s", f.Type)
 	}
 	return nil
+}
+
+func validDecimal(value string) bool {
+	if len(value) == 0 || len(value) > maxDecimalSize || !decimal.MatchString(value) || !boundedDecimalExponent(value) {
+		return false
+	}
+	_, ok := new(big.Rat).SetString(value)
+	return ok
+}
+
+func boundedDecimalExponent(value string) bool {
+	unsigned := strings.TrimPrefix(strings.TrimPrefix(value, "-"), "+")
+	exponent := 0
+	if index := strings.IndexAny(unsigned, "eE"); index >= 0 {
+		parsed, err := strconv.Atoi(unsigned[index+1:])
+		if err != nil || parsed < -maxDecimalSize || parsed > maxDecimalSize {
+			return false
+		}
+		exponent = parsed
+		unsigned = unsigned[:index]
+	}
+	point := strings.IndexByte(unsigned, '.')
+	if point < 0 {
+		point = len(unsigned)
+		unsigned += "."
+	}
+	digits := unsigned[:point] + unsigned[point+1:]
+	first := strings.IndexFunc(digits, func(character rune) bool { return character != '0' })
+	if first < 0 {
+		return true
+	}
+	normalized := exponent + point - first - 1
+	return normalized >= -maxDecimalSize && normalized <= maxDecimalSize
 }
 
 func Encode(f appir.Field, value any) (any, error) {

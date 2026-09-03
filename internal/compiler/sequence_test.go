@@ -78,6 +78,16 @@ func TestSequenceRejectsRouteConflictsAndDenseFrames(t *testing.T) {
 	}
 }
 
+func TestSequenceRejectsPanelWithRequiredContextInput(t *testing.T) {
+	definitions := validSequenceDefinitions()
+	definitions[0].Spec["inputs"] = map[string]any{"record_id": map[string]any{"type": "uuid", "required": true}}
+	definitions[0].Spec["bindings"] = map[string]any{"record_id": map[string]any{"source": "context", "name": "record_id"}}
+	diagnostics := compiler.Compile("presentation", 1, definitions).Diagnostics
+	if !hasSequenceDiagnostic(diagnostics, "Sequence", "bean_intro", "spec.frames.0.panel", "BEAN-E2881") {
+		t.Fatalf("required context-bound Sequence Block accepted: %v", diagnostics)
+	}
+}
+
 func validSequenceDefinitions() []definition.Definition {
 	item := func(kind, name string, spec map[string]any) definition.Definition {
 		return definition.Definition{APIVersion: definition.APIVersion, Kind: kind, Metadata: definition.Metadata{Name: name}, Spec: spec}

@@ -57,3 +57,17 @@ func TestMoneyRejectsFloatLikeStringAndRichTextSanitizes(t *testing.T) {
 		t.Fatalf("safe formatting lost: %q", out)
 	}
 }
+
+func TestDecimalRequiresBoundedNumericText(t *testing.T) {
+	definition := appir.Field{Name: "ratio", Type: "decimal"}
+	for _, value := range []string{"0.1", "-12.50", ".25", "1e3", "1e4096", "1e-4096"} {
+		if err := field.Validate(definition, value); err != nil {
+			t.Fatalf("valid decimal %q rejected: %v", value, err)
+		}
+	}
+	for _, value := range []string{"", "secret", "1/2", "1e1000000", "1e-1000000", "10e4096", "0.1e-4096"} {
+		if err := field.Validate(definition, value); err == nil {
+			t.Fatalf("invalid decimal %q accepted", value)
+		}
+	}
+}

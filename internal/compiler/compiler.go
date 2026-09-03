@@ -1019,10 +1019,20 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 				out = append(out, diagnostic("View", name, "spec.exposedFilters."+key+".operator", "is incompatible with field type "+fieldType))
 			}
 		}
-		for path, expression := range map[string]*expr.Expr{"spec.filter": v.Filter, "spec.contextFilter": v.ContextFilter} {
-			if expression != nil {
-				if er := validateExpr(*expression, true); er != nil {
-					out = append(out, validationDiagnostic("View", name, path, er))
+		viewFilters := []struct {
+			path       string
+			expression *expr.Expr
+		}{{"spec.filter", v.Filter}, {"spec.contextFilter", v.ContextFilter}}
+		for _, item := range viewFilters {
+			if item.expression == nil {
+				continue
+			}
+			if er := validateExpr(*item.expression, true); er != nil {
+				out = append(out, validationDiagnostic("View", name, item.path, er))
+			}
+			for _, fieldName := range recordFields(item.expression) {
+				if definition, exists := viewFieldDefinition(fieldName, e, relationships, a); exists && definition.Sensitive {
+					out = append(out, diagnostic("View", name, item.path, "sensitive fields cannot control filtering"))
 				}
 			}
 		}
@@ -1061,10 +1071,10 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 					out = append(out, diagnostic("View", name, "spec.exposedFilters."+key, "redacted fields cannot be exposed as filters"))
 				}
 			}
-			for _, expression := range []*expr.Expr{v.Filter, v.ContextFilter} {
-				for _, field := range recordFields(expression) {
+			for _, item := range viewFilters {
+				for _, field := range recordFields(item.expression) {
 					if redacted[field] {
-						out = append(out, diagnostic("View", name, "spec.filter", "redacted fields cannot control filtering"))
+						out = append(out, diagnostic("View", name, item.path, "redacted fields cannot control filtering"))
 					}
 				}
 			}
@@ -2580,6 +2590,15 @@ func validateSequences(a *appir.App, state *validationState) []definition.Diagno
 				out = append(out, sequenceDiagnostic("Sequence", name, path+".layout", "is incompatible with Panel layout "+panelDefinition.Layout))
 			}
 			blocks := sequencePanelBlocks(panelDefinition)
+			for _, blockName := range blocks {
+				blockDefinition := a.Blocks[blockName]
+				for inputName, input := range blockDefinition.Inputs {
+					binding, bound := blockDefinition.Bindings[inputName]
+					if input.Required && bound && binding.Source == valuesource.Request {
+						out = append(out, sequenceDiagnostic("Sequence", name, path+".panel", "contains Block "+blockName+" with required context input "+inputName))
+					}
+				}
+			}
 			if len(blocks) < beansequence.MinBlocksPerFrame || len(blocks) > beansequence.MaxBlocksPerFrame {
 				out = append(out, sequenceDiagnostic("Sequence", name, path, fmt.Sprintf("must render between %d and %d Blocks", beansequence.MinBlocksPerFrame, beansequence.MaxBlocksPerFrame)))
 			}
