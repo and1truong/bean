@@ -1,11 +1,111 @@
 {
   "$defs": {
-    "github_com_beanruntime_bean_internal_appir_Region": {
+    "github_com_beanruntime_bean_internal_appir_ContentElement": {
       "additionalProperties": false,
+      "properties": {
+        "alt": {
+          "type": "string"
+        },
+        "attribution": {
+          "type": "string"
+        },
+        "direction": {
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "language": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "tone": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_compiler_panelRegionItemSource": {
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "content"
+                ]
+              },
+              {
+                "required": [
+                  "id"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "block"
+          ]
+        },
+        {
+          "not": {
+            "required": [
+              "block"
+            ]
+          },
+          "required": [
+            "content"
+          ]
+        }
+      ],
+      "properties": {
+        "block": {
+          "type": "string"
+        },
+        "content": {
+          "items": {
+            "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ContentElement"
+          },
+          "maxItems": 12,
+          "minItems": 1,
+          "type": "array"
+        },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_compiler_panelRegionSource": {
+      "additionalProperties": false,
+      "not": {
+        "required": [
+          "blocks",
+          "items"
+        ]
+      },
       "properties": {
         "blocks": {
           "items": {
             "type": "string"
+          },
+          "type": "array"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/github_com_beanruntime_bean_internal_compiler_panelRegionItemSource"
           },
           "type": "array"
         },
@@ -41,7 +141,7 @@
     },
     "regions": {
       "items": {
-        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_Region"
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_compiler_panelRegionSource"
       },
       "type": "array"
     }

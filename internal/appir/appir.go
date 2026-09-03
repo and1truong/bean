@@ -17,7 +17,8 @@ const (
 	ExtensionFormat = "bean/appir/v5"
 	DisplayFormat   = "bean/appir/v6"
 	ExploreFormat   = "bean/appir/v7"
-	CurrentFormat   = "bean/appir/v8"
+	SequenceFormat  = "bean/appir/v8"
+	CurrentFormat   = "bean/appir/v9"
 )
 
 type Field struct {
@@ -345,10 +346,45 @@ func RendererFromPresentation(p ViewPresentation) ViewRenderer {
 	}
 }
 
+type RegionItem struct {
+	ID       string `json:"id"`
+	Identity string
+	Block    string
+	Content  []ContentElement
+}
+
 type Region struct {
 	Name   string
 	Blocks []string
+	Items  []RegionItem
 }
+
+// OrderedItems returns the canonical ordered region composition while keeping
+// legacy blocks-only AppIR readable without rewriting it.
+func (r Region) OrderedItems() []RegionItem {
+	if r.Items != nil {
+		return r.Items
+	}
+	items := make([]RegionItem, len(r.Blocks))
+	for index, name := range r.Blocks {
+		items[index] = RegionItem{Block: name}
+	}
+	return items
+}
+
+// ResolveBlock returns the existing named Block or the compiler-lowered
+// content Block represented by a nested region item.
+func (i RegionItem) ResolveBlock(app *App) (Block, bool) {
+	if i.Block != "" {
+		block, exists := app.Blocks[i.Block]
+		return block, exists
+	}
+	if i.Identity == "" || i.Content == nil {
+		return Block{}, false
+	}
+	return Block{Name: i.Identity, Type: "content", Content: i.Content}, true
+}
+
 type Panel struct {
 	Name, Layout, Policy string
 	Regions              []Region
@@ -444,7 +480,7 @@ func Empty() *App {
 	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Rules: map[string]Rule{}, TestSuites: map[string]TestSuite{}, Extensions: map[string]Extension{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Sequences: map[string]Sequence{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
 }
 func (a *App) ValidateFormat() error {
-	if a.FormatVersion != LegacyFormat && a.FormatVersion != LifecycleFormat && a.FormatVersion != RuleFormat && a.FormatVersion != TestSuiteFormat && a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != LegacyFormat && a.FormatVersion != LifecycleFormat && a.FormatVersion != RuleFormat && a.FormatVersion != TestSuiteFormat && a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != CurrentFormat {
 		return fmt.Errorf("unsupported AppIR format %q", a.FormatVersion)
 	}
 	if a.FormatVersion == LegacyFormat {
@@ -472,13 +508,13 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != TestSuiteFormat && a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != CurrentFormat && len(a.TestSuites) > 0 {
+	if a.FormatVersion != TestSuiteFormat && a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != CurrentFormat && len(a.TestSuites) > 0 {
 		return fmt.Errorf("AppIR format %q cannot contain TestSuite definitions", a.FormatVersion)
 	}
-	if a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != CurrentFormat && len(a.Extensions) > 0 {
+	if a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != CurrentFormat && len(a.Extensions) > 0 {
 		return fmt.Errorf("AppIR format %q cannot contain Extension definitions", a.FormatVersion)
 	}
-	if a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != CurrentFormat {
 		for _, action := range a.Actions {
 			for _, step := range action.Steps {
 				if step.Op == "extension" || step.Extension != "" {
@@ -494,7 +530,7 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != CurrentFormat {
 		for _, view := range a.Views {
 			for _, filter := range view.ExposedFilters {
 				if filter.Field != "" || filter.Operator != "" {
@@ -515,7 +551,7 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != ExploreFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != CurrentFormat {
 		for _, view := range a.Views {
 			if len(view.Search.Fields) > 0 {
 				return fmt.Errorf("AppIR format %q cannot contain View-owned search semantics", a.FormatVersion)
@@ -535,13 +571,22 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != SequenceFormat && a.FormatVersion != CurrentFormat {
 		if len(a.Sequences) > 0 {
 			return fmt.Errorf("AppIR format %q cannot contain Sequence definitions", a.FormatVersion)
 		}
 		for _, block := range a.Blocks {
 			if len(block.Content) > 0 {
 				return fmt.Errorf("AppIR format %q cannot contain semantic content Blocks", a.FormatVersion)
+			}
+		}
+	}
+	if a.FormatVersion != CurrentFormat {
+		for _, panel := range a.Panels {
+			for _, region := range panel.Regions {
+				if region.Items != nil {
+					return fmt.Errorf("AppIR format %q cannot contain ordered Panel region items", a.FormatVersion)
+				}
 			}
 		}
 	}

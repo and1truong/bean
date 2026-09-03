@@ -1138,8 +1138,8 @@ func (s *Server) boundBlockInputs(r *http.Request, a *appir.App, kind, target st
 
 func panelContainsBlock(panelDefinition appir.Panel, name string) bool {
 	for _, region := range panelDefinition.Regions {
-		for _, candidate := range region.Blocks {
-			if candidate == name {
+		for _, item := range region.OrderedItems() {
+			if item.Block == name {
 				return true
 			}
 		}

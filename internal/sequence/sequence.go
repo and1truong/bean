@@ -84,8 +84,9 @@ func Protected(app *appir.App, item appir.Sequence) bool {
 			return true
 		}
 		for _, region := range panelDefinition.Regions {
-			for _, blockName := range region.Blocks {
-				if app.Blocks[blockName].Policy != "" {
+			for _, item := range region.OrderedItems() {
+				blockDefinition, exists := item.ResolveBlock(app)
+				if exists && blockDefinition.Policy != "" {
 					return true
 				}
 			}

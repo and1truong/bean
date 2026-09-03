@@ -139,8 +139,8 @@ func staticAnonymousPage(app *appir.App, item appir.Page) bool {
 		return false
 	}
 	for _, region := range panel.Regions {
-		for _, blockName := range region.Blocks {
-			block, exists := app.Blocks[blockName]
+		for _, item := range region.OrderedItems() {
+			block, exists := item.ResolveBlock(app)
 			if !exists || !anonymousPolicyForRequest(app, block.Policy, request) {
 				return false
 			}

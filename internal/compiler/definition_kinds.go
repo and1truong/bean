@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/beanruntime/bean/internal/appir"
+	beancontent "github.com/beanruntime/bean/internal/content"
 	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/registry"
 )
@@ -21,6 +22,23 @@ type DefinitionReference struct {
 type DefinitionChange struct {
 	Operation string `json:"operation"`
 	Path      string `json:"path"`
+}
+
+type panelSource struct {
+	Layout, Policy string
+	Regions        []panelRegionSource
+}
+
+type panelRegionSource struct {
+	Name   string
+	Blocks []string
+	Items  []panelRegionItemSource
+}
+
+type panelRegionItemSource struct {
+	ID      string `json:"id"`
+	Block   string
+	Content []appir.ContentElement
 }
 
 type definitionKind struct {
@@ -148,7 +166,7 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 	block.References = blockReferences
 	block.FieldEntity = func(app *appir.App, name string) string { return app.Views[app.Blocks[name].View].Entity }
 	block.ReferenceCandidates = true
-	panel := mappedDefinitionKind(appir.Panel{}, func(app *appir.App) map[string]appir.Panel { return app.Panels }, nameValue[appir.Panel](func(value *appir.Panel, name string) { value.Name = name }))
+	panel := panelDefinitionKind()
 	panel.References = panelReferences
 	panel.ReferenceCandidates = true
 	pageKind := mappedDefinitionKind(appir.Page{}, func(app *appir.App) map[string]appir.Page { return app.Pages }, nameValue[appir.Page](func(value *appir.Page, name string) { value.Name = name }))
@@ -295,6 +313,48 @@ func mappedDefinitionKind[T any](specification T, collection func(*appir.App) ma
 			return value, exists
 		},
 		Names: func(app *appir.App) []string { return mapNames(collection(app)) },
+	}
+}
+
+func panelDefinitionKind() definitionKind {
+	return definitionKind{
+		Specification: reflect.TypeOf(panelSource{}),
+		Storage:       reflect.TypeOf(appir.Panel{}),
+		Normalize:     noDefinitionNormalization,
+		Validate:      noDefinitionValidation,
+		Compile: func(app *appir.App, source definition.Definition) []definition.Diagnostic {
+			var decoded panelSource
+			if err := definition.DecodeSpec(source.Spec, &decoded); err != nil {
+				return []definition.Diagnostic{diagError(source, "spec", err)}
+			}
+			panel := appir.Panel{Name: source.Metadata.Name, Layout: decoded.Layout, Policy: decoded.Policy, Regions: make([]appir.Region, len(decoded.Regions))}
+			for regionIndex, sourceRegion := range decoded.Regions {
+				region := appir.Region{Name: sourceRegion.Name, Blocks: sourceRegion.Blocks}
+				if sourceRegion.Items != nil {
+					region.Items = make([]appir.RegionItem, len(sourceRegion.Items))
+					for itemIndex, sourceItem := range sourceRegion.Items {
+						beancontent.Normalize(sourceItem.Content)
+						item := appir.RegionItem{ID: sourceItem.ID, Block: sourceItem.Block, Content: sourceItem.Content}
+						if sourceItem.Content != nil {
+							token := fmt.Sprintf("item/%d", itemIndex)
+							if sourceItem.ID != "" {
+								token = "id/" + sourceItem.ID
+							}
+							item.Identity = fmt.Sprintf("@inline/%s/%s/%s", source.Metadata.Name, sourceRegion.Name, token)
+						}
+						region.Items[itemIndex] = item
+					}
+				}
+				panel.Regions[regionIndex] = region
+			}
+			app.Panels[source.Metadata.Name] = panel
+			return nil
+		},
+		Lookup: func(app *appir.App, name string) (any, bool) {
+			value, exists := app.Panels[name]
+			return value, exists
+		},
+		Names: func(app *appir.App) []string { return mapNames(app.Panels) },
 	}
 }
 
@@ -756,6 +816,11 @@ func panelReferences(app *appir.App, name string) []DefinitionReference {
 	for regionIndex, region := range item.Regions {
 		for blockIndex, block := range region.Blocks {
 			out = append(out, reference(fmt.Sprintf("regions.%d.blocks.%d", regionIndex, blockIndex), "Block", block))
+		}
+		for itemIndex, regionItem := range region.Items {
+			if regionItem.Block != "" {
+				out = append(out, reference(fmt.Sprintf("regions.%d.items.%d.block", regionIndex, itemIndex), "Block", regionItem.Block))
+			}
 		}
 	}
 	return references(out...)

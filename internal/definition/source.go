@@ -334,7 +334,7 @@ func indexLocations(locations map[string]Position, currentPath string, key, valu
 		}
 	case yaml.SequenceNode:
 		for i, child := range value.Content {
-			itemPath := fmt.Sprintf("%s[%d]", currentPath, i)
+			itemPath := fmt.Sprintf("%s.%d", currentPath, i)
 			locations[itemPath] = nodePosition(sourcePath, child)
 			if child.Kind == yaml.MappingNode {
 				for j := 0; j+1 < len(child.Content); j += 2 {

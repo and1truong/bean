@@ -2,7 +2,12 @@ kind: Panel
 name: frame_opening
 layout: single-column
 regions:
-  - {name: main, blocks: [opening]}
+  - name: main
+    items:
+      - id: title
+        content:
+          - {type: heading, text: "Bean: deterministic applications from inspectable definitions"}
+          - {type: paragraph, text: "A runtime where humans and agents author the same application semantics."}
 ---
 kind: Panel
 name: frame_product
@@ -14,51 +19,93 @@ kind: Panel
 name: frame_architecture
 layout: single-column
 regions:
-  - {name: main, blocks: [runtime_architecture]}
+  - name: main
+    items:
+      - content:
+          - {type: diagram, direction: horizontal, items: [Definitions, Validation, Migration, Immutable AppIR, Atomic activation]}
+          - {type: paragraph, text: "Every release follows one deterministic publication path."}
 ---
 kind: Panel
 name: frame_primitives
 layout: single-column
 regions:
-  - {name: main, blocks: [core_primitives]}
+  - name: main
+    items:
+      - content:
+          - {type: bullets, items: ["Entity models data", "View owns typed reads", "Display owns presentation", "Page and Panel compose layout", "Action owns mutations and effects", "Policy and Lifecycle enforce boundaries"]}
 ---
 kind: Panel
 name: frame_agent
 layout: single-column
 regions:
-  - {name: main, blocks: [agent_execution_loop]}
+  - name: main
+    items:
+      - content:
+          - {type: diagram, direction: horizontal, items: [Prompt, Definitions, Validate, Inspect and diff, Test, Publish, Runtime]}
+          - {type: callout, tone: success, text: "Agent output stays inspectable, diffable, testable, versionable, and manually editable."}
 ---
 kind: Panel
 name: frame_explore
 layout: single-column
 regions:
-  - {name: main, blocks: [explore_loop]}
+  - name: main
+    items:
+      - content:
+          - {type: diagram, direction: horizontal, items: [Model data, Explore, Visualize, Drill down, Act]}
+          - {type: paragraph, text: "Bean Explore turns observation into authorized operational action without a parallel query runtime."}
 ---
 kind: Panel
 name: frame_capabilities
 layout: single-column
 regions:
-  - {name: main, blocks: [capability_chart_context, capability_chart]}
+  - name: main
+    items:
+      - content:
+          - {type: paragraph, text: "The chart below is a real grouped View rendered inside this presentation."}
+      - block: capability_chart
 ---
 kind: Panel
 name: frame_safety
 layout: two-column
 regions:
-  - {name: left, blocks: [safety_semantics]}
-  - {name: right, blocks: [safety_infrastructure]}
+  - name: left
+    items:
+      - id: application_boundary
+        content:
+          - {type: heading, text: "Application semantics stay in Bean"}
+          - {type: bullets, items: ["Typed definitions and deterministic diagnostics", "Policy before reads and aggregation", "Lifecycle and Rules constrain Actions", "Atomic release activation"]}
+  - name: right
+    items:
+      - id: provider_boundary
+        content:
+          - {type: heading, text: "Infrastructure stays behind providers"}
+          - {type: bullets, items: ["Storage adapters", "Typed Extensions for external effects", "Explicit transport boundaries", "No opaque application scripts"]}
 ---
 kind: Panel
 name: frame_examples
 layout: two-column
 regions:
-  - {name: left, blocks: [reference_apps]}
-  - {name: right, blocks: [current_direction]}
+  - name: left
+    items:
+      - content:
+          - {type: heading, text: "Executable examples"}
+          - {type: bullets, items: ["ATS: recruiting operations", "CRM: policy-safe aggregates", "Commerce: observe, inspect, act", "Booking and tracker: date and workflow patterns"]}
+  - name: right
+    items:
+      - content:
+          - {type: heading, text: "One runtime, more application shapes"}
+          - {type: bullets, items: ["Explore operational data", "Compose dashboards", "Present a guided narrative", "Keep every artifact as ordinary Bean definitions"]}
 ---
 kind: Panel
 name: frame_close
 layout: single-column
 regions:
-  - {name: main, blocks: [getting_started]}
+  - name: main
+    items:
+      - content:
+          - {type: heading, text: "Start with an Entity"}
+          - {type: paragraph, text: "Add typed Views and Actions, compose the experience, then publish the validated definition bundle."}
+          - {type: callout, tone: success, text: "bean demo run presentation"}
 ---
 kind: Sequence
 name: bean_introduction

@@ -1,6 +1,8 @@
 package panel
 
 import (
+	"fmt"
+
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/block"
 	beanctx "github.com/beanruntime/bean/internal/context"
@@ -15,8 +17,12 @@ func Node(a *appir.App, p appir.Panel, ctx map[string]any, c beanctx.Request) (r
 	children := []render.Node{}
 	for _, r := range p.Regions {
 		blocks := []render.Node{}
-		for _, name := range r.Blocks {
-			node, allowed, e := block.Node(a, a.Blocks[name], ctx, c)
+		for _, item := range r.OrderedItems() {
+			definition, exists := item.ResolveBlock(a)
+			if !exists {
+				return render.Node{}, false, fmt.Errorf("Panel %s region %s contains an unresolved Block", p.Name, r.Name)
+			}
+			node, allowed, e := block.Node(a, definition, ctx, c)
 			if e != nil {
 				return render.Node{}, false, e
 			}

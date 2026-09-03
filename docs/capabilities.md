@@ -26,6 +26,7 @@
 | Explore authoring parity | Explore, Studio, schemas, inspect/references/diff, and five agent prompt rubrics produce ordinary definitions | complete | React/compiler/Agent Protocol/agent fixture contracts |
 | Semantic sequences | AppIR v8 ordered route/frame composition over existing Panels and Blocks with inspect/references/diff and Policy-visible render trees | complete | compiler/AppIR/Agent Protocol/release/HTTP contracts |
 | Semantic content | Closed heading, paragraph, bullets, quote, code, callout, image, and ordered-diagram content without executable markup | complete | schema/compiler/content/React safety contracts |
+| Inline Panel content | AppIR v9 nested ordered region items interleave frame-local semantic content and named Blocks; legacy `blocks` remains compatible | complete | AppIR/compiler/schema/Panel/Sequence/policy contracts |
 | HTML presentation profile | Wide/standard frames, URL state, keyboard/buttons/picker, progress, notes, responsive bounds, and print page breaks | complete | React and presentation Playwright journey |
 | Presentation agent slice | Ten-frame Bean introduction with stable repair diagnostics and a real grouped View/chart | complete | presentation source, agent rubric, restart, package, and browser evidence |
 | Public tables and controls | Ordered labelled linked columns, typed exposed-filter operators/widgets/defaults, URL state, immutable binding separation, and cursor page sizes | complete | compiler/View/DBAL/HTTP/React/Studio and SQLite/PostgreSQL contracts |

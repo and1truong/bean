@@ -10,17 +10,24 @@ A `Sequence` is a route-level ordered experience composed from existing Panels. 
 
 ```yaml
 kind: Block
-name: product_thesis
-type: content
-content:
-  - {type: heading, text: "Bean is a deterministic application runtime"}
-  - {type: bullets, items: ["Definitions are inspectable", "Compilation is deterministic", "Runtime behavior is policy-bound"]}
+name: capability_chart
+type: view
+view: capabilities_by_area
+display: chart
 ---
 kind: Panel
-name: thesis_frame
+name: capabilities_frame
 layout: single-column
 regions:
-  - {name: main, blocks: [product_thesis]}
+  - name: main
+    items:
+      - id: introduction
+        content:
+          - {type: heading, text: "Bean is a deterministic application runtime"}
+          - {type: paragraph, text: "The chart follows the normal View path."}
+      - block: capability_chart
+      - content:
+          - {type: callout, tone: success, text: "Definitions remain inspectable."}
 ---
 kind: Sequence
 name: bean_introduction
@@ -29,10 +36,14 @@ title: Introducing Bean
 profile: presentation
 aspectRatio: wide
 frames:
-  - {name: thesis, title: Product thesis, layout: bullets, panel: thesis_frame, notes: "Establish the runtime boundary."}
+  - {name: capabilities, title: Product capabilities, layout: chart-focus, panel: capabilities_frame, notes: "Show the live data."}
 ```
 
-Frame layouts are closed and compiler-checked against their Panel: `title`, `section`, `statement`, `bullets`, `quote`, `closing`, `two-column`, `comparison`, `image-focus`, `chart-focus`, `table`, `timeline`, `process`, and `architecture`. Content elements are `heading`, `paragraph`, `bullets`, `quote`, `code`, `callout`, `image`, and `diagram`. Images require alt text and an absolute application path or HTTPS URL; content is rendered as text nodes, never executable markup. `bean capabilities --json` reports the exact vocabularies and bounds. Current limits include 1–50 frames, 1–12 Blocks per frame, 80-code-point titles, 4,000-byte notes, 12 elements per content Block, six bullets, eight diagram nodes, 120 code lines, and deterministic layout density budgets.
+A Panel region has two compatible source forms. Existing `blocks: [name, ...]` remains unchanged. Use `items` when content is local to the Panel or when inline content and named Blocks must be interleaved: every item contains exactly one `block` reference or one non-empty `content` list, and list order is render order. A region cannot declare both `blocks` and `items`. An inline item may declare a region-local machine `id` when its identity should survive nearby reordering; otherwise compilation derives identity from the Panel, region, and item ordinal. Generated identities are nested AppIR details, not global Block names or authoring references. A named `type: content` Block remains appropriate for reuse, independent Block Policy, or deliberate public identity.
+
+Inline content uses the same `ContentBlock` renderer and validation as named content Blocks. It has no independent policy: it is visible when its enclosing Page or Sequence and Panel are visible. A referenced named Block still applies its own Policy, so hiding that Block does not hide neighboring inline content. Compiler diagnostics are owned by the Panel and use source-indexed paths such as `spec.regions.0.items.1.content.0.alt`.
+
+Frame layouts are closed and compiler-checked against their Panel: `title`, `section`, `statement`, `bullets`, `quote`, `closing`, `two-column`, `comparison`, `image-focus`, `chart-focus`, `table`, `timeline`, `process`, and `architecture`. Content elements are `heading`, `paragraph`, `bullets`, `quote`, `code`, `callout`, `image`, and `diagram`. Images require alt text and an absolute application path or HTTPS URL; content is rendered as text nodes, never executable markup. `bean capabilities --json` reports the exact vocabularies and bounds. Current limits include 1–50 frames, 1–12 rendered Blocks (including inline content items) per frame, 80-code-point titles, 4,000-byte notes, 12 elements per named or inline content Block, six bullets, eight diagram nodes, 120 code lines, and deterministic layout density budgets.
 
 ## Admin resources
 

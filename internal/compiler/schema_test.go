@@ -124,6 +124,35 @@ func TestViewSchemaAcceptsLegacyAndTypedGroups(t *testing.T) {
 	}
 }
 
+func TestPanelSchemaAcceptsOrderedInlineContentAndRejectsAmbiguousItems(t *testing.T) {
+	document := compiler.DefinitionSchemas()["Panel"]
+	validator := jsonschema.NewCompiler()
+	location := document["$id"].(string)
+	if err := validator.AddResource(location, schemaJSONValue(t, document)); err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := validator.Compile(location)
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid := map[string]any{"kind": "Panel", "name": "frame", "layout": "single-column", "regions": []any{map[string]any{"name": "main", "items": []any{
+		map[string]any{"id": "intro", "content": []any{map[string]any{"type": "heading", "text": "Inline"}}},
+		map[string]any{"block": "chart"},
+	}}}}
+	if err = compiled.Validate(valid); err != nil {
+		t.Fatalf("valid ordered region rejected: %v", err)
+	}
+	for _, invalid := range []map[string]any{
+		{"kind": "Panel", "name": "frame", "regions": []any{map[string]any{"name": "main", "blocks": []any{"chart"}, "items": []any{map[string]any{"block": "chart"}}}}},
+		{"kind": "Panel", "name": "frame", "regions": []any{map[string]any{"name": "main", "items": []any{map[string]any{"block": "chart", "content": []any{map[string]any{"type": "heading", "text": "Inline"}}}}}}},
+		{"kind": "Panel", "name": "frame", "regions": []any{map[string]any{"name": "main", "items": []any{map[string]any{"content": []any{}}}}}},
+	} {
+		if err = compiled.Validate(invalid); err == nil {
+			t.Fatalf("schema accepted ambiguous Panel: %#v", invalid)
+		}
+	}
+}
+
 func TestCanonicalManifestSchemaValidatesContract(t *testing.T) {
 	document := compiler.ManifestSchema()
 	validator := jsonschema.NewCompiler()

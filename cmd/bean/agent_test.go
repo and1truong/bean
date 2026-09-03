@@ -484,7 +484,7 @@ func TestAgentCapabilitiesAndSchemaAreSelfDescribing(t *testing.T) {
 		assert  func(*testing.T, map[string]any)
 	}{
 		{args: []string{"capabilities", "--json"}, command: "capabilities", assert: func(t *testing.T, result map[string]any) {
-			if result["definitionAPIVersion"] != "bean/v1alpha1" || result["appIRFormat"] != "bean/appir/v8" {
+			if result["definitionAPIVersion"] != "bean/v1alpha1" || result["appIRFormat"] != "bean/appir/v9" {
 				t.Fatalf("capabilities = %#v", result)
 			}
 			if len(result["definitionKinds"].([]any)) < 10 || len(result["fieldTypes"].([]any)) < 10 || len(result["sequenceFrameLayouts"].([]any)) < 10 || len(result["contentElementTypes"].([]any)) != 8 {

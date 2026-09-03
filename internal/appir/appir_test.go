@@ -201,6 +201,10 @@ func TestSequenceAndSemanticContentRequireV8Format(t *testing.T) {
 	if err := app.ValidateFormat(); err != nil {
 		t.Fatal(err)
 	}
+	app.FormatVersion = appir.SequenceFormat
+	if err := app.ValidateFormat(); err != nil {
+		t.Fatalf("v8 AppIR rejected Sequence semantics: %v", err)
+	}
 	app.FormatVersion = appir.ExploreFormat
 	if err := app.ValidateFormat(); err == nil {
 		t.Fatal("v7 AppIR accepted Sequence and semantic content semantics")
@@ -209,5 +213,21 @@ func TestSequenceAndSemanticContentRequireV8Format(t *testing.T) {
 	app.Sequences = map[string]appir.Sequence{}
 	if err := app.ValidateFormat(); err == nil {
 		t.Fatal("v7 AppIR accepted semantic content Blocks")
+	}
+}
+
+func TestInlinePanelContentRequiresV9Format(t *testing.T) {
+	app := appir.Empty()
+	app.Panels["frame"] = appir.Panel{Name: "frame", Regions: []appir.Region{{Name: "main", Items: []appir.RegionItem{{Identity: "@inline/frame/main/item/0", Content: []appir.ContentElement{{Type: "heading", Text: "Bean"}}}}}}}
+	if err := app.ValidateFormat(); err != nil {
+		t.Fatal(err)
+	}
+	clone, err := app.Clone()
+	if err != nil || clone.Panels["frame"].Regions[0].Items[0].Identity != "@inline/frame/main/item/0" {
+		t.Fatalf("clone=%+v err=%v", clone, err)
+	}
+	app.FormatVersion = appir.SequenceFormat
+	if err = app.ValidateFormat(); err == nil {
+		t.Fatal("v8 AppIR accepted inline Panel region items")
 	}
 }

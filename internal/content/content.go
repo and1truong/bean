@@ -24,6 +24,17 @@ func Tones() []string { return []string{"info", "success", "warning"} }
 
 func Directions() []string { return []string{"horizontal", "vertical"} }
 
+func Normalize(elements []appir.ContentElement) {
+	for index := range elements {
+		if elements[index].Type == "callout" && elements[index].Tone == "" {
+			elements[index].Tone = "info"
+		}
+		if elements[index].Type == "diagram" && elements[index].Direction == "" {
+			elements[index].Direction = "horizontal"
+		}
+	}
+}
+
 func Weight(elements []appir.ContentElement) int {
 	total := 0
 	for _, element := range elements {

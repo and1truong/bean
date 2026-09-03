@@ -2292,49 +2292,53 @@ func validateBlocks(a *appir.App, _ *validationState) []definition.Diagnostic {
 }
 
 func validateContentBlock(name string, block appir.Block) []definition.Diagnostic {
-	if len(block.Content) == 0 {
-		return []definition.Diagnostic{sequenceDiagnostic("Block", name, "spec.content", "requires at least one semantic content element")}
+	return validateContentElements("Block", name, "spec.content", block.Content)
+}
+
+func validateContentElements(kind, name, contentPath string, elements []appir.ContentElement) []definition.Diagnostic {
+	if len(elements) == 0 {
+		return []definition.Diagnostic{sequenceDiagnostic(kind, name, contentPath, "requires at least one semantic content element")}
 	}
 	out := []definition.Diagnostic{}
-	if len(block.Content) > beancontent.MaxElements {
-		out = append(out, sequenceDiagnostic("Block", name, "spec.content", fmt.Sprintf("exceeds the maximum of %d elements", beancontent.MaxElements)))
+	if len(elements) > beancontent.MaxElements {
+		out = append(out, sequenceDiagnostic(kind, name, contentPath, fmt.Sprintf("exceeds the maximum of %d elements", beancontent.MaxElements)))
 	}
 	types, tones, directions := nameSet(beancontent.Types()), nameSet(beancontent.Tones()), nameSet(beancontent.Directions())
-	for index, element := range block.Content {
-		path := fmt.Sprintf("spec.content.%d", index)
+	for index, element := range elements {
+		path := fmt.Sprintf("%s.%d", contentPath, index)
 		if !types[element.Type] {
-			out = append(out, sequenceDiagnostic("Block", name, path+".type", "has no supported semantic content type"))
+			out = append(out, sequenceDiagnostic(kind, name, path+".type", "has no supported semantic content type"))
 			continue
 		}
 		switch element.Type {
 		case "heading", "paragraph", "quote", "code", "callout":
 			if strings.TrimSpace(element.Text) == "" {
-				out = append(out, sequenceDiagnostic("Block", name, path+".text", "is required"))
+				out = append(out, sequenceDiagnostic(kind, name, path+".text", "is required"))
 			}
 		case "bullets":
 			if len(element.Items) == 0 || len(element.Items) > beancontent.MaxBulletItems {
-				out = append(out, sequenceDiagnostic("Block", name, path+".items", fmt.Sprintf("must contain between 1 and %d bullet items", beancontent.MaxBulletItems)))
+				out = append(out, sequenceDiagnostic(kind, name, path+".items", fmt.Sprintf("must contain between 1 and %d bullet items", beancontent.MaxBulletItems)))
 			}
 		case "image":
 			if strings.TrimSpace(element.Alt) == "" {
-				out = append(out, sequenceDiagnostic("Block", name, path+".alt", "is required for an accessible image"))
+				out = append(out, sequenceDiagnostic(kind, name, path+".alt", "is required for an accessible image"))
 			}
 			if !beancontent.ValidImageSource(element.Source) {
-				out = append(out, sequenceDiagnostic("Block", name, path+".source", "must be an absolute application path or HTTPS URL without credentials, query, or fragment"))
+				out = append(out, sequenceDiagnostic(kind, name, path+".source", "must be an absolute application path or HTTPS URL without credentials, query, or fragment"))
 			}
 		case "diagram":
 			if len(element.Items) < 2 || len(element.Items) > beancontent.MaxDiagramItems {
-				out = append(out, sequenceDiagnostic("Block", name, path+".items", fmt.Sprintf("must contain between 2 and %d ordered nodes", beancontent.MaxDiagramItems)))
+				out = append(out, sequenceDiagnostic(kind, name, path+".items", fmt.Sprintf("must contain between 2 and %d ordered nodes", beancontent.MaxDiagramItems)))
 			}
 			if !directions[element.Direction] {
-				out = append(out, sequenceDiagnostic("Block", name, path+".direction", "has no supported diagram direction"))
+				out = append(out, sequenceDiagnostic(kind, name, path+".direction", "has no supported diagram direction"))
 			}
 		}
 		if element.Type == "callout" && !tones[element.Tone] {
-			out = append(out, sequenceDiagnostic("Block", name, path+".tone", "has no supported callout tone"))
+			out = append(out, sequenceDiagnostic(kind, name, path+".tone", "has no supported callout tone"))
 		}
 		if element.Type == "code" && strings.Count(element.Text, "\n")+1 > beancontent.MaxCodeLines {
-			out = append(out, sequenceDiagnostic("Block", name, path+".text", fmt.Sprintf("exceeds the maximum of %d code lines", beancontent.MaxCodeLines)))
+			out = append(out, sequenceDiagnostic(kind, name, path+".text", fmt.Sprintf("exceeds the maximum of %d code lines", beancontent.MaxCodeLines)))
 		}
 	}
 	return out
@@ -2371,19 +2375,60 @@ func validateLocalRegistration(a *appir.App, _ *validationState) []definition.Di
 func validatePanels(a *appir.App, _ *validationState) []definition.Diagnostic {
 	out := []definition.Diagnostic{}
 	layouts := panelLayouts()
-	for name, panel := range a.Panels {
-		regions, ok := layouts[panel.Layout]
-		if !ok {
+	for _, name := range keys(a.Panels) {
+		panel := a.Panels[name]
+		regions, layoutValid := layouts[panel.Layout]
+		if !layoutValid {
 			out = append(out, diagnostic("Panel", name, "spec.layout", "invalid layout"))
-			continue
 		}
-		for _, region := range panel.Regions {
-			if !regions[region.Name] {
-				out = append(out, diagnostic("Panel", name, "spec.regions."+region.Name, "invalid Panel region"))
+		seenRegions := map[string]bool{}
+		for regionIndex, region := range panel.Regions {
+			regionPath := fmt.Sprintf("spec.regions.%d", regionIndex)
+			if !layoutValid || !regions[region.Name] {
+				out = append(out, diagnostic("Panel", name, regionPath+".name", "invalid Panel region"))
 			}
-			for _, block := range region.Blocks {
-				if _, ok := a.Blocks[block]; !ok {
-					out = append(out, missingReferenceDiagnostic("Panel", name, "spec.regions."+region.Name, "Block", block))
+			if seenRegions[region.Name] {
+				out = append(out, duplicateDiagnostic("Panel", name, regionPath+".name", "duplicates another Panel region"))
+			}
+			seenRegions[region.Name] = true
+			if region.Blocks != nil && region.Items != nil {
+				out = append(out, diagnostic("Panel", name, regionPath, "cannot declare both blocks and ordered items"))
+			}
+			for blockIndex, blockName := range region.Blocks {
+				blockPath := fmt.Sprintf("%s.blocks.%d", regionPath, blockIndex)
+				if strings.HasPrefix(blockName, "@inline/") {
+					out = append(out, invalidReferenceDiagnostic("Panel", name, blockPath, "internal inline identities cannot be referenced by authors"))
+				} else if _, ok := a.Blocks[blockName]; !ok {
+					out = append(out, missingReferenceDiagnostic("Panel", name, blockPath, "Block", blockName))
+				}
+			}
+			seenItemIDs := map[string]bool{}
+			for itemIndex, item := range region.Items {
+				itemPath := fmt.Sprintf("%s.items.%d", regionPath, itemIndex)
+				hasBlock, hasContent := strings.TrimSpace(item.Block) != "", item.Content != nil
+				if hasBlock == hasContent {
+					out = append(out, diagnostic("Panel", name, itemPath, "must declare exactly one block reference or inline content list"))
+				}
+				if item.ID != "" {
+					if !testCaseName.MatchString(item.ID) {
+						out = append(out, diagnostic("Panel", name, itemPath+".id", "must be a nonempty machine name"))
+					} else if seenItemIDs[item.ID] {
+						out = append(out, duplicateDiagnostic("Panel", name, itemPath+".id", "duplicates another inline item id in this region"))
+					}
+					seenItemIDs[item.ID] = true
+					if hasBlock {
+						out = append(out, diagnostic("Panel", name, itemPath+".id", "is only supported by an inline content item"))
+					}
+				}
+				if hasBlock {
+					if strings.HasPrefix(item.Block, "@inline/") {
+						out = append(out, invalidReferenceDiagnostic("Panel", name, itemPath+".block", "internal inline identities cannot be referenced by authors"))
+					} else if _, ok := a.Blocks[item.Block]; !ok {
+						out = append(out, missingReferenceDiagnostic("Panel", name, itemPath+".block", "Block", item.Block))
+					}
+				}
+				if hasContent {
+					out = append(out, validateContentElements("Panel", name, itemPath+".content", item.Content)...)
 				}
 			}
 		}
@@ -2590,13 +2635,12 @@ func validateSequences(a *appir.App, state *validationState) []definition.Diagno
 			if layouts[frame.Layout] && !beansequence.PanelLayoutAllowed(frame.Layout, panelDefinition.Layout) {
 				out = append(out, sequenceDiagnostic("Sequence", name, path+".layout", "is incompatible with Panel layout "+panelDefinition.Layout))
 			}
-			blocks := sequencePanelBlocks(panelDefinition)
-			for _, blockName := range blocks {
-				blockDefinition := a.Blocks[blockName]
+			blocks := sequencePanelRenderedBlocks(a, panelDefinition)
+			for _, blockDefinition := range blocks {
 				for inputName, input := range blockDefinition.Inputs {
 					binding, bound := blockDefinition.Bindings[inputName]
 					if input.Required && bound && binding.Source == valuesource.Request {
-						out = append(out, sequenceDiagnostic("Sequence", name, path+".panel", "contains Block "+blockName+" with required context input "+inputName))
+						out = append(out, sequenceDiagnostic("Sequence", name, path+".panel", "contains Block "+blockDefinition.Name+" with required context input "+inputName))
 					}
 				}
 			}
@@ -2622,15 +2666,30 @@ func validateSequences(a *appir.App, state *validationState) []definition.Diagno
 func sequencePanelBlocks(panel appir.Panel) []string {
 	out := []string{}
 	for _, region := range panel.Regions {
-		out = append(out, region.Blocks...)
+		for _, item := range region.OrderedItems() {
+			if item.Block != "" {
+				out = append(out, item.Block)
+			}
+		}
 	}
 	return out
 }
 
-func sequenceFrameWeight(a *appir.App, blocks []string) (int, map[string]bool) {
+func sequencePanelRenderedBlocks(a *appir.App, panel appir.Panel) []appir.Block {
+	out := []appir.Block{}
+	for _, region := range panel.Regions {
+		for _, item := range region.OrderedItems() {
+			if blockDefinition, exists := item.ResolveBlock(a); exists {
+				out = append(out, blockDefinition)
+			}
+		}
+	}
+	return out
+}
+
+func sequenceFrameWeight(a *appir.App, blocks []appir.Block) (int, map[string]bool) {
 	weight, features := 0, map[string]bool{}
-	for _, blockName := range blocks {
-		block := a.Blocks[blockName]
+	for _, block := range blocks {
 		switch block.Type {
 		case "content":
 			weight += beancontent.Weight(block.Content)
@@ -3225,8 +3284,11 @@ func validateRegistrationPage(a *appir.App, route, actionName string) string {
 	var missing []string
 	found := false
 	for _, region := range panelDefinition.Regions {
-		for _, blockName := range region.Blocks {
-			blockDefinition := a.Blocks[blockName]
+		for _, item := range region.OrderedItems() {
+			if item.Block == "" {
+				continue
+			}
+			blockDefinition := a.Blocks[item.Block]
 			formDefinition := a.Webforms[blockDefinition.Webform]
 			specification, registered := blockcap.Lookup(blockDefinition.Type)
 			if !registered || specification.InputTarget != blockcap.WebformInputTarget || formDefinition.Action != actionName {
@@ -3637,14 +3699,7 @@ func normalizeBlocks(a *appir.App) {
 	normalizeResourceListBlocks(a)
 	for name, block := range a.Blocks {
 		if block.Type == "content" {
-			for index := range block.Content {
-				if block.Content[index].Type == "callout" && block.Content[index].Tone == "" {
-					block.Content[index].Tone = "info"
-				}
-				if block.Content[index].Type == "diagram" && block.Content[index].Direction == "" {
-					block.Content[index].Direction = "horizontal"
-				}
-			}
+			beancontent.Normalize(block.Content)
 			a.Blocks[name] = block
 		}
 		if block.Type != "view" || block.View == "" || block.Display != "" {

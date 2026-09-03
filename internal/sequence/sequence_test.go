@@ -44,6 +44,24 @@ func TestNodeBuildsDeterministicPolicyVisibleComposition(t *testing.T) {
 	}
 }
 
+func TestNodeIncludesInlineContentInSequenceFrameTree(t *testing.T) {
+	app := appir.Empty()
+	app.Blocks["named"] = appir.Block{Name: "named", Type: "text", Text: "Named"}
+	app.Panels["mixed"] = appir.Panel{Name: "mixed", Layout: "single-column", Regions: []appir.Region{{Name: "main", Items: []appir.RegionItem{
+		{Identity: "@inline/mixed/main/item/0", Content: []appir.ContentElement{{Type: "heading", Text: "Inline"}}},
+		{Block: "named"},
+	}}}}
+	item := appir.Sequence{Name: "mixed", Title: "Mixed", Profile: "presentation", AspectRatio: "wide", Frames: []appir.SequenceFrame{{Name: "one", Title: "One", Layout: "bullets", Panel: "mixed"}}}
+	node, allowed, err := sequence.Node(app, item, beanctx.Request{})
+	if err != nil || !allowed {
+		t.Fatalf("allowed=%v err=%v", allowed, err)
+	}
+	blocks := node.Children[0].Children[0].Children[0].Children
+	if len(blocks) != 2 || blocks[0].Component != "ContentBlock" || blocks[1].Component != "TextBlock" {
+		t.Fatalf("sequence blocks=%+v", blocks)
+	}
+}
+
 func TestMatchAndRootPolicyFailClosed(t *testing.T) {
 	app := appir.Empty()
 	app.Policies["private"] = appir.Policy{Name: "private", Authenticated: true}

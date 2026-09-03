@@ -38,7 +38,7 @@ func TestPresentationPromptRubricUsesOrdinaryDeterministicDefinitions(t *testing
 	if view.ResultShape != "groups" || view.Displays["chart"].Renderer.Type != "chart" {
 		t.Fatalf("data-backed frame view=%+v", view)
 	}
-	for _, target := range [][2]string{{"Sequence", "bean_introduction"}, {"View", "capabilities_by_area"}, {"Block", "runtime_architecture"}} {
+	for _, target := range [][2]string{{"Sequence", "bean_introduction"}, {"View", "capabilities_by_area"}, {"Panel", "frame_architecture"}, {"Block", "product_statement"}} {
 		if _, _, exists := compiler.InspectDefinition(first.App, target[0], target[1]); !exists {
 			t.Fatalf("missing inspectable %s/%s", target[0], target[1])
 		}
@@ -56,16 +56,20 @@ func TestPresentationPromptCanRepairStableDiagnosedFields(t *testing.T) {
 		if item.Kind == "Sequence" && item.Metadata.Name == "bean_introduction" {
 			sequenceDefinition = item
 		}
-		if item.Kind == "Block" && item.Metadata.Name == "opening" {
+		if item.Kind == "Panel" && item.Metadata.Name == "frame_opening" {
 			openingDefinition = item
 		}
 	}
 	if sequenceDefinition == nil || openingDefinition == nil {
 		t.Fatal("repair fixture definitions are missing")
 	}
-	originalProfile, originalContent := sequenceDefinition.Spec["profile"], openingDefinition.Spec["content"]
+	regions := openingDefinition.Spec["regions"].([]any)
+	region := regions[0].(map[string]any)
+	items := region["items"].([]any)
+	inline := items[0].(map[string]any)
+	originalProfile, originalContent := sequenceDefinition.Spec["profile"], inline["content"]
 	sequenceDefinition.Spec["profile"] = "slides"
-	openingDefinition.Spec["content"] = []any{map[string]any{"type": "image", "source": "javascript:alert(1)"}}
+	inline["content"] = []any{map[string]any{"type": "image", "source": "javascript:alert(1)"}}
 
 	first := compiler.Compile("default", 1, bundle.Definitions).Diagnostics
 	second := compiler.Compile("default", 1, bundle.Definitions).Diagnostics
@@ -73,9 +77,9 @@ func TestPresentationPromptCanRepairStableDiagnosedFields(t *testing.T) {
 		t.Fatalf("identical broken presentation produced different diagnostics: %v / %v", first, second)
 	}
 	want := map[string]bool{
-		"Block/opening/spec.content.0.alt":        false,
-		"Block/opening/spec.content.0.source":     false,
-		"Sequence/bean_introduction/spec.profile": false,
+		"Panel/frame_opening/spec.regions.0.items.0.content.0.alt":    false,
+		"Panel/frame_opening/spec.regions.0.items.0.content.0.source": false,
+		"Sequence/bean_introduction/spec.profile":                     false,
 	}
 	for _, diagnostic := range first {
 		key := strings.Join([]string{diagnostic.Kind, diagnostic.Name, diagnostic.Path}, "/")
@@ -90,7 +94,7 @@ func TestPresentationPromptCanRepairStableDiagnosedFields(t *testing.T) {
 	}
 
 	sequenceDefinition.Spec["profile"] = originalProfile
-	openingDefinition.Spec["content"] = originalContent
+	inline["content"] = originalContent
 	if repaired := compiler.Compile("default", 1, bundle.Definitions); len(repaired.Diagnostics) != 0 {
 		t.Fatalf("repairing only diagnosed fields did not validate: %v", repaired.Diagnostics)
 	}

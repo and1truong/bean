@@ -1,14 +1,14 @@
 # Bean Introduction
 
-A ten-frame introduction to Bean built entirely from semantic Sequence metadata. It demonstrates closed presentation layouts, reusable Panels and Blocks, themed content, a data-backed chart, accessible browser navigation, and print structure.
+A ten-frame introduction to Bean built entirely from semantic Sequence metadata. It demonstrates frame-local inline semantic Panel content, an explicitly named content Block, a live View-backed chart Block, closed presentation layouts, accessible browser navigation, and print structure.
 
 ## Definition layout
 
 - `app.yaml` — application entry point
 - `theme.yaml` — presentation theme
 - `data.yaml` — capability data, View, and chart Block
-- `content.yaml` — semantic content Blocks
-- `layout.yaml` — frame Panels and the ordered Sequence
+- `content.yaml` — an intentionally named reusable semantic content Block
+- `layout.yaml` — frame Panels with inline content and the ordered Sequence
 
 ## Run it
 

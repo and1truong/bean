@@ -248,6 +248,25 @@ func definitionSchema(kind string, specification reflect.Type) map[string]any {
 		groupBy := properties["groupBy"].(map[string]any)
 		groupBy["items"] = map[string]any{"anyOf": []any{map[string]any{"type": "string"}, groupBy["items"]}}
 	}
+	if kind == "Panel" {
+		for name, raw := range builder.definitions {
+			schema := raw.(map[string]any)
+			schemaProperties := schema["properties"].(map[string]any)
+			switch {
+			case strings.HasSuffix(name, "internal_compiler_panelRegionSource"):
+				schema["not"] = map[string]any{"required": []string{"blocks", "items"}}
+			case strings.HasSuffix(name, "internal_compiler_panelRegionItemSource"):
+				schema["oneOf"] = []any{
+					map[string]any{"required": []string{"block"}, "not": map[string]any{"anyOf": []any{map[string]any{"required": []string{"content"}}, map[string]any{"required": []string{"id"}}}}},
+					map[string]any{"required": []string{"content"}, "not": map[string]any{"required": []string{"block"}}},
+				}
+				schemaProperties["id"] = map[string]any{"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}
+				content := schemaProperties["content"].(map[string]any)
+				content["minItems"] = 1
+				content["maxItems"] = beancontent.MaxElements
+			}
+		}
+	}
 	if kind == "Rule" {
 		properties["result"] = map[string]any{"type": "string", "enum": []string{string(rule.Boolean), string(rule.Date), string(rule.DateTime), string(rule.Integer), string(rule.Number), string(rule.String), string(rule.Strings)}}
 		document["required"] = []string{"kind", "name", "result", "expression"}
