@@ -225,6 +225,9 @@ func ReadPage(ctx context.Context, reader Reader, app *appir.App, name string, o
 	}
 	aggregateSort := false
 	for _, o := range sortDefinitions {
+		if len(v.GroupBy) > 0 && !aggregateAliases[o.Field] && groupAliases[o.Field] == "" {
+			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "grouped Views must sort by an emitted group or aggregate field"}
+		}
 		if !available[o.Field] {
 			return Result{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "admin sort field is not selected by the View"}
 		}

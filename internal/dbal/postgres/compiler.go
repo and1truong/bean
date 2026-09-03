@@ -17,7 +17,7 @@ func (Compiler) QuoteIdentifier(value string) (string, error) {
 func (Compiler) Placeholder(index int) string { return fmt.Sprintf("$%d", index) }
 
 func (Compiler) CompileSelect(query dbal.Select) (string, []dbal.Value, error) {
-	statement, arguments, err := (sqlite.Compiler{DateBucket: sqlite.PostgreSQLDateBucket}).CompileSelect(query)
+	statement, arguments, err := (sqlite.Compiler{DateBucket: sqlite.PostgreSQLDateBucket, NativeDecimal: true}).CompileSelect(query)
 	if err != nil {
 		return "", nil, err
 	}

@@ -205,6 +205,17 @@ func TestSensitiveFieldsCannotBeSelectedOrSearched(t *testing.T) {
 	}
 }
 
+func TestSensitiveFieldsCannotBeExposedAsFilters(t *testing.T) {
+	definitions := []definition.Definition{
+		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "account"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "secret", "type": "string", "sensitive": true}}}},
+		{APIVersion: definition.APIVersion, Kind: "View", Metadata: definition.Metadata{Name: "accounts"}, Spec: map[string]any{"entity": "account", "fields": []any{"id"}, "exposedFilters": map[string]any{"secret": map[string]any{"field": "secret", "operator": "contains"}}}},
+	}
+	diagnostics := compiler.Compile("test", 1, definitions).Diagnostics
+	if !hasDiagnosticMessage(diagnostics, "View", "accounts", "spec.exposedFilters.secret.field", "sensitive fields cannot be exposed as filters") {
+		t.Fatalf("sensitive exposed filter accepted: %v", diagnostics)
+	}
+}
+
 func TestGroupedViewSortRequiresEmittedOutput(t *testing.T) {
 	definitions := []definition.Definition{
 		{APIVersion: definition.APIVersion, Kind: "Entity", Metadata: definition.Metadata{Name: "event"}, Spec: map[string]any{"fields": []any{map[string]any{"name": "occurred_at", "type": "datetime"}}}},

@@ -1003,6 +1003,10 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 				out = append(out, missingFieldDiagnostic("View", name, "spec.exposedFilters."+key, fieldName, false))
 				continue
 			}
+			fieldDefinition, _ := viewFieldDefinition(fieldName, e, relationships, a)
+			if fieldDefinition.Sensitive {
+				out = append(out, diagnostic("View", name, "spec.exposedFilters."+key+".field", "sensitive fields cannot be exposed as filters"))
+			}
 			fieldType, _ := viewFieldType(fieldName, e, relationships, a)
 			allowed := map[string]bool{"eq": true}
 			if map[string]bool{"email": true, "richtext": true, "slug": true, "string": true, "text": true, "url": true}[fieldType] {

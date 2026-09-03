@@ -276,6 +276,17 @@ func TestDecimalAggregateResultsUseCanonicalStrings(t *testing.T) {
 	}
 }
 
+func TestRuntimeGroupedSortRequiresEmittedOutput(t *testing.T) {
+	app := appir.Empty()
+	app.Entities["event"] = appir.Entity{Name: "event", Fields: []appir.Field{{Name: "occurred_at", Type: "datetime"}}}
+	app.Views["events_by_month"] = appir.View{Name: "events_by_month", Entity: "event", ResultShape: "groups", Fields: []string{"occurred_at"}, GroupBy: []appir.ViewGroup{{Field: "occurred_at", As: "month", Bucket: "month"}}, Aggregates: []appir.Aggregate{{Function: "count", Field: "id", Alias: "event_count"}}, Sort: []appir.Sort{{Field: "month"}}, MaxLimit: 10}
+	database := &capturingDatabase{}
+	_, err := (view.Service{DB: database}).RunPage(context.Background(), app, "events_by_month", view.Params{Sort: []appir.Sort{{Field: "occurred_at"}}}, beanctx.Request{})
+	if !dbal.IsCode(err, dbal.InvalidQuery) || database.query.Table != "" {
+		t.Fatalf("runtime group-source sort reached storage: query=%+v err=%v", database.query, err)
+	}
+}
+
 type capturingDatabase struct {
 	query dbal.Select
 	rows  []dbal.Row

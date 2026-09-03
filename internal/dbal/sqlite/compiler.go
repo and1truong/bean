@@ -11,7 +11,8 @@ import (
 var identifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 type Compiler struct {
-	DateBucket func(string, string, string) (string, error)
+	DateBucket    func(string, string, string) (string, error)
+	NativeDecimal bool
 }
 
 func PostgreSQLDateBucket(bucket, column, fieldType string) (string, error) {
@@ -87,6 +88,7 @@ func (c Compiler) CompileSelect(q dbal.Select) (string, []dbal.Value, error) {
 		}
 		cols = append(cols, x)
 	}
+	decimalAliases := map[string]bool{}
 	for _, a := range q.Aggregates {
 		fn := strings.ToUpper(a.Function)
 		if fn != "COUNT" && fn != "SUM" && fn != "MIN" && fn != "MAX" && fn != "AVG" {
@@ -101,7 +103,13 @@ func (c Compiler) CompileSelect(q dbal.Select) (string, []dbal.Value, error) {
 			return "", nil, e
 		}
 		if a.Type == "decimal" && fn != "COUNT" {
-			col = "CAST(" + col + " AS NUMERIC)"
+			decimalAliases[a.Alias] = true
+			if c.NativeDecimal {
+				cols = append(cols, fn+"(CAST("+col+" AS NUMERIC)) AS "+alias)
+			} else {
+				cols = append(cols, "BEAN_DECIMAL_"+fn+"("+col+") AS "+alias)
+			}
+			continue
 		}
 		cols = append(cols, fn+"("+col+") AS "+alias)
 	}
@@ -179,6 +187,9 @@ func (c Compiler) CompileSelect(q dbal.Select) (string, []dbal.Value, error) {
 			x, e := c.QuoteIdentifier(o.Column)
 			if e != nil {
 				return "", nil, e
+			}
+			if decimalAliases[o.Column] && !c.NativeDecimal {
+				x += " COLLATE BEAN_DECIMAL"
 			}
 			if o.Desc {
 				x += " DESC"

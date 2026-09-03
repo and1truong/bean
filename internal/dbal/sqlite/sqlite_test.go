@@ -33,13 +33,63 @@ func TestCompilerRejectsIdentifiersAndParameterizes(t *testing.T) {
 	}
 }
 
-func TestCompilerCastsDecimalAggregates(t *testing.T) {
+func TestCompilerUsesExactDecimalAggregates(t *testing.T) {
 	statement, _, err := (sqlite.Compiler{}).CompileSelect(dbal.Select{Table: "sale", Aggregates: []dbal.Aggregate{{Function: "sum", Column: "amount", Alias: "total", Type: "decimal"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if statement != `SELECT SUM(CAST("amount" AS NUMERIC)) AS "total" FROM "sale"` {
+	if statement != `SELECT BEAN_DECIMAL_SUM("amount") AS "total" FROM "sale"` {
 		t.Fatalf("statement=%q", statement)
+	}
+}
+
+func TestDecimalAggregatesPreserveExactValues(t *testing.T) {
+	ctx := context.Background()
+	database, err := sqlite.Open(filepath.Join(t.TempDir(), "decimal.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err = database.ExecuteMigration(ctx, []string{`CREATE TABLE item (id TEXT PRIMARY KEY, amount TEXT)`}); err != nil {
+		t.Fatal(err)
+	}
+	for id, amount := range map[string]string{"one": "0.1", "two": "0.2", "large": "9007199254740993.1"} {
+		if _, err = database.Insert(ctx, dbal.Insert{Table: "item", Values: map[string]dbal.Value{"id": id, "amount": amount}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, err := database.Select(ctx, dbal.Select{Table: "item", Aggregates: []dbal.Aggregate{
+		{Function: "sum", Column: "amount", Alias: "total", Type: "decimal"},
+		{Function: "avg", Column: "amount", Alias: "average", Type: "decimal"},
+		{Function: "min", Column: "amount", Alias: "minimum", Type: "decimal"},
+		{Function: "max", Column: "amount", Alias: "maximum", Type: "decimal"},
+	}})
+	if err != nil || len(rows) != 1 || rows[0]["total"] != "9007199254740993.4" || rows[0]["average"] != "3002399751580331.1333333333333333" || rows[0]["minimum"] != "0.1" || rows[0]["maximum"] != "9007199254740993.1" {
+		t.Fatalf("rows=%v err=%v", rows, err)
+	}
+}
+
+func TestDecimalAggregateOrderingIsNumeric(t *testing.T) {
+	ctx := context.Background()
+	database, err := sqlite.Open(filepath.Join(t.TempDir(), "decimal-order.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err = database.ExecuteMigration(ctx, []string{`CREATE TABLE item (id TEXT PRIMARY KEY, category TEXT, amount TEXT)`}); err != nil {
+		t.Fatal(err)
+	}
+	for _, query := range []dbal.Insert{
+		{Table: "item", Values: map[string]dbal.Value{"id": "one", "category": "small", "amount": "2"}},
+		{Table: "item", Values: map[string]dbal.Value{"id": "two", "category": "large", "amount": "10"}},
+	} {
+		if _, err = database.Insert(ctx, query); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, err := database.Select(ctx, dbal.Select{Table: "item", GroupBy: []dbal.Group{{Column: "category", Alias: "category"}}, Aggregates: []dbal.Aggregate{{Function: "sum", Column: "amount", Alias: "total", Type: "decimal"}}, OrderBy: []dbal.Order{{Column: "total"}}})
+	if err != nil || len(rows) != 2 || rows[0]["total"] != "2" || rows[1]["total"] != "10" {
+		t.Fatalf("rows=%v err=%v", rows, err)
 	}
 }
 
