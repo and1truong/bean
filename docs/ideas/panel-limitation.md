@@ -2,7 +2,7 @@
 
 Status: idea inventory; responsive presets, multiple Page layout bands, policy-aware empty-Region collapse, and safe-gutter semantic section widths are implemented. Remaining cases are unscheduled.
 
-Related: [`panel-responsive-layout.md`](panel-responsive-layout.md).
+Related: [`panel-responsive-layout.md`](panel-responsive-layout.md) and [`tabbed-information-architecture.md`](tabbed-information-architecture.md).
 
 Panel currently provides a flat, compile-time composition of named Regions containing ordered Blocks or inline semantic content. Its layout vocabulary is closed and intentionally avoids arbitrary CSS. The following cases expose boundaries in that model. They are not all necessarily Panel responsibilities.
 
@@ -137,7 +137,7 @@ These patterns require more than spatial placement:
 - conditional visibility;
 - selection context shared between Blocks.
 
-Panel currently has no interaction state. These may justify a typed interactive container or Block rather than expanding base Panel semantics.
+Panel currently has no interaction state. These may justify a typed interactive container rather than expanding base Panel semantics. The three-level Page navigation case is explored in [`tabbed-information-architecture.md`](tabbed-information-architecture.md).
 
 ## 14. Masonry and unpredictable heights
 
