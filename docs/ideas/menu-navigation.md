@@ -1,6 +1,6 @@
 # Idea: Dynamic hierarchical Menu navigation
 
-Status: idea; core direction and initial placement semantics agreed, implementation not scheduled.
+Status: design direction ready for goal and implementation planning; implementation not started.
 
 Related: [`panel-limitation.md`](panel-limitation.md).
 
@@ -102,71 +102,64 @@ Label override, optional
 
 A placement with no parent is level 1. Every child derives its level from its parent chain. Authors do not set `level` directly because level alone cannot identify the containing branch.
 
-## Agreed placement semantics
+## Agreed initial contract
 
-The following decisions are accepted for the initial design:
+The following decisions are accepted for the first implementation:
 
 1. A target may appear in multiple Menu instances but at most once in the same Menu instance.
 2. The target supplies its default label; each placement may override that label.
 3. Deleting a target Entity record removes all of its dynamic placements atomically. Broken links are not retained.
 4. Deleting a Menu owner record removes every dynamic placement in that logical Menu instance atomically.
 5. Menu instances are derived from `(Menu definition, owner record ID)` and are not separate records.
+6. Removing a placement that has children is rejected until those children are explicitly moved or removed.
+7. Scoped Menus contain dynamic Entity-record targets only. Static Page/View target templates in every scoped instance are deferred.
+8. Record fields and submitted navigation placements use one dedicated typed Action input and commit or roll back in the same transaction.
+9. The initial limits are 32 Menu definitions, depth 3, 200 placements per Menu instance, 32 visible Menu instances per record editor, weight `-1000` through `1000`, and 120 characters per label override.
+10. A Menu definition is the canonical source of static Page/View placements. Studio may edit that Menu contextually from Page/View editors.
+11. Publication is rejected when removing a Menu definition or Entity navigation destination would orphan persisted dynamic placements. Cleanup or reassignment must happen through Actions first.
 
 ## Hierarchy and ordering
 
 - Parent and child placements must belong to the same Menu instance.
-- Maximum depth is compiler/runtime bounded, initially no more than three.
+- Maximum depth is three.
 - A placement cannot parent itself or one of its ancestors.
 - Siblings sort by ascending `(weight, placement ID)`; a heavier weight therefore sinks.
-- Default weight is `0` and the accepted integer range must be bounded.
+- Default weight is `0`; accepted values range from `-1000` through `1000`.
 - Stable placement ID breaks weight ties and prevents label or route changes from reordering siblings.
 - A Policy-denied parent suppresses its complete subtree without promoting descendants.
 - The active trail is derived from the resolved current target and includes its visible ancestors.
 
-Removing or reparenting a placement that currently has children still needs an explicit contract; silent orphaning is forbidden.
+Removing a placement with children is rejected until the children are explicitly moved or removed. Reparenting a subtree is allowed only when the result remains acyclic and within the depth limit.
 
 ## Typed targets
 
-### Static Page target
+### Static Page and View Display targets
 
-A Page may contribute one or more static placements:
+The Menu definition is the canonical source of static placements:
 
 ```yaml
-kind: Page
-name: recruiting_activity
-route: /recruiting/activity
-navigation:
-  - menu: main_navigation
-    id: activity
+kind: Menu
+name: main_navigation
+profile: workspace
+maxDepth: 3
+items:
+  - id: activity
     label: Activity
+    target: {page: recruiting_activity}
     parent: recruiting
     weight: 30
+  - id: candidates
+    label: Candidates
+    target: {view: candidates, display: directory}
+    parent: recruiting
+    weight: 20
 ```
 
-The Page editor may expose “Add to menu,” parent, weight, and label override controls. Compilation normalizes the contribution into the owning Menu's immutable static placement tree.
+A Page target resolves its referenced Page route. A View target must identify one `type: page` Display; Block Displays have no independent route and are ineligible.
 
-A Page with route parameters requires compiler-validated bindings before it can be a static target in a scoped Menu.
+Studio may still expose “Add to menu,” parent, weight, and label override controls inside Page and View Display editors. Those controls edit the canonical Menu draft rather than distributing placement metadata across target definitions.
 
-### Static View Display target
-
-Placement belongs to a routable Display, not to the View as a whole:
-
-```yaml
-kind: View
-name: candidates
-displays:
-  directory:
-    type: page
-    route: /candidates
-    navigation:
-      - menu: main_navigation
-        id: candidates
-        label: Candidates
-        parent: recruiting
-        weight: 20
-```
-
-Only `type: page` Displays are eligible. Block Displays have no independent route and cannot be navigation targets.
+Static Page/View placements are initially allowed only in unscoped Menus. Repeating a static target template in every owner-scoped Menu instance is deferred.
 
 ### Entity record target
 
@@ -276,9 +269,13 @@ Menu visibility never replaces target authorization. Knowing or constructing a r
 ### Writes
 
 - Add, remove, reparent, reorder, and label override operations execute through Actions.
-- Updating an Entity record and its submitted navigation placements should commit atomically.
-- Optimistic concurrency must prevent two edits from silently overwriting placement order or parent.
+- Create/update requests may carry a dedicated optional `navigation` input beside ordinary Entity fields.
+- Omitted `navigation` leaves placements unchanged; a submitted list is the desired final placement set; an explicitly empty list removes every submitted-scope placement.
+- Entity fields and the complete placement change commit or roll back in one transaction.
+- A generic client-controlled nested operation list is not accepted.
+- Optimistic concurrency prevents two edits from silently overwriting placement order or parent.
 - Target deletion and owner deletion perform the agreed placement cleanup in the same transaction.
+- Removing a parent placement fails while children remain.
 - Clients cannot choose storage table names, owner IDs outside authorized instances, target types not declared by metadata, or cyclic parent chains.
 
 The implementation may require generic placement persistence, but SQL and backend details remain confined to `internal/dbal/sqlite`, the PostgreSQL Adapter, and `internal/migration` as appropriate.
@@ -299,13 +296,15 @@ Dynamic Entity record placements remain application data and are never compiled 
 
 ### Page and View Display definitions
 
-Studio can present contextual “Add to menu” controls while still producing inspectable metadata:
+Studio can present contextual “Add to menu” controls while updating the canonical Menu draft:
 
 - Menu;
 - stable placement ID;
 - parent static placement;
 - bounded weight;
 - optional label override.
+
+Page/View source definitions remain free of duplicated placement metadata.
 
 ### Entity record editor
 
@@ -335,19 +334,16 @@ The interface must remain usable without drag-and-drop. Pointer reordering may b
 
 ## Required bounds
 
-The first contract must bound:
+The first contract fixes:
 
-- number of Menu definitions;
-- maximum depth, initially three;
-- static and dynamic placements per Menu instance;
-- Menu instances returned to one record editor;
-- weight range;
-- label override length;
-- route parameter bindings;
-- target View query limits;
-- cycle-detection work.
+- at most 32 Menu definitions;
+- maximum depth of 3;
+- at most 200 static or dynamic placements per Menu instance;
+- at most 32 authorized Menu instances returned to one record editor;
+- weight from `-1000` through `1000`;
+- label override length of at most 120 characters.
 
-Concrete numbers should come from the maintained acceptance application and adversarial tests rather than arbitrary metadata freedom.
+Route parameter bindings, target View queries, and cycle detection must also remain bounded by their existing runtime contracts.
 
 ## Maintained proof
 
@@ -369,14 +365,19 @@ A useful slice should include:
 
 Application-specific Book behavior belongs under `examples/`; core Menu, target, placement, and rendering Modules remain generic.
 
-## Remaining decisions
+## Publication safety
 
-1. Should deleting a parent placement with children be rejected until children are moved, or delete the complete placement subtree?
-2. Can a scoped Menu include one static target template in every instance, and if so how are owner fields bound to its route?
-3. Does an Entity record edit use a dedicated navigation Action input or a generic nested placement operation?
-4. What bounded placement and Menu-instance limits are justified by the Book/Page acceptance slice?
-5. Should Page/View static placement metadata live on each target as illustrated, or remain canonically inside Menu while Studio edits it contextually?
-6. How should publication handle removal of a Menu definition or Entity navigation destination while dynamic placements still exist?
+Removing or incompatibly changing a Menu definition, its owner scope, or an Entity navigation destination is not an automatic destructive migration while dynamic placements reference that contract. Validation and migration preflight must reject publication with actionable evidence. Authors first remove or reassign affected placements through ordinary Actions, then publish the definition change.
+
+Increasing non-destructive limits may be compatible. Reducing depth, placement limits, label length, or weight range requires preflight proof that persisted placements already comply; activation must never truncate, reorder, or delete placement data silently.
+
+## Deferred questions
+
+- Static target templates repeated across every instance of a scoped Menu.
+- External URLs and user-authored raw internal paths.
+- More than one placement for the same target in one Menu instance.
+- Drag-and-drop ordering beyond accessible parent and weight controls.
+- Theme-level global Menu slots instead of explicit Menu Blocks.
 
 ## Non-goals
 
