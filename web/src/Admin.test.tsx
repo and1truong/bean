@@ -137,6 +137,51 @@ describe('Admin',()=>{
     expect(screen.queryByTestId('field-title')).not.toBeInTheDocument()
   })
 
+  it('renders owner-side contents and contextual create affordances',async()=>{
+    const contextualManifest:any=structuredClone(manifest)
+    contextualManifest.entities.book={Name:'book',Label:'Book',Fields:[{Name:'title',Label:'Title',Type:'string',Required:true}]}
+    contextualManifest.entities.page={Name:'page',Label:'Page',Fields:[{Name:'title',Label:'Title',Type:'string',Required:true},{Name:'body',Label:'Body',Type:'text',Required:true}],Navigation:{LabelField:'title',Destination:{View:'pages',Display:'detail'},Menus:['book_contents']}}
+    contextualManifest.actions.create_page={Name:'create_page',Entity:'page',Operation:'create',Input:{title:{Name:'title',Type:'string'},body:{Name:'body',Type:'text'}}}
+    contextualManifest.adminResources.books={Name:'books',Entity:'book',Label:'Book',LabelField:'title',View:'book_admin',CreateAction:'',UpdateAction:'',DeleteAction:'',List:{Columns:['title'],Search:[],Filters:[],Sort:[],PageSize:25},Form:{Fields:['title'],Readonly:[]},Actions:[]}
+    contextualManifest.adminResources.pages={Name:'pages',Entity:'page',Label:'Page',LabelField:'title',View:'page_admin',CreateAction:'create_page',UpdateAction:'',DeleteAction:'',List:{Columns:['title'],Search:[],Filters:[],Sort:[],PageSize:25},Form:{Fields:['title','body'],Readonly:[]},Actions:[]}
+    vi.spyOn(globalThis,'fetch').mockImplementation(async input=>{const url=String(input);if(url.includes('/api/admin/resources/books/book-1'))return new Response(JSON.stringify({data:{id:'book-1',title:'Building Bean'},context:{menus:[{name:'book_contents',label:'Book contents',items:[],creates:[{resource:'pages',entity:'page',label:'Page'}]}]}}));if(url.includes('/api/admin/audit'))return new Response('[]');return new Response(JSON.stringify(contextualManifest))})
+    show('/books/book-1')
+    expect(await screen.findByRole('heading',{name:'Book contents'})).toBeInTheDocument()
+    expect(screen.getByText('No contents yet.')).toBeInTheDocument()
+    expect(screen.getByRole('link',{name:'Add Page'})).toHaveAttribute('href','/admin/books/book-1/create/pages?menu=book_contents')
+  })
+
+  it('validates and submits one fixed contextual placement',async()=>{
+    const contextualManifest:any=structuredClone(manifest)
+    contextualManifest.entities.book={Name:'book',Label:'Book',Fields:[{Name:'title',Label:'Title',Type:'string',Required:true}]}
+    contextualManifest.entities.page={Name:'page',Label:'Page',Fields:[{Name:'title',Label:'Title',Type:'string',Required:true},{Name:'body',Label:'Body',Type:'text',Required:true}],Navigation:{LabelField:'title',Destination:{View:'pages',Display:'detail'},Menus:['book_contents']}}
+    contextualManifest.actions.create_page={Name:'create_page',Entity:'page',Operation:'create',Input:{title:{Name:'title',Type:'string'},body:{Name:'body',Type:'text'}}}
+    contextualManifest.adminResources.books={Name:'books',Entity:'book',Label:'Book',LabelField:'title',View:'book_admin',CreateAction:'',UpdateAction:'',DeleteAction:'',List:{Columns:['title'],Search:[],Filters:[],Sort:[],PageSize:25},Form:{Fields:['title'],Readonly:[]},Actions:[]}
+    contextualManifest.adminResources.pages={Name:'pages',Entity:'page',Label:'Page',LabelField:'title',View:'page_admin',CreateAction:'create_page',UpdateAction:'',DeleteAction:'',List:{Columns:['title'],Search:[],Filters:[],Sort:[],PageSize:25},Form:{Fields:['title','body'],Readonly:[]},Actions:[]}
+    const owner={data:{id:'book-1',title:'Building Bean'},context:{menus:[{name:'book_contents',label:'Book contents',items:[{ID:'chapter-1',Label:'Architecture',Route:'/pages/page-1',Level:1}],creates:[{resource:'pages',entity:'page',label:'Page'}]}]}}
+    let submitted:any
+    vi.spyOn(globalThis,'fetch').mockImplementation(async(input,init)=>{const url=String(input);if(url.includes('/api/admin/resources/books/book-1'))return new Response(JSON.stringify(owner));if(url.includes('/api/actions/create_page')){submitted=JSON.parse(String(init?.body));return new Response(JSON.stringify({data:{id:'page-2',title:'Compiler'}}))}if(url.includes('/api/admin/audit'))return new Response('[]');return new Response(JSON.stringify(contextualManifest))})
+    show('/books/book-1/create/pages?menu=book_contents')
+    expect(await screen.findByText('Book contents — Building Bean')).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox',{name:/Book contents/})).not.toBeInTheDocument()
+    fireEvent.change(screen.getByTestId('field-title'),{target:{value:'Compiler'}})
+    fireEvent.change(screen.getByTestId('field-body'),{target:{value:'Compile immutable metadata.'}})
+    fireEvent.change(screen.getByLabelText('Parent'),{target:{value:'chapter-1'}})
+    fireEvent.change(screen.getByLabelText('Weight'),{target:{value:'20'}})
+    expect(screen.getByRole('link',{name:'Cancel'})).toHaveAttribute('href','/admin/books/book-1')
+    fireEvent.click(screen.getByTestId('create-page'))
+    await waitFor(()=>expect(submitted?._navigation).toEqual({placements:[{menu:'book_contents',ownerId:'book-1',parentId:'chapter-1',weight:20}]}))
+  })
+
+  it('rejects a contextual route not present in the owner response',async()=>{
+    const contextualManifest:any=structuredClone(manifest)
+    contextualManifest.adminResources.books={...contextualManifest.adminResources.article,Name:'books',Entity:'article'}
+    contextualManifest.adminResources.pages={...contextualManifest.adminResources.article,Name:'pages'}
+    vi.spyOn(globalThis,'fetch').mockImplementation(async input=>String(input).includes('/api/admin/resources/books/book-1')?new Response(JSON.stringify({data:{id:'book-1',title:'Building Bean'},context:{menus:[]}})):new Response(JSON.stringify(contextualManifest)))
+    show('/books/book-1/create/pages?menu=tampered')
+    expect(await screen.findByRole('heading',{name:'Admin resource not found'})).toBeInTheDocument()
+  })
+
   it('renders protected system operations without secret fields',async()=>{
 	vi.spyOn(globalThis,'fetch').mockImplementation(async input=>{const url=String(input);if(url.endsWith('/summary'))return new Response(JSON.stringify({releaseId:'release-1',version:3,jobs:{failed:1},outbox:{pending:2}}),{status:200});if(url.endsWith('/users'))return new Response(JSON.stringify([{id:'u1',email:'operator@example.test',roles:'["administrator"]',tenant_id:null,created_at:'2026-08-30T00:00:00Z'}]),{status:200});if(url.endsWith('/jobs'))return new Response(JSON.stringify([{id:'j1',name:'send',status:'failed',attempts:5,max_attempts:5,last_error:'offline'}]),{status:200});if(url.endsWith('/outbox')||url.endsWith('/migrations')||url.endsWith('/releases'))return new Response('[]',{status:200});return new Response(JSON.stringify(manifest),{status:200})})
 	show('/system')

@@ -8,16 +8,16 @@
 
 # Contextual Admin and request-scoped route records plan
 
-Status: planned. Detailed contract: `docs/plans/contextual-admin-route-records.md`.
+Status: complete. Detailed contract: `docs/plans/contextual-admin-route-records.md`.
 
 | Milestone | Deliverable | Verification | Status |
 | --- | --- | --- | --- |
-| 0 | Freeze View-backed resolution, cache boundaries, response shape, route, and query budget | failing HTTP/Menu/View contracts and counting reader | pending |
-| 1 | Add immutable request-scoped resolved-record/proof reuse | View/Menu/HTTP isolation and duplicate-read tests | pending |
-| 2 | Derive owner-side Menu trees and eligible target AdminResources | deterministic and Policy-negative HTTP tests | pending |
-| 3 | Add generic contextual Admin create flow | Admin React tests, lint, and typecheck | pending |
-| 4 | Prove Book → Add Page atomically | Books browser, tamper, rollback, and validation evidence | pending |
-| 5 | Document and qualify | `make check` and `make build` | pending |
+| 0 | Freeze View-backed resolution, cache boundaries, response shape, route, and query budget | failing HTTP/Menu/View contracts and counting reader | done |
+| 1 | Add immutable request-scoped resolved-record/proof reuse | View/Menu/HTTP isolation and duplicate-read tests | done |
+| 2 | Derive owner-side Menu trees and eligible target AdminResources | deterministic and Policy-negative HTTP tests | done |
+| 3 | Add generic contextual Admin create flow | Admin React tests, lint, and typecheck | done |
+| 4 | Prove Book → Add Page atomically | Books browser, tamper, rollback, and validation evidence | done |
+| 5 | Document and qualify | `make check` and `make build` | done |
 
 ## Working rules
 

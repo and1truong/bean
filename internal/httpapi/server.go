@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/netip"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -331,16 +332,111 @@ func (s *Server) adminResourceRecord(w http.ResponseWriter, r *http.Request) {
 		problem(w, 404, "not_found", "Admin resource not found.", requestID(r))
 		return
 	}
-	result, e := s.Views.RunPage(r.Context(), a, resource.View, view.Params{RecordID: r.PathValue("id"), Limit: 1}, s.ctx(r))
+	requestContext := s.ctx(r)
+	scope := view.NewScope(a, s.Views.DB, requestContext)
+	record, e := scope.Resolve(r.Context(), resource.View, r.PathValue("id"))
+	if e != nil {
+		if dbal.IsCode(e, dbal.NotFound) {
+			problem(w, 404, "not_found", "Record not found.", requestID(r))
+		} else {
+			respondError(w, r, e)
+		}
+		return
+	}
+	menus, e := s.adminRecordMenus(r.Context(), scope, a, resource, r.PathValue("id"), requestContext)
 	if e != nil {
 		respondError(w, r, e)
 		return
 	}
-	if len(result.Rows) == 0 {
-		problem(w, 404, "not_found", "Record not found.", requestID(r))
-		return
+	write(w, 200, map[string]any{"data": record.Row(), "context": map[string]any{"menus": menus}})
+}
+
+type adminContextCreate struct {
+	Resource string `json:"resource"`
+	Entity   string `json:"entity"`
+	Label    string `json:"label"`
+}
+
+type adminContextMenu struct {
+	Name    string                `json:"name"`
+	Label   string                `json:"label"`
+	Items   []beanmenu.RenderItem `json:"items"`
+	Creates []adminContextCreate  `json:"creates"`
+}
+
+func (s *Server) adminRecordMenus(ctx context.Context, scope *view.Scope, app *appir.App, owner appir.AdminResource, ownerID string, request beanctx.Request) ([]adminContextMenu, error) {
+	menuNames := make([]string, 0)
+	for name, definition := range app.Menus {
+		if definition.Owner != nil && definition.Owner.Entity == owner.Entity {
+			menuNames = append(menuNames, name)
+		}
 	}
-	write(w, 200, map[string]any{"data": result.Rows[0]})
+	sort.Strings(menuNames)
+	out := make([]adminContextMenu, 0, len(menuNames))
+	for _, menuName := range menuNames {
+		creates := contextualCreates(app, menuName, request)
+		if len(creates) == 0 {
+			continue
+		}
+		tree, err := beanmenu.DynamicTreeScoped(ctx, scope, menuName, ownerID)
+		if err != nil {
+			if dbal.IsCode(err, dbal.NotFound) {
+				continue
+			}
+			return nil, err
+		}
+		label := strings.ReplaceAll(menuName, "_", " ")
+		if label != "" {
+			label = strings.ToUpper(label[:1]) + label[1:]
+		}
+		out = append(out, adminContextMenu{Name: menuName, Label: label, Items: tree, Creates: creates})
+		if len(out) == beanmenu.MaxEditorInstances {
+			break
+		}
+	}
+	return out, nil
+}
+
+func contextualCreates(app *appir.App, menuName string, request beanctx.Request) []adminContextCreate {
+	names := make([]string, 0, len(app.AdminResources))
+	for name := range app.AdminResources {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := []adminContextCreate{}
+	for _, name := range names {
+		resource := app.AdminResources[name]
+		entity := app.Entities[resource.Entity]
+		if resource.CreateAction == "" || entity.Navigation == nil || !containsString(entity.Navigation.Menus, menuName) || !canRunCreate(app, resource.CreateAction, request) {
+			continue
+		}
+		out = append(out, adminContextCreate{Resource: resource.Name, Entity: resource.Entity, Label: resource.Label})
+		if len(out) == beanmenu.MaxEditorInstances {
+			break
+		}
+	}
+	return out
+}
+
+func canRunCreate(app *appir.App, name string, request beanctx.Request) bool {
+	if request.User != nil && containsString(request.User.Roles, "administrator") {
+		return true
+	}
+	actionDefinition, ok := app.Actions[name]
+	if !ok || actionDefinition.Policy == "" {
+		return false
+	}
+	policyDefinition, ok := app.Policies[actionDefinition.Policy]
+	return ok && policy.Can(policyDefinition, true, request, nil)
+}
+
+func containsString(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
 }
 func authenticationCondition(condition *expr.Expr) bool {
 	if condition == nil {

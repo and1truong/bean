@@ -1,6 +1,6 @@
 # Goal: contextual Admin and request-scoped route records
 
-Status: planned
+Status: complete
 
 Adopt the safe part of Drupal-style route upcasting: resolve an authorized record through a View once for one composed server request and make an immutable snapshot available to declared downstream handlers. Prove the capability with a generic Book → Add Page Admin journey.
 

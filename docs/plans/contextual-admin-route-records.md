@@ -1,6 +1,6 @@
 # Contextual Admin and request-scoped route records
 
-Status: planned
+Status: complete
 
 This plan turns the Books Admin friction into a generic Bean capability while adopting the useful part of Drupal-style route parameter upcasting: resolve a route identity once, preserve an authorized record snapshot for the lifetime of one server request, and make that context available to declared downstream handlers.
 
@@ -236,6 +236,14 @@ Run the reusable PostgreSQL HTTP/Menu contract when the implementation changes s
 - Existing generic Page creation, Page-side NavigationEditor, Menu rendering, AdminResource APIs, and old clients remain compatible.
 - No Entity relation, SQL outside DBAL/migration, raw Menu mutation endpoint, global hook, or process-wide cache is introduced.
 - `make check` and `make build` pass.
+
+## Completion evidence
+
+- View scope tests prove exact-projection caching, deep-copy immutability, copied authorization context, request isolation, and explicit Entity re-reads for different Policies and contextual predicates.
+- Menu counting-reader coverage proves the composed Admin request performs one Book lookup while retaining the compatible direct `DynamicTree` API.
+- HTTP contracts cover empty and populated owner context, stable eligible targets, hidden and missing targets, projection compatibility, and missing-owner not-found behavior.
+- Admin React contracts cover empty owner context, semantic Add routes, fixed placement submission, and invalid triple rejection. The Books browser journey creates top-level and child Pages, returns to the Book with immediate tree visibility, rejects tampered identities, and proves failed placement validation leaves no Page.
+- `./bin/bean app validate --file examples/books/app.yaml`, `make check`, and `make test-postgres` pass. The final `make build` is recorded in `docs/progress.md`.
 
 ## Explicit non-goals
 

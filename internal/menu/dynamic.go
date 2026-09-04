@@ -14,6 +14,13 @@ import (
 )
 
 func DynamicTree(ctx context.Context, reader view.Reader, app *appir.App, menuName, ownerID string, request beanctx.Request) ([]RenderItem, error) {
+	return DynamicTreeScoped(ctx, view.NewScope(app, reader, request), menuName, ownerID)
+}
+
+// DynamicTreeScoped reuses request-local owner authorization when a compatible
+// View resolution already proved the same Entity read contract.
+func DynamicTreeScoped(ctx context.Context, scope *view.Scope, menuName, ownerID string) ([]RenderItem, error) {
+	app, reader, request := scope.App(), scope.Reader(), scope.Request()
 	definition, exists := app.Menus[menuName]
 	if !exists || definition.Owner == nil {
 		return nil, &dbal.Error{Code: dbal.NotFound, Message: "Menu not found"}
@@ -21,7 +28,7 @@ func DynamicTree(ctx context.Context, reader view.Reader, app *appir.App, menuNa
 	if ownerID == "" {
 		return nil, invalid("Menu owner is required")
 	}
-	if _, err := view.ReadEntityRecord(ctx, reader, app, definition.Owner.Entity, ownerID, request); err != nil {
+	if err := scope.AuthorizeEntity(ctx, definition.Owner.Entity, ownerID); err != nil {
 		return nil, &dbal.Error{Code: dbal.NotFound, Message: "Menu owner not found", Cause: err}
 	}
 	rows, err := reader.Select(ctx, dbal.Select{Table: PlacementTable, Where: instancePredicate(menuName, ownerID), OrderBy: []dbal.Order{{Column: "weight"}, {Column: "id"}}, Limit: MaxPlacements + 1})
