@@ -21,6 +21,12 @@ entity: post
 exposedFilters:
   category_slug: {name: category.slug, required: true, type: slug}
 fields: [id, title, slug, excerpt, author_display_name, published_at]
+displays:
+  list:
+    type: block
+    renderer: {type: list, titleField: title, bodyField: excerpt, linkRoute: /posts/:slug}
+    pager: {type: cursor, pageSize: 10}
+    emptyState: No published posts in this category.
 filter:
   left: {name: status, source: record}
   op: eq
@@ -39,6 +45,12 @@ entity: post
 exposedFilters:
   tag_slug: {name: tags.slug, required: true, type: slug}
 fields: [id, title, slug, excerpt, author_display_name, published_at]
+displays:
+  list:
+    type: block
+    renderer: {type: list, titleField: title, bodyField: excerpt, linkRoute: /posts/:slug}
+    pager: {type: cursor, pageSize: 10}
+    emptyState: No published posts with this tag.
 filter:
   left: {name: status, source: record}
   op: eq
@@ -55,6 +67,12 @@ name: public_categories
 defaultLimit: 50
 entity: category
 fields: [id, name, slug]
+displays:
+  index:
+    type: block
+    renderer: {type: list, titleField: name, linkRoute: /categories/:slug}
+    pager: {type: cursor, pageSize: 50}
+    emptyState: No categories yet.
 maxLimit: 100
 sort:
   - {field: name}
@@ -64,6 +82,12 @@ name: public_tags
 defaultLimit: 50
 entity: tag
 fields: [id, name, slug]
+displays:
+  index:
+    type: block
+    renderer: {type: list, titleField: name, linkRoute: /tags/:slug}
+    pager: {type: cursor, pageSize: 50}
+    emptyState: No tags yet.
 maxLimit: 100
 sort:
   - {field: name}
@@ -98,9 +122,9 @@ list:
 ---
 kind: Block
 name: category_index
-presentation: {emptyState: No categories yet., linkRoute: '/categories/:slug', mode: list, titleField: name}
 type: view
 view: public_categories
+display: index
 ---
 kind: Block
 name: category_posts
@@ -108,15 +132,15 @@ bindings:
   category_slug: {name: slug, required: true, source: context}
 inputs:
   category_slug: {required: true, type: slug}
-presentation: {bodyField: excerpt, emptyState: No published posts in this category., linkRoute: '/posts/:slug', mode: list, titleField: title}
 type: view
 view: published_posts_by_category
+display: list
 ---
 kind: Block
 name: tag_index
-presentation: {emptyState: No tags yet., linkRoute: '/tags/:slug', mode: list, titleField: name}
 type: view
 view: public_tags
+display: index
 ---
 kind: Block
 name: tag_posts
@@ -124,9 +148,9 @@ bindings:
   tag_slug: {name: slug, required: true, source: context}
 inputs:
   tag_slug: {required: true, type: slug}
-presentation: {bodyField: excerpt, emptyState: No published posts with this tag., linkRoute: '/posts/:slug', mode: list, titleField: title}
 type: view
 view: published_posts_by_tag
+display: list
 ---
 kind: Panel
 name: categories_panel
@@ -158,28 +182,32 @@ regions:
 ---
 kind: Page
 name: categories
-panel: categories_panel
 route: /categories
 title: Categories
+sections:
+  - {id: index, panel: categories_panel, width: contained}
 ---
 kind: Page
 name: category
 context:
   slug: {name: slug, required: true, source: route}
-panel: category_panel
 route: /categories/:slug
 title: Category
+sections:
+  - {id: posts, panel: category_panel, width: contained}
 ---
 kind: Page
 name: tags
-panel: tags_panel
 route: /tags
 title: Tags
+sections:
+  - {id: index, panel: tags_panel, width: contained}
 ---
 kind: Page
 name: tag
 context:
   slug: {name: slug, required: true, source: route}
-panel: tag_panel
 route: /tags/:slug
 title: Tag
+sections:
+  - {id: posts, panel: tag_panel, width: contained}

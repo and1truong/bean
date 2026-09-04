@@ -40,11 +40,17 @@ kind: Panel
 name: signup_panel
 layout: single-column
 regions:
-  - blocks: [public_menu, signup_form]
-    name: main
+  - name: main
+    items:
+      - block: public_menu
+      - id: introduction
+        content:
+          - {type: paragraph, text: Create a member account to join moderated post discussions.}
+      - block: signup_form
 ---
 kind: Page
 name: signup
-panel: signup_panel
 route: /signup
 title: Sign up
+sections:
+  - {id: form, panel: signup_panel, width: contained}

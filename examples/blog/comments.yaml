@@ -48,6 +48,12 @@ exposedFilters:
   post_slug: {name: post.slug, required: true, type: slug}
 fieldFilters: {body: markdown}
 fields: [id, body, author_display_name, created_at]
+displays:
+  discussion:
+    type: block
+    renderer: {type: list, titleField: author_display_name, bodyField: body, metaFields: [created_at]}
+    pager: {type: cursor, pageSize: 100}
+    emptyState: No approved comments yet.
 filter:
   left: {name: status, source: record}
   op: eq
@@ -158,14 +164,17 @@ bindings:
   post_slug: {name: slug, required: true, source: context}
 inputs:
   post_slug: {required: true, type: slug}
-presentation:
-  bodyField: body
-  emptyState: No approved comments yet.
-  metaFields: [created_at]
-  mode: list
-  titleField: author_display_name
 type: view
 view: approved_comments
+display: discussion
+---
+kind: Block
+name: comment_form_intro
+type: content
+policy: member_write
+content:
+  - {type: heading, text: Join the discussion}
+  - {type: paragraph, text: Comments are held for editorial approval before publication.}
 ---
 kind: Block
 name: submit_comment_form
@@ -201,7 +210,8 @@ kind: Page
 name: post_comment_queue
 context:
   id: {name: id, required: true, source: route}
-panel: post_comment_queue_panel
 policy: editor_only
 route: /blog/:id/comments
 title: Comment moderation
+sections:
+  - {id: queue, panel: post_comment_queue_panel, width: wide}

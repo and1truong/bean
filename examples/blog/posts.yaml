@@ -187,26 +187,49 @@ kind: Panel
 name: home_panel
 layout: single-column
 regions:
-  - blocks: [public_menu, home_posts]
-    name: main
+  - name: main
+    items:
+      - block: public_menu
+      - id: feed_introduction
+        content:
+          - {type: heading, text: Latest posts}
+          - {type: paragraph, text: Published writing from the Bean Blog editorial team.}
+      - block: home_posts
 ---
 kind: Panel
-name: post_panel
+name: post_content_panel
 layout: single-column
 regions:
-  - blocks: [public_menu, post_detail, post_comments, submit_comment_form]
-    name: main
+  - name: main
+    blocks: [public_menu, post_detail]
+---
+kind: Panel
+name: post_discussion_panel
+layout: main-sidebar
+regions:
+  - name: main
+    items:
+      - id: discussion_heading
+        content:
+          - {type: heading, text: Discussion}
+      - block: post_comments
+  - name: sidebar
+    blocks: [comment_form_intro, submit_comment_form]
+    collapseWhenEmpty: true
 ---
 kind: Page
 name: home
-panel: home_panel
 route: /
 title: Bean Blog
+sections:
+  - {id: feed, panel: home_panel, width: contained}
 ---
 kind: Page
 name: post
 context:
   slug: {name: slug, required: true, source: route}
-panel: post_panel
 route: /posts/:slug
 title: Post
+sections:
+  - {id: content, panel: post_content_panel, width: contained}
+  - {id: discussion, panel: post_discussion_panel, width: wide}

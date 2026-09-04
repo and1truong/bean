@@ -1,6 +1,6 @@
 # Bean Blog
 
-A metadata-only public blog with editorial administration, taxonomy, member registration, and moderated comments.
+A metadata-only public blog with editorial administration, taxonomy, member registration, moderated comments, named View Displays, readable section widths, and Policy-aware responsive discussion layout.
 
 ## Definition layout
 
@@ -8,8 +8,8 @@ A metadata-only public blog with editorial administration, taxonomy, member regi
 - `navigation.yaml` — public navigation
 - `access.yaml` — roles, registration, and signup
 - `taxonomy.yaml` — categories and tags
-- `posts.yaml` — post publishing, public Views, and Pages
-- `comments.yaml` — comment submission and moderation
+- `posts.yaml` — post publishing, public Views, readable Page sections, and responsive discussion composition
+- `comments.yaml` — comment submission, named discussion Display, Policy-aware form content, and moderation
 
 ## Run it
 

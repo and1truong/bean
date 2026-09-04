@@ -1,48 +1,36 @@
-# Goal: Semantic Page section widths
+# Goal: Modernize Bean Blog composition
 
 Status: complete
 
-Allow each ordered Page section to choose a bounded semantic content width so full, wide, and readable bands can coexist without arbitrary CSS or nested Panels.
+Update the maintained metadata-only Blog example to exercise named View Displays and the current responsive Page/Panel composition contract, with readable article widths and Policy-aware discussion layout, while preserving editorial, publication, identity, taxonomy, moderation, and content-safety behavior.
 
 ## Design
 
-```yaml
-kind: Page
-name: article
-route: /articles/:slug
-sections:
-  - {id: hero, panel: article_hero, width: full}
-  - {id: body, panel: article_body, width: contained}
-  - {id: related, panel: related_posts, width: wide}
-```
-
-`sections[].width` accepts only:
-
-- `contained`: runtime-owned readable width of `48rem` including safe horizontal gutters;
-- `wide`: current application width of `72rem` including safe gutters;
-- `full`: all available viewport width with the same safe gutters, not edge-to-edge bleed.
-
-Omitted width normalizes to `wide`. Legacy `Page.panel` also renders as implicit `wide`, preserving its geometry. Below a section's maximum all modes fill the available viewport, so no new breakpoint metadata is introduced.
-
-The width belongs to Page placement rather than Panel because one reusable Panel may appear in different Page contexts, while Sequence layout remains independent. AppIR v12 stores normalized section widths. AppIR v11 and earlier remain loadable; missing width continues to mean `wide`.
-
-The server annotates Page-owned Panel render nodes with the compiled width. The browser applies deterministic runtime classes and data attributes and keeps title, description, and Page filters at the existing `wide` width. Width never changes definition order, DOM order, keyboard order, screen-reader order, Policy, context, View reads, or Action writes.
+- Move the remaining legacy taxonomy and comment `Block.presentation` metadata into named View-owned Displays.
+- Compose the post route from a `contained` article section followed by a `wide` responsive discussion section.
+- Render discussion as `main-sidebar`: approved comments in `main`, member comment form in `sidebar`.
+- Mark the member-only sidebar `collapseWhenEmpty`; anonymous users receive an expanded full-track discussion Region after server-side Policy filtering.
+- Keep sidebar introduction in a named content Block with the same member Policy so unauthenticated narrative cannot prevent Region collapse.
+- Use inline semantic content for public, Page-local headings and explanatory copy.
+- Assign semantic section widths to simple public and administrative Pages without introducing arbitrary CSS or new runtime capabilities.
+- Preserve all route/context bindings, View reads, Action writes, Policies, content filtering, and serialized displays.
 
 ## Acceptance criteria
 
-- Page sections accept only `contained`, `wide`, or `full`.
-- Omitted widths and legacy `panel` preserve the current `wide` layout.
-- A reusable Panel can render at different widths in separate Page sections.
-- Page title, description, and filters retain the existing wide alignment.
-- Sequence Panels are unaffected.
-- Safe gutters remain at every viewport width; `full` is not arbitrary full bleed.
-- Schema, compiler diagnostics, AppIR compatibility, inspection/diff, restart, React, and browser geometry are covered.
+- Category index/result, tag index/result, and approved-comment renderers are named Displays owned by their Views.
+- No Blog View Block relies on legacy `presentation` metadata.
+- The home, taxonomy, signup, and moderation routes use explicit ordered sections with appropriate `contained` or `wide` widths.
+- The post route renders article content at `contained` width and discussion at `wide` width.
+- At large widths an authorized member sees comments and the form in `2:1` main/sidebar tracks; at narrow widths they stack in source order.
+- An anonymous reader receives no comment-form Region and the approved-comments Region expands across the discussion Panel.
+- Existing draft isolation, publication, Markdown sanitization, RSS/JSON/taxonomy reads, registration, comment moderation, and anonymous approved-comment visibility remain green.
+- Browser evidence covers semantic widths, responsive tracks, source order, and Policy-aware collapse.
 - `make check` and `make build` pass.
 
 ## Non-goals
 
-- Edge-to-edge media bleed, negative margins, background bands, or overlays.
-- Arbitrary lengths, percentages, CSS classes, container queries, or author breakpoints.
-- Width metadata on Panel or Sequence.
-- Grid columns, item spans, nested Panels, or responsive reordering.
-- Changes to reads, writes, SQL, SQLite, or migrations.
+- New Panel, Page, Display, Policy, Lifecycle, Action, file, database, or AppIR capabilities.
+- Homepage taxonomy sidebar, full-width hero/media, arbitrary widths, custom breakpoints, or visual reordering.
+- Migrating post/comment transitions to Lifecycle or adding semantic TestSuites.
+- Webform cache invalidation, comment editing/deletion, reactions, notifications, or search.
+- Changes to SQL, SQLite, PostgreSQL, or migrations.
