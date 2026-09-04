@@ -2,6 +2,31 @@ import {expect,request as playwrightRequest} from '@playwright/test'
 import {test as beanBase,login} from './fixtures/bean'
 const test=beanBase.extend<{}, {appName:string}>({appName:['community',{scope:'worker'}]})
 async function user(baseURL:string,email:string){const api=await playwrightRequest.newContext({baseURL});const login=await api.post('/api/auth/login',{data:{email,password:'test-password'}});return {api,csrf:(await login.json()).csrfToken}}
+test('Admin controls and delete dialog follow the selected theme',async({page,bean},testInfo)=>{
+  await login(page,bean.baseURL,'editor-a@example.test')
+  await page.getByRole('link',{name:'Post Manage post',exact:true}).click()
+  await page.getByRole('link',{name:'Add Post',exact:true}).click()
+  await page.getByTestId('field-body').fill('Theme verification')
+  await page.getByTestId('field-visibility').selectOption('private')
+  await page.getByTestId('create-post').click()
+  const remove=page.getByRole('button',{name:'Delete',exact:true})
+  await expect(remove).toBeVisible()
+  const actionForm=page.locator('form').filter({has:page.getByRole('combobox',{name:'Action',exact:true})})
+  for(const mode of ['dark','light']){
+    await page.getByRole('button',{name:mode==='dark'?'Use dark theme':'Use light theme'}).click()
+    await expect(remove).toHaveCSS('color',mode==='dark'?'rgb(241, 116, 123)':'rgb(180, 35, 45)')
+    await expect(page.locator('[data-slot="breadcrumb-page"]')).toHaveCSS('color',mode==='dark'?'rgb(237, 241, 245)':'rgb(24, 33, 43)')
+    await expect.poll(()=>actionForm.evaluate(element=>getComputedStyle(element).getPropertyValue('--muted').trim())).toBe(mode==='dark'?'#1c2127':'#f8f9fa')
+    await page.screenshot({path:testInfo.outputPath(mode+'.png'),fullPage:true})
+    await remove.click()
+    const dialog=page.getByRole('alertdialog')
+    await expect(dialog).toHaveCSS('background-color',mode==='dark'?'rgb(32, 37, 43)':'rgb(255, 255, 255)')
+    await expect(dialog).toHaveCSS('color',mode==='dark'?'rgb(237, 241, 245)':'rgb(24, 33, 43)')
+    await dialog.getByRole('button',{name:'Cancel',exact:true}).click()
+    await expect(dialog).toHaveCount(0)
+  }
+})
+
 test('home renders the public feed without exposing private posts',async({page,bean})=>{
   const rendered=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/system/page')
   await page.goto(bean.baseURL+'/')

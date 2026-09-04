@@ -53,6 +53,13 @@ function Shell({children,chrome=true}:{children:React.ReactNode;chrome?:boolean}
   const editor=roles.includes('editor')||roles.includes('administrator')
   const administrator=roles.includes('administrator')
   const theme=manifest.data?.theme
+  useEffect(()=>{
+    const root=document.documentElement
+    root.classList.toggle('dark',colorMode==='dark')
+    root.dataset.theme=colorMode
+    root.dataset.preset=theme?.Preset||'professional'
+    root.dataset.accent=theme?.Accent||'emerald'
+  },[colorMode,theme?.Preset,theme?.Accent])
   const logout=useMutation({mutationFn:async()=>{const path=loc.pathname;const result=await api<{protected?:boolean}>('/api/auth/logout?path='+encodeURIComponent(path),{method:'POST',body:'{}'});return {path,protected:path.startsWith('/admin')||path.startsWith('/studio')||path.startsWith('/explore')||result.protected===true}},onSuccess:async result=>{sessionStorage.removeItem('bean_csrf');await qc.resetQueries();const routeChanged=currentPath?.current!==result.path;logoutStarted.current=false;if(result.protected||routeChanged)nav('/',{replace:true})},onError:()=>{logoutStarted.current=false}})
   const stopNavigation=(event:React.MouseEvent)=>{if(logoutStarted.current||logout.isPending)event.preventDefault()}
   const setTheme=()=>setColorMode(current=>{const next=current==='light'?'dark':'light';localStorage.setItem('bean_color_mode',next);return next})

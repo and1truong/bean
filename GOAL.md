@@ -6,6 +6,8 @@ Complete the Community example browser flow: expose the existing publish_post Ac
 
 ## Contract
 
+- Fix shared Admin dark-theme colors for destructive buttons, Action forms, the current breadcrumb, and the delete dialog; verify both light/dark modes in a browser and run the required gates.
+
 - Render the published application name in the shared header when no Theme display name is configured; verify manifest, frontend, and the live Community browser.
 
 - Preserve existing Blog and ATS demos and unrelated edits.
@@ -14,6 +16,8 @@ Complete the Community example browser flow: expose the existing publish_post Ac
 - Fix any confirmed defect and complete `make check` and `make build`.
 
 ## Evidence
+
+- Dark-theme regression reproduced light Delete colors and confirmed the corrected Delete button, Actions form, current breadcrumb, and portal dialog in dark and light modes. The live Community page has been reloaded with the fix; `make check` passes 90 frontend tests and 21 browser journeys, and `make build` passes.
 
 - Community runs at `http://127.0.0.1:8083/admin` using `tmp/community-browser.db`.
 - Member A created a private Post; member B saw no records and received Record not found on its direct Admin URL. After A published through the newly exposed Action, B saw the public Post and created a like Reaction.
