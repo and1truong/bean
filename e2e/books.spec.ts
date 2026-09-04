@@ -29,6 +29,50 @@ test('scoped Book contents resolve, edit, filter, and clean up atomically',async
   await page.goto(bean.baseURL+'/books/'+first.id)
   await expect(page.getByText('Architecture')).toHaveCount(0)
   await loginPage(page,bean.baseURL)
+
+  await page.goto(bean.baseURL+'/admin/books/'+first.id)
+  await expect(page.getByRole('heading',{name:'Book contents'})).toBeVisible()
+  await expect(page.getByRole('link',{name:'Architecture'})).toBeVisible()
+  await page.getByRole('link',{name:'Add Page'}).click()
+  await expect(page).toHaveURL(new RegExp('/admin/books/'+first.id+'/create/pages\\?menu=book_contents'))
+  await expect(page.getByText('Book contents — Building Bean')).toBeVisible()
+  await page.getByTestId('field-title').fill('Admin overview')
+  await page.getByTestId('field-body').fill('Created from the Book context.')
+  await page.getByLabel('Weight',{exact:true}).fill('50')
+  await page.getByTestId('create-page').click()
+  await expect(page).toHaveURL(new RegExp('/admin/books/'+first.id+'$'))
+  await expect(page.getByRole('link',{name:'Admin overview'})).toBeVisible()
+
+  const overviewPlacement=(await menu(request,bean.baseURL,first.id)).find((item:any)=>item.Label==='Admin overview').ID
+  await page.getByRole('link',{name:'Add Page'}).click()
+  await expect(page).toHaveURL(new RegExp('/admin/books/'+first.id+'/create/pages\\?menu=book_contents'))
+  await expect(page.getByRole('heading',{name:'Add Page'})).toBeVisible()
+  await page.getByTestId('field-title').fill('Admin details')
+  await page.getByTestId('field-body').fill('A child created from the fixed Book context.')
+  await page.getByLabel('Parent',{exact:true}).selectOption(overviewPlacement)
+  await page.getByLabel('Weight',{exact:true}).fill('10')
+  await page.getByTestId('create-page').click()
+  await expect(page).toHaveURL(new RegExp('/admin/books/'+first.id+'$'))
+  await expect(page.getByRole('link',{name:'Admin details'})).toBeVisible()
+
+  await page.goto(bean.baseURL+'/admin/books/'+first.id+'/create/books?menu=book_contents')
+  await expect(page.getByRole('heading',{name:'Admin resource not found'})).toBeVisible()
+  await page.goto(bean.baseURL+'/admin/books/'+first.id+'/create/pages?menu=tampered')
+  await expect(page.getByRole('heading',{name:'Admin resource not found'})).toBeVisible()
+  const tamperedOwner=await request.get(bean.baseURL+'/api/admin/resources/books/00000000-0000-4000-8000-000000000000')
+  expect(tamperedOwner.status()).toBe(404)
+
+  for(const [title,placement] of [
+    ['Rejected parent',{menu:'book_contents',ownerId:first.id,parentId:'00000000-0000-4000-8000-000000000000',weight:0}],
+    ['Rejected owner',{menu:'book_contents',ownerId:'00000000-0000-4000-8000-000000000000',weight:0}],
+    ['Rejected menu',{menu:'site_navigation',ownerId:first.id,weight:0}],
+  ] as const){
+    const rejected=await action(request,bean.baseURL,csrf,'create_page',{title,body:'This record must roll back.',_navigation:{placements:[placement]}})
+    expect(rejected.ok(),await rejected.text()).toBeFalsy()
+    const records=await request.get(bean.baseURL+'/api/admin/resources/pages?q='+encodeURIComponent(title))
+    expect((await records.json()).data).toEqual([])
+  }
+
   await page.goto(bean.baseURL+'/books/'+first.id)
   await expect(page.getByRole('navigation',{name:'Primary navigation'}).getByRole('link',{name:'Architecture'})).toBeVisible()
   await expect(page.getByRole('navigation',{name:'Section navigation'}).getByRole('link',{name:'Validate'})).toBeVisible()

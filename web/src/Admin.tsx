@@ -17,17 +17,20 @@ import {Table,TableBody,TableCell,TableHead,TableHeader,TableRow} from '@/compon
 import {Textarea} from '@/components/ui/textarea'
 
 type Row=Record<string,any>
-type NavigationItem={ID:string;Label:string;Level:number;Children?:NavigationItem[]}
+type NavigationItem={ID:string;Label:string;Route?:string;Level:number;Children?:NavigationItem[]}
 type NavigationPlacement={id?:string;parentId?:string;weight:number;labelOverride?:string}
 type NavigationInstance={menu:string;ownerId:string;ownerLabel:string;items:NavigationItem[];placement?:NavigationPlacement}
 type NavigationInput={placements:Array<{menu:string;ownerId:string;parentId?:string;weight:number;labelOverride?:string}>}
+type ContextCreate={resource:string;entity:string;label:string}
+type ContextMenu={name:string;label:string;items:NavigationItem[];creates:ContextCreate[]}
+type AdminRecordResponse={data:Row;context?:{menus:ContextMenu[]}}
 type AuditEntry={id:string;at:string;user_id:string;action:string;changed_fields:string;success:number;error:string}
 
 export function Admin(){
   const manifest=useQuery({queryKey:['admin-manifest'],queryFn:()=>api<AdminManifest>('/api/admin/manifest')})
   if(manifest.isPending)return <Page><LoadingState label="Loading administration…"/></Page>
   if(manifest.error)return <Page narrow><PageHeader title="Administration"/><ErrorAlert error={manifest.error}/><Button variant="outline" asChild><Link to="/login">Sign in</Link></Button></Page>
-  return <Page><Routes><Route index element={<AdminHome manifest={manifest.data}/>}/><Route path="system" element={<SystemAdmin/>}/><Route path=":resource" element={<ResourceList manifest={manifest.data}/>}/><Route path=":resource/new" element={<ResourceRecord manifest={manifest.data} create/>}/><Route path=":resource/:id" element={<ResourceRecord manifest={manifest.data}/>}/></Routes></Page>
+  return <Page><Routes><Route index element={<AdminHome manifest={manifest.data}/>}/><Route path="system" element={<SystemAdmin/>}/><Route path=":resource" element={<ResourceList manifest={manifest.data}/>}/><Route path=":resource/new" element={<ResourceRecord manifest={manifest.data} create/>}/><Route path=":ownerResource/:ownerID/create/:targetResource" element={<ContextualResourceCreate manifest={manifest.data}/>}/><Route path=":resource/:id" element={<ResourceRecord manifest={manifest.data}/>}/></Routes></Page>
 }
 
 function AdminHome({manifest}:{manifest:AdminManifest}){
@@ -109,22 +112,53 @@ function ResourceList({manifest,resourceName,scope}:{manifest:AdminManifest;reso
 
 function ResourceRecord({manifest,create=false}:{manifest:AdminManifest;create?:boolean}){
   const{resource:name='',id=''}=useParams();const resource=manifest.adminResources[name]
-  const record=useQuery({queryKey:['admin-record',name,id],enabled:Boolean(resource&&!create),queryFn:()=>api<{data:Row}>('/api/admin/resources/'+name+'/'+id)})
+  const record=useQuery({queryKey:['admin-record',name,id],enabled:Boolean(resource&&!create),queryFn:()=>api<AdminRecordResponse>('/api/admin/resources/'+name+'/'+id)})
   if(!resource)return <NotFound/>
   if(!create&&record.isPending)return <LoadingState label="Loading record…"/>
   if(!create&&record.error)return <ErrorAlert error={record.error}/>
   const lifecycle=Object.values(manifest.lifecycles||{}).find(candidate=>candidate.Entity===resource.Entity)
-  return <RecordEditor key={create?'new':id} manifest={manifest} resource={resource} initial={create&&lifecycle?{[lifecycle.StateField]:lifecycle.Initial}:create?{}:record.data?.data||{}} create={create}/>
+  return <RecordEditor key={create?'new':id} manifest={manifest} resource={resource} initial={create&&lifecycle?{[lifecycle.StateField]:lifecycle.Initial}:create?{}:record.data?.data||{}} create={create} contextMenus={record.data?.context?.menus}/>
 }
 
-function RecordEditor({manifest,resource,initial,create}:{manifest:AdminManifest;resource:AdminResource;initial:Row;create:boolean}){
-  const entity=manifest.entities[resource.Entity];const nav=useNavigate();const qc=useQueryClient();const[values,setValues]=useState<Row>(initial);const[navigation,setNavigation]=useState<NavigationInput>();const[confirmDelete,setConfirmDelete]=useState(false)
+type ContextualCreate={ownerResource:AdminResource;ownerID:string;ownerLabel:string;menu:ContextMenu}
+
+function ContextualResourceCreate({manifest}:{manifest:AdminManifest}){
+  const{ownerResource:ownerName='',ownerID='',targetResource:targetName=''}=useParams();const location=useLocation();const menuName=new URLSearchParams(location.search).get('menu')||''
+  const ownerResource=manifest.adminResources[ownerName];const targetResource=manifest.adminResources[targetName]
+  const owner=useQuery({queryKey:['admin-record',ownerName,ownerID],enabled:Boolean(ownerResource&&targetResource&&menuName),queryFn:()=>api<AdminRecordResponse>('/api/admin/resources/'+encodeURIComponent(ownerName)+'/'+encodeURIComponent(ownerID))})
+  if(!ownerResource||!targetResource||!menuName)return <NotFound/>
+  if(owner.isPending)return <LoadingState label="Loading contextual form…"/>
+  if(owner.error)return <ErrorAlert error={owner.error}/>
+  const menu=owner.data.context?.menus.find(candidate=>candidate.name===menuName&&candidate.creates.some(create=>create.resource===targetName&&create.entity===targetResource.Entity))
+  if(!menu)return <NotFound/>
+  const lifecycle=Object.values(manifest.lifecycles||{}).find(candidate=>candidate.Entity===targetResource.Entity)
+  const contextual={ownerResource,ownerID,ownerLabel:String(owner.data.data[ownerResource.LabelField]||ownerID),menu}
+  return <RecordEditor key={`${ownerName}:${ownerID}:${menuName}:${targetName}`} manifest={manifest} resource={targetResource} initial={lifecycle?{[lifecycle.StateField]:lifecycle.Initial}:{}} create contextual={contextual}/>
+}
+
+function RecordEditor({manifest,resource,initial,create,contextMenus,contextual}:{manifest:AdminManifest;resource:AdminResource;initial:Row;create:boolean;contextMenus?:ContextMenu[];contextual?:ContextualCreate}){
+  const entity=manifest.entities[resource.Entity];const nav=useNavigate();const qc=useQueryClient();const[values,setValues]=useState<Row>(initial);const[navigation,setNavigation]=useState<NavigationInput|undefined>(contextual?{placements:[{menu:contextual.menu.name,ownerId:contextual.ownerID,weight:0}]}:undefined);const[confirmDelete,setConfirmDelete]=useState(false)
   const actionName=create?resource.CreateAction:resource.UpdateAction;const fields=resource.Form.Fields.filter(name=>!manifest.actions[actionName]?.Derive?.[name])
-  const save=useMutation({mutationFn:()=>{const body:Row=create?pick(values,fields):{id:initial.id,...changed(initial,values,fields)};if(!create&&manifest.actions[actionName]?.Input?.version)body.version=initial.version;if(navigation)body._navigation=navigation;return callAction<{data:Row}>(actionName,body)},onSuccess:result=>{qc.setQueryData(['admin-record',resource.Name,result.data.id],result);void qc.invalidateQueries({queryKey:['admin-resource',resource.Name]});nav(create?'/admin/'+resource.Name+'/'+result.data.id:'/admin/'+resource.Name)}})
+  const save=useMutation({mutationFn:()=>{const body:Row=create?pick(values,fields):{id:initial.id,...changed(initial,values,fields)};if(!create&&manifest.actions[actionName]?.Input?.version)body.version=initial.version;if(navigation)body._navigation=navigation;return callAction<{data:Row}>(actionName,datetimeActionValues(body,manifest.actions[actionName]?.Input))},onSuccess:result=>{qc.setQueryData(['admin-record',resource.Name,result.data.id],result);void qc.invalidateQueries({queryKey:['admin-resource',resource.Name]});if(contextual){void qc.invalidateQueries({queryKey:['admin-record',contextual.ownerResource.Name,contextual.ownerID]});nav('/admin/'+contextual.ownerResource.Name+'/'+contextual.ownerID)}else nav(create?'/admin/'+resource.Name+'/'+result.data.id:'/admin/'+resource.Name)}})
   const remove=useMutation({mutationFn:()=>callAction(resource.DeleteAction,{id:initial.id,...(manifest.actions[resource.DeleteAction]?.Input?.version?{version:initial.version}:{})}),onSuccess:()=>{void qc.invalidateQueries({queryKey:['admin-resource',resource.Name]});nav('/admin/'+resource.Name)}})
   const protectedFields=new Set([...Object.values(manifest.lifecycles||{}).filter(lifecycle=>lifecycle.Entity===resource.Entity).map(lifecycle=>lifecycle.StateField),...Object.values(manifest.actions).filter(action=>action.Entity===resource.Entity&&action.Operation==='transition'&&!action.Lifecycle).map(action=>action.StateField||'status')])
   const title=create?'Add '+resource.Label:String(initial[resource.LabelField]||resource.Label)
-  return <><AdminBreadcrumb resource={resource} current={create?'Add':String(initial[resource.LabelField]||initial.id)}/><PageHeader title={title} action={!create&&<AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}><AlertDialogTrigger asChild><Button variant="destructive">Delete</Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete this {resource.Label.toLowerCase()}?</AlertDialogTitle><AlertDialogDescription>This operation cannot be undone.</AlertDialogDescription></AlertDialogHeader>{remove.error&&<ErrorAlert error={remove.error}/>}<AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={event=>{event.preventDefault();remove.mutate()}}>Confirm delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>}/><SectionCard><form className="space-y-4" onSubmit={event=>{event.preventDefault();save.mutate()}}>{fields.map(name=>{const field=findField(entity,name);const readonly=!create&&protectedFields.has(name);return field?<AdminField key={name} field={field} value={readonly?initial[name]:values[name]} error={(save.error as APIError|undefined)?.fields?.[name]} readonly={readonly} manifest={manifest} view={resource.View} onChange={value=>setValues(current=>({...current,[name]:value}))}/>:null})}{entity.Navigation?<NavigationEditor entity={entity.Name} targetID={create?'_new':String(initial.id)} onChange={setNavigation}/>:null}{save.error&&<ErrorAlert error={save.error}/>}<div className="flex flex-wrap gap-2"><Button data-testid={create?'create-'+resource.Entity:'save-'+resource.Entity} type="submit" disabled={save.isPending}>{save.isPending?'Saving…':'Save'}</Button><Button variant="outline" asChild><Link to={'/admin/'+resource.Name}>Cancel</Link></Button></div></form>{!create&&<dl className="mt-6 grid gap-4 border-t pt-6 sm:grid-cols-2 lg:grid-cols-4">{resource.Form.Readonly.map(name=><div key={name}><dt className="font-medium">{fieldLabel(entity,name)}</dt><dd className="mt-1 text-sm text-muted-foreground">{display(initial[name])}</dd></div>)}</dl>}</SectionCard>{!create&&resource.Actions.length>0&&<SectionCard title="Actions"><ActionRunner manifest={manifest} resource={resource} ids={[String(initial.id)]} onDone={()=>{void qc.invalidateQueries({queryKey:['admin-record',resource.Name,initial.id]});void qc.invalidateQueries({queryKey:['admin-history',resource.Entity,initial.id]})}}/></SectionCard>}{!create&&<History entity={resource.Entity} id={String(initial.id)}/>}</>
+  const cancel=contextual?'/admin/'+contextual.ownerResource.Name+'/'+contextual.ownerID:'/admin/'+resource.Name
+  return <><AdminBreadcrumb resource={resource} current={create?'Add':String(initial[resource.LabelField]||initial.id)}/><PageHeader title={title} action={!create&&<AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}><AlertDialogTrigger asChild><Button variant="destructive">Delete</Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete this {resource.Label.toLowerCase()}?</AlertDialogTitle><AlertDialogDescription>This operation cannot be undone.</AlertDialogDescription></AlertDialogHeader>{remove.error&&<ErrorAlert error={remove.error}/>}<AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={event=>{event.preventDefault();remove.mutate()}}>Confirm delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>}/><SectionCard><form className="space-y-4" onSubmit={event=>{event.preventDefault();save.mutate()}}>{fields.map(name=>{const field=findField(entity,name);const readonly=!create&&protectedFields.has(name);return field?<AdminField key={name} field={field} value={readonly?initial[name]:values[name]} error={(save.error as APIError|undefined)?.fields?.[name]} readonly={readonly} manifest={manifest} view={resource.View} onChange={value=>setValues(current=>({...current,[name]:value}))}/>:null})}{contextual?<ContextNavigationFields context={contextual} onChange={setNavigation}/>:entity.Navigation?<NavigationEditor entity={entity.Name} targetID={create?'_new':String(initial.id)} onChange={setNavigation}/>:null}{save.error&&<ErrorAlert error={save.error}/>}<div className="flex flex-wrap gap-2"><Button data-testid={create?'create-'+resource.Entity:'save-'+resource.Entity} type="submit" disabled={save.isPending}>{save.isPending?'Saving…':'Save'}</Button><Button variant="outline" asChild><Link to={cancel}>Cancel</Link></Button></div></form>{!create&&<dl className="mt-6 grid gap-4 border-t pt-6 sm:grid-cols-2 lg:grid-cols-4">{resource.Form.Readonly.map(name=><div key={name}><dt className="font-medium">{fieldLabel(entity,name)}</dt><dd className="mt-1 text-sm text-muted-foreground">{display(initial[name])}</dd></div>)}</dl>}</SectionCard>{!create&&resource.Actions.length>0&&<SectionCard title="Actions"><ActionRunner manifest={manifest} resource={resource} ids={[String(initial.id)]} onDone={()=>{void qc.invalidateQueries({queryKey:['admin-record',resource.Name,initial.id]});void qc.invalidateQueries({queryKey:['admin-history',resource.Entity,initial.id]})}}/></SectionCard>}{!create&&contextMenus?.map(menu=><AdminContextMenu key={menu.name} ownerResource={resource.Name} ownerID={String(initial.id)} menu={menu}/>) }{!create&&<History entity={resource.Entity} id={String(initial.id)}/>}</>
+}
+
+function AdminContextMenu({ownerResource,ownerID,menu}:{ownerResource:string;ownerID:string;menu:ContextMenu}){
+  return <SectionCard title={menu.label}><div className="space-y-4">{menu.items.length?<ContextTree items={menu.items}/>:<p className="text-sm text-muted-foreground">No contents yet.</p>}<div className="flex flex-wrap gap-2">{menu.creates.map(create=><Button key={create.resource} asChild><Link to={'/admin/'+ownerResource+'/'+ownerID+'/create/'+create.resource+'?menu='+encodeURIComponent(menu.name)}>Add {create.label}</Link></Button>)}</div></div></SectionCard>
+}
+
+function ContextTree({items}:{items:NavigationItem[]}){
+  return <ul className="space-y-1">{items.map(item=><li key={item.ID}>{item.Route?<a className="text-primary hover:underline" href={item.Route}>{item.Label}</a>:item.Label}{item.Children?.length?<div className="ml-5"><ContextTree items={item.Children}/></div>:null}</li>)}</ul>
+}
+
+function ContextNavigationFields({context,onChange}:{context:ContextualCreate;onChange:(input:NavigationInput)=>void}){
+  const[placement,setPlacement]=useState<NavigationPlacement>({weight:0})
+  const update=(next:NavigationPlacement)=>{setPlacement(next);onChange({placements:[{menu:context.menu.name,ownerId:context.ownerID,parentId:next.parentId||undefined,weight:Number(next.weight)||0,labelOverride:next.labelOverride||undefined}]})}
+  return <fieldset className="space-y-4 rounded-lg border p-4"><legend className="px-1 font-medium">Navigation</legend><p className="text-sm font-medium">{context.menu.label} — {context.ownerLabel}</p><div className="grid gap-3 sm:grid-cols-3"><Field id="context-navigation-parent" label="Parent"><NativeSelect id="context-navigation-parent" value={placement.parentId||''} onChange={event=>update({...placement,parentId:event.target.value})}><NativeSelectOption value="">Top level</NativeSelectOption>{flattenNavigation(context.menu.items).map(item=><NativeSelectOption key={item.ID} value={item.ID}>{'— '.repeat(Math.max(0,(item.Level||1)-1))+item.Label}</NativeSelectOption>)}</NativeSelect></Field><Field id="context-navigation-weight" label="Weight"><Input id="context-navigation-weight" type="number" min={-1000} max={1000} value={placement.weight} onChange={event=>update({...placement,weight:Number(event.target.value)})}/></Field><Field id="context-navigation-label" label="Label override"><Input id="context-navigation-label" maxLength={120} value={placement.labelOverride||''} onChange={event=>update({...placement,labelOverride:event.target.value})}/></Field></div></fieldset>
 }
 
 function NavigationEditor({entity,targetID,onChange}:{entity:string;targetID:string;onChange:(input:NavigationInput)=>void}){
@@ -154,7 +188,7 @@ function AdminField({field,value,error,onChange,manifest,view,readonly=false,idP
   if(field.Type==='text'||field.Type==='richtext')return <Field id={id} label={label} error={error} required={field.Required}><Textarea id={id} data-testid={'field-'+field.Name} required={field.Required} value={value??''} onChange={event=>onChange(event.target.value)}/></Field>
   if(field.Type==='file')return <Field id={id} label={label} error={error} required={field.Required}>{value&&view&&<a className="text-primary underline" href={'/api/files/'+encodeURIComponent(String(value))+'?view='+encodeURIComponent(view)}>Download current file</a>}<Input id={id} data-testid={'field-'+field.Name} type="file" required={field.Required&&!value} onChange={event=>onChange(event.target.files?.[0])}/></Field>
   const numeric=['integer','money','decimal'].includes(field.Type);const type=numeric?'number':field.Type==='email'?'email':field.Type==='date'?'date':field.Type==='datetime'?'datetime-local':'text'
-  return <Field id={id} label={label} error={error} required={field.Required}><Input id={id} data-testid={'field-'+field.Name} type={type} required={field.Required} value={value??''} onChange={event=>onChange(numeric?(event.target.value===''?'':Number(event.target.value)):event.target.value)}/></Field>
+  return <Field id={id} label={label} error={error} required={field.Required}><Input id={id} data-testid={'field-'+field.Name} type={type} step={field.Type==='datetime'?'any':undefined} required={field.Required} value={field.Type==='datetime'?datetimeInputValue(value??''):value??''} onChange={event=>onChange(numeric?(event.target.value===''?'':Number(event.target.value)):event.target.value)}/></Field>
 }
 
 function RelationControl({field,value,error,onChange,manifest}:{field:AdminFieldDefinition;value:any;error?:string;onChange:(value:any)=>void;manifest:AdminManifest}){
@@ -171,7 +205,7 @@ function FilterControl({field,value,onChange}:{field?:AdminFieldDefinition;value
 
 function ActionRunner({manifest,resource,ids,onDone}:{manifest:AdminManifest;resource:AdminResource;ids:string[];onDone:()=>void}){
   const[name,setName]=useState(resource.Actions[0]||'');const[values,setValues]=useState<Row>({});const[result,setResult]=useState('');const[confirmOpen,setConfirmOpen]=useState(false);const batch=useRef<{signature:string;key:string}|undefined>(undefined);const action=manifest.actions[name]
-  const run=useMutation({mutationFn:(key:string)=>callActionBatch(name,ids,values,key),onSuccess:()=>{setResult('Action completed for '+ids.length+' record'+(ids.length===1?'':'s')+'.');setConfirmOpen(false);onDone()}})
+  const run=useMutation({mutationFn:(key:string)=>callActionBatch(name,ids,datetimeActionValues(values,action?.Input),key),onSuccess:()=>{setResult('Action completed for '+ids.length+' record'+(ids.length===1?'':'s')+'.');setConfirmOpen(false);onDone()}})
   if(!resource.Actions.length)return null
   function execute(){const signature=JSON.stringify({name,ids,values});if(batch.current?.signature!==signature)batch.current={signature,key:globalThis.crypto.randomUUID()};run.mutate(batch.current.key)}
   function submit(event:FormEvent){event.preventDefault();if(action?.Confirm)setConfirmOpen(true);else execute()}
@@ -197,3 +231,12 @@ function params(values:Record<string,string>){const query=new URLSearchParams();
 function pick(values:Row,fields:string[]){return Object.fromEntries(fields.filter(field=>values[field]!==undefined&&values[field]!=='').map(field=>[field,values[field]]))}
 function changed(before:Row,after:Row,fields:string[]){return Object.fromEntries(fields.filter(field=>after[field]!==before[field]).map(field=>[field,after[field]]))}
 function jsonList(value:string){try{return(JSON.parse(value)as string[]).join(', ')}catch{return value}}
+
+function datetimeInputValue(value:string){
+  if(!value||!/(Z|[+-]\d{2}:\d{2})$/.test(value))return value
+  const date=new Date(value)
+  return new Date(date.valueOf()-date.getTimezoneOffset()*60_000).toISOString().slice(0,-1)
+}
+function datetimeActionValues(values:Row,fields:Record<string,AdminFieldDefinition>={}){
+  return Object.fromEntries(Object.entries(values).map(([name,value])=>[name,fields[name]?.Type==='datetime'&&typeof value==='string'&&value&&!/(Z|[+-]\d{2}:\d{2})$/.test(value)?new Date(value).toISOString():value]))
+}

@@ -1,3 +1,114 @@
+# Shared bar chart presentation
+
+| Milestone | Deliverable | Verification | Status |
+| --- | --- | --- | --- |
+| 0 | Reproduce touching linked chart rows | browser geometry regression | done |
+| 1 | Card, heading, spacing and compact bars | browser and existing chart tests | done |
+| 2 | Qualify and reload demo | light/dark/mobile, make check, make build | done |
+
+# Contextual Admin and request-scoped route records plan
+
+Status: complete. Detailed contract: `docs/plans/contextual-admin-route-records.md`.
+
+| Milestone | Deliverable | Verification | Status |
+| --- | --- | --- | --- |
+| 0 | Freeze View-backed resolution, cache boundaries, response shape, route, and query budget | failing HTTP/Menu/View contracts and counting reader | done |
+| 1 | Add immutable request-scoped resolved-record/proof reuse | View/Menu/HTTP isolation and duplicate-read tests | done |
+| 2 | Derive owner-side Menu trees and eligible target AdminResources | deterministic and Policy-negative HTTP tests | done |
+| 3 | Add generic contextual Admin create flow | Admin React tests, lint, and typecheck | done |
+| 4 | Prove Book → Add Page atomically | Books browser, tamper, rollback, and validation evidence | done |
+| 5 | Document and qualify | `make check` and `make build` | done |
+
+## Working rules
+
+- Resolve runtime records through Views; never turn route upcasting into direct table access.
+- Keep record snapshots request-local and immutable; cache keys must preserve release, View, actor, tenant, and reader/transaction boundaries.
+- Re-authorize every write inside its Action transaction; GET context is never write authority.
+- Derive the first contextual affordance from existing Menu, Entity navigation, and AdminResource AppIR; add no speculative hook system or metadata.
+- Keep Page reusable across Books and use `_navigation` as the only placement mutation path.
+- Preserve the completed shared-chart work and all unrelated SaaS and Books edits.
+
+# SaaS Team Workspace implementation
+
+| Milestone | Deliverable | Verification | Status |
+| --- | --- | --- | --- |
+| 0 | Protected model, role-specific lifecycle and semantic contracts | validation and semantic tests | done |
+| 1 | Workspace pages, dashboard, drill and project forms | browser user journey | done |
+| 2 | Non-overwriting two-tenant demo setup and documentation | seeded data, repeat setup refusal | done |
+| 3 | Isolation and usability qualification | API/browser negatives, light/dark/mobile, make check, make build | done |
+
+# SaaS demo readiness review
+
+| Milestone | Deliverable | Evidence | Status |
+| --- | --- | --- | --- |
+| 0 | Audit current user journeys and access semantics | metadata/runtime inspection and isolated HTTP reproduction | done |
+| 1 | Map supported features to concrete user value | capability matrix plus ATS, Asana, Books patterns and identity/seed limits | done |
+| 2 | Deliver readiness decision and upgrade proposal | docs/reviews/saas-demo-review.md, priorities and acceptance criteria | done |
+
+# SaaS tenant Admin setup
+
+| Milestone | Deliverable | Evidence | Status |
+| --- | --- | --- | --- |
+| 0 | Diagnose Project and configure the right demo account | system admin lacks tenant/roles; owner A created; setup documented | done |
+| 1 | Verify tenant Admin access and isolation | live Project/Membership lists work; both SaaS regressions pass, including creation and cross-tenant denial | done |
+| 2 | Qualify the repository | `make check` (90 frontend tests, 22 browser journeys) and `make build` pass | done |
+
+# Admin dark-theme controls
+
+| Milestone | Deliverable | Evidence | Status |
+| --- | --- | --- | --- |
+| 0 | Reproduce inherited light colors in dark Admin | regression failed with light Delete color; screenshot also shows the light Actions background and unreadable current breadcrumb | done |
+| 1 | Apply theme at the document scope and verify both modes | Chromium colors/screenshots pass in both modes; `make check` (90 frontend, 21 browser tests) and `make build` pass; live Community reloaded | done |
+
+# Application name in the header
+
+| Milestone | Deliverable | Evidence | Status |
+| --- | --- | --- | --- |
+| 0 | Expose published app name and use it as the header default | regressions pass for bundle name after init, republish/reload, default branding, and explicit Theme branding | done |
+| 1 | Qualify and verify the live Community header | `make check` (90 frontend tests, 20 browser journeys) and `make build` pass; live Admin header renders Community | done |
+
+# Community Post table presentation
+
+| Milestone | Deliverable | Evidence | Status |
+| --- | --- | --- | --- |
+| 0 | Configure visible Post columns and the Body record link | explicit visible columns validate; Body becomes the first-column record link | done |
+| 1 | Activate and verify the table | browser confirms no ID header and Body opens the correct record | done |
+| 2 | Qualify the repository | `make check` (20 browser journeys) and `make build` pass | done |
+
+# Community homepage correction
+
+| Milestone | Deliverable | Evidence | Status |
+| --- | --- | --- | --- |
+| 0 | Reproduce the missing root route | reproduced page API 404 before adding the Display | done |
+| 1 | Render the existing public feed at `/` | validation, semantic tests, and all three Community browser regressions pass | done |
+| 2 | Activate the local demo and qualify | signed-in/anonymous homepage verified; `make check` (20 browser journeys) and `make build` pass | done |
+
+# Community browser verification
+
+| Milestone | Deliverable | Evidence | Status |
+| --- | --- | --- | --- |
+| 0 | Prepare isolated Community and test identities | localhost:8083, separate DB, two member/editor accounts | done |
+| 1 | Verify Admin, ownership, publication, and reactions | A publishes through Admin; B is denied private access, sees public posts, and creates a like | done |
+| 2 | Resolve confirmed defects and qualify | semantic tests, both Community regressions, `make check` (19 browser journeys), and `make build` pass | done |
+
+# ATS browser verification
+
+| Milestone | Deliverable | Evidence | Status |
+| --- | --- | --- | --- |
+| 0 | Start an isolated populated ATS demo | 37 definitions validate; demo runs at localhost:8082 | done |
+| 1 | Verify dashboard, candidate movement, and Admin | search, Applied → Screen, and Admin login/list pass; required datetime is blank and blocks Save | done |
+| 2 | Fix Admin datetime display and submission; qualify | 11 Admin tests, browser save/reload, 18 Playwright journeys, `make check`, `make build` pass | done |
+
+# Blog Admin browser investigation
+
+The user switched to ATS after successful fresh-demo Category/Post create/edit/publish verification. Investigation of the existing Blog credentials remains deferred.
+
+| Milestone | Deliverable | Evidence | Status |
+| --- | --- | --- | --- |
+| 0 | Inspect the running demo and prepare Blog testing | server and database identity, setup | active |
+| 1 | Reproduce Admin behavior through login and editorial navigation | browser observations | pending |
+| 2 | Fix confirmed defects and qualify | focused tests, browser verification, `make check`, `make build` | pending |
+
 # Missing public page plan
 
 | Milestone | Deliverable | Evidence | Status |

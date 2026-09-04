@@ -200,11 +200,18 @@ func TestPublicViewSearchIsCompilerDeclaredAndThemeIsExposed(t *testing.T) {
 		{APIVersion: definition.APIVersion, Kind: "Panel", Metadata: definition.Metadata{Name: "home"}, Spec: map[string]any{"layout": "single-column", "regions": []any{map[string]any{"name": "main", "blocks": []any{"items"}}}}},
 		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "home"}, Spec: map[string]any{"route": "/", "panel": "home"}},
 	}}
-	if err = runtime.Store.SaveBundle(ctx, "default", bundle); err != nil {
+	if err = runtime.Store.EnsureApp(ctx, "default", "Bean"); err != nil {
 		t.Fatal(err)
 	}
-	if _, diagnostics, publishErr := runtime.Store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) > 0 {
+	if _, _, diagnostics, publishErr := runtime.Store.PublishBundle(ctx, "default", bundle); publishErr != nil || len(diagnostics) > 0 {
 		t.Fatalf("publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	// Republishing definitions must preserve the name of the active bundle.
+	if _, diagnostics, publishErr := runtime.Store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) > 0 {
+		t.Fatalf("republish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	if err = runtime.Store.LoadActive(ctx, "default"); err != nil {
+		t.Fatal(err)
 	}
 	handler := runtime.HTTP.Handler()
 	for _, title := range []string{"Alpha role", "Beta role"} {
@@ -216,6 +223,9 @@ func TestPublicViewSearchIsCompilerDeclaredAndThemeIsExposed(t *testing.T) {
 	manifestResponse := serve(t, handler, http.MethodGet, "/api/system/manifest", nil, nil, "")
 	var manifest map[string]any
 	decodeResponse(t, manifestResponse, &manifest)
+	if manifest["appName"] != "search" || manifest["appId"] != "default" {
+		t.Fatalf("manifest appName=%v appId=%v", manifest["appName"], manifest["appId"])
+	}
 	theme := manifest["theme"].(map[string]any)
 	if theme["DisplayName"] != "Search Demo" || theme["Accent"] != "indigo" {
 		t.Fatalf("theme=%#v", theme)
@@ -314,6 +324,91 @@ func TestAdminResourceAPIPostgreSQLParity(t *testing.T) {
 	testAdminResourceAPI(t, databaseURL)
 }
 
+func TestAdminRecordIncludesDerivedContextualMenu(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := bootstrap.Open(ctx, filepath.Join(t.TempDir(), "books.db"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.DB.Close()
+	if err = runtime.HTTP.Auth.Bootstrap(ctx, "admin@example.test", "test-password"); err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := examples.Load("books")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle.Definitions = append(bundle.Definitions,
+		definition.Definition{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "managers"}, Spec: map[string]any{"writeRoles": []any{"manager"}}},
+		definition.Definition{APIVersion: "bean/v1alpha1", Kind: "Policy", Metadata: definition.Metadata{Name: "contextual_editors"}, Spec: map[string]any{"writeRoles": []any{"editor"}}},
+		definition.Definition{APIVersion: "bean/v1alpha1", Kind: "Action", Metadata: definition.Metadata{Name: "create_alternate_page"}, Spec: map[string]any{"entity": "page", "operation": "create", "policy": "contextual_editors", "input": map[string]any{"title": map[string]any{"type": "string", "required": true}, "body": map[string]any{"type": "text", "required": true}}}},
+		definition.Definition{APIVersion: "bean/v1alpha1", Kind: "Action", Metadata: definition.Metadata{Name: "create_second_page"}, Spec: map[string]any{"entity": "page", "operation": "create", "policy": "contextual_editors", "input": map[string]any{"title": map[string]any{"type": "string", "required": true}, "body": map[string]any{"type": "text", "required": true}}}},
+		definition.Definition{APIVersion: "bean/v1alpha1", Kind: "Action", Metadata: definition.Metadata{Name: "create_hidden_page"}, Spec: map[string]any{"entity": "page", "operation": "create", "policy": "managers", "input": map[string]any{"title": map[string]any{"type": "string", "required": true}, "body": map[string]any{"type": "text", "required": true}}}},
+		definition.Definition{APIVersion: "bean/v1alpha1", Kind: "AdminResource", Metadata: definition.Metadata{Name: "alternate_pages"}, Spec: map[string]any{"entity": "page", "label": "Alternate Page", "labelField": "title", "view": "page_admin", "createAction": "create_alternate_page", "updateAction": "update_page", "deleteAction": "delete_page", "list": map[string]any{"columns": []any{"title", "updated_at"}}, "form": map[string]any{"fields": []any{"title", "body"}, "readonly": []any{"created_at", "updated_at", "version"}}}},
+		definition.Definition{APIVersion: "bean/v1alpha1", Kind: "AdminResource", Metadata: definition.Metadata{Name: "second_pages"}, Spec: map[string]any{"entity": "page", "label": "Second Page", "labelField": "title", "view": "page_admin", "createAction": "create_second_page", "updateAction": "update_page", "deleteAction": "delete_page", "list": map[string]any{"columns": []any{"title", "updated_at"}}, "form": map[string]any{"fields": []any{"title", "body"}, "readonly": []any{"created_at", "updated_at", "version"}}}},
+		definition.Definition{APIVersion: "bean/v1alpha1", Kind: "AdminResource", Metadata: definition.Metadata{Name: "hidden_pages"}, Spec: map[string]any{"entity": "page", "label": "Hidden Page", "labelField": "title", "view": "page_admin", "createAction": "create_hidden_page", "updateAction": "update_page", "deleteAction": "delete_page", "list": map[string]any{"columns": []any{"title", "updated_at"}}, "form": map[string]any{"fields": []any{"title", "body"}, "readonly": []any{"created_at", "updated_at", "version"}}}},
+	)
+	if err = runtime.Store.SaveBundle(ctx, "default", bundle); err != nil {
+		t.Fatal(err)
+	}
+	if _, diagnostics, publishErr := runtime.Store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) > 0 {
+		t.Fatalf("publish err=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	handler := runtime.HTTP.Handler()
+	login := serve(t, handler, http.MethodPost, "/api/auth/login", map[string]any{"email": "admin@example.test", "password": "test-password"}, nil, "")
+	var session map[string]any
+	decodeResponse(t, login, &session)
+	cookie, csrf := login.Result().Cookies()[0], session["csrfToken"].(string)
+	if err = runtime.HTTP.Auth.Create(ctx, "editor@example.test", "test-password", []string{"editor"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	editorLogin := serve(t, handler, http.MethodPost, "/api/auth/login", map[string]any{"email": "editor@example.test", "password": "test-password"}, nil, "")
+	editorCookie := editorLogin.Result().Cookies()[0]
+	createdBook := serve(t, handler, http.MethodPost, "/api/actions/create_book", map[string]any{"title": "Building Bean"}, cookie, csrf)
+	var book struct {
+		Data map[string]any `json:"data"`
+	}
+	decodeResponse(t, createdBook, &book)
+	bookID := book.Data["id"].(string)
+
+	type menuContext struct {
+		Name    string           `json:"name"`
+		Items   []map[string]any `json:"items"`
+		Creates []struct {
+			Resource string `json:"resource"`
+			Entity   string `json:"entity"`
+		} `json:"creates"`
+	}
+	read := func() (map[string]any, []menuContext) {
+		t.Helper()
+		response := serve(t, handler, http.MethodGet, "/api/admin/resources/books/"+bookID, nil, editorCookie, "")
+		var result struct {
+			Data    map[string]any `json:"data"`
+			Context struct {
+				Menus []menuContext `json:"menus"`
+			} `json:"context"`
+		}
+		decodeResponse(t, response, &result)
+		return result.Data, result.Context.Menus
+	}
+	data, menus := read()
+	if data["title"] != "Building Bean" || len(menus) != 1 || menus[0].Name != "book_contents" || len(menus[0].Items) != 0 || len(menus[0].Creates) != 2 || menus[0].Creates[0].Resource != "alternate_pages" || menus[0].Creates[1].Resource != "second_pages" || menus[0].Creates[1].Entity != "page" {
+		t.Fatalf("empty contextual response data=%v menus=%+v", data, menus)
+	}
+	createdPage := serve(t, handler, http.MethodPost, "/api/actions/create_page", map[string]any{"title": "Architecture", "body": "Immutable metadata", "_navigation": map[string]any{"placements": []any{map[string]any{"menu": "book_contents", "ownerId": bookID, "weight": 10}}}}, cookie, csrf)
+	if createdPage.Code != http.StatusOK {
+		t.Fatalf("create Page status=%d body=%s", createdPage.Code, createdPage.Body.String())
+	}
+	_, menus = read()
+	if len(menus) != 1 || len(menus[0].Items) != 1 || menus[0].Items[0]["Label"] != "Architecture" {
+		t.Fatalf("populated contextual response=%+v", menus)
+	}
+	missing := serve(t, handler, http.MethodGet, "/api/admin/resources/books/00000000-0000-4000-8000-000000000000", nil, editorCookie, "")
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("missing owner status=%d body=%s", missing.Code, missing.Body.String())
+	}
+}
+
 func testAdminResourceAPI(t *testing.T, databaseURL string) {
 	t.Helper()
 	ctx := context.Background()
@@ -391,12 +486,18 @@ func testAdminResourceAPI(t *testing.T, databaseURL string) {
 	id := result.Data[0]["id"].(string)
 	record := serve(t, handler, http.MethodGet, "/api/admin/resources/article/"+id, nil, cookie, "")
 	var recordResult struct {
-		Data map[string]any `json:"data"`
+		Data    map[string]any `json:"data"`
+		Context struct {
+			Menus []any `json:"menus"`
+		} `json:"context"`
 	}
 	decodeResponse(t, record, &recordResult)
 	attributes, attributesOK := recordResult.Data["attributes"].(map[string]any)
 	if record.Code != http.StatusOK || recordResult.Data["title"] != "Beta" || recordResult.Data["featured"] != true || !attributesOK || attributes["source"] != "review" {
 		t.Fatalf("record status=%v data=%v", record.Code, recordResult.Data)
+	}
+	if len(recordResult.Context.Menus) != 0 {
+		t.Fatalf("ordinary Admin record context=%v", recordResult.Context.Menus)
 	}
 	history := serve(t, handler, http.MethodGet, "/api/admin/audit?entity=article&id="+id, nil, cookie, "")
 	if history.Code != http.StatusOK || !strings.Contains(history.Body.String(), "article_create") {

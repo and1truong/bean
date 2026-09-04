@@ -506,6 +506,7 @@ type AdminResource struct {
 }
 type App struct {
 	ReleaseID, AppID  string
+	Name              string `json:",omitempty"`
 	FormatVersion     string
 	Version           int
 	Entities          map[string]Entity

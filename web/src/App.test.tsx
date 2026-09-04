@@ -40,6 +40,20 @@ describe('View datetime controls',()=>{
 })
 
 describe('public rendering',()=>{
+  it.each([
+    {appName:'Community',theme:undefined,expected:'Community'},
+    {appName:'Community',theme:{DisplayName:'Custom Community'},expected:'Custom Community'},
+    {appName:undefined,theme:undefined,expected:'Bean'},
+  ])('renders the header name as $expected',async({appName,theme,expected})=>{
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      if(String(input).includes('/api/system/manifest'))return response({appId:'default',appName,theme})
+      return response({})
+    }))
+    const client=renderApp('/login')
+    await waitFor(()=>expect(client.getQueryState(['manifest'])?.status).toBe('success'))
+    expect(screen.getByRole('link',{name:expected})).toHaveAttribute('href','/')
+  })
+
   it.each(['/','/missing'])('shows a missing page without retrying or refetching %s on focus/reconnect',async(path)=>{
     let pageRequests=0
     vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{

@@ -10,6 +10,57 @@ afterEach(()=>vi.restoreAllMocks())
 function show(path:string){return render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter initialEntries={[path]}><Admin/></MemoryRouter></QueryClientProvider>)}
 
 describe('Admin',()=>{
+  it.each(['unchanged','edited','created'])('handles %s datetime values without losing the stored instant',async(mode)=>{
+    const datetimeManifest:any=structuredClone(manifest)
+    const field={Name:'applied_at',Label:'Applied',Type:'datetime',Required:true}
+    datetimeManifest.entities.article.Fields.push(field)
+    datetimeManifest.adminResources.article.Form.Fields=['title','applied_at']
+    datetimeManifest.actions.article_update.Derive={}
+    datetimeManifest.actions.article_update.Input={applied_at:field}
+    datetimeManifest.actions.article_create.Input={applied_at:field}
+    const original='2026-01-01T09:00:12.123456Z'
+    let submitted:any
+    vi.spyOn(globalThis,'fetch').mockImplementation(async(input,init)=>{
+      const url=String(input)
+      if(url.includes('/api/admin/resources/article/a1'))return new Response(JSON.stringify({data:{id:'a1',title:'Before',applied_at:original}}))
+      if(url.includes('/api/admin/audit'))return new Response('[]')
+      if(url.includes('/api/actions/')){submitted=JSON.parse(String(init?.body));return new Response(JSON.stringify({error:{message:'captured'}}),{status:409})}
+      return new Response(JSON.stringify(datetimeManifest))
+    })
+    show(mode==='created'?'/article/new':'/article/a1')
+    const applied=await screen.findByTestId('field-applied_at') as HTMLInputElement
+    if(mode!=='created'){
+      const date=new Date(original)
+      const local=new Date(date.valueOf()-date.getTimezoneOffset()*60_000).toISOString().slice(0,-1)
+      expect(applied.value).toBe(local)
+      expect(applied.validity.valid).toBe(true)
+    }
+    fireEvent.change(screen.getByTestId('field-title'),{target:{value:'After'}})
+    if(mode!=='unchanged')fireEvent.change(applied,{target:{value:'2026-01-02T12:34:56.789'}})
+    fireEvent.click(screen.getByRole('button',{name:'Save'}))
+    await waitFor(()=>expect(submitted).toBeDefined())
+    if(mode==='unchanged')expect(submitted).toEqual({id:'a1',title:'After'})
+    else expect(submitted.applied_at).toBe(new Date('2026-01-02T12:34:56.789').toISOString())
+  })
+
+  it('submits Admin selection Action datetimes as RFC3339',async()=>{
+    const actionManifest:any=structuredClone(manifest)
+    actionManifest.actions.schedule={Name:'schedule',Entity:'article',Operation:'update',Input:{id:{Name:'id',Type:'uuid'},at:{Name:'at',Label:'Scheduled at',Type:'datetime',Required:true}}}
+    actionManifest.adminResources.article.Actions=['schedule']
+    let submitted:any
+    vi.spyOn(globalThis,'fetch').mockImplementation(async(input,init)=>{
+      const url=String(input)
+      if(url.includes('/api/admin/resources/article'))return new Response(JSON.stringify({data:[{id:'a1',title:'Bean ships',status:'draft'}],nextCursor:''}))
+      if(url.includes('/api/actions/schedule/batch')){submitted=JSON.parse(String(init?.body));return new Response(JSON.stringify({data:{results:[{id:'a1',ok:true}]}}))}
+      return new Response(JSON.stringify(actionManifest))
+    })
+    show('/article')
+    fireEvent.click(await screen.findByRole('checkbox',{name:'Select Bean ships'}))
+    fireEvent.change(screen.getByTestId('field-at'),{target:{value:'2026-01-02T12:34:56.789'}})
+    fireEvent.click(screen.getByRole('button',{name:'Run for 1'}))
+    await waitFor(()=>expect(submitted?.values.at).toBe(new Date('2026-01-02T12:34:56.789').toISOString()))
+  })
+
   it('renders a searchable labelled change list',async()=>{
     vi.spyOn(globalThis,'fetch').mockImplementation(async input=>{const url=String(input);if(url.includes('/api/admin/resources/article'))return new Response(JSON.stringify({data:[{id:'a1',title:'Bean ships',status:'draft'}],nextCursor:''}),{status:200});return new Response(JSON.stringify(manifest),{status:200})})
     show('/article')
@@ -84,6 +135,51 @@ describe('Admin',()=>{
     expect(status).toHaveAttribute('readonly')
     expect(status.labels?.[0]).toHaveTextContent(/^Status \*$/)
     expect(screen.queryByTestId('field-title')).not.toBeInTheDocument()
+  })
+
+  it('renders owner-side contents and contextual create affordances',async()=>{
+    const contextualManifest:any=structuredClone(manifest)
+    contextualManifest.entities.book={Name:'book',Label:'Book',Fields:[{Name:'title',Label:'Title',Type:'string',Required:true}]}
+    contextualManifest.entities.page={Name:'page',Label:'Page',Fields:[{Name:'title',Label:'Title',Type:'string',Required:true},{Name:'body',Label:'Body',Type:'text',Required:true}],Navigation:{LabelField:'title',Destination:{View:'pages',Display:'detail'},Menus:['book_contents']}}
+    contextualManifest.actions.create_page={Name:'create_page',Entity:'page',Operation:'create',Input:{title:{Name:'title',Type:'string'},body:{Name:'body',Type:'text'}}}
+    contextualManifest.adminResources.books={Name:'books',Entity:'book',Label:'Book',LabelField:'title',View:'book_admin',CreateAction:'',UpdateAction:'',DeleteAction:'',List:{Columns:['title'],Search:[],Filters:[],Sort:[],PageSize:25},Form:{Fields:['title'],Readonly:[]},Actions:[]}
+    contextualManifest.adminResources.pages={Name:'pages',Entity:'page',Label:'Page',LabelField:'title',View:'page_admin',CreateAction:'create_page',UpdateAction:'',DeleteAction:'',List:{Columns:['title'],Search:[],Filters:[],Sort:[],PageSize:25},Form:{Fields:['title','body'],Readonly:[]},Actions:[]}
+    vi.spyOn(globalThis,'fetch').mockImplementation(async input=>{const url=String(input);if(url.includes('/api/admin/resources/books/book-1'))return new Response(JSON.stringify({data:{id:'book-1',title:'Building Bean'},context:{menus:[{name:'book_contents',label:'Book contents',items:[],creates:[{resource:'pages',entity:'page',label:'Page'}]}]}}));if(url.includes('/api/admin/audit'))return new Response('[]');return new Response(JSON.stringify(contextualManifest))})
+    show('/books/book-1')
+    expect(await screen.findByRole('heading',{name:'Book contents'})).toBeInTheDocument()
+    expect(screen.getByText('No contents yet.')).toBeInTheDocument()
+    expect(screen.getByRole('link',{name:'Add Page'})).toHaveAttribute('href','/admin/books/book-1/create/pages?menu=book_contents')
+  })
+
+  it('validates and submits one fixed contextual placement',async()=>{
+    const contextualManifest:any=structuredClone(manifest)
+    contextualManifest.entities.book={Name:'book',Label:'Book',Fields:[{Name:'title',Label:'Title',Type:'string',Required:true}]}
+    contextualManifest.entities.page={Name:'page',Label:'Page',Fields:[{Name:'title',Label:'Title',Type:'string',Required:true},{Name:'body',Label:'Body',Type:'text',Required:true}],Navigation:{LabelField:'title',Destination:{View:'pages',Display:'detail'},Menus:['book_contents']}}
+    contextualManifest.actions.create_page={Name:'create_page',Entity:'page',Operation:'create',Input:{title:{Name:'title',Type:'string'},body:{Name:'body',Type:'text'}}}
+    contextualManifest.adminResources.books={Name:'books',Entity:'book',Label:'Book',LabelField:'title',View:'book_admin',CreateAction:'',UpdateAction:'',DeleteAction:'',List:{Columns:['title'],Search:[],Filters:[],Sort:[],PageSize:25},Form:{Fields:['title'],Readonly:[]},Actions:[]}
+    contextualManifest.adminResources.pages={Name:'pages',Entity:'page',Label:'Page',LabelField:'title',View:'page_admin',CreateAction:'create_page',UpdateAction:'',DeleteAction:'',List:{Columns:['title'],Search:[],Filters:[],Sort:[],PageSize:25},Form:{Fields:['title','body'],Readonly:[]},Actions:[]}
+    const owner={data:{id:'book-1',title:'Building Bean'},context:{menus:[{name:'book_contents',label:'Book contents',items:[{ID:'chapter-1',Label:'Architecture',Route:'/pages/page-1',Level:1}],creates:[{resource:'pages',entity:'page',label:'Page'}]}]}}
+    let submitted:any
+    vi.spyOn(globalThis,'fetch').mockImplementation(async(input,init)=>{const url=String(input);if(url.includes('/api/admin/resources/books/book-1'))return new Response(JSON.stringify(owner));if(url.includes('/api/actions/create_page')){submitted=JSON.parse(String(init?.body));return new Response(JSON.stringify({data:{id:'page-2',title:'Compiler'}}))}if(url.includes('/api/admin/audit'))return new Response('[]');return new Response(JSON.stringify(contextualManifest))})
+    show('/books/book-1/create/pages?menu=book_contents')
+    expect(await screen.findByText('Book contents — Building Bean')).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox',{name:/Book contents/})).not.toBeInTheDocument()
+    fireEvent.change(screen.getByTestId('field-title'),{target:{value:'Compiler'}})
+    fireEvent.change(screen.getByTestId('field-body'),{target:{value:'Compile immutable metadata.'}})
+    fireEvent.change(screen.getByLabelText('Parent'),{target:{value:'chapter-1'}})
+    fireEvent.change(screen.getByLabelText('Weight'),{target:{value:'20'}})
+    expect(screen.getByRole('link',{name:'Cancel'})).toHaveAttribute('href','/admin/books/book-1')
+    fireEvent.click(screen.getByTestId('create-page'))
+    await waitFor(()=>expect(submitted?._navigation).toEqual({placements:[{menu:'book_contents',ownerId:'book-1',parentId:'chapter-1',weight:20}]}))
+  })
+
+  it('rejects a contextual route not present in the owner response',async()=>{
+    const contextualManifest:any=structuredClone(manifest)
+    contextualManifest.adminResources.books={...contextualManifest.adminResources.article,Name:'books',Entity:'article'}
+    contextualManifest.adminResources.pages={...contextualManifest.adminResources.article,Name:'pages'}
+    vi.spyOn(globalThis,'fetch').mockImplementation(async input=>String(input).includes('/api/admin/resources/books/book-1')?new Response(JSON.stringify({data:{id:'book-1',title:'Building Bean'},context:{menus:[]}})):new Response(JSON.stringify(contextualManifest)))
+    show('/books/book-1/create/pages?menu=tampered')
+    expect(await screen.findByRole('heading',{name:'Admin resource not found'})).toBeInTheDocument()
   })
 
   it('renders protected system operations without secret fields',async()=>{

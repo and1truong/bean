@@ -1,43 +1,7 @@
 apiVersion: bean/v1alpha1
-name: Multi-Tenant SaaS
----
-kind: Entity
-name: organisation
-fields:
-  - {label: Name, name: name, required: true, type: string}
-label: Organisation
----
-kind: Entity
-name: membership
-fields:
-  - {label: Organisation, name: organisation_id, required: true, type: relation}
-  - {label: User, name: user_id, required: true, type: uuid}
-  - label: Role
-    name: role
-    options: [member, owner]
-    required: true
-    type: enum
-label: Membership
-tenant: true
----
-kind: Entity
-name: project
-fields:
-  - {label: Name, name: name, required: true, type: string}
-label: Project
-policy: tenant_member
-tenant: true
----
-kind: Policy
-name: tenant_member
-readRoles: [member, owner]
-tenant: true
-writeRoles: [member, owner]
----
-kind: View
-name: tenant_projects
-displays:
-  api: {route: /api/projects, type: json}
-entity: project
-fields: [id, name, tenant_id]
-policy: tenant_member
+name: Team Workspace
+resources:
+  - access.yaml
+  - projects.yaml
+  - workspace.yaml
+  - contracts.yaml

@@ -380,6 +380,7 @@ func decodeInput(raw json.RawMessage, value any) error {
 func previewCandidate(ctx context.Context, bundle definition.Bundle, target string) (compiler.Result, migration.Plan, *appir.App, error) {
 	if target == "" {
 		compiled := compiler.Compile("default", 1, bundle.Definitions)
+		compiled.App.Name = bundle.Name
 		if len(compiled.Diagnostics) > 0 {
 			return compiled, migration.Plan{}, nil, nil
 		}

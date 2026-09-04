@@ -11,7 +11,18 @@ import (
 	"github.com/beanruntime/bean/internal/dbal/sqlite"
 	beanmenu "github.com/beanruntime/bean/internal/menu"
 	"github.com/beanruntime/bean/internal/migration"
+	"github.com/beanruntime/bean/internal/view"
 )
+
+type countingReader struct {
+	reader view.Reader
+	tables map[string]int
+}
+
+func (r *countingReader) Select(ctx context.Context, query dbal.Select) ([]dbal.Row, error) {
+	r.tables[query.Table]++
+	return r.reader.Select(ctx, query)
+}
 
 func TestDynamicTreeResolvesRecordRoutesAndHierarchy(t *testing.T) {
 	ctx := context.Background()
@@ -58,5 +69,17 @@ func TestDynamicTreeResolvesRecordRoutesAndHierarchy(t *testing.T) {
 	}
 	if len(tree) != 1 || tree[0].Label != "Introduction" || tree[0].Route != "/pages/page-1?_menu=contents&_owner=book-1" || !tree[0].Active || len(tree[0].Children) != 1 || tree[0].Children[0].Label != "Details" || !tree[0].Children[0].Current {
 		t.Fatalf("tree=%+v", tree)
+	}
+	app.Views["book_admin"] = appir.View{Name: "book_admin", Entity: "book", Fields: []string{"id", "title"}, DefaultLimit: 1, MaxLimit: 1}
+	reader := &countingReader{reader: db, tables: map[string]int{}}
+	scope := view.NewScope(app, reader, beanctx.Request{})
+	if _, err = scope.Resolve(ctx, "book_admin", "book-1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = beanmenu.DynamicTreeScoped(ctx, scope, "contents", "book-1"); err != nil {
+		t.Fatal(err)
+	}
+	if reader.tables["book"] != 1 {
+		t.Fatalf("Book owner lookups=%d, want 1 for composed request", reader.tables["book"])
 	}
 }
