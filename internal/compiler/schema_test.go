@@ -162,6 +162,54 @@ func TestPageSchemaAcceptsExactlyOneBoundedCompositionForm(t *testing.T) {
 	}
 }
 
+func TestMenuAndEntitySchemasExposeBoundedNavigationContracts(t *testing.T) {
+	schemas := compiler.DefinitionSchemas()
+	compile := func(kind string) *jsonschema.Schema {
+		document := schemas[kind]
+		validator := jsonschema.NewCompiler()
+		location := document["$id"].(string)
+		if err := validator.AddResource(location, schemaJSONValue(t, document)); err != nil {
+			t.Fatal(err)
+		}
+		compiled, err := validator.Compile(location)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return compiled
+	}
+	menuSchema := compile("Menu")
+	for _, valid := range []map[string]any{
+		{"kind": "Menu", "name": "legacy", "items": []any{map[string]any{"label": "Home", "route": "/"}}},
+		{"kind": "Menu", "name": "main", "profile": "workspace", "maxDepth": 3, "items": []any{
+			map[string]any{"id": "home", "target": map[string]any{"page": "home"}, "weight": -1000},
+			map[string]any{"id": "records", "parent": "home", "target": map[string]any{"view": "records", "display": "list"}}}},
+		{"kind": "Menu", "name": "contents", "profile": "workspace", "owner": map[string]any{"entity": "book"}},
+	} {
+		if err := menuSchema.Validate(valid); err != nil {
+			t.Fatalf("valid Menu rejected: %#v: %v", valid, err)
+		}
+	}
+	for _, invalid := range []map[string]any{
+		{"kind": "Menu", "name": "bad_profile", "profile": "tabs"},
+		{"kind": "Menu", "name": "bad_depth", "profile": "workspace", "maxDepth": 4},
+		{"kind": "Menu", "name": "bad_target", "profile": "workspace", "items": []any{map[string]any{"id": "item", "target": map[string]any{"page": "home", "view": "records", "display": "list"}}}},
+		{"kind": "Menu", "name": "bad_weight", "profile": "workspace", "items": []any{map[string]any{"id": "item", "weight": 1001, "target": map[string]any{"page": "home"}}}},
+	} {
+		if err := menuSchema.Validate(invalid); err == nil {
+			t.Fatalf("schema accepted invalid Menu: %#v", invalid)
+		}
+	}
+	entitySchema := compile("Entity")
+	validEntity := map[string]any{"kind": "Entity", "name": "page", "fields": []any{map[string]any{"name": "title", "type": "string"}}, "navigation": map[string]any{"labelField": "title", "destination": map[string]any{"view": "pages", "display": "detail"}, "menus": []any{"contents"}}}
+	if err := entitySchema.Validate(validEntity); err != nil {
+		t.Fatalf("valid Entity navigation rejected: %v", err)
+	}
+	delete(validEntity["navigation"].(map[string]any), "menus")
+	if err := entitySchema.Validate(validEntity); err == nil {
+		t.Fatal("Entity navigation without menus was accepted")
+	}
+}
+
 func TestPanelSchemaAcceptsOrderedInlineContentAndRejectsAmbiguousItems(t *testing.T) {
 	document := compiler.DefinitionSchemas()["Panel"]
 	validator := jsonschema.NewCompiler()

@@ -3,13 +3,85 @@
     "github_com_beanruntime_bean_internal_appir_MenuItem": {
       "additionalProperties": false,
       "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        },
         "label": {
+          "maxLength": 120,
+          "type": "string"
+        },
+        "parent": {
           "type": "string"
         },
         "policy": {
           "type": "string"
         },
         "route": {
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_MenuTarget"
+        },
+        "weight": {
+          "maximum": 1000,
+          "minimum": -1000,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_MenuOwner": {
+      "additionalProperties": false,
+      "properties": {
+        "entity": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_MenuTarget": {
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "view"
+                ]
+              },
+              {
+                "required": [
+                  "display"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "page"
+          ]
+        },
+        {
+          "not": {
+            "required": [
+              "page"
+            ]
+          },
+          "required": [
+            "view",
+            "display"
+          ]
+        }
+      ],
+      "properties": {
+        "display": {
+          "type": "string"
+        },
+        "page": {
+          "type": "string"
+        },
+        "view": {
           "type": "string"
         }
       },
@@ -27,16 +99,31 @@
       "items": {
         "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_MenuItem"
       },
+      "maxItems": 200,
       "type": "array"
     },
     "kind": {
       "const": "Menu"
+    },
+    "maxDepth": {
+      "maximum": 3,
+      "minimum": 3,
+      "type": "integer"
     },
     "name": {
       "pattern": "^[a-z][a-z0-9_]*$",
       "type": "string"
     },
     "namespace": {
+      "type": "string"
+    },
+    "owner": {
+      "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_MenuOwner"
+    },
+    "profile": {
+      "enum": [
+        "workspace"
+      ],
       "type": "string"
     }
   },

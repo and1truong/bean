@@ -21,7 +21,8 @@ const (
 	InlinePanelFormat    = "bean/appir/v9"
 	PageSectionFormat    = "bean/appir/v10"
 	RegionCollapseFormat = "bean/appir/v11"
-	CurrentFormat        = "bean/appir/v12"
+	PageWidthFormat      = "bean/appir/v12"
+	CurrentFormat        = "bean/appir/v13"
 )
 
 type Field struct {
@@ -32,12 +33,21 @@ type Field struct {
 	Relation          *Relation
 }
 type Relation struct{ Entity, Kind, TargetField string }
+type NavigationDestination struct {
+	View, Display string
+}
+type EntityNavigation struct {
+	LabelField  string
+	Destination NavigationDestination
+	Menus       []string
+}
 type Entity struct {
 	Name, Label, Policy       string
 	Fields                    []Field
 	Owner, Tenant, SoftDelete bool
 	Indexes, Unique           [][]string
 	Validations               map[string]string
+	Navigation                *EntityNavigation
 }
 type DisplayTitle struct {
 	Text, Field, Fallback string
@@ -450,11 +460,22 @@ type Role struct {
 	Name        string
 	Permissions []string
 }
-type Menu struct {
-	Name  string
-	Items []MenuItem
+type MenuOwner struct{ Entity string }
+type MenuTarget struct {
+	Page, View, Display string
 }
-type MenuItem struct{ Label, Route, Policy string }
+type Menu struct {
+	Name, Profile string
+	MaxDepth      int
+	Owner         *MenuOwner
+	Items         []MenuItem
+}
+type MenuItem struct {
+	ID                           string `json:"id"`
+	Label, Route, Policy, Parent string
+	Weight                       int
+	Target                       MenuTarget
+}
 type Job struct{ Name, Action string }
 type Theme struct {
 	Name, DisplayName, Preset, Accent string
@@ -514,7 +535,7 @@ func Empty() *App {
 	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Rules: map[string]Rule{}, TestSuites: map[string]TestSuite{}, Extensions: map[string]Extension{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Sequences: map[string]Sequence{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
 }
 func (a *App) ValidateFormat() error {
-	if a.FormatVersion != LegacyFormat && a.FormatVersion != LifecycleFormat && a.FormatVersion != RuleFormat && a.FormatVersion != TestSuiteFormat && a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != RegionCollapseFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != LegacyFormat && a.FormatVersion != LifecycleFormat && a.FormatVersion != RuleFormat && a.FormatVersion != TestSuiteFormat && a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != RegionCollapseFormat && a.FormatVersion != PageWidthFormat && a.FormatVersion != CurrentFormat {
 		return fmt.Errorf("unsupported AppIR format %q", a.FormatVersion)
 	}
 	if a.FormatVersion == LegacyFormat {
@@ -542,13 +563,13 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != TestSuiteFormat && a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != RegionCollapseFormat && a.FormatVersion != CurrentFormat && len(a.TestSuites) > 0 {
+	if a.FormatVersion != TestSuiteFormat && a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != RegionCollapseFormat && a.FormatVersion != PageWidthFormat && a.FormatVersion != CurrentFormat && len(a.TestSuites) > 0 {
 		return fmt.Errorf("AppIR format %q cannot contain TestSuite definitions", a.FormatVersion)
 	}
-	if a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != RegionCollapseFormat && a.FormatVersion != CurrentFormat && len(a.Extensions) > 0 {
+	if a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != RegionCollapseFormat && a.FormatVersion != PageWidthFormat && a.FormatVersion != CurrentFormat && len(a.Extensions) > 0 {
 		return fmt.Errorf("AppIR format %q cannot contain Extension definitions", a.FormatVersion)
 	}
-	if a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != RegionCollapseFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != RegionCollapseFormat && a.FormatVersion != PageWidthFormat && a.FormatVersion != CurrentFormat {
 		for _, action := range a.Actions {
 			for _, step := range action.Steps {
 				if step.Op == "extension" || step.Extension != "" {
@@ -564,7 +585,7 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != RegionCollapseFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != RegionCollapseFormat && a.FormatVersion != PageWidthFormat && a.FormatVersion != CurrentFormat {
 		for _, view := range a.Views {
 			for _, filter := range view.ExposedFilters {
 				if filter.Field != "" || filter.Operator != "" {
@@ -585,7 +606,7 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != RegionCollapseFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != RegionCollapseFormat && a.FormatVersion != PageWidthFormat && a.FormatVersion != CurrentFormat {
 		for _, view := range a.Views {
 			if len(view.Search.Fields) > 0 {
 				return fmt.Errorf("AppIR format %q cannot contain View-owned search semantics", a.FormatVersion)
@@ -605,7 +626,7 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != RegionCollapseFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != RegionCollapseFormat && a.FormatVersion != PageWidthFormat && a.FormatVersion != CurrentFormat {
 		if len(a.Sequences) > 0 {
 			return fmt.Errorf("AppIR format %q cannot contain Sequence definitions", a.FormatVersion)
 		}
@@ -615,7 +636,7 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != RegionCollapseFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != RegionCollapseFormat && a.FormatVersion != PageWidthFormat && a.FormatVersion != CurrentFormat {
 		for _, panel := range a.Panels {
 			for _, region := range panel.Regions {
 				if region.Items != nil {
@@ -624,14 +645,14 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != PageSectionFormat && a.FormatVersion != RegionCollapseFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != PageSectionFormat && a.FormatVersion != RegionCollapseFormat && a.FormatVersion != PageWidthFormat && a.FormatVersion != CurrentFormat {
 		for _, page := range a.Pages {
 			if page.Sections != nil {
 				return fmt.Errorf("AppIR format %q cannot contain ordered Page sections", a.FormatVersion)
 			}
 		}
 	}
-	if a.FormatVersion != RegionCollapseFormat && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != RegionCollapseFormat && a.FormatVersion != PageWidthFormat && a.FormatVersion != CurrentFormat {
 		for _, panel := range a.Panels {
 			for _, region := range panel.Regions {
 				if region.CollapseWhenEmpty {
@@ -640,11 +661,28 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != PageWidthFormat && a.FormatVersion != CurrentFormat {
 		for _, page := range a.Pages {
 			for _, section := range page.Sections {
 				if section.Width != "" {
 					return fmt.Errorf("AppIR format %q cannot contain semantic Page section widths", a.FormatVersion)
+				}
+			}
+		}
+	}
+	if a.FormatVersion != CurrentFormat {
+		for _, entity := range a.Entities {
+			if entity.Navigation != nil {
+				return fmt.Errorf("AppIR format %q cannot contain Entity navigation destinations", a.FormatVersion)
+			}
+		}
+		for _, menu := range a.Menus {
+			if menu.Profile != "" || menu.MaxDepth != 0 || menu.Owner != nil {
+				return fmt.Errorf("AppIR format %q cannot contain hierarchical Menu definitions", a.FormatVersion)
+			}
+			for _, item := range menu.Items {
+				if item.ID != "" || item.Parent != "" || item.Weight != 0 || item.Target != (MenuTarget{}) {
+					return fmt.Errorf("AppIR format %q cannot contain typed Menu placements", a.FormatVersion)
 				}
 			}
 		}

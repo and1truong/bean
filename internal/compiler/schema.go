@@ -14,6 +14,7 @@ import (
 	"github.com/beanruntime/bean/internal/definition"
 	beanextension "github.com/beanruntime/bean/internal/extension"
 	"github.com/beanruntime/bean/internal/field"
+	beanmenu "github.com/beanruntime/bean/internal/menu"
 	beanpage "github.com/beanruntime/bean/internal/page"
 	"github.com/beanruntime/bean/internal/rule"
 	beansequence "github.com/beanruntime/bean/internal/sequence"
@@ -48,6 +49,10 @@ type Capabilities struct {
 	PanelLayouts            []string `json:"panelLayouts"`
 	MaxPageSections         int      `json:"maxPageSections"`
 	PageSectionWidths       []string `json:"pageSectionWidths"`
+	MenuProfiles            []string `json:"menuProfiles"`
+	MaxMenuDefinitions      int      `json:"maxMenuDefinitions"`
+	MaxMenuDepth            int      `json:"maxMenuDepth"`
+	MaxMenuPlacements       int      `json:"maxMenuPlacements"`
 	SequenceProfiles        []string `json:"sequenceProfiles"`
 	SequenceAspectRatios    []string `json:"sequenceAspectRatios"`
 	SequenceFrameLayouts    []string `json:"sequenceFrameLayouts"`
@@ -124,6 +129,10 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 		PanelLayouts:            panelLayoutNames(),
 		MaxPageSections:         beanpage.MaxSections,
 		PageSectionWidths:       beanpage.Widths(),
+		MenuProfiles:            beanmenu.Profiles(),
+		MaxMenuDefinitions:      beanmenu.MaxDefinitions,
+		MaxMenuDepth:            beanmenu.MaxDepth,
+		MaxMenuPlacements:       beanmenu.MaxPlacements,
 		SequenceProfiles:        beansequence.Profiles(),
 		SequenceAspectRatios:    beansequence.AspectRatios(),
 		SequenceFrameLayouts:    beansequence.Layouts(),
@@ -270,6 +279,42 @@ func definitionSchema(kind string, specification reflect.Type) map[string]any {
 				delete(sectionProperties, "iD")
 				sectionProperties["id"] = map[string]any{"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}
 				sectionProperties["width"] = map[string]any{"type": "string", "enum": beanpage.Widths()}
+			}
+		}
+	}
+	if kind == "Menu" {
+		properties["profile"] = map[string]any{"type": "string", "enum": beanmenu.Profiles()}
+		properties["maxDepth"] = map[string]any{"type": "integer", "minimum": beanmenu.MaxDepth, "maximum": beanmenu.MaxDepth}
+		items := properties["items"].(map[string]any)
+		items["maxItems"] = beanmenu.MaxPlacements
+		for name, raw := range builder.definitions {
+			schema := raw.(map[string]any)
+			schemaProperties := schema["properties"].(map[string]any)
+			switch {
+			case strings.HasSuffix(name, "internal_appir_MenuItem"):
+				delete(schemaProperties, "iD")
+				schemaProperties["id"] = map[string]any{"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}
+				schemaProperties["label"] = map[string]any{"type": "string", "maxLength": beanmenu.MaxLabelOverrideLength}
+				schemaProperties["weight"] = map[string]any{"type": "integer", "minimum": beanmenu.MinWeight, "maximum": beanmenu.MaxWeight}
+			case strings.HasSuffix(name, "internal_appir_MenuTarget"):
+				schema["oneOf"] = []any{
+					map[string]any{"required": []string{"page"}, "not": map[string]any{"anyOf": []any{map[string]any{"required": []string{"view"}}, map[string]any{"required": []string{"display"}}}}},
+					map[string]any{"required": []string{"view", "display"}, "not": map[string]any{"required": []string{"page"}}},
+				}
+			}
+		}
+	}
+	if kind == "Entity" {
+		for name, raw := range builder.definitions {
+			schema := raw.(map[string]any)
+			switch {
+			case strings.HasSuffix(name, "internal_appir_EntityNavigation"):
+				schema["required"] = []string{"labelField", "destination", "menus"}
+				menus := schema["properties"].(map[string]any)["menus"].(map[string]any)
+				menus["minItems"] = 1
+				menus["maxItems"] = beanmenu.MaxDefinitions
+			case strings.HasSuffix(name, "internal_appir_NavigationDestination"):
+				schema["required"] = []string{"view", "display"}
 			}
 		}
 	}

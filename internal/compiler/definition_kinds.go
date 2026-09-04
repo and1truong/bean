@@ -10,6 +10,7 @@ import (
 	"github.com/beanruntime/bean/internal/appir"
 	beancontent "github.com/beanruntime/bean/internal/content"
 	"github.com/beanruntime/bean/internal/definition"
+	beanmenu "github.com/beanruntime/bean/internal/menu"
 	beanpage "github.com/beanruntime/bean/internal/page"
 	"github.com/beanruntime/bean/internal/registry"
 )
@@ -217,7 +218,19 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 	sequenceKind.ReferenceCandidates = true
 	role := mappedDefinitionKind(appir.Role{}, func(app *appir.App) map[string]appir.Role { return app.Roles }, nameValue[appir.Role](func(value *appir.Role, name string) { value.Name = name }))
 	role.ReferenceCandidates = true
-	menu := mappedDefinitionKind(appir.Menu{}, func(app *appir.App) map[string]appir.Menu { return app.Menus }, nameValue[appir.Menu](func(value *appir.Menu, name string) { value.Name = name }))
+	menu := mappedDefinitionKind(appir.Menu{}, func(app *appir.App) map[string]appir.Menu { return app.Menus }, nameValue[appir.Menu](func(value *appir.Menu, name string) {
+		value.Name = name
+		typed := value.Profile != "" || value.MaxDepth != 0 || value.Owner != nil
+		for _, item := range value.Items {
+			typed = typed || item.ID != "" || item.Parent != "" || item.Weight != 0 || beanmenu.IsTypedTarget(item.Target)
+		}
+		if typed && value.Profile == "" {
+			value.Profile = beanmenu.ProfileWorkspace
+		}
+		if value.Profile == beanmenu.ProfileWorkspace && value.MaxDepth == 0 {
+			value.MaxDepth = beanmenu.MaxDepth
+		}
+	}))
 	menu.References = menuReferences
 	menu.ReferenceCandidates = true
 	job := mappedDefinitionKind(appir.Job{}, func(app *appir.App) map[string]appir.Job { return app.Jobs }, nameValue[appir.Job](func(value *appir.Job, name string) { value.Name = name }))
@@ -407,6 +420,9 @@ func normalizeEntity(name string, value *appir.Entity) {
 	}
 	if value.Label == "" {
 		value.Label = value.Name
+	}
+	if value.Navigation != nil {
+		sort.Strings(value.Navigation.Menus)
 	}
 }
 
@@ -766,6 +782,12 @@ func entityReferences(app *appir.App, name string) []DefinitionReference {
 			out = append(out, reference(fmt.Sprintf("fields.%d.relation.entity", index), "Entity", field.Relation.Entity))
 		}
 	}
+	if item.Navigation != nil {
+		out = append(out, reference("navigation.destination.view", "View", item.Navigation.Destination.View))
+		for index, menuName := range item.Navigation.Menus {
+			out = append(out, reference(fmt.Sprintf("navigation.menus.%d", index), "Menu", menuName))
+		}
+	}
 	return references(out...)
 }
 
@@ -844,9 +866,15 @@ func panelReferences(app *appir.App, name string) []DefinitionReference {
 }
 
 func menuReferences(app *appir.App, name string) []DefinitionReference {
+	menu := app.Menus[name]
 	out := []DefinitionReference{}
-	for index, item := range app.Menus[name].Items {
+	if menu.Owner != nil {
+		out = append(out, reference("owner.entity", "Entity", menu.Owner.Entity))
+	}
+	for index, item := range menu.Items {
 		out = append(out, reference(fmt.Sprintf("items.%d.policy", index), "Policy", item.Policy))
+		out = append(out, reference(fmt.Sprintf("items.%d.target.page", index), "Page", item.Target.Page))
+		out = append(out, reference(fmt.Sprintf("items.%d.target.view", index), "View", item.Target.View))
 	}
 	return references(out...)
 }

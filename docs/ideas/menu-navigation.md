@@ -1,6 +1,6 @@
 # Idea: Dynamic hierarchical Menu navigation
 
-Status: design direction ready for goal and implementation planning; implementation not started.
+Status: active; AppIR v13/compiler/schema contract implemented, dynamic placement persistence is next.
 
 Related: [`panel-limitation.md`](panel-limitation.md).
 

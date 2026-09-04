@@ -1,5 +1,30 @@
 {
   "$defs": {
+    "github_com_beanruntime_bean_internal_appir_EntityNavigation": {
+      "additionalProperties": false,
+      "properties": {
+        "destination": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_NavigationDestination"
+        },
+        "labelField": {
+          "type": "string"
+        },
+        "menus": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "labelField",
+        "destination",
+        "menus"
+      ],
+      "type": "object"
+    },
     "github_com_beanruntime_bean_internal_appir_Field": {
       "additionalProperties": false,
       "properties": {
@@ -31,6 +56,22 @@
           "type": "boolean"
         }
       },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_NavigationDestination": {
+      "additionalProperties": false,
+      "properties": {
+        "display": {
+          "type": "string"
+        },
+        "view": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "view",
+        "display"
+      ],
       "type": "object"
     },
     "github_com_beanruntime_bean_internal_appir_Relation": {
@@ -83,6 +124,9 @@
     },
     "namespace": {
       "type": "string"
+    },
+    "navigation": {
+      "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_EntityNavigation"
     },
     "owner": {
       "type": "boolean"

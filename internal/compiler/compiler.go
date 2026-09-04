@@ -23,6 +23,7 @@ import (
 	"github.com/beanruntime/bean/internal/expr"
 	beanextension "github.com/beanruntime/bean/internal/extension"
 	"github.com/beanruntime/bean/internal/field"
+	beanmenu "github.com/beanruntime/bean/internal/menu"
 	"github.com/beanruntime/bean/internal/migration"
 	pagepkg "github.com/beanruntime/bean/internal/page"
 	"github.com/beanruntime/bean/internal/policy"
@@ -1425,6 +1426,17 @@ func validateViewDisplay(viewName, displayName string, view appir.View, display 
 	return out
 }
 
+func firstDuplicate(values []string) string {
+	seen := map[string]bool{}
+	for _, value := range values {
+		if seen[value] {
+			return value
+		}
+		seen[value] = true
+	}
+	return ""
+}
+
 func validateEntities(a *appir.App, _ *validationState) []definition.Diagnostic {
 	out := []definition.Diagnostic{}
 	allowedRelations := map[string]bool{"one-to-one": true, "one-to-many": true, "many-to-one": true, "many-to-many": true}
@@ -1449,6 +1461,49 @@ func validateEntities(a *appir.App, _ *validationState) []definition.Diagnostic 
 		if entity.Policy != "" {
 			if _, ok := a.Policies[entity.Policy]; !ok {
 				out = append(out, missingReferenceDiagnostic("Entity", name, "spec.policy", "Policy", entity.Policy))
+			}
+		}
+		if navigation := entity.Navigation; navigation != nil {
+			labelField, labelExists := entityFieldDefinition(entity, navigation.LabelField)
+			if !labelExists {
+				out = append(out, missingFieldDiagnostic("Entity", name, "spec.navigation.labelField", navigation.LabelField, true))
+			} else if labelField.Sensitive {
+				out = append(out, diagnostic("Entity", name, "spec.navigation.labelField", "navigation label field cannot be sensitive"))
+			}
+			viewDefinition, viewExists := a.Views[navigation.Destination.View]
+			if !viewExists {
+				out = append(out, missingReferenceDiagnostic("Entity", name, "spec.navigation.destination.view", "View", navigation.Destination.View))
+			} else if viewDefinition.Entity != name {
+				out = append(out, diagnostic("Entity", name, "spec.navigation.destination.view", "navigation destination View must read this Entity"))
+			} else if display, exists := viewDefinition.Displays[navigation.Destination.Display]; !exists {
+				out = append(out, diagnostic("Entity", name, "spec.navigation.destination.display", "references missing View display "+navigation.Destination.Display))
+			} else if display.Type != "page" {
+				out = append(out, diagnostic("Entity", name, "spec.navigation.destination.display", "navigation destination must be a page display"))
+			} else {
+				selected := nameSet(viewDefinition.Fields)
+				if !selected[navigation.LabelField] {
+					out = append(out, diagnostic("Entity", name, "spec.navigation.labelField", "navigation destination View must select the label field"))
+				}
+				for parameter := range routeParameterNames(display.Route) {
+					if !fieldSet(entity)[parameter] || !selected[parameter] {
+						out = append(out, diagnostic("Entity", name, "spec.navigation.destination.display", "navigation destination route parameter "+parameter+" must be a selected Entity field"))
+					}
+				}
+			}
+			if len(navigation.Menus) == 0 {
+				out = append(out, requiredDiagnostic("Entity", name, "spec.navigation.menus", "requires at least one scoped Menu"))
+			}
+			if duplicate := firstDuplicate(navigation.Menus); duplicate != "" {
+				out = append(out, duplicateDiagnostic("Entity", name, "spec.navigation.menus", "duplicates Menu "+duplicate))
+			}
+			for index, menuName := range navigation.Menus {
+				menuDefinition, exists := a.Menus[menuName]
+				path := fmt.Sprintf("spec.navigation.menus.%d", index)
+				if !exists {
+					out = append(out, missingReferenceDiagnostic("Entity", name, path, "Menu", menuName))
+				} else if menuDefinition.Owner == nil {
+					out = append(out, diagnostic("Entity", name, path, "record navigation requires an owner-scoped Menu"))
+				}
 			}
 		}
 		for i, field := range entity.Fields {
@@ -2765,12 +2820,106 @@ func validateJobs(a *appir.App, _ *validationState) []definition.Diagnostic {
 
 func validateMenus(a *appir.App, _ *validationState) []definition.Diagnostic {
 	out := []definition.Diagnostic{}
-	for name, menu := range a.Menus {
-		for i, item := range menu.Items {
+	if len(a.Menus) > beanmenu.MaxDefinitions {
+		out = append(out, diagnostic("Menu", "", "", fmt.Sprintf("applications may define at most %d Menus", beanmenu.MaxDefinitions)))
+	}
+	for name, menuDefinition := range a.Menus {
+		typed := menuDefinition.Profile != "" || menuDefinition.MaxDepth != 0 || menuDefinition.Owner != nil
+		if typed && menuDefinition.Profile != beanmenu.ProfileWorkspace {
+			out = append(out, diagnostic("Menu", name, "spec.profile", "must be workspace"))
+		}
+		if typed && menuDefinition.MaxDepth != beanmenu.MaxDepth {
+			out = append(out, diagnostic("Menu", name, "spec.maxDepth", fmt.Sprintf("must be %d", beanmenu.MaxDepth)))
+		}
+		if menuDefinition.Owner != nil {
+			if _, exists := a.Entities[menuDefinition.Owner.Entity]; !exists {
+				out = append(out, missingReferenceDiagnostic("Menu", name, "spec.owner.entity", "Entity", menuDefinition.Owner.Entity))
+			}
+			if len(menuDefinition.Items) > 0 {
+				out = append(out, diagnostic("Menu", name, "spec.items", "scoped Menus cannot contain static placements"))
+			}
+		}
+		if len(menuDefinition.Items) > beanmenu.MaxPlacements {
+			out = append(out, diagnostic("Menu", name, "spec.items", fmt.Sprintf("may contain at most %d placements", beanmenu.MaxPlacements)))
+		}
+		ids, targets := map[string]bool{}, map[string]bool{}
+		for i, item := range menuDefinition.Items {
+			base := fmt.Sprintf("spec.items.%d", i)
 			if item.Policy != "" {
 				if _, ok := a.Policies[item.Policy]; !ok {
-					out = append(out, missingReferenceDiagnostic("Menu", name, fmt.Sprintf("spec.items.%d.policy", i), "Policy", item.Policy))
+					out = append(out, missingReferenceDiagnostic("Menu", name, base+".policy", "Policy", item.Policy))
 				}
+			}
+			if !typed {
+				continue
+			}
+			if !testCaseName.MatchString(item.ID) {
+				out = append(out, diagnostic("Menu", name, base+".id", "must be a nonempty machine name"))
+			} else if ids[item.ID] {
+				out = append(out, duplicateDiagnostic("Menu", name, base+".id", "duplicates placement "+item.ID))
+			}
+			ids[item.ID] = true
+			if utf8.RuneCountInString(item.Label) > beanmenu.MaxLabelOverrideLength {
+				out = append(out, diagnostic("Menu", name, base+".label", fmt.Sprintf("must contain at most %d characters", beanmenu.MaxLabelOverrideLength)))
+			}
+			if item.Weight < beanmenu.MinWeight || item.Weight > beanmenu.MaxWeight {
+				out = append(out, diagnostic("Menu", name, base+".weight", fmt.Sprintf("must be between %d and %d", beanmenu.MinWeight, beanmenu.MaxWeight)))
+			}
+			pageTarget := item.Target.Page != ""
+			viewTarget := item.Target.View != "" || item.Target.Display != ""
+			if pageTarget == viewTarget {
+				out = append(out, diagnostic("Menu", name, base+".target", "must reference exactly one Page or View page display"))
+			} else if pageTarget {
+				if targetPage, exists := a.Pages[item.Target.Page]; !exists {
+					out = append(out, missingReferenceDiagnostic("Menu", name, base+".target.page", "Page", item.Target.Page))
+				} else if len(routeParameterNames(targetPage.Route)) > 0 {
+					out = append(out, diagnostic("Menu", name, base+".target.page", "static Page target route cannot require parameters"))
+				}
+			} else {
+				viewDefinition, exists := a.Views[item.Target.View]
+				if !exists {
+					out = append(out, missingReferenceDiagnostic("Menu", name, base+".target.view", "View", item.Target.View))
+				} else if display, displayExists := viewDefinition.Displays[item.Target.Display]; !displayExists {
+					out = append(out, diagnostic("Menu", name, base+".target.display", "references missing View display "+item.Target.Display))
+				} else if display.Type != "page" {
+					out = append(out, diagnostic("Menu", name, base+".target.display", "must reference a page display"))
+				} else if len(routeParameterNames(display.Route)) > 0 {
+					out = append(out, diagnostic("Menu", name, base+".target.display", "static View display target route cannot require parameters"))
+				}
+			}
+			key := beanmenu.TargetKey(item.Target)
+			if targets[key] {
+				out = append(out, duplicateDiagnostic("Menu", name, base+".target", "duplicates target "+key))
+			}
+			targets[key] = true
+		}
+		for i, item := range menuDefinition.Items {
+			if item.Parent != "" && !ids[item.Parent] {
+				out = append(out, diagnostic("Menu", name, fmt.Sprintf("spec.items.%d.parent", i), "references missing placement "+item.Parent))
+			}
+		}
+		for i, item := range menuDefinition.Items {
+			seen, current, depth := map[string]bool{}, item, 1
+			for current.Parent != "" {
+				if seen[current.ID] {
+					out = append(out, diagnostic("Menu", name, fmt.Sprintf("spec.items.%d.parent", i), "creates a placement cycle"))
+					break
+				}
+				seen[current.ID] = true
+				depth++
+				parentFound := false
+				for _, candidate := range menuDefinition.Items {
+					if candidate.ID == current.Parent {
+						current, parentFound = candidate, true
+						break
+					}
+				}
+				if !parentFound {
+					break
+				}
+			}
+			if depth > beanmenu.MaxDepth {
+				out = append(out, diagnostic("Menu", name, fmt.Sprintf("spec.items.%d.parent", i), fmt.Sprintf("exceeds maximum depth %d", beanmenu.MaxDepth)))
 			}
 		}
 	}

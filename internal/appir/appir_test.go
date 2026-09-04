@@ -299,6 +299,10 @@ func TestSemanticPageSectionWidthsRequireV12Format(t *testing.T) {
 	if err != nil || clone.Pages["article"].Sections[1].Width != "contained" {
 		t.Fatalf("clone=%+v err=%v", clone, err)
 	}
+	app.FormatVersion = appir.PageWidthFormat
+	if err = app.ValidateFormat(); err != nil {
+		t.Fatalf("v12 AppIR rejected semantic Page section widths: %v", err)
+	}
 	app.FormatVersion = appir.RegionCollapseFormat
 	if err = app.ValidateFormat(); err == nil {
 		t.Fatal("v11 AppIR accepted semantic Page section widths")
@@ -310,5 +314,32 @@ func TestSemanticPageSectionWidthsRequireV12Format(t *testing.T) {
 	app.Pages["article"] = page
 	if err = app.ValidateFormat(); err != nil {
 		t.Fatalf("v11 AppIR rejected width-less Page sections: %v", err)
+	}
+}
+
+func TestHierarchicalMenuContractsRequireV13Format(t *testing.T) {
+	app := appir.Empty()
+	app.Entities["book"] = appir.Entity{Name: "book"}
+	app.Entities["page"] = appir.Entity{Name: "page", Navigation: &appir.EntityNavigation{LabelField: "title", Destination: appir.NavigationDestination{View: "pages", Display: "detail"}, Menus: []string{"contents"}}}
+	app.Menus["contents"] = appir.Menu{Name: "contents", Profile: "workspace", MaxDepth: 3, Owner: &appir.MenuOwner{Entity: "book"}}
+	app.Menus["main"] = appir.Menu{Name: "main", Profile: "workspace", MaxDepth: 3, Items: []appir.MenuItem{{ID: "home", Target: appir.MenuTarget{Page: "home"}}}}
+	if err := app.ValidateFormat(); err != nil {
+		t.Fatal(err)
+	}
+	clone, err := app.Clone()
+	if err != nil || clone.Entities["page"].Navigation.Destination.Display != "detail" || clone.Menus["main"].Items[0].Target.Page != "home" {
+		t.Fatalf("clone=%+v err=%v", clone, err)
+	}
+	app.FormatVersion = appir.PageWidthFormat
+	if err = app.ValidateFormat(); err == nil {
+		t.Fatal("v12 AppIR accepted hierarchical Menu contracts")
+	}
+	page := app.Entities["page"]
+	page.Navigation = nil
+	app.Entities["page"] = page
+	app.Menus["contents"] = appir.Menu{Name: "contents", Items: []appir.MenuItem{{Label: "Home", Route: "/"}}}
+	delete(app.Menus, "main")
+	if err = app.ValidateFormat(); err != nil {
+		t.Fatalf("v12 AppIR rejected legacy flat Menus: %v", err)
 	}
 }
