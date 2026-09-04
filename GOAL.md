@@ -2,7 +2,7 @@
 
 Status: complete
 
-Complete the Community example browser flow: expose the existing publish_post Action in Admin and render its existing public_feed View at `/`, so Application navigation and member login no longer land on a 404. Preserve private-post isolation and keep the change in example metadata.
+Complete the Community example browser flow: expose the existing publish_post Action in Admin and render its existing public_feed View at `/`, so Application navigation and member login no longer land on a 404. Preserve private-post isolation and keep the change in example metadata. Show Body, Visibility, and Updated at in the Post Admin table, with Body linking to the record and no ID column.
 
 ## Contract
 
@@ -19,4 +19,5 @@ Complete the Community example browser flow: expose the existing publish_post Ac
 - Community validation and semantic tests pass. The existing member-only API regression is preserved alongside separate member/editor identities for the new Admin browser regression; both pass.
 - The homepage regression first reproduced HTTP 404, then verified HTTP 200, the empty feed, and public-only results for both anonymous visitors and the post owner. All three Community regressions pass.
 - The local Community release is activated and the homepage is verified in the browser before and after sign-out.
+- The Post table shows Body, Visibility, and Updated at without ID; clicking Body opens the correct record in the browser.
 - Final `make check` passes, including 87 frontend tests and 20 Playwright journeys; `make build` passes.

@@ -97,3 +97,5 @@ name: post
 entity: post
 description: Manage post
 actions: [publish_post]
+list:
+  columns: [body, visibility, updated_at]
