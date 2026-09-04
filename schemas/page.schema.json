@@ -64,6 +64,14 @@
         },
         "panel": {
           "type": "string"
+        },
+        "width": {
+          "enum": [
+            "contained",
+            "full",
+            "wide"
+          ],
+          "type": "string"
         }
       },
       "required": [

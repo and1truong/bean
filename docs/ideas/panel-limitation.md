@@ -1,6 +1,6 @@
 # Panel limitations and difficult composition cases
 
-Status: idea inventory; responsive presets, multiple Page layout bands, and policy-aware empty-Region collapse are implemented. Remaining cases are unscheduled.
+Status: idea inventory; responsive presets, multiple Page layout bands, policy-aware empty-Region collapse, and safe-gutter semantic section widths are implemented. Remaining cases are unscheduled.
 
 Related: [`panel-responsive-layout.md`](panel-responsive-layout.md).
 
@@ -53,17 +53,18 @@ Operational dashboards often need mixed spans:
 
 Panel metadata cannot currently assign column or row spans to a Region or item. A future contract would need bounded integers and deterministic placement rather than arbitrary grid CSS.
 
-## 4. Contained, wide, and full-bleed content
+## 4. Contained, wide, and full-width content
 
-A Page may need a constrained article body, a wider quotation or code sample, and an edge-to-edge hero image. Panel currently has no semantic width vocabulary such as:
+Implemented as Page placement rather than Panel sizing:
 
 ```yaml
-width: contained
-width: wide
-width: full-bleed
+sections:
+  - {panel: article_body, width: contained}
+  - {panel: related_posts, width: wide}
+  - {panel: hero, width: full}
 ```
 
-Maximum application-shell width should remain separate from Panel track sizing.
+The runtime owns `48rem` contained, `72rem` wide, and available-viewport full widths, all with safe gutters. A reusable Panel can therefore be placed differently by separate Pages while Sequence remains independent. True edge-to-edge media bleed, background bands, and overlays remain unsupported and belong to a future typed renderer if demonstrated.
 
 ## 5. Sticky sidebar or header
 
@@ -179,7 +180,7 @@ Users may want to hide, reorder, drag, or resize widgets and persist a personal 
 2. Support multiple layout bands on one Page without arbitrary nesting. **Implemented** with ordered Page `sections` in AppIR v10.
 3. Add bounded main/sidebar spans and grid column counts if examples require them.
 4. Define empty-Region collapse after Policy filtering. **Implemented** as opt-in `collapseWhenEmpty` in AppIR v11.
-5. Add semantic contained/wide/full-bleed widths.
+5. Add semantic contained/wide/full widths. **Implemented** as safe-gutter Page section placement in AppIR v12; true bleed remains unsupported.
 6. Improve typed detail/form field layout instead of using one Block per field.
 
 ## Non-goals

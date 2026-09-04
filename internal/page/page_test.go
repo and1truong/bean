@@ -42,6 +42,9 @@ func TestPageNodeExposesWhetherRouteMetadataIsProtected(t *testing.T) {
 		if protected := node.Props["protected"]; protected != expected {
 			t.Fatalf("protected=%v pagePolicy=%q panelPolicy=%q", protected, definition.Policy, app.Panels[definition.Panel].Policy)
 		}
+		if node.Children[0].Props["pageWidth"] != page.WidthWide {
+			t.Fatalf("legacy Page width=%v", node.Children[0].Props["pageWidth"])
+		}
 	}
 }
 
@@ -54,10 +57,10 @@ func TestPageNodeRendersOrderedPolicyVisiblePanelSectionsAndAppliesFilters(t *te
 	app.Panels["hero"] = appir.Panel{Name: "hero", Layout: "single-column", Regions: []appir.Region{{Name: "main", Blocks: []string{"hero"}}}}
 	app.Panels["body"] = appir.Panel{Name: "body", Layout: "grid", Regions: []appir.Region{{Name: "main", Blocks: []string{"results"}}}}
 	app.Panels["private"] = appir.Panel{Name: "private", Layout: "two-column", Policy: "members", Regions: []appir.Region{{Name: "left", Blocks: []string{"private"}}}}
-	definition := appir.Page{Sections: []appir.PageSection{{ID: "introduction", Panel: "hero", Identity: "@section/home/introduction"}, {Panel: "body", Identity: "@section/home/1"}, {Panel: "private", Identity: "@section/home/2"}}, Filters: map[string]appir.PageFilter{"status": {Targets: []appir.PageFilterTarget{{Block: "results", Filter: "state"}}}}}
+	definition := appir.Page{Sections: []appir.PageSection{{ID: "introduction", Panel: "hero", Width: "full", Identity: "@section/home/introduction"}, {Panel: "body", Width: "contained", Identity: "@section/home/1"}, {Panel: "private", Width: "wide", Identity: "@section/home/2"}}, Filters: map[string]appir.PageFilter{"status": {Targets: []appir.PageFilterTarget{{Block: "results", Filter: "state"}}}}}
 
 	node, allowed, err := page.Node(app, definition, nil, beanctx.Request{})
-	if err != nil || !allowed || len(node.Children) != 2 || node.Children[0].Props["layout"] != "single-column" || node.Children[0].Props["pageSection"] != "@section/home/introduction" || node.Children[1].Props["layout"] != "grid" || node.Children[1].Props["pageSection"] != "@section/home/1" {
+	if err != nil || !allowed || len(node.Children) != 2 || node.Children[0].Props["layout"] != "single-column" || node.Children[0].Props["pageSection"] != "@section/home/introduction" || node.Children[0].Props["pageWidth"] != "full" || node.Children[1].Props["layout"] != "grid" || node.Children[1].Props["pageSection"] != "@section/home/1" || node.Children[1].Props["pageWidth"] != "contained" {
 		t.Fatalf("anonymous node=%+v allowed=%v err=%v", node, allowed, err)
 	}
 	result := node.Children[1].Children[0].Children[0]
@@ -87,7 +90,7 @@ func TestPageNodeOmitsAllCollapsedPanelSection(t *testing.T) {
 	definition := appir.Page{Sections: []appir.PageSection{{Panel: "tools", Identity: "@section/home/tools"}, {Panel: "article", Identity: "@section/home/article"}}}
 
 	node, allowed, err := page.Node(app, definition, nil, beanctx.Request{})
-	if err != nil || !allowed || len(node.Children) != 1 || node.Children[0].Props["pageSection"] != "@section/home/article" {
+	if err != nil || !allowed || len(node.Children) != 1 || node.Children[0].Props["pageSection"] != "@section/home/article" || node.Children[0].Props["pageWidth"] != "wide" {
 		t.Fatalf("anonymous tree=%+v allowed=%v err=%v", node, allowed, err)
 	}
 	definition.Sections = definition.Sections[:1]

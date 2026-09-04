@@ -13,7 +13,26 @@ import (
 	"github.com/beanruntime/bean/internal/valuesource"
 )
 
-const MaxSections = 32
+const (
+	MaxSections    = 32
+	WidthContained = "contained"
+	WidthFull      = "full"
+	WidthWide      = "wide"
+	DefaultWidth   = WidthWide
+)
+
+func Widths() []string { return []string{WidthContained, WidthFull, WidthWide} }
+
+func ValidWidth(value string) bool {
+	return value == WidthContained || value == WidthFull || value == WidthWide
+}
+
+func EffectiveWidth(value string) string {
+	if ValidWidth(value) {
+		return value
+	}
+	return DefaultWidth
+}
 
 func ResolveContext(p appir.Page, route, query map[string]string, c beanctx.Request) (map[string]any, error) {
 	out := map[string]any{}
@@ -116,6 +135,7 @@ func Node(a *appir.App, p appir.Page, ctx map[string]any, c beanctx.Request) (re
 			continue
 		}
 		applyPageFilterTargets(&child, pageTargets)
+		child.Props["pageWidth"] = EffectiveWidth(section.Width)
 		if section.Identity != "" {
 			child.Props["pageSection"] = section.Identity
 		}

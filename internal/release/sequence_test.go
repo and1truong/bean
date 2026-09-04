@@ -59,7 +59,7 @@ func TestCurrentAppIRPublicationSurvivesRestart(t *testing.T) {
 	}
 	active, exists = finalKernel.Active()
 	page := active.Pages["tracker_home"]
-	if !exists || active.ReleaseID != trackerRelease.ID || len(page.Sections) != 2 || page.Sections[0].Panel != "tracker_intro" || page.Sections[1].Panel != "tracker_operations" || !active.Panels["tracker_operations"].Regions[1].CollapseWhenEmpty {
+	if !exists || active.ReleaseID != trackerRelease.ID || len(page.Sections) != 2 || page.Sections[0].Panel != "tracker_intro" || page.Sections[0].Width != "contained" || page.Sections[1].Panel != "tracker_operations" || page.Sections[1].Width != "wide" || !active.Panels["tracker_operations"].Regions[1].CollapseWhenEmpty {
 		t.Fatalf("active=%+v Page=%+v", active, page)
 	}
 }

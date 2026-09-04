@@ -273,6 +273,10 @@ func TestCollapsiblePanelRegionsRequireV11Format(t *testing.T) {
 	if err != nil || !clone.Panels["article"].Regions[0].CollapseWhenEmpty {
 		t.Fatalf("clone=%+v err=%v", clone, err)
 	}
+	app.FormatVersion = appir.RegionCollapseFormat
+	if err = app.ValidateFormat(); err != nil {
+		t.Fatalf("v11 AppIR rejected collapsible Panel Regions: %v", err)
+	}
 	app.FormatVersion = appir.PageSectionFormat
 	if err = app.ValidateFormat(); err == nil {
 		t.Fatal("v10 AppIR accepted collapsible Panel Regions")
@@ -282,5 +286,29 @@ func TestCollapsiblePanelRegionsRequireV11Format(t *testing.T) {
 	app.Panels["article"] = panel
 	if err = app.ValidateFormat(); err != nil {
 		t.Fatalf("v10 AppIR rejected legacy Panel Regions: %v", err)
+	}
+}
+
+func TestSemanticPageSectionWidthsRequireV12Format(t *testing.T) {
+	app := appir.Empty()
+	app.Pages["article"] = appir.Page{Name: "article", Route: "/article", Sections: []appir.PageSection{{Panel: "hero", Width: "full"}, {Panel: "body", Width: "contained"}}}
+	if err := app.ValidateFormat(); err != nil {
+		t.Fatal(err)
+	}
+	clone, err := app.Clone()
+	if err != nil || clone.Pages["article"].Sections[1].Width != "contained" {
+		t.Fatalf("clone=%+v err=%v", clone, err)
+	}
+	app.FormatVersion = appir.RegionCollapseFormat
+	if err = app.ValidateFormat(); err == nil {
+		t.Fatal("v11 AppIR accepted semantic Page section widths")
+	}
+	page := app.Pages["article"]
+	for index := range page.Sections {
+		page.Sections[index].Width = ""
+	}
+	app.Pages["article"] = page
+	if err = app.ValidateFormat(); err != nil {
+		t.Fatalf("v11 AppIR rejected width-less Page sections: %v", err)
 	}
 }

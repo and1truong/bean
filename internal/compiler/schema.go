@@ -47,6 +47,7 @@ type Capabilities struct {
 	DisplaySerializers      []string `json:"displaySerializers"`
 	PanelLayouts            []string `json:"panelLayouts"`
 	MaxPageSections         int      `json:"maxPageSections"`
+	PageSectionWidths       []string `json:"pageSectionWidths"`
 	SequenceProfiles        []string `json:"sequenceProfiles"`
 	SequenceAspectRatios    []string `json:"sequenceAspectRatios"`
 	SequenceFrameLayouts    []string `json:"sequenceFrameLayouts"`
@@ -122,6 +123,7 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 		DisplaySerializers:      displaySerializerNames(),
 		PanelLayouts:            panelLayoutNames(),
 		MaxPageSections:         beanpage.MaxSections,
+		PageSectionWidths:       beanpage.Widths(),
 		SequenceProfiles:        beansequence.Profiles(),
 		SequenceAspectRatios:    beansequence.AspectRatios(),
 		SequenceFrameLayouts:    beansequence.Layouts(),
@@ -267,6 +269,7 @@ func definitionSchema(kind string, specification reflect.Type) map[string]any {
 				delete(sectionProperties, "identity")
 				delete(sectionProperties, "iD")
 				sectionProperties["id"] = map[string]any{"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}
+				sectionProperties["width"] = map[string]any{"type": "string", "enum": beanpage.Widths()}
 			}
 		}
 	}

@@ -137,7 +137,7 @@ func TestPageSchemaAcceptsExactlyOneBoundedCompositionForm(t *testing.T) {
 	}
 	for _, valid := range []map[string]any{
 		{"kind": "Page", "name": "legacy", "route": "/legacy", "panel": "body"},
-		{"kind": "Page", "name": "bands", "route": "/bands", "sections": []any{map[string]any{"id": "introduction", "panel": "hero"}, map[string]any{"panel": "body"}}},
+		{"kind": "Page", "name": "bands", "route": "/bands", "sections": []any{map[string]any{"id": "introduction", "panel": "hero", "width": "full"}, map[string]any{"panel": "body", "width": "contained"}, map[string]any{"panel": "related", "width": "wide"}}},
 	} {
 		if err = compiled.Validate(valid); err != nil {
 			t.Fatalf("valid Page rejected: %#v: %v", valid, err)
@@ -153,6 +153,7 @@ func TestPageSchemaAcceptsExactlyOneBoundedCompositionForm(t *testing.T) {
 		{"kind": "Page", "name": "empty", "route": "/empty", "sections": []any{}},
 		{"kind": "Page", "name": "incomplete", "route": "/incomplete", "sections": []any{map[string]any{}}},
 		{"kind": "Page", "name": "identity", "route": "/identity", "sections": []any{map[string]any{"id": "Bad ID", "panel": "body"}}},
+		{"kind": "Page", "name": "width", "route": "/width", "sections": []any{map[string]any{"panel": "body", "width": "fluid"}}},
 		{"kind": "Page", "name": "large", "route": "/large", "sections": tooMany},
 	} {
 		if err = compiled.Validate(invalid); err == nil {

@@ -10,6 +10,7 @@ import (
 	"github.com/beanruntime/bean/internal/appir"
 	beancontent "github.com/beanruntime/bean/internal/content"
 	"github.com/beanruntime/bean/internal/definition"
+	beanpage "github.com/beanruntime/bean/internal/page"
 	"github.com/beanruntime/bean/internal/registry"
 )
 
@@ -173,6 +174,9 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 	pageKind := mappedDefinitionKind(appir.Page{}, func(app *appir.App) map[string]appir.Page { return app.Pages }, nameValue[appir.Page](func(value *appir.Page, name string) {
 		value.Name = name
 		for index := range value.Sections {
+			if value.Sections[index].Width == "" {
+				value.Sections[index].Width = beanpage.DefaultWidth
+			}
 			identity := fmt.Sprintf("%d", index)
 			if value.Sections[index].ID != "" {
 				identity = value.Sections[index].ID

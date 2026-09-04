@@ -3,12 +3,14 @@ import {action,login} from './helpers/api'
 
 const test=base.extend<{}, {appName:string}>({appName:['tracker',{scope:'worker'}]})
 
-test('Panel presets and collapsed Region expansion preserve responsive source order',async({page,bean})=>{
+test('Page section widths, Panel presets, and collapsed Regions preserve responsive order',async({page,bean})=>{
   await page.setViewportSize({width:500,height:800})
   await page.goto(bean.baseURL+'/')
   await expect(page.getByRole('heading',{name:'Operate the issue lifecycle'})).toBeVisible()
   await expect(page.locator('section[data-component="Page"] > section[data-component="Panel"]').first()).toHaveAttribute('data-layout','single-column')
+  await expect(page.locator('section[data-component="Page"] > section[data-component="Panel"]').first()).toHaveAttribute('data-page-width','contained')
   await expect(page.locator('section[data-component="Page"] > section[data-component="Panel"]').nth(1)).toHaveAttribute('data-layout','two-column')
+  await expect(page.locator('section[data-component="Page"] > section[data-component="Panel"]').nth(1)).toHaveAttribute('data-page-width','wide')
   await page.evaluate(()=>{
     const fixture=document.createElement('div')
     fixture.id='panel-responsive-fixture'
@@ -19,7 +21,8 @@ test('Panel presets and collapsed Region expansion preserve responsive source or
       <section id="sidebar-main" class="bean-panel" data-component="Panel" data-layout="sidebar-main"><section class="bean-region" data-component="Region" data-region="sidebar"><div>sidebar</div></section><section class="bean-region" data-component="Region" data-region="main"><div>main</div></section></section>
       <section id="collapsed-sidebar-main" class="bean-panel" data-component="Panel" data-layout="sidebar-main"><section class="bean-region" data-component="Region" data-region="main" data-expanded="true"><div>expanded main</div></section></section>
       <section id="main-sidebar" class="bean-panel" data-component="Panel" data-layout="main-sidebar"><section class="bean-region" data-component="Region" data-region="main"><div>main</div></section><section class="bean-region" data-component="Region" data-region="sidebar"><div>sidebar</div></section></section>
-      <section id="grid" class="bean-panel" data-component="Panel" data-layout="grid"><section class="bean-region" data-component="Region" data-region="main"><div style="width:2000px">wide</div><div>two</div><div>three</div></section></section>`
+      <section id="grid" class="bean-panel" data-component="Panel" data-layout="grid"><section class="bean-region" data-component="Region" data-region="main"><div style="width:2000px">wide</div><div>two</div><div>three</div></section></section>
+      <div id="page-widths" class="bean-page" style="width:100vw"><section id="width-contained" class="bean-panel" data-layout="single-column" data-page-width="contained"></section><section id="width-wide" class="bean-panel" data-layout="single-column" data-page-width="wide"></section><section id="width-full" class="bean-panel" data-layout="single-column" data-page-width="full"></section></div>`
     document.body.append(fixture)
   })
   const snapshot=()=>page.evaluate(()=>{
@@ -40,19 +43,33 @@ test('Panel presets and collapsed Region expansion preserve responsive source or
       regionMinWidth:getComputedStyle(gridRegion).minWidth,
       gridRegionWidth:gridRegion.getBoundingClientRect().width,
       gridPanelWidth:grid.getBoundingClientRect().width,
+      containedWidth:element('#width-contained').getBoundingClientRect().width,
+      wideWidth:element('#width-wide').getBoundingClientRect().width,
+      fullWidth:element('#width-full').getBoundingClientRect().width,
     }
   })
 
   expect(await snapshot()).toMatchObject({single:1,two:1,sidebarMain:1,mainSidebar:1,grid:1,sidebarMainOrder:['sidebar','main'],mainSidebarOrder:['main','sidebar'],regionMinWidth:'0px'})
   await page.setViewportSize({width:800,height:800})
   expect(await snapshot()).toMatchObject({single:1,two:2,sidebarMain:1,mainSidebar:1,grid:2})
-  await page.setViewportSize({width:1100,height:800})
+  await page.setViewportSize({width:1400,height:800})
   const large=await snapshot()
+  const authoredWidths=await page.evaluate(()=>{
+    const panels=Array.from(document.querySelectorAll<HTMLElement>('section[data-component="Page"] > section[data-component="Panel"]'))
+    const chrome=document.querySelector<HTMLElement>('.bean-page-chrome')!
+    return {intro:panels[0].getBoundingClientRect().width,operations:panels[1].getBoundingClientRect().width,chrome:chrome.getBoundingClientRect().width}
+  })
   expect(large).toMatchObject({single:1,two:2,sidebarMain:3,mainSidebar:3,grid:3,sidebarMainOrder:['sidebar','main'],mainSidebarOrder:['main','sidebar'],regionMinWidth:'0px'})
   expect(large.sidebarRatio).toBeGreaterThan(1.9)
   expect(large.expandedMainWidth).toBeGreaterThan(large.collapsedPanelWidth-1)
   expect(large.mainSidebarRatio).toBeGreaterThan(1.9)
   expect(large.gridRegionWidth).toBeLessThanOrEqual(large.gridPanelWidth)
+  expect(large.containedWidth).toBeCloseTo(768,0)
+  expect(large.wideWidth).toBeCloseTo(1152,0)
+  expect(large.fullWidth).toBeCloseTo(1400,0)
+  expect(authoredWidths.intro).toBeCloseTo(768,0)
+  expect(authoredWidths.operations).toBeCloseTo(1152,0)
+  expect(authoredWidths.chrome).toBeCloseTo(1152,0)
 })
 
 test('issue status chart drills into actionable issue records',async({page,request,bean})=>{

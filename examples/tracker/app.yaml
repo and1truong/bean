@@ -138,5 +138,5 @@ name: tracker_home
 route: /
 title: Issue operations
 sections:
-  - {id: introduction, panel: tracker_intro}
-  - {id: operations, panel: tracker_operations}
+  - {id: introduction, panel: tracker_intro, width: contained}
+  - {id: operations, panel: tracker_operations, width: wide}

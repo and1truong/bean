@@ -30,9 +30,9 @@ describe('public rendering',()=>{
     vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
       const path=String(input)
       if(path.includes('/api/system/session'))return response({authenticated:false})
-      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[
-        {component:'Panel',props:{layout:'single-column'},children:[{component:'Region',props:{name:'main'},children:[{component:'TextBlock',props:{text:'Introduction band'}}]}]},
-        {component:'Panel',props:{layout:'sidebar-main'},children:[
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',props:{title:'Layout bands'},children:[
+        {component:'Panel',props:{layout:'single-column',pageWidth:'contained'},children:[{component:'Region',props:{name:'main'},children:[{component:'TextBlock',props:{text:'Introduction band'}}]}]},
+        {component:'Panel',props:{layout:'sidebar-main',pageWidth:'full'},children:[
           {component:'Region',props:{name:'sidebar'},children:[{component:'TextBlock',props:{text:'Sidebar first'}}]},
           {component:'Region',props:{name:'main'},children:[{component:'TextBlock',props:{text:'Main second'}}]},
         ]},
@@ -44,6 +44,8 @@ describe('public rendering',()=>{
     const panels=Array.from(document.querySelectorAll('[data-component="Panel"]'))
     expect(panels).toHaveLength(2)
     expect(panels.map(panel=>panel.getAttribute('data-layout'))).toEqual(['single-column','sidebar-main'])
+    expect(panels.map(panel=>panel.getAttribute('data-page-width'))).toEqual(['contained','full'])
+    expect(screen.getByRole('heading',{name:'Layout bands'}).parentElement).toHaveClass('bean-page-chrome')
     expect(panels.every(panel=>panel.classList.contains('bean-panel'))).toBe(true)
     expect(Array.from(panels[1].children).map(child=>child.getAttribute('data-region'))).toEqual(['sidebar','main'])
     expect(Array.from(panels[1].children).every(child=>child.classList.contains('bean-region'))).toBe(true)
@@ -80,6 +82,7 @@ describe('public rendering',()=>{
     }))
     renderApp('/presentations/bean')
     expect(await screen.findByRole('heading',{name:'Bean',level:1})).toBeVisible()
+    expect(document.querySelector('.bean-sequence [data-component="Panel"]')).not.toHaveAttribute('data-page-width')
     expect(screen.getByText('1 / 3')).toBeVisible()
     expect(screen.queryByRole('navigation',{name:'Primary navigation'})).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button',{name:'Next'}))

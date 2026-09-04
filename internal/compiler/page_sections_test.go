@@ -20,7 +20,7 @@ func TestPageSectionsCompileInDeterministicOrderWithCrossSectionFilters(t *testi
 		t.Fatalf("Page sections did not compile deterministically: first=%+v second=%+v", first.App.Pages["home"], second.App.Pages["home"])
 	}
 	page := first.App.Pages["home"]
-	if page.Panel != "" || !reflect.DeepEqual(page.PanelNames(), []string{"hero", "body"}) || page.Sections[0].Identity != "@section/home/introduction" || page.Sections[1].Identity != "@section/home/1" {
+	if page.Panel != "" || !reflect.DeepEqual(page.PanelNames(), []string{"hero", "body"}) || page.Sections[0].Identity != "@section/home/introduction" || page.Sections[0].Width != "full" || page.Sections[1].Identity != "@section/home/1" || page.Sections[1].Width != "wide" {
 		t.Fatalf("page=%+v panels=%v", page, page.PanelNames())
 	}
 	_, references, exists := compiler.InspectDefinition(first.App, "Page", "home")
@@ -47,9 +47,9 @@ func TestPageSectionsRejectAmbiguousEmptyAndMissingComposition(t *testing.T) {
 	}
 
 	delete(page.Spec, "panel")
-	page.Spec["sections"] = []any{map[string]any{"id": "duplicate", "panel": ""}, map[string]any{"id": "duplicate", "panel": "missing"}}
+	page.Spec["sections"] = []any{map[string]any{"id": "duplicate", "panel": ""}, map[string]any{"id": "duplicate", "panel": "missing", "width": "fluid"}}
 	diagnostics = compiler.Compile("sections", 1, definitions).Diagnostics
-	for _, path := range []string{"spec.sections.0.panel", "spec.sections.1.id", "spec.sections.1.panel"} {
+	for _, path := range []string{"spec.sections.0.panel", "spec.sections.1.id", "spec.sections.1.panel", "spec.sections.1.width"} {
 		if !hasDiagnosticPath(diagnostics, "Page", "home", path) {
 			t.Errorf("missing %s in %v", path, diagnostics)
 		}
@@ -82,7 +82,7 @@ func pageSectionDefinitions() []definition.Definition {
 		item("Block", "candidate_list", map[string]any{"type": "view", "view": "candidates"}),
 		item("Panel", "hero", map[string]any{"layout": "single-column", "regions": []any{map[string]any{"name": "main", "blocks": []any{"introduction"}}}}),
 		item("Panel", "body", map[string]any{"layout": "single-column", "regions": []any{map[string]any{"name": "main", "blocks": []any{"candidate_list"}}}}),
-		item("Page", "home", map[string]any{"route": "/", "sections": []any{map[string]any{"id": "introduction", "panel": "hero"}, map[string]any{"panel": "body"}}, "filters": map[string]any{"status": map[string]any{"targets": []any{map[string]any{"block": "candidate_list", "filter": "status"}}}}}),
+		item("Page", "home", map[string]any{"route": "/", "sections": []any{map[string]any{"id": "introduction", "panel": "hero", "width": "full"}, map[string]any{"panel": "body"}}, "filters": map[string]any{"status": map[string]any{"targets": []any{map[string]any{"block": "candidate_list", "filter": "status"}}}}}),
 	}
 }
 

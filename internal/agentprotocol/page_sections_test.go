@@ -1,6 +1,7 @@
 package agentprotocol_test
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/beanruntime/bean/internal/agentprotocol"
@@ -10,8 +11,8 @@ import (
 
 func TestPageSectionReferencesAndSemanticDiffAreAgentDiscoverable(t *testing.T) {
 	capabilities := compiler.ProtocolCapabilities("bean.cli/v1alpha1", agentprotocol.APIVersion)
-	if capabilities.MaxPageSections != 32 {
-		t.Fatalf("max Page sections=%d", capabilities.MaxPageSections)
+	if capabilities.MaxPageSections != 32 || !reflect.DeepEqual(capabilities.PageSectionWidths, []string{"contained", "full", "wide"}) {
+		t.Fatalf("Page section capabilities=%+v", capabilities)
 	}
 	current := appir.Empty()
 	current.Panels["body"] = appir.Panel{Name: "body"}
@@ -21,7 +22,7 @@ func TestPageSectionReferencesAndSemanticDiffAreAgentDiscoverable(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidate.Pages["article"] = appir.Page{Name: "article", Route: "/article", Sections: []appir.PageSection{{ID: "body", Panel: "body", Identity: "@section/article/body"}, {ID: "related", Panel: "related", Identity: "@section/article/related"}}}
+	candidate.Pages["article"] = appir.Page{Name: "article", Route: "/article", Sections: []appir.PageSection{{ID: "body", Panel: "body", Width: "contained", Identity: "@section/article/body"}, {ID: "related", Panel: "related", Width: "wide", Identity: "@section/article/related"}}}
 
 	_, references, exists := compiler.InspectDefinition(candidate, "Page", "article")
 	if !exists || !containsReference(references, "sections.0.panel", "Panel", "body") || !containsReference(references, "sections.1.panel", "Panel", "related") {
@@ -35,5 +36,16 @@ func TestPageSectionReferencesAndSemanticDiffAreAgentDiscoverable(t *testing.T) 
 	}
 	if !foundPanel || !foundSections {
 		t.Fatalf("changes=%+v", changes)
+	}
+	resized, err := candidate.Clone()
+	if err != nil {
+		t.Fatal(err)
+	}
+	article := resized.Pages["article"]
+	article.Sections[0].Width = "full"
+	resized.Pages["article"] = article
+	changes = agentprotocol.SemanticDiff(candidate, resized)
+	if len(changes) != 1 || changes[0].Path != "pages.article.sections" {
+		t.Fatalf("width changes=%+v", changes)
 	}
 }

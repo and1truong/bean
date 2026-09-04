@@ -1,33 +1,48 @@
-# Goal: Modernize Asana Lite composition
+# Goal: Semantic Page section widths
 
 Status: complete
 
-Update the maintained metadata-only Asana Lite reference application to exercise the current Panel and View Display contracts without changing its accepted project, task, hierarchy, status, or attachment behavior.
+Allow each ordered Page section to choose a bounded semantic content width so full, wide, and readable bands can coexist without arbitrary CSS or nested Panels.
 
 ## Design
 
-- Replace each legacy single-Panel Page with ordered `sections` that compose focused responsive layout bands.
-- Use `two-column` only where paired content benefits from it and keep the wide board/tree/list surfaces in `single-column` Panels.
-- Preserve source, DOM, keyboard, and screen-reader order across responsive breakpoints.
-- Move one-off Page narrative from globally named text Blocks into ordered inline Panel content.
-- Move legacy `Block.presentation` metadata into named View-owned block Displays; Blocks retain only View/Display selection, route-context bindings, and Page composition.
-- Preserve the project Page's explicit priority-filter fan-out across chart, board, and tree Blocks in separate sections.
-- Keep all application behavior in `examples/asana`; use only already-shipped generic capabilities.
+```yaml
+kind: Page
+name: article
+route: /articles/:slug
+sections:
+  - {id: hero, panel: article_hero, width: full}
+  - {id: body, panel: article_body, width: contained}
+  - {id: related, panel: related_posts, width: wide}
+```
+
+`sections[].width` accepts only:
+
+- `contained`: runtime-owned readable width of `48rem` including safe horizontal gutters;
+- `wide`: current application width of `72rem` including safe gutters;
+- `full`: all available viewport width with the same safe gutters, not edge-to-edge bleed.
+
+Omitted width normalizes to `wide`. Legacy `Page.panel` also renders as implicit `wide`, preserving its geometry. Below a section's maximum all modes fill the available viewport, so no new breakpoint metadata is introduced.
+
+The width belongs to Page placement rather than Panel because one reusable Panel may appear in different Page contexts, while Sequence layout remains independent. AppIR v12 stores normalized section widths. AppIR v11 and earlier remain loadable; missing width continues to mean `wide`.
+
+The server annotates Page-owned Panel render nodes with the compiled width. The browser applies deterministic runtime classes and data attributes and keeps title, description, and Page filters at the existing `wide` width. Width never changes definition order, DOM order, keyboard order, screen-reader order, Policy, context, View reads, or Action writes.
 
 ## Acceptance criteria
 
-- Home composes a single-column introduction followed by a responsive two-column project list/create band.
-- Project composes ordered header, overview, board, and hierarchy bands; overview becomes two columns at the existing medium breakpoint while board and tree remain full width.
-- Task composes ordered header, responsive two-column action, and full-width attachment bands.
-- One-off `home_intro`, `project_help`, and `task_help` text Blocks are removed in favor of inline semantic content.
-- Project list/detail, task board/tree/detail, and attachment list presentations are named Displays owned by their Views.
-- Existing anonymous creation, immutable route bindings, priority filtering, board movement, arbitrary-depth hierarchy, and upload/download behavior remain green.
-- Browser evidence proves ordered sections and Asana's real responsive two-column collapse/expansion.
+- Page sections accept only `contained`, `wide`, or `full`.
+- Omitted widths and legacy `panel` preserve the current `wide` layout.
+- A reusable Panel can render at different widths in separate Page sections.
+- Page title, description, and filters retain the existing wide alignment.
+- Sequence Panels are unaffected.
+- Safe gutters remain at every viewport width; `full` is not arbitrary full bleed.
+- Schema, compiler diagnostics, AppIR compatibility, inspection/diff, restart, React, and browser geometry are covered.
 - `make check` and `make build` pass.
 
 ## Non-goals
 
-- New Panel, Display, View, Action, Lifecycle, Rule, file, or database capabilities.
-- Webform cache invalidation or removal of the existing refresh workflow.
-- Direct-child task lists, sibling reorder, drag-and-drop, attachment deletion, authentication, or registration.
-- Changes to SQL, SQLite, PostgreSQL, migrations, or immutable AppIR formats.
+- Edge-to-edge media bleed, negative margins, background bands, or overlays.
+- Arbitrary lengths, percentages, CSS classes, container queries, or author breakpoints.
+- Width metadata on Panel or Sequence.
+- Grid columns, item spans, nested Panels, or responsive reordering.
+- Changes to reads, writes, SQL, SQLite, or migrations.

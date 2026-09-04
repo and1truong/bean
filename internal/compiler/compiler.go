@@ -2475,6 +2475,9 @@ func validatePages(a *appir.App, state *validationState) []definition.Diagnostic
 			if page.Sections != nil {
 				sectionPath := fmt.Sprintf("spec.sections.%d", index)
 				panelPath = sectionPath + ".panel"
+				if !pagepkg.ValidWidth(page.Sections[index].Width) {
+					out = append(out, diagnostic("Page", name, sectionPath+".width", "must be contained, full, or wide"))
+				}
 				sectionID := page.Sections[index].ID
 				if sectionID != "" {
 					if !testCaseName.MatchString(sectionID) {

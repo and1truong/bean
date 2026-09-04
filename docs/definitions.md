@@ -40,11 +40,13 @@ kind: Page
 name: article
 route: /articles/:id
 sections:
-  - {id: hero, panel: article_hero}
-  - {id: body, panel: article_with_sidebar}
-  - {panel: related_articles}
+  - {id: hero, panel: article_hero, width: full}
+  - {id: body, panel: article_with_sidebar, width: contained}
+  - {panel: related_articles, width: wide}
   - {panel: comments}
 ```
+
+A section's optional `width` uses the closed `contained`, `wide`, or `full` vocabulary. `contained` is a runtime-owned readable `48rem`, `wide` is the existing `72rem` application width, and `full` fills the available viewport; all three retain standard `1rem`/`1.5rem` safe gutters. Omitted width and legacy `Page.panel` mean `wide`. Width is Page placement metadata, so the same Panel may be reused at different widths and Sequence Panels are unaffected. Section widths require AppIR v12 and do not provide edge-to-edge bleed, backgrounds, arbitrary lengths, or breakpoint overrides.
 
 Page context is resolved once and supplied to every section. Page filters may target named View Blocks in any declared Panel. The Page Policy remains the outer authorization boundary; each Panel and named Block then applies its own Policy. A denied Panel is omitted without changing the relative order of visible sections, and a Page with no visible sections is unavailable. Bound View and Webform requests must name a Block in a declared section and pass at least one containing Panel's Policy. Legacy `panel: name` remains unchanged in source and AppIR; ordered sections require AppIR v10.
 

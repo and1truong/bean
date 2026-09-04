@@ -6,7 +6,7 @@ An issue-tracking application with projects, issues, and comments. It demonstrat
 
 - To-do, in-progress, and done workflow
 - Filterable issue table and kanban board
-- Ordered Page layout bands: single-column semantic introduction followed by two-column operations
+- Ordered Page layout bands: a contained single-column introduction followed by wide two-column operations
 - Opt-in Region collapse metadata so a policy-empty operational column can relinquish its track
 - Issue-count chart with drill-down
 - Project and assignee filtering
