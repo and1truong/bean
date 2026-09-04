@@ -10,6 +10,57 @@ afterEach(()=>vi.restoreAllMocks())
 function show(path:string){return render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter initialEntries={[path]}><Admin/></MemoryRouter></QueryClientProvider>)}
 
 describe('Admin',()=>{
+  it.each(['unchanged','edited','created'])('handles %s datetime values without losing the stored instant',async(mode)=>{
+    const datetimeManifest:any=structuredClone(manifest)
+    const field={Name:'applied_at',Label:'Applied',Type:'datetime',Required:true}
+    datetimeManifest.entities.article.Fields.push(field)
+    datetimeManifest.adminResources.article.Form.Fields=['title','applied_at']
+    datetimeManifest.actions.article_update.Derive={}
+    datetimeManifest.actions.article_update.Input={applied_at:field}
+    datetimeManifest.actions.article_create.Input={applied_at:field}
+    const original='2026-01-01T09:00:12.123456Z'
+    let submitted:any
+    vi.spyOn(globalThis,'fetch').mockImplementation(async(input,init)=>{
+      const url=String(input)
+      if(url.includes('/api/admin/resources/article/a1'))return new Response(JSON.stringify({data:{id:'a1',title:'Before',applied_at:original}}))
+      if(url.includes('/api/admin/audit'))return new Response('[]')
+      if(url.includes('/api/actions/')){submitted=JSON.parse(String(init?.body));return new Response(JSON.stringify({error:{message:'captured'}}),{status:409})}
+      return new Response(JSON.stringify(datetimeManifest))
+    })
+    show(mode==='created'?'/article/new':'/article/a1')
+    const applied=await screen.findByTestId('field-applied_at') as HTMLInputElement
+    if(mode!=='created'){
+      const date=new Date(original)
+      const local=new Date(date.valueOf()-date.getTimezoneOffset()*60_000).toISOString().slice(0,-1)
+      expect(applied.value).toBe(local)
+      expect(applied.validity.valid).toBe(true)
+    }
+    fireEvent.change(screen.getByTestId('field-title'),{target:{value:'After'}})
+    if(mode!=='unchanged')fireEvent.change(applied,{target:{value:'2026-01-02T12:34:56.789'}})
+    fireEvent.click(screen.getByRole('button',{name:'Save'}))
+    await waitFor(()=>expect(submitted).toBeDefined())
+    if(mode==='unchanged')expect(submitted).toEqual({id:'a1',title:'After'})
+    else expect(submitted.applied_at).toBe(new Date('2026-01-02T12:34:56.789').toISOString())
+  })
+
+  it('submits Admin selection Action datetimes as RFC3339',async()=>{
+    const actionManifest:any=structuredClone(manifest)
+    actionManifest.actions.schedule={Name:'schedule',Entity:'article',Operation:'update',Input:{id:{Name:'id',Type:'uuid'},at:{Name:'at',Label:'Scheduled at',Type:'datetime',Required:true}}}
+    actionManifest.adminResources.article.Actions=['schedule']
+    let submitted:any
+    vi.spyOn(globalThis,'fetch').mockImplementation(async(input,init)=>{
+      const url=String(input)
+      if(url.includes('/api/admin/resources/article'))return new Response(JSON.stringify({data:[{id:'a1',title:'Bean ships',status:'draft'}],nextCursor:''}))
+      if(url.includes('/api/actions/schedule/batch')){submitted=JSON.parse(String(init?.body));return new Response(JSON.stringify({data:{results:[{id:'a1',ok:true}]}}))}
+      return new Response(JSON.stringify(actionManifest))
+    })
+    show('/article')
+    fireEvent.click(await screen.findByRole('checkbox',{name:'Select Bean ships'}))
+    fireEvent.change(screen.getByTestId('field-at'),{target:{value:'2026-01-02T12:34:56.789'}})
+    fireEvent.click(screen.getByRole('button',{name:'Run for 1'}))
+    await waitFor(()=>expect(submitted?.values.at).toBe(new Date('2026-01-02T12:34:56.789').toISOString()))
+  })
+
   it('renders a searchable labelled change list',async()=>{
     vi.spyOn(globalThis,'fetch').mockImplementation(async input=>{const url=String(input);if(url.includes('/api/admin/resources/article'))return new Response(JSON.stringify({data:[{id:'a1',title:'Bean ships',status:'draft'}],nextCursor:''}),{status:200});return new Response(JSON.stringify(manifest),{status:200})})
     show('/article')

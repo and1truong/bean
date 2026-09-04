@@ -21,6 +21,7 @@ test('applicant tracker opens populated and operational',async({page,bean})=>{
   await page.getByRole('link',{name:'Avery Nguyen 1',exact:true}).first().click()
   await expect(page).toHaveURL(/\/candidates\//)
   await expect(page.getByRole('heading',{name:'Avery Nguyen 1',exact:true})).toBeVisible()
+  const candidateID=page.url().split('/').at(-1)!
 
   await page.getByRole('link',{name:'Candidates',exact:true}).click()
   await expect(page.getByRole('heading',{name:'Candidates',level:1})).toBeVisible()
@@ -34,6 +35,18 @@ test('applicant tracker opens populated and operational',async({page,bean})=>{
 
   const coldOnboardingStarted=Date.now()
   await login(page,bean.baseURL)
+  await page.goto(bean.baseURL+'/admin/candidate/'+candidateID)
+  const applied=page.getByTestId('field-applied_at')
+  await expect(applied).not.toHaveValue('')
+  expect(await applied.evaluate((element:HTMLInputElement)=>element.validity.valid)).toBe(true)
+  expect(new Date(await applied.inputValue()).toISOString()).toBe('2026-01-01T09:00:00.000Z')
+  await page.getByTestId('field-summary').fill('Verified through the Admin edit form.')
+  await page.getByTestId('save-candidate').click()
+  await expect(page).toHaveURL(bean.baseURL+'/admin/candidate')
+  await page.getByRole('link',{name:'Avery Nguyen 1',exact:true}).click()
+  await page.reload()
+  await expect(page.getByTestId('field-summary')).toHaveValue('Verified through the Admin edit form.')
+  expect(new Date(await applied.inputValue()).toISOString()).toBe('2026-01-01T09:00:00.000Z')
   await page.goto(bean.baseURL+'/explore')
   await page.getByTestId('explore-entity').selectOption('candidate')
   await page.getByTestId('explore-name').fill('candidate_follow_up')

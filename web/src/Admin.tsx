@@ -120,7 +120,7 @@ function ResourceRecord({manifest,create=false}:{manifest:AdminManifest;create?:
 function RecordEditor({manifest,resource,initial,create}:{manifest:AdminManifest;resource:AdminResource;initial:Row;create:boolean}){
   const entity=manifest.entities[resource.Entity];const nav=useNavigate();const qc=useQueryClient();const[values,setValues]=useState<Row>(initial);const[navigation,setNavigation]=useState<NavigationInput>();const[confirmDelete,setConfirmDelete]=useState(false)
   const actionName=create?resource.CreateAction:resource.UpdateAction;const fields=resource.Form.Fields.filter(name=>!manifest.actions[actionName]?.Derive?.[name])
-  const save=useMutation({mutationFn:()=>{const body:Row=create?pick(values,fields):{id:initial.id,...changed(initial,values,fields)};if(!create&&manifest.actions[actionName]?.Input?.version)body.version=initial.version;if(navigation)body._navigation=navigation;return callAction<{data:Row}>(actionName,body)},onSuccess:result=>{qc.setQueryData(['admin-record',resource.Name,result.data.id],result);void qc.invalidateQueries({queryKey:['admin-resource',resource.Name]});nav(create?'/admin/'+resource.Name+'/'+result.data.id:'/admin/'+resource.Name)}})
+  const save=useMutation({mutationFn:()=>{const body:Row=create?pick(values,fields):{id:initial.id,...changed(initial,values,fields)};if(!create&&manifest.actions[actionName]?.Input?.version)body.version=initial.version;if(navigation)body._navigation=navigation;return callAction<{data:Row}>(actionName,datetimeActionValues(body,manifest.actions[actionName]?.Input))},onSuccess:result=>{qc.setQueryData(['admin-record',resource.Name,result.data.id],result);void qc.invalidateQueries({queryKey:['admin-resource',resource.Name]});nav(create?'/admin/'+resource.Name+'/'+result.data.id:'/admin/'+resource.Name)}})
   const remove=useMutation({mutationFn:()=>callAction(resource.DeleteAction,{id:initial.id,...(manifest.actions[resource.DeleteAction]?.Input?.version?{version:initial.version}:{})}),onSuccess:()=>{void qc.invalidateQueries({queryKey:['admin-resource',resource.Name]});nav('/admin/'+resource.Name)}})
   const protectedFields=new Set([...Object.values(manifest.lifecycles||{}).filter(lifecycle=>lifecycle.Entity===resource.Entity).map(lifecycle=>lifecycle.StateField),...Object.values(manifest.actions).filter(action=>action.Entity===resource.Entity&&action.Operation==='transition'&&!action.Lifecycle).map(action=>action.StateField||'status')])
   const title=create?'Add '+resource.Label:String(initial[resource.LabelField]||resource.Label)
@@ -154,7 +154,7 @@ function AdminField({field,value,error,onChange,manifest,view,readonly=false,idP
   if(field.Type==='text'||field.Type==='richtext')return <Field id={id} label={label} error={error} required={field.Required}><Textarea id={id} data-testid={'field-'+field.Name} required={field.Required} value={value??''} onChange={event=>onChange(event.target.value)}/></Field>
   if(field.Type==='file')return <Field id={id} label={label} error={error} required={field.Required}>{value&&view&&<a className="text-primary underline" href={'/api/files/'+encodeURIComponent(String(value))+'?view='+encodeURIComponent(view)}>Download current file</a>}<Input id={id} data-testid={'field-'+field.Name} type="file" required={field.Required&&!value} onChange={event=>onChange(event.target.files?.[0])}/></Field>
   const numeric=['integer','money','decimal'].includes(field.Type);const type=numeric?'number':field.Type==='email'?'email':field.Type==='date'?'date':field.Type==='datetime'?'datetime-local':'text'
-  return <Field id={id} label={label} error={error} required={field.Required}><Input id={id} data-testid={'field-'+field.Name} type={type} required={field.Required} value={value??''} onChange={event=>onChange(numeric?(event.target.value===''?'':Number(event.target.value)):event.target.value)}/></Field>
+  return <Field id={id} label={label} error={error} required={field.Required}><Input id={id} data-testid={'field-'+field.Name} type={type} step={field.Type==='datetime'?'any':undefined} required={field.Required} value={field.Type==='datetime'?datetimeInputValue(value??''):value??''} onChange={event=>onChange(numeric?(event.target.value===''?'':Number(event.target.value)):event.target.value)}/></Field>
 }
 
 function RelationControl({field,value,error,onChange,manifest}:{field:AdminFieldDefinition;value:any;error?:string;onChange:(value:any)=>void;manifest:AdminManifest}){
@@ -171,7 +171,7 @@ function FilterControl({field,value,onChange}:{field?:AdminFieldDefinition;value
 
 function ActionRunner({manifest,resource,ids,onDone}:{manifest:AdminManifest;resource:AdminResource;ids:string[];onDone:()=>void}){
   const[name,setName]=useState(resource.Actions[0]||'');const[values,setValues]=useState<Row>({});const[result,setResult]=useState('');const[confirmOpen,setConfirmOpen]=useState(false);const batch=useRef<{signature:string;key:string}|undefined>(undefined);const action=manifest.actions[name]
-  const run=useMutation({mutationFn:(key:string)=>callActionBatch(name,ids,values,key),onSuccess:()=>{setResult('Action completed for '+ids.length+' record'+(ids.length===1?'':'s')+'.');setConfirmOpen(false);onDone()}})
+  const run=useMutation({mutationFn:(key:string)=>callActionBatch(name,ids,datetimeActionValues(values,action?.Input),key),onSuccess:()=>{setResult('Action completed for '+ids.length+' record'+(ids.length===1?'':'s')+'.');setConfirmOpen(false);onDone()}})
   if(!resource.Actions.length)return null
   function execute(){const signature=JSON.stringify({name,ids,values});if(batch.current?.signature!==signature)batch.current={signature,key:globalThis.crypto.randomUUID()};run.mutate(batch.current.key)}
   function submit(event:FormEvent){event.preventDefault();if(action?.Confirm)setConfirmOpen(true);else execute()}
@@ -197,3 +197,12 @@ function params(values:Record<string,string>){const query=new URLSearchParams();
 function pick(values:Row,fields:string[]){return Object.fromEntries(fields.filter(field=>values[field]!==undefined&&values[field]!=='').map(field=>[field,values[field]]))}
 function changed(before:Row,after:Row,fields:string[]){return Object.fromEntries(fields.filter(field=>after[field]!==before[field]).map(field=>[field,after[field]]))}
 function jsonList(value:string){try{return(JSON.parse(value)as string[]).join(', ')}catch{return value}}
+
+function datetimeInputValue(value:string){
+  if(!value||!/(Z|[+-]\d{2}:\d{2})$/.test(value))return value
+  const date=new Date(value)
+  return new Date(date.valueOf()-date.getTimezoneOffset()*60_000).toISOString().slice(0,-1)
+}
+function datetimeActionValues(values:Row,fields:Record<string,AdminFieldDefinition>={}){
+  return Object.fromEntries(Object.entries(values).map(([name,value])=>[name,fields[name]?.Type==='datetime'&&typeof value==='string'&&value&&!/(Z|[+-]\d{2}:\d{2})$/.test(value)?new Date(value).toISOString():value]))
+}
