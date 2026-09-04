@@ -6,8 +6,8 @@ regions:
     items:
       - id: title
         content:
-          - {type: heading, text: "Bean: deterministic applications from inspectable definitions"}
-          - {type: paragraph, text: "A runtime where humans and agents author the same application semantics."}
+          - {type: heading, text: "Bean: from intent to operating software"}
+          - {type: paragraph, text: "Describe the application once, then let people and agents operate the same validated semantics."}
 ---
 kind: Panel
 name: frame_product
@@ -22,8 +22,8 @@ regions:
   - name: main
     items:
       - content:
-          - {type: diagram, direction: horizontal, items: [Definitions, Validation, Migration, Immutable AppIR, Atomic activation]}
-          - {type: paragraph, text: "Every release follows one deterministic publication path."}
+          - {type: diagram, direction: horizontal, items: [Definition, Validation, Migration, Immutable AppIR, Atomic activation]}
+          - {type: paragraph, text: "Every change crosses the same reviewable path before it becomes live."}
 ---
 kind: Panel
 name: frame_primitives
@@ -32,7 +32,7 @@ regions:
   - name: main
     items:
       - content:
-          - {type: bullets, items: ["Entity models data", "View owns typed reads", "Display owns presentation", "Page and Panel compose layout", "Action owns mutations and effects", "Policy and Lifecycle enforce boundaries"]}
+          - {type: bullets, items: ["Entity gives data a durable shape", "View and Display own typed reads", "Page and Panel compose the experience", "Action owns mutations and effects", "Policy, Rule, and Lifecycle enforce boundaries"]}
 ---
 kind: Panel
 name: frame_agent
@@ -41,8 +41,8 @@ regions:
   - name: main
     items:
       - content:
-          - {type: diagram, direction: horizontal, items: [Prompt, Definitions, Validate, Inspect and diff, Test, Publish, Runtime]}
-          - {type: callout, tone: success, text: "Agent output stays inspectable, diffable, testable, versionable, and manually editable."}
+          - {type: diagram, direction: horizontal, items: [Intent, Definitions, Validate, Inspect and diff, Test, Publish]}
+          - {type: callout, tone: success, text: "Agent output remains inspectable, repairable, testable, versioned, and manually editable."}
 ---
 kind: Panel
 name: frame_explore
@@ -51,8 +51,8 @@ regions:
   - name: main
     items:
       - content:
-          - {type: diagram, direction: horizontal, items: [Model data, Explore, Visualize, Drill down, Act]}
-          - {type: paragraph, text: "Bean Explore turns observation into authorized operational action without a parallel query runtime."}
+          - {type: diagram, direction: horizontal, items: [Observe, Filter, Visualize, Drill down, Act]}
+          - {type: paragraph, text: "Explore moves from a signal to an authorized Action without creating a second query or mutation path."}
 ---
 kind: Panel
 name: frame_capabilities
@@ -61,7 +61,7 @@ regions:
   - name: main
     items:
       - content:
-          - {type: paragraph, text: "The chart below is a real grouped View rendered inside this presentation."}
+          - {type: paragraph, text: "This is live application data: a grouped View rendered by its declared chart Display inside the slide."}
       - block: capability_chart
 ---
 kind: Panel
@@ -72,13 +72,13 @@ regions:
     items:
       - id: application_boundary
         content:
-          - {type: heading, text: "Application semantics stay in Bean"}
-          - {type: bullets, items: ["Typed definitions and deterministic diagnostics", "Policy before reads and aggregation", "Lifecycle and Rules constrain Actions", "Atomic release activation"]}
+          - {type: heading, text: "Bean owns application meaning"}
+          - {type: bullets, items: ["Typed definitions and deterministic diagnostics", "Policy before every read and aggregate", "Lifecycle and Rules constrain Actions", "Atomic release activation"]}
   - name: right
     items:
       - id: provider_boundary
         content:
-          - {type: heading, text: "Infrastructure stays behind providers"}
+          - {type: heading, text: "Providers own infrastructure"}
           - {type: bullets, items: ["Storage adapters", "Typed Extensions for external effects", "Explicit transport boundaries", "No opaque application scripts"]}
 ---
 kind: Panel
@@ -88,13 +88,13 @@ regions:
   - name: left
     items:
       - content:
-          - {type: heading, text: "Executable examples"}
-          - {type: bullets, items: ["ATS: recruiting operations", "CRM: policy-safe aggregates", "Commerce: observe, inspect, act", "Booking and tracker: date and workflow patterns"]}
+          - {type: heading, text: "Examples prove behavior"}
+          - {type: bullets, items: ["ATS: recruiting operations", "SaaS: provisioned team workspaces", "Commerce: observe, inspect, act", "Books: contextual records and navigation"]}
   - name: right
     items:
       - content:
-          - {type: heading, text: "One runtime, more application shapes"}
-          - {type: bullets, items: ["Explore operational data", "Compose dashboards", "Present a guided narrative", "Keep every artifact as ordinary Bean definitions"]}
+          - {type: heading, text: "One runtime, many product shapes"}
+          - {type: bullets, items: ["Operate structured workflows", "Explore live data", "Compose contextual workspaces", "Present a guided narrative"]}
 ---
 kind: Panel
 name: frame_close
@@ -103,25 +103,25 @@ regions:
   - name: main
     items:
       - content:
-          - {type: heading, text: "Start with an Entity"}
-          - {type: paragraph, text: "Add typed Views and Actions, compose the experience, then publish the validated definition bundle."}
+          - {type: heading, text: "Start with one useful workflow"}
+          - {type: paragraph, text: "Model its Entity, route reads through Views, route writes through Actions, then publish the validated bundle."}
           - {type: callout, tone: success, text: "bean demo run presentation"}
 ---
 kind: Sequence
 name: bean_introduction
 route: /presentations/bean
-title: Introducing Bean
-description: A deterministic application runtime for humans and agents.
+title: Bean, from intent to operating software
+description: Shared application semantics for people and agents.
 profile: presentation
 aspectRatio: wide
 frames:
-  - {name: opening, title: Introducing Bean, layout: title, panel: frame_opening, notes: "Introduce Bean as an application runtime, not a code generator."}
-  - {name: thesis, title: The product thesis, layout: statement, panel: frame_product, notes: "Emphasize shared semantics for human and agent authors."}
-  - {name: architecture, title: Deterministic by construction, layout: architecture, panel: frame_architecture, notes: "Walk left to right through the release lifecycle."}
-  - {name: primitives, title: A small semantic vocabulary, layout: bullets, panel: frame_primitives, notes: "The primitives compose; presentation does not create a second runtime."}
-  - {name: agents, title: Agents compile into Bean, layout: process, panel: frame_agent, notes: "Diagnostics provide a bounded repair loop."}
-  - {name: explore, title: "Observe, drill down, and act", layout: process, panel: frame_explore, notes: "Explore reuses Views, Displays, Actions, and Policies."}
-  - {name: capabilities, title: The presentation can contain live data, layout: chart-focus, panel: frame_capabilities, notes: "This chart is queried and rendered through the normal View path."}
-  - {name: safety, title: Explicit ownership boundaries, layout: comparison, panel: frame_safety, notes: "Application meaning and infrastructure integration have distinct owners."}
-  - {name: examples, title: Executable product specifications, layout: two-column, panel: frame_examples, notes: "Examples prove reusable semantics instead of application-specific branches."}
-  - {name: start, title: Build the next application, layout: closing, panel: frame_close, notes: "Close with the shortest runnable path."}
+  - {name: opening, title: Bean, direction: next, layout: title, panel: frame_opening, notes: "Introduce Bean as an application runtime, not a code generator."}
+  - {name: thesis, title: Why deterministic semantics, direction: down, layout: statement, panel: frame_product, notes: "Move down to explain why people and agents need one shared contract."}
+  - {name: architecture, title: One path to production, direction: next, layout: architecture, panel: frame_architecture, notes: "Move right to the release lifecycle, then down for its semantic building blocks."}
+  - {name: primitives, title: "A small, complete vocabulary", direction: down, layout: bullets, panel: frame_primitives, notes: "The primitives compose; presentation does not create a second runtime."}
+  - {name: agents, title: Agents work inside the contract, direction: down, layout: process, panel: frame_agent, notes: "Diagnostics provide a bounded repair loop."}
+  - {name: explore, title: From live data to authorized action, direction: next, layout: process, panel: frame_explore, notes: "Explore reuses Views, Displays, Actions, and Policies."}
+  - {name: capabilities, title: "Live data, same runtime", direction: down, layout: chart-focus, panel: frame_capabilities, notes: "This chart is queried and rendered through the normal View path."}
+  - {name: safety, title: Boundaries stay explicit, direction: next, layout: comparison, panel: frame_safety, notes: "Application meaning and infrastructure integration have distinct owners."}
+  - {name: examples, title: Examples are executable proofs, direction: down, layout: two-column, panel: frame_examples, notes: "Examples prove reusable semantics instead of application-specific branches."}
+  - {name: start, title: Start with one useful workflow, direction: next, layout: closing, panel: frame_close, notes: "Close with the shortest runnable path."}

@@ -10,6 +10,6 @@
 - `blog`: draft/publish posts, categories, many-to-many tags, opt-in member signup, bound comments, post-scoped moderation queues, safe Markdown content filtering, public rendering, and RSS.
 - `asana`: split YAML, anonymous local projects, immutable project context, typed task page filters/status chart, board movement, arbitrary-depth trees, and file attachments.
 - `ats`: the primary Explore application with recruiting metrics/charts, shared filters, exact candidate drill, table/cards/board/timeline/calendar-compatible patterns, Lifecycle Actions, Rules, TestSuites, and deterministic DemoSeed.
-- `presentation`: a ten-frame introduction to Bean using Sequence, semantic content Blocks, speaker notes, deterministic capability data, and a real grouped View/chart.
+- `presentation`: a ten-frame, five-chapter introduction to Bean using horizontal `next` and vertical `down` Sequence navigation, semantic content Blocks, speaker notes, deterministic capability data, and a real grouped View/chart.
 
 Every application uses the same manifest and flat YAML definition format. Small examples keep definitions inline; larger examples use explicit feature-oriented resources. Core Go and React code contains no application-name branches.

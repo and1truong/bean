@@ -206,6 +206,11 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 		if value.AspectRatio == "" {
 			value.AspectRatio = "wide"
 		}
+		for index := range value.Frames {
+			if value.Frames[index].Direction == "" {
+				value.Frames[index].Direction = "next"
+			}
+		}
 	})
 	sequenceKind.References = func(app *appir.App, name string) []DefinitionReference {
 		item := app.Sequences[name]

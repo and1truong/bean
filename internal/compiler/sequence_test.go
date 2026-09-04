@@ -19,6 +19,9 @@ func TestSequenceCompilesAsInspectablePanelComposition(t *testing.T) {
 	if !reflect.DeepEqual(first.App, second.App) {
 		t.Fatal("identical Sequence source did not produce identical AppIR")
 	}
+	if first.App.Sequences["bean_intro"].Frames[0].Direction != "next" || first.App.Sequences["bean_intro"].Frames[1].Direction != "next" {
+		t.Fatalf("default directions=%+v", first.App.Sequences["bean_intro"].Frames)
+	}
 	value, references, exists := compiler.InspectDefinition(first.App, "Sequence", "bean_intro")
 	if !exists || value == nil {
 		t.Fatal("Sequence is not inspectable")
@@ -30,7 +33,7 @@ func TestSequenceCompilesAsInspectablePanelComposition(t *testing.T) {
 	if !reflect.DeepEqual(references, want) {
 		t.Fatalf("references=%v want=%v", references, want)
 	}
-	if first.App.FormatVersion != "bean/appir/v14" {
+	if first.App.FormatVersion != "bean/appir/v15" {
 		t.Fatalf("format=%q", first.App.FormatVersion)
 	}
 }
@@ -39,8 +42,8 @@ func TestSequenceDiagnosticsAreStableAndRepairable(t *testing.T) {
 	definitions := validSequenceDefinitions()
 	definitions[0].Spec["content"] = []any{map[string]any{"type": "image", "source": "javascript:alert(1)"}}
 	definitions[4].Spec["frames"] = []any{
-		map[string]any{"name": "opening", "title": strings.Repeat("x", 81), "layout": "title", "panel": "opening_panel"},
-		map[string]any{"name": "opening", "title": "Architecture", "layout": "comparison", "panel": "architecture_panel"},
+		map[string]any{"name": "opening", "title": strings.Repeat("x", 81), "layout": "title", "panel": "opening_panel", "direction": "down"},
+		map[string]any{"name": "opening", "title": "Architecture", "layout": "comparison", "panel": "architecture_panel", "direction": "sideways"},
 	}
 	first := compiler.Compile("presentation", 1, definitions).Diagnostics
 	second := compiler.Compile("presentation", 1, definitions).Diagnostics
@@ -51,8 +54,10 @@ func TestSequenceDiagnosticsAreStableAndRepairable(t *testing.T) {
 		{"Block", "opening", "spec.content.0.alt", "BEAN-E2881"},
 		{"Block", "opening", "spec.content.0.source", "BEAN-E2881"},
 		{"Sequence", "bean_intro", "spec.frames.0.title", "BEAN-E2881"},
+		{"Sequence", "bean_intro", "spec.frames.0.direction", "BEAN-E2881"},
 		{"Sequence", "bean_intro", "spec.frames.1.name", "BEAN-E2881"},
 		{"Sequence", "bean_intro", "spec.frames.1.layout", "BEAN-E2881"},
+		{"Sequence", "bean_intro", "spec.frames.1.direction", "BEAN-E2881"},
 	} {
 		if !hasSequenceDiagnostic(first, expected.kind, expected.name, expected.path, expected.code) {
 			t.Errorf("missing %+v in %v", expected, first)

@@ -4,6 +4,6 @@ kind: Block
 name: product_statement
 type: content
 content:
-  - {type: quote, text: "Model the application once. Let humans and agents operate the same validated system.", attribution: Bean}
-  - {type: paragraph, text: "Probabilistic agents need a deterministic target with explicit semantics and repairable failures."}
-  - {type: callout, tone: info, text: "Bean owns application semantics; providers own external infrastructure capabilities."}
+  - {type: quote, text: "Turn product intent into definitions that people can review and agents can repair.", attribution: Bean}
+  - {type: paragraph, text: "Probabilistic authors need a deterministic runtime with explicit semantics, bounded diagnostics, and one activation path."}
+  - {type: callout, tone: info, text: "The same definitions drive validation, migration, runtime behavior, inspection, and tests."}

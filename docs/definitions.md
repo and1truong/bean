@@ -62,6 +62,8 @@ The Menu runtime resolves labels and routes through Views, filters denied target
 
 A `Sequence` is a route-level ordered experience composed from existing Panels. The initial `presentation` profile supports `wide` and `standard` aspect ratios, stable frame identities, speaker notes, URL-addressed navigation, keyboard controls, progress, responsive HTML, and one-frame-per-page print structure. Sequence adds no data or mutation path: View Blocks still read through Views and Actions remain the only write boundary.
 
+Each frame has an optional `direction`: `next` starts a horizontal chapter and `down` adds a vertical detail frame to the current chapter. Omission defaults to `next`, preserving flat Sequences. The first frame must be `next`. Left/right navigation moves between chapter roots; up/down moves within one chapter; Page Up/Page Down follows the complete source order. If Policy filtering removes a chapter root, its first visible detail frame is promoted to a horizontal root so the authorized navigation remains connected. Directional frames require AppIR v15.
+
 ```yaml
 kind: Block
 name: capability_chart
@@ -90,7 +92,8 @@ title: Introducing Bean
 profile: presentation
 aspectRatio: wide
 frames:
-  - {name: capabilities, title: Product capabilities, layout: chart-focus, panel: capabilities_frame, notes: "Show the live data."}
+  - {name: capabilities, title: Product capabilities, direction: next, layout: chart-focus, panel: capabilities_frame, notes: "Show the live data."}
+  - {name: details, title: Capability detail, direction: down, layout: bullets, panel: capability_details}
 ```
 
 A Panel region has two compatible source forms. Existing `blocks: [name, ...]` remains unchanged. Use `items` when content is local to the Panel or when inline content and named Blocks must be interleaved: every item contains exactly one `block` reference or one non-empty `content` list, and list order is render order. A region cannot declare both `blocks` and `items`. An inline item may declare a region-local machine `id` when its identity should survive nearby reordering; otherwise compilation derives identity from the Panel, region, and item ordinal. Generated identities are nested AppIR details, not global Block names or authoring references. A named `type: content` Block remains appropriate for reuse, independent Block Policy, or deliberate public identity.

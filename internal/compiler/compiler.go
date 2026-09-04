@@ -2674,7 +2674,7 @@ func viewControlWidgetError(widget, fieldType string) string {
 
 func validateSequences(a *appir.App, state *validationState) []definition.Diagnostic {
 	out := []definition.Diagnostic{}
-	profiles, aspects, layouts := nameSet(beansequence.Profiles()), nameSet(beansequence.AspectRatios()), nameSet(beansequence.Layouts())
+	profiles, aspects, layouts, directions := nameSet(beansequence.Profiles()), nameSet(beansequence.AspectRatios()), nameSet(beansequence.Layouts()), nameSet(beansequence.Directions())
 	for _, name := range keys(a.Sequences) {
 		item := a.Sequences[name]
 		if !canonicalRoutePath(item.Route) || strings.Contains(item.Route, ":") {
@@ -2714,6 +2714,11 @@ func validateSequences(a *appir.App, state *validationState) []definition.Diagno
 				out = append(out, sequenceDiagnostic("Sequence", name, path+".name", "duplicates another frame name"))
 			}
 			seen[frame.Name] = true
+			if !directions[frame.Direction] {
+				out = append(out, sequenceDiagnostic("Sequence", name, path+".direction", "has no supported frame direction"))
+			} else if index == 0 && frame.Direction != "next" {
+				out = append(out, sequenceDiagnostic("Sequence", name, path+".direction", "first frame must start a horizontal sequence"))
+			}
 			if strings.TrimSpace(frame.Title) == "" {
 				out = append(out, sequenceDiagnostic("Sequence", name, path+".title", "is required"))
 			} else if utf8.RuneCountInString(frame.Title) > beansequence.MaxTitleRunes {

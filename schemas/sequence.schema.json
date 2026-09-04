@@ -3,6 +3,9 @@
     "github_com_beanruntime_bean_internal_appir_SequenceFrame": {
       "additionalProperties": false,
       "properties": {
+        "direction": {
+          "type": "string"
+        },
         "layout": {
           "type": "string"
         },

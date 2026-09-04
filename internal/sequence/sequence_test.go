@@ -62,6 +62,30 @@ func TestNodeIncludesInlineContentInSequenceFrameTree(t *testing.T) {
 	}
 }
 
+func TestNodePreservesDirectionalGroupsAcrossPolicyFiltering(t *testing.T) {
+	app := appir.Empty()
+	app.Policies["managers"] = appir.Policy{Name: "managers", ReadRoles: []string{"manager"}}
+	app.Blocks["public"] = appir.Block{Name: "public", Type: "content", Content: []appir.ContentElement{{Type: "heading", Text: "Public"}}}
+	app.Blocks["private"] = appir.Block{Name: "private", Type: "content", Content: []appir.ContentElement{{Type: "heading", Text: "Private"}}}
+	app.Panels["opening"] = appir.Panel{Name: "opening", Layout: "single-column", Regions: []appir.Region{{Name: "main", Blocks: []string{"public"}}}}
+	app.Panels["private"] = appir.Panel{Name: "private", Layout: "single-column", Policy: "managers", Regions: []appir.Region{{Name: "main", Blocks: []string{"private"}}}}
+	app.Panels["detail"] = appir.Panel{Name: "detail", Layout: "single-column", Regions: []appir.Region{{Name: "main", Blocks: []string{"public"}}}}
+	item := appir.Sequence{Name: "bean", Frames: []appir.SequenceFrame{
+		{Name: "opening", Panel: "opening", Direction: "next"},
+		{Name: "private", Panel: "private", Direction: "next"},
+		{Name: "detail", Panel: "detail", Direction: "down"},
+	}}
+
+	public, allowed, err := sequence.Node(app, item, beanctx.Request{})
+	if err != nil || !allowed || len(public.Children) != 2 || public.Children[1].Props["direction"] != "next" {
+		t.Fatalf("public tree=%+v allowed=%v err=%v", public, allowed, err)
+	}
+	manager, allowed, err := sequence.Node(app, item, beanctx.Request{User: &beanctx.User{Roles: []string{"manager"}}})
+	if err != nil || !allowed || len(manager.Children) != 3 || manager.Children[1].Props["direction"] != "next" || manager.Children[2].Props["direction"] != "down" {
+		t.Fatalf("manager tree=%+v allowed=%v err=%v", manager, allowed, err)
+	}
+}
+
 func TestMatchAndRootPolicyFailClosed(t *testing.T) {
 	app := appir.Empty()
 	app.Policies["private"] = appir.Policy{Name: "private", Authenticated: true}

@@ -216,6 +216,26 @@ func TestSequenceAndSemanticContentRequireV8Format(t *testing.T) {
 	}
 }
 
+func TestDirectionalSequenceFramesRequireV15Format(t *testing.T) {
+	app := appir.Empty()
+	app.Sequences["bean"] = appir.Sequence{Name: "bean", Frames: []appir.SequenceFrame{{Name: "opening", Direction: "next"}, {Name: "detail", Direction: "down"}}}
+	if err := app.ValidateFormat(); err != nil {
+		t.Fatal(err)
+	}
+	app.FormatVersion = appir.MenuVariantFormat
+	if err := app.ValidateFormat(); err == nil {
+		t.Fatal("v14 AppIR accepted directional Sequence frames")
+	}
+	sequence := app.Sequences["bean"]
+	for index := range sequence.Frames {
+		sequence.Frames[index].Direction = ""
+	}
+	app.Sequences["bean"] = sequence
+	if err := app.ValidateFormat(); err != nil {
+		t.Fatalf("v14 AppIR rejected a legacy flat Sequence: %v", err)
+	}
+}
+
 func TestInlinePanelContentRequiresV9Format(t *testing.T) {
 	app := appir.Empty()
 	app.Panels["frame"] = appir.Panel{Name: "frame", Regions: []appir.Region{{Name: "main", Items: []appir.RegionItem{{Identity: "@inline/frame/main/item/0", Content: []appir.ContentElement{{Type: "heading", Text: "Bean"}}}}}}}

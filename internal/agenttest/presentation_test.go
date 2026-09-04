@@ -28,11 +28,16 @@ func TestPresentationPromptRubricUsesOrdinaryDeterministicDefinitions(t *testing
 	if sequence.Route != "/presentations/bean" || sequence.Profile != "presentation" || len(sequence.Frames) != 10 {
 		t.Fatalf("sequence=%+v", sequence)
 	}
+	directions := map[string]int{}
 	for _, frame := range sequence.Frames {
+		directions[frame.Direction]++
 		panel := first.App.Panels[frame.Panel]
 		if panel.Name == "" || len(panel.Regions) == 0 {
 			t.Fatalf("frame %s does not compose an inspectable Panel", frame.Name)
 		}
+	}
+	if directions["next"] != 5 || directions["down"] != 5 {
+		t.Fatalf("directions=%v", directions)
 	}
 	view := first.App.Views["capabilities_by_area"]
 	if view.ResultShape != "groups" || view.Displays["chart"].Renderer.Type != "chart" {

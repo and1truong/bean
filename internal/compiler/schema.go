@@ -57,6 +57,7 @@ type Capabilities struct {
 	SequenceProfiles        []string `json:"sequenceProfiles"`
 	SequenceAspectRatios    []string `json:"sequenceAspectRatios"`
 	SequenceFrameLayouts    []string `json:"sequenceFrameLayouts"`
+	SequenceFrameDirections []string `json:"sequenceFrameDirections"`
 	ContentElementTypes     []string `json:"contentElementTypes"`
 	ContentTones            []string `json:"contentTones"`
 	DiagramDirections       []string `json:"diagramDirections"`
@@ -138,6 +139,7 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 		SequenceProfiles:        beansequence.Profiles(),
 		SequenceAspectRatios:    beansequence.AspectRatios(),
 		SequenceFrameLayouts:    beansequence.Layouts(),
+		SequenceFrameDirections: beansequence.Directions(),
 		ContentElementTypes:     beancontent.Types(),
 		ContentTones:            beancontent.Tones(),
 		DiagramDirections:       beancontent.Directions(),

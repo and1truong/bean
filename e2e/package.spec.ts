@@ -51,7 +51,7 @@ test('presentation package retains its sequence and data-backed frame without so
       await new Promise(resolve=>setTimeout(resolve,50))
     }
     await page.goto(url+'/presentations/bean?frame=capabilities')
-    await expect(page.getByLabel('7 of 10: The presentation can contain live data')).toBeVisible()
+    await expect(page.getByLabel('7 of 10: Live data, same runtime')).toBeVisible()
     await expect(page.getByTestId('bar-chart')).toBeVisible()
     await expect(page.getByLabel('safety: 3')).toBeVisible()
   }finally{

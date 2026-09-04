@@ -229,6 +229,34 @@ describe('public rendering',()=>{
     expect(document.title).toBe('Introducing Bean')
   })
 
+  it('navigates Sequence chapters horizontally and their detail frames vertically',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Sequence',props:{title:'Bean'},children:[
+        {component:'SequenceFrame',props:{name:'opening',title:'Opening',direction:'next'},children:[{component:'Panel'}]},
+        {component:'SequenceFrame',props:{name:'context',title:'Context',direction:'down'},children:[{component:'Panel'}]},
+        {component:'SequenceFrame',props:{name:'architecture',title:'Architecture',direction:'next'},children:[{component:'Panel'}]},
+        {component:'SequenceFrame',props:{name:'details',title:'Details',direction:'down'},children:[{component:'Panel'}]},
+      ]}})
+      return response({})
+    }))
+    renderApp('/presentations/bean')
+    expect(await screen.findByRole('heading',{name:'Opening',level:1})).toBeVisible()
+    expect(screen.getByText('1.1 / 2')).toBeVisible()
+    expect(screen.getByRole('button',{name:'Up'})).toBeDisabled()
+    fireEvent.click(screen.getByRole('button',{name:'Down'}))
+    expect(screen.getByRole('heading',{name:'Context',level:1})).toBeVisible()
+    expect(document.querySelector('[data-active="true"]')).toHaveAttribute('data-direction','down')
+    expect(screen.getByText('1.2 / 2')).toBeVisible()
+    fireEvent.click(screen.getByRole('button',{name:'Next'}))
+    expect(screen.getByRole('heading',{name:'Architecture',level:1})).toBeVisible()
+    fireEvent.keyDown(window,{key:'ArrowDown'})
+    expect(screen.getByRole('heading',{name:'Details',level:1})).toBeVisible()
+    fireEvent.keyDown(window,{key:'ArrowLeft'})
+    expect(screen.getByRole('heading',{name:'Opening',level:1})).toBeVisible()
+  })
+
   it('opens a Sequence frame by stable URL identity',async()=>{
     vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
       const path=String(input)

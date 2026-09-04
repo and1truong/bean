@@ -40,7 +40,7 @@ func TestCurrentAppIRPublicationSurvivesRestart(t *testing.T) {
 	}
 	active, exists := reloadedKernel.Active()
 	sequence := active.Sequences["bean_introduction"]
-	if !exists || active.FormatVersion != appir.CurrentFormat || active.ReleaseID != published.ID || len(sequence.Frames) != 10 || len(active.Panels["frame_architecture"].Regions[0].Items[0].Content) == 0 {
+	if !exists || active.FormatVersion != appir.CurrentFormat || active.ReleaseID != published.ID || len(sequence.Frames) != 10 || sequence.Frames[1].Direction != "down" || len(active.Panels["frame_architecture"].Regions[0].Items[0].Content) == 0 {
 		t.Fatalf("active=%+v sequence=%+v", active, sequence)
 	}
 

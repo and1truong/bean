@@ -1,6 +1,6 @@
 # Bean Introduction
 
-A ten-frame introduction to Bean built entirely from semantic Sequence metadata. It demonstrates frame-local inline semantic Panel content, an explicitly named content Block, a live View-backed chart Block, closed presentation layouts, accessible browser navigation, and print structure.
+A ten-frame, five-chapter introduction to Bean built entirely from semantic Sequence metadata. Horizontal `next` frames move between chapters; vertical `down` frames add depth within a chapter. The example also demonstrates frame-local inline semantic Panel content, an explicitly named content Block, a live View-backed chart Block, accessible keyboard navigation, and print structure.
 
 ## Definition layout
 

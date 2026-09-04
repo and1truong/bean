@@ -25,6 +25,8 @@ func Profiles() []string { return []string{"presentation"} }
 
 func AspectRatios() []string { return []string{"standard", "wide"} }
 
+func Directions() []string { return []string{"down", "next"} }
+
 func Layouts() []string {
 	return []string{"architecture", "bullets", "chart-focus", "closing", "comparison", "image-focus", "process", "quote", "section", "statement", "table", "timeline", "title", "two-column"}
 }
@@ -100,7 +102,11 @@ func Node(app *appir.App, item appir.Sequence, request beanctx.Request) (render.
 		return render.Node{}, false, nil
 	}
 	children := []render.Node{}
+	groupVisible := false
 	for _, frame := range item.Frames {
+		if frame.Direction != "down" {
+			groupVisible = false
+		}
 		child, allowed, err := panel.Node(app, app.Panels[frame.Panel], map[string]any{}, request)
 		if err != nil {
 			return render.Node{}, false, err
@@ -115,7 +121,12 @@ func Node(app *appir.App, item appir.Sequence, request beanctx.Request) (render.
 		if !visible {
 			continue
 		}
-		children = append(children, render.Node{Component: "SequenceFrame", Props: map[string]any{"name": frame.Name, "title": frame.Title, "layout": frame.Layout, "notes": frame.Notes}, Children: []render.Node{child}})
+		direction := frame.Direction
+		if !groupVisible {
+			direction = "next"
+		}
+		children = append(children, render.Node{Component: "SequenceFrame", Props: map[string]any{"name": frame.Name, "title": frame.Title, "layout": frame.Layout, "notes": frame.Notes, "direction": direction}, Children: []render.Node{child}})
+		groupVisible = true
 	}
 	if len(children) == 0 {
 		return render.Node{}, false, nil

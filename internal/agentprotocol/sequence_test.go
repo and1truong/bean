@@ -11,7 +11,7 @@ import (
 
 func TestSequenceVocabularyReferencesAndSemanticDiffAreAgentDiscoverable(t *testing.T) {
 	capabilities := compiler.ProtocolCapabilities("bean.cli/v1alpha1", agentprotocol.APIVersion)
-	if !reflect.DeepEqual(capabilities.SequenceProfiles, []string{"presentation"}) || !reflect.DeepEqual(capabilities.SequenceAspectRatios, []string{"standard", "wide"}) || len(capabilities.SequenceFrameLayouts) != 14 || len(capabilities.ContentElementTypes) != 8 {
+	if !reflect.DeepEqual(capabilities.SequenceProfiles, []string{"presentation"}) || !reflect.DeepEqual(capabilities.SequenceAspectRatios, []string{"standard", "wide"}) || !reflect.DeepEqual(capabilities.SequenceFrameDirections, []string{"down", "next"}) || len(capabilities.SequenceFrameLayouts) != 14 || len(capabilities.ContentElementTypes) != 8 {
 		t.Fatalf("Sequence capabilities=%+v", capabilities)
 	}
 	current := appir.Empty()
