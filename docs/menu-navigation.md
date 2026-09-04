@@ -48,10 +48,10 @@ maxDepth: 3
 
 `profile: workspace` maps hierarchy depth to runtime-owned presentation:
 
-- level 1: horizontal primary navigation;
+- level 1: horizontal primary navigation across the workspace top;
 - level 2: horizontal secondary navigation under the active primary item;
-- level 3: vertical navigation under the active secondary item;
-- narrow viewport: level 3 becomes one labelled native select followed by the active route content.
+- level 3: vertical navigation in a bounded left column beside the active route content;
+- narrow viewport: level 3 becomes one labelled native select above the active route content.
 
 The profile must not expose CSS classes, arbitrary orientations, or author breakpoints.
 

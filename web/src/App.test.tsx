@@ -79,7 +79,7 @@ describe('public rendering',()=>{
           ]},
         ]},
         {ID:'settings',Label:'Settings',Route:'/settings',Level:1},
-      ]}}]}})
+      ]}},{component:'TextBlock',props:{text:'Route content'}}]}})
       return response({})
     }))
     renderApp('/activity')
@@ -87,6 +87,8 @@ describe('public rendering',()=>{
     expect(screen.getAllByRole('navigation',{name:'Primary navigation'})).toHaveLength(2)
     expect(screen.getByRole('link',{name:'Activity'})).toHaveAttribute('aria-current','page')
     expect(screen.getByLabelText('Section')).toHaveValue('/activity')
+    expect(document.querySelector('.bean-workspace-content')).toHaveTextContent('Route content')
+    expect(Array.from(document.querySelector('.bean-workspace-menu-body')?.children||[]).map(node=>(node as HTMLElement).className)).toEqual(['bean-menu-tertiary-desktop','bean-workspace-content'])
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
   })
 
@@ -94,14 +96,28 @@ describe('public rendering',()=>{
     const fetcher=vi.fn(async(input:string|URL|Request)=>{
       const path=String(input)
       if(path.includes('/api/system/session'))return response({authenticated:false})
-      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'MenuBlock',props:{name:'@display-menu/book_contents',menu:'book_contents',profile:'workspace',ownerEntity:'book',ownerID:'book-1'}}]}})
-      if(path.includes('/api/menus/book_contents'))return response({items:[{ID:'page-1',Label:'Introduction',Route:'/pages/page-1?_menu=book_contents&_owner=book-1',Current:true,Active:true}]})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'MenuBlock',props:{name:'@display-menu/book_contents',menu:'book_contents',profile:'workspace',ownerEntity:'book',ownerID:'book-1'}},{component:'TextBlock',props:{text:'Display content'}}]}})
+      if(path.includes('/api/menus/book_contents'))return response({items:[{ID:'part',Label:'Part',Route:'/pages/part',Active:true,Children:[{ID:'chapter',Label:'Chapter',Route:'/pages/chapter',Active:true,Children:[{ID:'page-1',Label:'Introduction',Route:'/pages/page-1?_menu=book_contents&_owner=book-1',Current:true,Active:true}]}]}]})
       return response({})
     })
     vi.stubGlobal('fetch',fetcher)
     renderApp('/pages/page-1?_menu=book_contents&_owner=book-1')
     expect(await screen.findByRole('link',{name:'Introduction'})).toHaveAttribute('aria-current','page')
+    expect(document.querySelector('.bean-workspace-menu-body')).toHaveAttribute('data-has-tertiary','true')
+    expect(document.querySelector('.bean-workspace-content')).toHaveTextContent('Display content')
     expect(fetcher.mock.calls.some(([input])=>String(input).includes('/api/menus/book_contents?_page=%2Fpages%2Fpage-1&_owner=book-1'))).toBe(true)
+  })
+
+  it('composes a workspace Menu Block inside a Panel without changing flat or no-tertiary flow',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{const path=String(input);if(path.includes('/api/system/session'))return response({authenticated:false});if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'Panel',props:{layout:'sidebar-main'},children:[{component:'Region',props:{name:'sidebar'},children:[{component:'MenuBlock',props:{name:'workspace',menu:'workspace',profile:'workspace',items:[{ID:'home',Label:'Home',Route:'/',Current:true,Active:true}]} }]},{component:'Region',props:{name:'main'},children:[{component:'TextBlock',props:{text:'Panel content'}}]}]},{component:'MenuBlock',props:{name:'legacy',menu:'legacy',items:[{Label:'Legacy',Route:'/legacy'}]}},{component:'TextBlock',props:{text:'Flat content'}}]}});return response({})}))
+    renderApp('/')
+    await screen.findByText('Panel content')
+    const workspace=document.querySelector('[data-component="Panel"] > .bean-workspace-menu')
+    expect(workspace).toContainElement(screen.getByText('Panel content'))
+    expect(workspace?.querySelector('.bean-workspace-content > [data-region="main"]')).toBeInTheDocument()
+    expect(workspace).not.toHaveAttribute('data-has-tertiary')
+    expect(screen.getByRole('navigation',{name:'Page navigation'})).toContainElement(screen.getByRole('link',{name:'Legacy'}))
+    expect(screen.getByText('Flat content').closest('.bean-workspace-menu')).toBeNull()
   })
 
   it('renders and navigates an accessible semantic Sequence',async()=>{
