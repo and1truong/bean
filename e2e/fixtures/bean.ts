@@ -34,6 +34,8 @@ export const test=base.extend<{bean:Bean},{appName:string}>({
     if(appName==='community'){
       createUser('user-a@example.test','member')
       createUser('user-b@example.test','member')
+      createUser('editor-a@example.test','member,editor')
+      createUser('editor-b@example.test','member,editor')
     }
     if(appName==='blog')createUser('editor@example.test','editor')
     const child:ChildProcess=spawn(bin,['serve',...target,'--addr',`127.0.0.1:${port}`],{stdio:['ignore','pipe','pipe']})

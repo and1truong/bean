@@ -67,6 +67,14 @@ kind: View
 name: public_feed
 displays:
   api: {route: /api/feed, type: json}
+  home:
+    type: page
+    route: /
+    title: {text: Community}
+    description: Public posts from the community.
+    renderer: {type: list, bodyField: body}
+    pager: {type: cursor, pageSize: 10}
+    emptyState: No public posts yet.
 entity: post
 fields: [id, body, visibility, owner_id]
 filter:
@@ -83,3 +91,9 @@ policy: community_posts
 stateField: visibility
 transitions:
   private: [public]
+---
+kind: AdminResource
+name: post
+entity: post
+description: Manage post
+actions: [publish_post]
