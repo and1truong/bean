@@ -2,6 +2,8 @@
 
 ## Current
 
+The shared header now uses the published application name when Theme.displayName is absent. Bundle publication snapshots the name in AppIR, definition-only republication preserves it, and legacy releases use the registered name. Regressions cover init's Bean placeholder, republication/reload, the app-name default, and explicit Theme branding. Preview includes the bundle name, while demo seed still compares operational definitions independently of branding. Final `make check` passes 90 frontend tests and 20 browser journeys; `make build` passes. Community release 6 is active and its Admin header renders Community in the browser. An earlier scheduler test failed intermittently, then passed in isolation and in the final full gate without unrelated changes.
+
 Community Post table now explicitly shows Body, Visibility, and Updated at. The existing renderer links the first visible column when the default ID label field is omitted, so Body opens the record without a core change. The active local release is verified in the browser: no ID header and clicking Body opens the correct Post. `make check` passes all 20 browser journeys, and `make build` passes.
 
 Community now has a homepage at `/` through a page Display on the existing public_feed View, preserving its public-only filter and Policy. Browser verification confirms signed-in and anonymous access on localhost:8083. The new regression first reproduced page API 404, then passed with an empty state, public posts, and private-post exclusion for both visitors and the owner. All three Community regressions pass; final `make check` passes 87 frontend tests and 20 Playwright journeys, and `make build` passes. The updated release is active in the local demo.

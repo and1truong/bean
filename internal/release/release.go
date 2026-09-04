@@ -62,6 +62,17 @@ func (s *Store) EnsureApp(ctx context.Context, id, name string) error {
 	_, e = s.DB.Insert(ctx, dbal.Insert{Table: "bean_app", Values: map[string]dbal.Value{"id": id, "name": name, "created_at": time.Now().UTC().Format(time.RFC3339Nano)}})
 	return e
 }
+func (s *Store) AppName(ctx context.Context, appID string) (string, error) {
+	rows, err := s.DB.Select(ctx, dbal.Select{Table: "bean_app", Columns: []string{"name"}, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: appID}, Limit: 1})
+	if err != nil {
+		return "", err
+	}
+	if len(rows) == 0 {
+		return "", fmt.Errorf("application is missing")
+	}
+	return fmt.Sprint(rows[0]["name"]), nil
+}
+
 func (s *Store) SaveDefinition(ctx context.Context, appID string, d definition.Definition) error {
 	return s.saveDefinition(ctx, appID, d, "")
 }
@@ -285,6 +296,7 @@ func (s *Store) PreviewBundle(ctx context.Context, appID string, bundle definiti
 
 func (s *Store) previewBundle(ctx context.Context, appID string, bundle definition.Bundle) (compiler.Result, migration.Plan, *appir.App, error) {
 	result := compiler.Compile(appID, s.nextVersion(ctx, appID), bundle.Definitions)
+	result.App.Name = bundle.Name
 	if len(result.Diagnostics) > 0 {
 		return result, migration.Plan{}, nil, nil
 	}
@@ -381,6 +393,9 @@ func (s *Store) publishCandidateLocked(ctx context.Context, appID string, r comp
 	}
 	id := uid.New()
 	r.App.ReleaseID = id
+	if bundle == nil && active != nil {
+		r.App.Name = active.Name
+	}
 	if s.OpenAPI != nil {
 		r.App.OpenAPI, e = s.OpenAPI(r.App)
 		if e != nil {

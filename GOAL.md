@@ -6,6 +6,8 @@ Complete the Community example browser flow: expose the existing publish_post Ac
 
 ## Contract
 
+- Render the published application name in the shared header when no Theme display name is configured; verify manifest, frontend, and the live Community browser.
+
 - Preserve existing Blog and ATS demos and unrelated edits.
 - Use local test accounts and records; preserve the View-read/Action-write and publication lifecycle contracts.
 - Use a page Display on public_feed for the homepage, with an empty state and bounded pagination.
@@ -21,3 +23,4 @@ Complete the Community example browser flow: expose the existing publish_post Ac
 - The local Community release is activated and the homepage is verified in the browser before and after sign-out.
 - The Post table shows Body, Visibility, and Updated at without ID; clicking Body opens the correct record in the browser.
 - Final `make check` passes, including 87 frontend tests and 20 Playwright journeys; `make build` passes.
+- The header now defaults to the published app name, preserving explicit Theme branding. Community release 6 renders Community in the live Admin header; final checks pass with 90 frontend tests and 20 browser journeys, and the build passes.

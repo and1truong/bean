@@ -200,11 +200,18 @@ func TestPublicViewSearchIsCompilerDeclaredAndThemeIsExposed(t *testing.T) {
 		{APIVersion: definition.APIVersion, Kind: "Panel", Metadata: definition.Metadata{Name: "home"}, Spec: map[string]any{"layout": "single-column", "regions": []any{map[string]any{"name": "main", "blocks": []any{"items"}}}}},
 		{APIVersion: definition.APIVersion, Kind: "Page", Metadata: definition.Metadata{Name: "home"}, Spec: map[string]any{"route": "/", "panel": "home"}},
 	}}
-	if err = runtime.Store.SaveBundle(ctx, "default", bundle); err != nil {
+	if err = runtime.Store.EnsureApp(ctx, "default", "Bean"); err != nil {
 		t.Fatal(err)
 	}
-	if _, diagnostics, publishErr := runtime.Store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) > 0 {
+	if _, _, diagnostics, publishErr := runtime.Store.PublishBundle(ctx, "default", bundle); publishErr != nil || len(diagnostics) > 0 {
 		t.Fatalf("publish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	// Republishing definitions must preserve the name of the active bundle.
+	if _, diagnostics, publishErr := runtime.Store.Publish(ctx, "default"); publishErr != nil || len(diagnostics) > 0 {
+		t.Fatalf("republish=%v diagnostics=%v", publishErr, diagnostics)
+	}
+	if err = runtime.Store.LoadActive(ctx, "default"); err != nil {
+		t.Fatal(err)
 	}
 	handler := runtime.HTTP.Handler()
 	for _, title := range []string{"Alpha role", "Beta role"} {
@@ -216,6 +223,9 @@ func TestPublicViewSearchIsCompilerDeclaredAndThemeIsExposed(t *testing.T) {
 	manifestResponse := serve(t, handler, http.MethodGet, "/api/system/manifest", nil, nil, "")
 	var manifest map[string]any
 	decodeResponse(t, manifestResponse, &manifest)
+	if manifest["appName"] != "search" || manifest["appId"] != "default" {
+		t.Fatalf("manifest appName=%v appId=%v", manifest["appName"], manifest["appId"])
+	}
 	theme := manifest["theme"].(map[string]any)
 	if theme["DisplayName"] != "Search Demo" || theme["Accent"] != "indigo" {
 		t.Fatalf("theme=%#v", theme)

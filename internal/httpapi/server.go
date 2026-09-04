@@ -120,11 +120,20 @@ func (s *Server) docs(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = io.WriteString(w, `<!doctype html><title>Bean API</title><main><h1>Bean API</h1><p>OpenAPI 3.1 is available at <a href="/openapi.json">/openapi.json</a>.</p><pre id="spec"></pre><script>fetch('/openapi.json').then(r=>r.json()).then(x=>spec.textContent=JSON.stringify(x,null,2))</script></main>`)
 }
-func (s *Server) manifest(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) manifest(w http.ResponseWriter, r *http.Request) {
 	a, ok := s.Kernel.Active()
 	if !ok {
 		problem(w, 503, "not_ready", "No active release.", "")
 		return
+	}
+	appName := a.Name
+	if appName == "" {
+		var err error
+		appName, err = s.Store.AppName(r.Context(), a.AppID)
+		if err != nil {
+			respondError(w, r, err)
+			return
+		}
 	}
 	authNavigation := a.LocalRegistration != nil || len(a.Roles) > 0
 	for _, definition := range a.Policies {
@@ -133,7 +142,7 @@ func (s *Server) manifest(w http.ResponseWriter, _ *http.Request) {
 	for _, entity := range a.Entities {
 		authNavigation = authNavigation || entity.Owner || entity.Tenant
 	}
-	write(w, 200, map[string]any{"appId": a.AppID, "releaseId": a.ReleaseID, "version": a.Version, "authNavigation": authNavigation, "theme": a.Theme, "entities": a.Entities, "views": a.Views, "actions": a.Actions, "lifecycles": a.Lifecycles, "filters": a.Filters, "webforms": a.Webforms, "pages": a.Pages, "localRegistration": a.LocalRegistration})
+	write(w, 200, map[string]any{"appId": a.AppID, "releaseId": a.ReleaseID, "version": a.Version, "appName": appName, "authNavigation": authNavigation, "theme": a.Theme, "entities": a.Entities, "views": a.Views, "actions": a.Actions, "lifecycles": a.Lifecycles, "filters": a.Filters, "webforms": a.Webforms, "pages": a.Pages, "localRegistration": a.LocalRegistration})
 }
 func (s *Server) adminManifest(w http.ResponseWriter, r *http.Request) {
 	if !s.editor(w, r) {

@@ -316,6 +316,7 @@ func sameApplicationDefinition(active, candidate *appir.App) bool {
 	}
 	for _, app := range []*appir.App{activeCopy, candidateCopy} {
 		app.ReleaseID = ""
+		app.Name = ""
 		app.Version = 0
 		app.OpenAPI = nil
 	}
