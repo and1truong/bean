@@ -1,7 +1,7 @@
 import {act,fireEvent,render,screen,waitFor} from '@testing-library/react'
 import {afterEach,describe,it,expect,vi} from 'vitest'
 import {MemoryRouter,useNavigate,type NavigateFunction} from 'react-router-dom'
-import {QueryClient,QueryClientProvider} from '@tanstack/react-query'
+import {focusManager,onlineManager,QueryClient,QueryClientProvider} from '@tanstack/react-query'
 import App,{controlInputValue,controlQueryValue,evaluate} from './App'
 describe('App',()=>{
   it('renders login',()=>{render(<QueryClientProvider client={new QueryClient()}><MemoryRouter initialEntries={['/login']}><App/></MemoryRouter></QueryClientProvider>);expect(screen.getByRole('heading',{name:'Sign in'})).toBeInTheDocument()})
@@ -40,6 +40,49 @@ describe('View datetime controls',()=>{
 })
 
 describe('public rendering',()=>{
+  it.each(['/','/missing'])('shows a missing page without retrying or refetching %s on focus/reconnect',async(path)=>{
+    let pageRequests=0
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      if(String(input).includes('/api/system/page')){
+        pageRequests++
+        return new Response(JSON.stringify({error:{message:'Page not found.'}}),{status:404})
+      }
+      return response({})
+    }))
+    const client=renderApp(path,new QueryClient({defaultOptions:{queries:{retryDelay:0}}}))
+    await waitFor(()=>expect(client.getQueryState(['page',path])?.status).toBe('error'))
+    expect(pageRequests).toBe(1)
+    expect(await screen.findByRole('heading',{name:'Page not found'})).toBeInTheDocument()
+    expect(screen.queryByText('Metadata-driven applications, compiled.')).not.toBeInTheDocument()
+    try{
+      await act(async()=>{focusManager.setFocused(false);focusManager.setFocused(true);onlineManager.setOnline(false);onlineManager.setOnline(true)})
+      expect(pageRequests).toBe(1)
+      expect(client.getQueryState(['page',path])?.fetchStatus).toBe('idle')
+    }finally{focusManager.setFocused(undefined);onlineManager.setOnline(true);client.clear()}
+  })
+
+  it.each([true,false])('keeps bounded retries for server errors (recovers: %s)',async(recovers)=>{
+    let pageRequests=0
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      if(String(input).includes('/api/system/page')){
+        pageRequests++
+        if(recovers&&pageRequests===2)return response({tree:{component:'TextBlock',props:{text:'Recovered page'}}})
+        return new Response(JSON.stringify({error:{message:'No active release.'}}),{status:503})
+      }
+      return response({})
+    }))
+    const client=renderApp('/',new QueryClient({defaultOptions:{queries:{retryDelay:0}}}))
+    if(recovers){
+      expect(await screen.findByText('Recovered page')).toBeInTheDocument()
+      expect(pageRequests).toBe(2)
+    }else{
+      expect(await screen.findByRole('alert')).toHaveTextContent('No active release.')
+      expect(pageRequests).toBe(4)
+    }
+    expect(screen.queryByRole('heading',{name:'Page not found'})).not.toBeInTheDocument()
+    client.clear()
+  })
+
   it('preserves Page section and Panel Region source order with semantic layout hooks',async()=>{
     vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
       const path=String(input)

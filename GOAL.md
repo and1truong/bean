@@ -1,18 +1,19 @@
-# Goal: split the Booking example source
+# Goal: stop repeated missing-page requests
 
 Status: complete
 
-Split `examples/booking/app.yaml` into an explicit manifest and feature-oriented YAML resources without changing the Booking application's compiled behavior, validation, migration, immutable AppIR, or activation lifecycle.
+Show an explicit not-found state for an undefined public route, including `/` in the presentation example, without retrying its HTTP 404 response or automatically refetching it on focus/reconnect.
 
 ## Contract
 
-- Keep `app.yaml` as the `Booking` manifest and list every resource explicitly.
-- Group resource model, booking workflow, and calendar presentation definitions into reviewable local files.
-- Preserve all definition content and the View-read/Action-write boundary.
-- Document the source layout in the example README.
-- Verify with Booking validation and semantic tests, then `make check` and `make build`.
+- Preserve the presentation route `/presentations/bean` and metadata-owned application behavior.
+- Retain HTTP status in API errors; distinguish missing pages from other failures.
+- Preserve bounded retries for transient page failures and normal navigation/session resets.
+- Verify regressions, then run `make check` and `make build`.
 
 ## Evidence
 
-- The pre-split and split source sets compile to the identical checksum: `74c8773ce57034f09c4cd0b3f20a504ca596153e26c7dc6410531ecf7c796d8b`.
-- `./bin/bean app validate --file ./examples/booking/app.yaml --json`, `./bin/bean app test --file ./examples/booking/app.yaml --json`, `make check`, and `make build` pass.
+- Before the fix, both `/` and `/missing` produced four HTTP 404 requests; exhausted server failures were hidden by the generic Bean heading.
+- All 83 frontend tests pass, including 404 request counts and focus/reconnect behavior, transient recovery, and bounded failure retries.
+- `make check` passes, including Go/race checks and all 18 Playwright journeys; `make build` passes and refreshes embedded frontend assets.
+- Browser qualification required execution outside the sandbox because Chromium launch was denied inside it.

@@ -257,10 +257,11 @@ function humanize(value:string){return value.replaceAll('_',' ').replace(/^./,le
 
 type PageResult={tree:Node}
 function loadPage(path:string,search:string){const query=new URLSearchParams(search);query.set('path',path);return api<PageResult>('/api/system/page?'+query)}
+function isPageNotFound(error:Error|null){return error instanceof APIError&&error.status===404}
 function Public(){
-  const loc=useLocation();const pageKey=loc.search?['page',loc.pathname,loc.search]:['page',loc.pathname];const result=useQuery({queryKey:pageKey,queryFn:()=>loadPage(loc.pathname,loc.search),placeholderData:(previous,query)=>query?.queryKey[1]===loc.pathname?previous:undefined})
+  const loc=useLocation();const pageKey=loc.search?['page',loc.pathname,loc.search]:['page',loc.pathname];const result=useQuery({queryKey:pageKey,queryFn:()=>loadPage(loc.pathname,loc.search),retry:(failureCount,error)=>!isPageNotFound(error)&&failureCount<3,refetchOnWindowFocus:query=>!isPageNotFound(query.state.error),refetchOnReconnect:query=>!isPageNotFound(query.state.error),placeholderData:(previous,query)=>query?.queryKey[1]===loc.pathname?previous:undefined})
   if(result.isPending)return <Shell><Page><LoadingState/></Page></Shell>
-  if(result.error)return <Shell><Page><PageHeader title="Bean" description="Metadata-driven applications, compiled."/></Page></Shell>
+  if(result.error)return <Shell><Page>{isPageNotFound(result.error)?<PageHeader title="Page not found" description="The requested page is unavailable."/>:<><PageHeader title="Unable to load page"/><ErrorAlert error={result.error}/></>}</Page></Shell>
   if(result.data.tree.component==='Sequence')return <Shell chrome={false}><Renderer node={result.data.tree}/></Shell>
   if(result.data.tree.component==='Page')return <Shell><Page className="max-w-none space-y-6 px-0"><Renderer node={result.data.tree}/></Page></Shell>
   return <Shell><Page className="space-y-6"><Renderer node={result.data.tree}/></Page></Shell>

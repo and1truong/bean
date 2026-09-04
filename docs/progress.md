@@ -2,6 +2,8 @@
 
 ## Current
 
+Missing public page handling now preserves HTTP status in API errors, renders an explicit not-found state for 404, and suppresses 404 retries plus focus/reconnect refetches. Other errors render an alert and retain bounded retries. Regression tests reproduced four requests for a missing route before the fix; all 54 App tests now pass, including missing root/arbitrary routes, focus/reconnect, transient recovery, and exhausted server retries. `make check` passes all Go/race checks, 83 frontend tests, and 18 Playwright journeys; `make build` passes and refreshes the embedded frontend assets. Chromium required execution outside the sandbox after its initial launch was denied.
+
 Booking example source splitting is complete. `examples/booking/app.yaml` is now an explicit manifest for `resources.yaml`, `bookings.yaml`, and `calendar.yaml`; the README documents each responsibility. The pre-split and split source sets produce the same checksum (`74c8773ce57034f09c4cd0b3f20a504ca596153e26c7dc6410531ecf7c796d8b`), and Booking validation/semantic tests, `make check`, and `make build` pass.
 
 The `clsx` + `tailwind-merge` to `cn` migration is complete on `chore/migrate-to-cn`. The frontend has one shared merger at `web/src/lib/utils.ts`; no direct `twMerge()` calls or duplicate helpers exist, and every existing component call site remains unchanged. Direct dependencies now use `cn` 0.2.5 and retain `class-variance-authority`; `clsx` remains only as CVA's transitive dependency. Ten focused regressions cover conditional inputs, spacing/text/background conflicts, responsive/state/dark/arbitrary/important behavior, Tailwind v4 variable shorthand, and CVA output.
