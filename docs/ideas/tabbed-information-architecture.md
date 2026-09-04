@@ -188,15 +188,93 @@ A complete capability would require the normal lifecycle:
 
 It should require no SQL, SQLite, migration, View-read, or Action-write changes.
 
-## Open decisions
+## Decision guide
 
-1. Are primary items true in-Page tabs, or route navigation styled as tabs under a persistent shell?
-2. Does each leaf own one Panel or ordered Page sections?
-3. Should URL changes push history for every level?
-4. When returning to a parent tab, should its previous child selection be restored?
-5. Should inactive but authorized Blocks remain valid bound-request targets?
-6. What maintained application demonstrates all three levels without creating avoidable navigation overload?
-7. What is the deterministic mobile representation for vertical tabs?
+The following questions separate materially different contracts. The recommendations are starting points, not accepted decisions.
+
+### 1. Are primary items in-Page tabs or route navigation?
+
+True in-Page tabs keep one Page definition, route context, title, filters, and navigation model while changing only the selected content branch. They require tab/tabpanel accessibility semantics and a query parameter or route fragment for the active branch.
+
+Route navigation gives every primary area its own Page and path. React keeps the application shell mounted, so navigation can still feel continuous, but each selection resolves a separate Page render tree. These controls remain semantic links inside `nav`, with `aria-current`; styling them like tabs must not turn them into an ARIA tablist.
+
+Route navigation is preferable when primary areas are independently meaningful destinations with distinct titles, Policies, or route context. In-Page tabs are preferable when the areas share one subject and global Page filters—for example, several views of one project or candidate pipeline.
+
+**Recommended default:** use routes for application-level primary navigation and true tabs only for primary choices inside one resource workspace. The metadata must distinguish these rather than infer semantics from visual styling.
+
+### 2. Does each leaf own one Panel or ordered Page sections?
+
+A one-Panel leaf has a small Interface but forces every pane into one layout preset. Authors needing a contained introduction followed by a wide table would create oversized Panels, extra Blocks, or pressure for nested Panels.
+
+An ordered-section leaf reuses existing Page composition directly. Each leaf can contain several reusable Panels with independent responsive layouts, widths, Policies, and Region collapse while preserving source order.
+
+**Recommended default:** each leaf owns a bounded non-empty list of ordered Page sections. This gives greater leverage from the existing Page section Module and avoids inventing nested Panels. The compiler should impose both per-leaf and whole-Page section budgets.
+
+### 3. Should every URL change push browser history?
+
+Pushing for every internal normalization step can make Back traverse several incidental states: parent selection, automatic child reset, denied-item fallback, and default insertion. Replacing every state avoids that noise but makes intentional tab visits impossible to revisit with Back.
+
+The important distinction is user intent. One click or keyboard activation should produce one canonical primary/secondary/vertical path and one history entry. Automatic correction of an invalid, incomplete, or Policy-denied path should update that entry in place.
+
+**Recommended default:** `push` once for an intentional active-leaf change; `replace` for default insertion, dependent-child normalization, and Policy fallback. Route-level primary navigation keeps ordinary link history behavior.
+
+### 4. Should returning to a parent restore its previous child?
+
+Remembering the last secondary or vertical child under every parent can feel convenient during one session. However, hidden client memory makes selection depend on navigation history that is absent from a copied URL, a reload, another browser tab, or a server-rendered request.
+
+Always selecting the parent's declared default is deterministic but does not preserve exploratory state. Browser Back already restores a prior complete URL path when the user wants to return to the exact earlier leaf.
+
+**Recommended default:** do not maintain an implicit per-parent memory map. A parent change selects its declared or first available child unless the URL explicitly names a complete valid child path. Back/Forward restores previous complete paths through browser history.
+
+### 5. Are inactive authorized Blocks valid bound-request targets?
+
+Tab activity is presentation state, not authorization. Rejecting an otherwise allowed Block merely because its pane is inactive would couple View/Webform authorization to transient UI state, break in-flight requests during navigation, and require every bound request to prove the current tab path.
+
+Declared containment and Policy already provide the security boundary. A client may request an inactive Block, but it gains nothing that it could not obtain by selecting that allowed tab. If access must be restricted, the definition must use Policy rather than tab visibility.
+
+**Recommended default:** yes. Every Block declared in any Page navigation leaf remains a valid bound target when its Page, containing Panel, Block, and record Policies allow it. Only the active leaf is included in the Page render tree and fetched by the ordinary UI.
+
+### 6. Which maintained application should prove the hierarchy?
+
+A synthetic demo can prove rendering but cannot prove that three navigation levels improve information architecture. The reference application should already suffer from a real density problem and should retain meaningful labels at every level.
+
+ATS is the strongest current candidate. Its recruiting overview places a metric, three breakdown charts, recent candidates, search, board, and activity timeline in one Panel. One possible exercise is:
+
+```text
+Primary: Overview | Pipeline | Activity
+  Overview
+    Secondary: Summary | Breakdowns
+      Breakdowns
+        Vertical: Stage | Job | Department
+```
+
+`Pipeline` can contain search, recent candidates, and the board; `Activity` can contain the timeline. Not every primary branch needs all three levels. The hierarchy is justified only where several sibling analytical questions already exist.
+
+Asana is a weaker first proof because its ordered project bands remain understandable on one scrolling Page; adding three levels there risks manufacturing navigation solely to exercise the feature.
+
+**Recommended default:** use ATS as the maintained acceptance slice, and require usability evidence that the reorganization reduces scanning rather than merely hiding content.
+
+### 7. What happens to vertical tabs on mobile?
+
+Keeping a full vertical list above content consumes substantial height. Turning it into an accordion changes the interaction model, may expose several panes simultaneously, and adds expanded-state and focus rules. A horizontally scrolling tablist preserves semantics but can make labels difficult to discover.
+
+A labelled native select provides one compact control, built-in touch and keyboard behavior, and exactly one selected leaf. It can write the same canonical URL state as the desktop vertical tablist. The active pane remains immediately after the control in DOM order.
+
+**Recommended default:** below a runtime-owned viewport threshold, replace the vertical tablist with one labelled native select; keep primary and secondary navigation horizontal and scrollable. Do not render two simultaneously focusable controls. A viewport transition must preserve the active ID and move focus predictably when the old control held focus. Accordion behavior should remain a separate future interaction contract.
+
+## Proposed defaults to validate
+
+| Decision | Proposed default |
+| --- | --- |
+| Application-level primary areas | Route navigation with `aria-current` |
+| Primary choices within one resource workspace | True URL-addressable tabs |
+| Leaf composition | Bounded ordered Page sections |
+| Intentional selection | One canonical history `push` |
+| Automatic normalization or fallback | History `replace` |
+| Child state after parent change | Declared/first allowed default; no hidden memory |
+| Inactive authorized bound targets | Allowed through existing containment and Policy checks |
+| Maintained proof | ATS recruiting overview |
+| Mobile vertical navigation | Labelled native select plus one active pane |
 
 ## Non-goals
 
