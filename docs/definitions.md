@@ -50,6 +50,14 @@ A section's optional `width` uses the closed `contained`, `wide`, or `full` voca
 
 Page context is resolved once and supplied to every section. Page filters may target named View Blocks in any declared Panel. The Page Policy remains the outer authorization boundary; each Panel and named Block then applies its own Policy. A denied Panel is omitted without changing the relative order of visible sections, and a Page with no visible sections is unavailable. Bound View and Webform requests must name a Block in a declared section and pass at least one containing Panel's Policy. Legacy `panel: name` remains unchanged in source and AppIR; ordered sections require AppIR v10.
 
+## Menus and record navigation
+
+A `workspace` Menu owns a bounded, ordered hierarchy of typed Page or View Page Display targets. Global static placements have stable IDs, optional parents, weight from `-1000` through `1000`, and an optional 120-character label override. Scoped Menus declare an owner Entity and derive one logical instance per owner record; their Entity-record placements remain application data rather than AppIR.
+
+A navigation-enabled Entity declares its visible label field, same-Entity View Page Display destination, and eligible scoped Menus. Create and update Actions may receive optional `_navigation: {placements: [...]}` state. Omission preserves placement state, while submission replaces it in the same transaction as record fields. Parent/cycle/depth, duplicate target, Policy, owner, count, and label bounds are server validated. Target and owner deletion clean up placements atomically; definition publication rejects contracts that would orphan live placements.
+
+The Menu runtime resolves labels and routes through Views, filters denied targets and descendants on the server, and returns only an authorized tree. `workspace` presentation uses horizontal levels one and two, vertical level three on wider screens, and one labelled native select for level three on narrow screens. It uses links and `aria-current`, not ARIA tab semantics. Legacy flat literal-route Menus remain compatible. See `examples/books` for global and owner-scoped definitions and generated record editing.
+
 ## Sequences and semantic content
 
 A `Sequence` is a route-level ordered experience composed from existing Panels. The initial `presentation` profile supports `wide` and `standard` aspect ratios, stable frame identities, speaker notes, URL-addressed navigation, keyboard controls, progress, responsive HTML, and one-frame-per-page print structure. Sequence adds no data or mutation path: View Blocks still read through Views and Actions remain the only write boundary.

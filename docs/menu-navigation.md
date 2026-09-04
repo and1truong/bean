@@ -1,8 +1,8 @@
-# Idea: Dynamic hierarchical Menu navigation
+# Dynamic hierarchical Menu navigation
 
-Status: active; AppIR v13/compiler/schema contract implemented, dynamic placement persistence is next.
+Status: implemented in AppIR v13, Action-managed dynamic placement persistence, server View resolution, Studio/generated editors, and `examples/books`.
 
-Related: [`panel-limitation.md`](panel-limitation.md).
+Related: [`panel-limitation.md`](ideas/panel-limitation.md).
 
 ## Goal
 

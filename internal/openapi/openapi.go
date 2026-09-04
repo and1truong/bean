@@ -48,6 +48,18 @@ func Generate(a *appir.App) (json.RawMessage, error) {
 				required = append(required, n)
 			}
 		}
+		if entity := a.Entities[actionDefinition.Entity]; entity.Navigation != nil && (actionDefinition.Operation == "create" || actionDefinition.Operation == "update") {
+			placementProperties := map[string]any{
+				"menu":          map[string]any{"type": "string"},
+				"ownerId":       map[string]any{"type": "string", "format": "uuid"},
+				"parentId":      map[string]any{"type": "string", "format": "uuid"},
+				"weight":        map[string]any{"type": "integer", "minimum": -1000, "maximum": 1000},
+				"labelOverride": map[string]any{"type": "string", "maxLength": 120},
+			}
+			placement := map[string]any{"type": "object", "additionalProperties": false, "required": []string{"menu", "ownerId", "weight"}, "properties": placementProperties}
+			placements := map[string]any{"type": "array", "maxItems": 32, "items": placement}
+			props["_navigation"] = map[string]any{"type": "object", "additionalProperties": false, "required": []string{"placements"}, "properties": map[string]any{"placements": placements}}
+		}
 		output := map[string]any{}
 		for n, f := range actionDefinition.Output {
 			output[n] = schema(f.Type)

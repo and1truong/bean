@@ -30,8 +30,8 @@ Status values: `pending`, `active`, `done`.
 | 2 | Add portable dynamic placement persistence and publication preflight | migration/SQLite/PostgreSQL/release tests | done |
 | 3 | Execute typed placement create/update/delete atomically with Entity Actions | Action and idempotency tests | done |
 | 4 | Resolve authorized Menu trees and active routes through Views | Menu/HTTP/Policy tests | done |
-| 5 | Add generated record editing and responsive accessible navigation | React/Studio/browser tests | active |
-| 6 | Add the maintained Book/Page acceptance slice and qualify the repository | package/restart/`make check`/`make build` | pending |
+| 5 | Add generated record editing and responsive accessible navigation | React/Studio/browser tests | done |
+| 6 | Add the maintained Book/Page acceptance slice and qualify the repository | package/restart/`make check`/`make build` | done |
 
 ## Working rules
 

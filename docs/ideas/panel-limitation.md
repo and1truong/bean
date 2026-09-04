@@ -2,7 +2,7 @@
 
 Status: idea inventory; all entries below are unscheduled.
 
-Related: [`panel-bounded-sizing.md`](panel-bounded-sizing.md) and [`menu-navigation.md`](menu-navigation.md).
+Related: [`panel-bounded-sizing.md`](panel-bounded-sizing.md) and [`menu-navigation.md`](../menu-navigation.md).
 
 Panel provides flat, compile-time composition of named Regions containing ordered Blocks or inline semantic content. Its closed layout vocabulary already supports deterministic responsive presets, ordered Page layout bands, semantic Page section widths, and policy-aware empty-Region collapse. The remaining cases below expose boundaries that may belong to Panel or to another typed Module.
 
@@ -84,7 +84,7 @@ If supported, this should be a bounded typed collection renderer, not runtime in
 
 These patterns require URL-addressable active state, lazy data loading, keyboard behavior, conditional visibility, and selection context shared between Blocks. Panel has no interaction state.
 
-The three-level primary, optional secondary, and vertical navigation case is explored in [`menu-navigation.md`](menu-navigation.md). Its likely owner is the route-backed Menu Module rather than Panel.
+The three-level primary, optional secondary, and vertical navigation case is implemented in [`menu-navigation.md`](../menu-navigation.md). Its owner is the route-backed Menu Module rather than Panel.
 
 ## 10. Masonry and unpredictable heights
 

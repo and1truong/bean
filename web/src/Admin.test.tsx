@@ -1,4 +1,4 @@
-import {fireEvent,render,screen} from '@testing-library/react'
+import {fireEvent,render,screen,waitFor} from '@testing-library/react'
 import {afterEach,describe,expect,it,vi} from 'vitest'
 import {MemoryRouter} from 'react-router-dom'
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query'
@@ -32,6 +32,22 @@ describe('Admin',()=>{
     expect(screen.getByTestId('field-status').tagName).toBe('SELECT')
     expect(screen.getByTestId('field-status')).toHaveValue('draft')
     expect(screen.queryByTestId('field-file')).not.toBeInTheDocument()
+  })
+
+  it('submits generated navigation placement fields with a record Action',async()=>{
+    const navigationManifest:any=structuredClone(manifest)
+    navigationManifest.entities.article.Navigation={LabelField:'title',Destination:{View:'articles',Display:'detail'},Menus:['book_contents']}
+    let submitted:any
+    vi.spyOn(globalThis,'fetch').mockImplementation(async(input,init)=>{const url=String(input);if(url.includes('/api/admin/navigation/article/_new'))return new Response(JSON.stringify({instances:[{menu:'book_contents',ownerId:'book-1',ownerLabel:'Building Bean',items:[{ID:'chapter-1',Label:'Chapter 1',Level:1}]}],truncated:false}),{status:200});if(url.includes('/api/actions/article_create')){submitted=JSON.parse(String(init?.body));return new Response(JSON.stringify({error:{message:'captured'}}),{status:409,headers:{'Content-Type':'application/json'}})}return new Response(JSON.stringify(navigationManifest),{status:200})})
+    show('/article/new')
+    fireEvent.click(await screen.findByRole('checkbox',{name:'Book contents — Building Bean'}))
+    fireEvent.change(screen.getByLabelText('Parent'),{target:{value:'chapter-1'}})
+    fireEvent.change(screen.getByLabelText('Weight'),{target:{value:'30'}})
+    fireEvent.change(screen.getByLabelText('Label override'),{target:{value:'Read next'}})
+    fireEvent.change(screen.getByTestId('field-title'),{target:{value:'Navigation'}})
+    fireEvent.click(screen.getByTestId('create-article'))
+    await waitFor(()=>expect(submitted).toBeDefined())
+    expect(submitted._navigation).toEqual({placements:[{menu:'book_contents',ownerId:'book-1',parentId:'chapter-1',weight:30,labelOverride:'Read next'}]})
   })
 
   it('masks sensitive selection Action inputs',async()=>{

@@ -30,7 +30,13 @@ type Submission struct {
 }
 
 func DecodeSubmission(value any) (Submission, error) {
-	encoded, err := json.Marshal(value)
+	var encoded []byte
+	var err error
+	if text, ok := value.(string); ok {
+		encoded = []byte(text)
+	} else {
+		encoded, err = json.Marshal(value)
+	}
 	if err != nil {
 		return Submission{}, invalid("navigation input is invalid")
 	}

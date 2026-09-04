@@ -13,9 +13,39 @@ import (
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/dbal/dbaltest"
 	"github.com/beanruntime/bean/internal/dbal/postgres"
+	beanmenu "github.com/beanruntime/bean/internal/menu"
+	"github.com/beanruntime/bean/internal/migration"
 	"github.com/beanruntime/bean/internal/release"
 	"github.com/beanruntime/bean/internal/view"
 )
+
+func TestMenuPlacementMetadataPersistence(t *testing.T) {
+	databaseURL := os.Getenv("BEAN_TEST_POSTGRES_URL")
+	if databaseURL == "" {
+		t.Skip("set BEAN_TEST_POSTGRES_URL to run PostgreSQL contracts")
+	}
+	database, err := postgres.Open(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	ctx := context.Background()
+	if err = database.ExecuteMigration(ctx, migration.MetadataSchema()); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = database.Delete(ctx, dbal.Delete{Table: beanmenu.PlacementTable, Where: dbal.Predicate{Op: dbal.OpEQ, Column: "menu_name", Value: "postgres_contract"}})
+	if _, err = database.Insert(ctx, dbal.Insert{Table: beanmenu.PlacementTable, Values: map[string]dbal.Value{
+		"id": "postgres-placement", "menu_name": "postgres_contract", "owner_entity": "book", "owner_id": "book-1", "target_entity": "page", "target_id": "page-1", "weight": 10,
+		"created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	defer database.Delete(ctx, dbal.Delete{Table: beanmenu.PlacementTable, Where: dbal.Predicate{Op: dbal.OpEQ, Column: "menu_name", Value: "postgres_contract"}})
+	rows, err := database.Select(ctx, dbal.Select{Table: beanmenu.PlacementTable, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "menu_name", Value: "postgres_contract"}, Limit: 1})
+	if err != nil || len(rows) != 1 || rows[0]["weight"] != int64(10) {
+		t.Fatalf("rows=%+v err=%v", rows, err)
+	}
+}
 
 func TestContract(t *testing.T) {
 	databaseURL := os.Getenv("BEAN_TEST_POSTGRES_URL")

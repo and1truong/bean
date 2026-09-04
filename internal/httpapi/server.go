@@ -80,6 +80,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/admin/manifest", s.adminManifest)
 	mux.HandleFunc("GET /api/admin/resources/{name}", s.adminResourceList)
 	mux.HandleFunc("GET /api/admin/resources/{name}/{id}", s.adminResourceRecord)
+	mux.HandleFunc("GET /api/admin/navigation/{entity}/{id}", s.adminNavigation)
 	mux.HandleFunc("POST /api/admin/definitions", s.saveDefinition)
 	mux.HandleFunc("PUT /api/admin/definitions/{id}", s.saveDefinition)
 	mux.HandleFunc("POST /api/admin/explore/preview", s.explorePreview)
@@ -196,6 +197,117 @@ func (s *Server) adminResourceList(w http.ResponseWriter, r *http.Request) {
 	}
 	write(w, 200, map[string]any{"data": result.Rows, "nextCursor": result.NextCursor, "shape": result.Shape})
 }
+func (s *Server) adminNavigation(w http.ResponseWriter, r *http.Request) {
+	if !s.editor(w, r) {
+		return
+	}
+	a, ok := s.Kernel.Active()
+	if !ok {
+		problem(w, 503, "not_ready", "No active release.", requestID(r))
+		return
+	}
+	entityName, targetID := r.PathValue("entity"), r.PathValue("id")
+	entity, exists := a.Entities[entityName]
+	if !exists || entity.Navigation == nil {
+		problem(w, 404, "not_found", "Entity navigation not found.", requestID(r))
+		return
+	}
+	existing := []dbal.Row{}
+	if targetID != "_new" {
+		where := dbal.And(dbal.Predicate{Op: dbal.OpEQ, Column: "target_entity", Value: entityName}, dbal.Predicate{Op: dbal.OpEQ, Column: "target_id", Value: targetID})
+		var err error
+		existing, err = s.Actions.DB.Select(r.Context(), dbal.Select{Table: beanmenu.PlacementTable, Where: &where, OrderBy: []dbal.Order{{Column: "menu_name"}, {Column: "owner_id"}}, Limit: beanmenu.MaxEditorInstances + 1})
+		if err != nil {
+			respondError(w, r, err)
+			return
+		}
+		if len(existing) > beanmenu.MaxEditorInstances {
+			problem(w, 409, "navigation_limit", "Record has too many Menu placements to edit safely.", requestID(r))
+			return
+		}
+	}
+	instances := []map[string]any{}
+	truncated := false
+	for menuIndex, menuName := range entity.Navigation.Menus {
+		definition := a.Menus[menuName]
+		if definition.Owner == nil {
+			continue
+		}
+		var ownerResource appir.AdminResource
+		for _, candidate := range a.AdminResources {
+			if candidate.Entity == definition.Owner.Entity && (ownerResource.Name == "" || candidate.Name < ownerResource.Name) {
+				ownerResource = candidate
+			}
+		}
+		if ownerResource.Name == "" {
+			continue
+		}
+		remaining := beanmenu.MaxEditorInstances - len(instances)
+		if remaining <= 0 {
+			truncated = true
+			break
+		}
+		placementByOwner := map[string]dbal.Row{}
+		ownerRows := []dbal.Row{}
+		seenOwners := map[string]bool{}
+		for _, placement := range existing {
+			if fmt.Sprint(placement["menu_name"]) != menuName {
+				continue
+			}
+			ownerID := fmt.Sprint(placement["owner_id"])
+			result, err := s.Views.RunPage(r.Context(), a, ownerResource.View, view.Params{RecordID: ownerID, Limit: 1}, s.ctx(r))
+			if err != nil || len(result.Rows) == 0 {
+				continue
+			}
+			ownerRows = append(ownerRows, result.Rows[0])
+			seenOwners[ownerID] = true
+			placementByOwner[ownerID] = placement
+		}
+		laterMenus := stringSet(entity.Navigation.Menus[menuIndex+1:])
+		reserved := 0
+		for _, placement := range existing {
+			if laterMenus[fmt.Sprint(placement["menu_name"])] {
+				reserved++
+			}
+		}
+		ownerCapacity := remaining - reserved
+		ownerLimit := ownerCapacity + 1
+		if maximum := a.Views[ownerResource.View].MaxLimit; maximum > 0 && ownerLimit > maximum {
+			ownerLimit = maximum
+		}
+		owners, err := s.Views.RunPage(r.Context(), a, ownerResource.View, view.Params{Limit: ownerLimit}, s.ctx(r))
+		if err != nil {
+			respondError(w, r, err)
+			return
+		}
+		for _, owner := range owners.Rows {
+			if len(ownerRows) >= ownerCapacity {
+				truncated = true
+				break
+			}
+			ownerID := fmt.Sprint(owner["id"])
+			if !seenOwners[ownerID] {
+				ownerRows = append(ownerRows, owner)
+				seenOwners[ownerID] = true
+			}
+		}
+		truncated = truncated || owners.NextCursor != "" || len(owners.Rows) > ownerCapacity
+		for _, owner := range ownerRows {
+			ownerID := fmt.Sprint(owner["id"])
+			tree, treeErr := beanmenu.DynamicTree(r.Context(), s.Actions.DB, a, menuName, ownerID, s.ctx(r))
+			if treeErr != nil {
+				continue
+			}
+			instance := map[string]any{"menu": menuName, "ownerId": ownerID, "ownerLabel": fmt.Sprint(owner[ownerResource.LabelField]), "items": tree}
+			if placement, placed := placementByOwner[ownerID]; placed {
+				instance["placement"] = map[string]any{"id": placement["id"], "parentId": placement["parent_id"], "weight": placement["weight"], "labelOverride": placement["label_override"]}
+			}
+			instances = append(instances, instance)
+		}
+	}
+	write(w, 200, map[string]any{"instances": instances, "truncated": truncated})
+}
+
 func (s *Server) adminResourceRecord(w http.ResponseWriter, r *http.Request) {
 	if !s.editor(w, r) {
 		return
@@ -968,10 +1080,12 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 		problem(w, 503, "not_ready", "No active release.", requestID(r))
 		return
 	}
-	p, params, ok := page.Match(a, r.URL.Query().Get("path"))
+	requestContext := s.ctx(r)
+	requestContext.Route = r.URL.Query().Get("path")
+	p, params, ok := page.Match(a, requestContext.Route)
 	if !ok {
 		if matched, found := sequence.Match(a, r.URL.Query().Get("path")); found {
-			tree, allowed, err := sequence.Node(a, matched, s.ctx(r))
+			tree, allowed, err := sequence.Node(a, matched, requestContext)
 			if err != nil {
 				problem(w, 400, "render_context", "Required sequence render context is missing.", requestID(r))
 				return
@@ -992,7 +1106,7 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 		for key := range r.URL.Query() {
 			query[key] = r.URL.Query().Get(key)
 		}
-		if _, err := view.ResolveDisplayBindings(matched.Display, matched.Params, query, s.ctx(r)); err != nil {
+		if _, err := view.ResolveDisplayBindings(matched.Display, matched.Params, query, requestContext); err != nil {
 			problem(w, 400, "missing_context", "Required View display context is missing.", requestID(r))
 			return
 		}
@@ -1013,7 +1127,7 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 	}
 	if p.Policy != "" {
 		definition, exists := a.Policies[p.Policy]
-		if !exists || !policy.Can(definition, false, s.ctx(r), nil) {
+		if !exists || !policy.Can(definition, false, requestContext, nil) {
 			problem(w, 404, "not_found", "Page not found.", requestID(r))
 			return
 		}
@@ -1022,7 +1136,6 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 	for key := range r.URL.Query() {
 		query[key] = r.URL.Query().Get(key)
 	}
-	requestContext := s.ctx(r)
 	ctx, e := page.ResolveContext(p, params, query, requestContext)
 	if e != nil {
 		problem(w, 400, "missing_context", "Required page context is missing.", requestID(r))
@@ -1054,6 +1167,7 @@ func (s *Server) menu(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	requestContext := s.ctx(r)
+	requestContext.Route = r.URL.Query().Get("_page")
 	ownerID := r.URL.Query().Get("_owner")
 	if r.URL.Query().Get("_block") != "" {
 		inputs, boundContext, err := s.boundBlockInputs(r, a, "menu", definition.Name)

@@ -23,6 +23,31 @@ func TestGeneratedDocumentValidates(t *testing.T) {
 	}
 }
 
+func TestNavigationEnabledActionsExposeTypedPlacementInput(t *testing.T) {
+	a := appir.Empty()
+	a.AppID = "test"
+	a.Entities["page"] = appir.Entity{Name: "page", Navigation: &appir.EntityNavigation{LabelField: "title"}}
+	a.Actions["page_create"] = appir.Action{Name: "page_create", Entity: "page", Operation: "create"}
+	doc, err := openapi.Generate(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	if err = json.Unmarshal(doc, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	operation := decoded["paths"].(map[string]any)["/api/actions/page_create"].(map[string]any)["post"].(map[string]any)
+	schema := operation["requestBody"].(map[string]any)["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)
+	navigation := schema["properties"].(map[string]any)["_navigation"].(map[string]any)
+	placements := navigation["properties"].(map[string]any)["placements"].(map[string]any)
+	if placements["maxItems"] != float64(32) && placements["maxItems"] != 32 {
+		t.Fatalf("placements=%+v", placements)
+	}
+	if err = openapi.Validate(doc); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestFileInputsUseMultipartBinarySchemas(t *testing.T) {
 	a := appir.Empty()
 	a.AppID = "test"

@@ -4,9 +4,14 @@ label: Book
 fields:
   - {name: title, label: Title, type: string, required: true}
 ---
+kind: Policy
+name: authenticated_pages
+authenticated: true
+---
 kind: Entity
 name: page
 label: Page
+policy: authenticated_pages
 fields:
   - {name: title, label: Title, type: string, required: true}
   - {name: body, label: Body, type: text, required: true}
@@ -34,6 +39,15 @@ displays:
     type: block
     renderer: {type: list, titleField: title, linkRoute: /books/:id}
     pager: {type: cursor, pageSize: 25}
+---
+kind: View
+name: book_admin
+entity: book
+fields: [id, title, created_at, updated_at, version]
+defaultLimit: 25
+maxLimit: 50
+search: {fields: [title]}
+sort: [{field: title}]
 ---
 kind: View
 name: book_record
@@ -67,6 +81,15 @@ displays:
     renderer: {type: detail, titleField: title, bodyField: body}
     pager: {type: none, pageSize: 1}
 ---
+kind: View
+name: page_admin
+entity: page
+fields: [id, title, body, created_at, updated_at, version]
+defaultLimit: 25
+maxLimit: 50
+search: {fields: [title, body]}
+sort: [{field: title}]
+---
 kind: Action
 name: create_book
 entity: book
@@ -81,7 +104,7 @@ operation: update
 input:
   id: {type: uuid, required: true}
   version: {type: integer, required: true}
-  title: {type: string, required: true}
+  title: {type: string}
 ---
 kind: Action
 name: delete_book
@@ -106,8 +129,8 @@ operation: update
 input:
   id: {type: uuid, required: true}
   version: {type: integer, required: true}
-  title: {type: string, required: true}
-  body: {type: text, required: true}
+  title: {type: string}
+  body: {type: text}
 ---
 kind: Action
 name: delete_page
@@ -116,3 +139,37 @@ operation: delete
 input:
   id: {type: uuid, required: true}
   version: {type: integer, required: true}
+---
+kind: AdminResource
+name: books
+entity: book
+labelField: title
+view: book_admin
+createAction: create_book
+updateAction: update_book
+deleteAction: delete_book
+list:
+  columns: [title, updated_at]
+  search: [title]
+  sort: [{field: title}]
+  pageSize: 25
+form:
+  fields: [title]
+  readonly: [created_at, updated_at, version]
+---
+kind: AdminResource
+name: pages
+entity: page
+labelField: title
+view: page_admin
+createAction: create_page
+updateAction: update_page
+deleteAction: delete_page
+list:
+  columns: [title, updated_at]
+  search: [title, body]
+  sort: [{field: title}]
+  pageSize: 25
+form:
+  fields: [title, body]
+  readonly: [created_at, updated_at, version]

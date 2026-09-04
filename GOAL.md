@@ -1,6 +1,6 @@
 # Goal: Dynamic hierarchical Menu navigation
 
-Status: active
+Status: complete
 
 Deepen Bean's existing Menu into bounded route-backed workspace navigation with static Page/View targets and owner-scoped Entity-record placements.
 

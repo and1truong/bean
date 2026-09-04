@@ -62,4 +62,23 @@ func TestCurrentAppIRPublicationSurvivesRestart(t *testing.T) {
 	if !exists || active.ReleaseID != trackerRelease.ID || len(page.Sections) != 2 || page.Sections[0].Panel != "tracker_intro" || page.Sections[0].Width != "contained" || page.Sections[1].Panel != "tracker_operations" || page.Sections[1].Width != "wide" || !active.Panels["tracker_operations"].Regions[1].CollapseWhenEmpty {
 		t.Fatalf("active=%+v Page=%+v", active, page)
 	}
+
+	booksBundle, err := examples.Load("books")
+	if err != nil {
+		t.Fatal(err)
+	}
+	booksRelease, _, diagnostics, err := reloaded.PublishBundle(ctx, "books", booksBundle)
+	if err != nil || len(diagnostics) != 0 {
+		t.Fatalf("books publish=%v diagnostics=%v", err, diagnostics)
+	}
+	booksKernel := kernel.New()
+	booksStore := &release.Store{DB: database, Migrations: database, Inspector: database, Kernel: booksKernel, OpenAPI: openapi.Generate}
+	if err = booksStore.LoadActive(ctx, "books"); err != nil {
+		t.Fatal(err)
+	}
+	active, exists = booksKernel.Active()
+	menu := active.Menus["book_contents"]
+	if !exists || active.ReleaseID != booksRelease.ID || menu.Owner == nil || menu.Owner.Entity != "book" || active.Entities["page"].Navigation == nil || active.Entities["page"].Navigation.Destination.Display != "detail" {
+		t.Fatalf("active=%+v menu=%+v", active, menu)
+	}
 }

@@ -34,6 +34,9 @@ it('offers reference-aware core definition editors',async()=>{
   expect(screen.getByTestId('action-entity')).toHaveTextContent('book')
   fireEvent.change(screen.getByTestId('definition-kind'),{target:{value:'AdminResource'}})
   expect(screen.getByTestId('admin-entity')).toHaveTextContent('book')
+  fireEvent.change(screen.getByTestId('definition-kind'),{target:{value:'Menu'}})
+  expect(screen.getByLabelText('Profile')).toHaveValue('workspace')
+  expect(screen.getByRole('checkbox',{name:'Advanced JSON'})).not.toBeChecked()
 })
 
 it('preserves stable Page section IDs while editing Panel references visually',async()=>{

@@ -1,7 +1,7 @@
 export type Expression={Op:string;Left?:{Source:string;Name?:string;Literal?:any};Right?:{Source:string;Name?:string;Literal?:any};Args?:Expression[]}
 export type FormElement={Name:string;Type:string;Required:boolean;Options?:string[];Children?:FormElement[];Visible?:Expression;RequiredWhen?:Expression}
 export type Field={Name:string;Label:string;Type:string;Required:boolean;Sensitive?:boolean;Options?:string[];Relation?:{Entity:string;Kind:string;TargetField:string}}
-export type Entity={Name:string;Label:string;Fields:Field[]}
+export type Entity={Name:string;Label:string;Fields:Field[];Navigation?:{LabelField:string;Destination:{View:string;Display:string};Menus:string[]}}
 export type Action={Name:string;Entity:string;Operation:string;Lifecycle?:string;StateField?:string;Transitions?:Record<string,string[]>;Confirm?:string;When?:string;Derive?:Record<string,string>;Input:Record<string,Field>}
 export type Lifecycle={Name:string;Entity:string;StateField:string;Initial:string;Transitions:Record<string,string[]>}
 export type ContentFilter={Name:string;Steps:Array<{Type:string}>}
