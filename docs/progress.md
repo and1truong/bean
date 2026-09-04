@@ -2,6 +2,12 @@
 
 ## Current
 
+SaaS Team Workspace implementation is underway: tenant-scoped workspace profiles and project lifecycle, dashboard/drill, user-facing forms, and two-tenant setup. The legacy Membership model is being removed from the fresh demo because it does not control identity. Existing live SaaS data remains untouched.
+
+SaaS demo readiness review is complete in docs/reviews/saas-demo-review.md. The example is useful as a Project tenant-isolation fixture but not ready as a user-facing SaaS demo. An isolated HTTP audit confirmed anonymous Organisation reads, denied Organisation/Membership writes for tenant owners, and Membership accepting nonexistent user UUIDs without driving authentication. Proposed upgrade: protected workspace data, tenant-scoped Project lifecycle/dashboard/drill, application forms and repeatable A/B setup; real onboarding/membership identity remains separate work. No runtime or live business data changed during this audit. Source validation passes; the latest unchanged-runtime gates passed 90 frontend tests, 22 browser journeys and make build.
+
+SaaS Project returned View not found because the system administrator has neither a tenant nor a member/owner role. Membership also requires a tenant. A local owner/editor account is configured for tenant A, and the README now documents initialization and tenant-scoped Admin access. Live Project and Membership lists load successfully as owner-a@example.test, and the browser is left on Project. A browser regression verifies tenant A creates and reads a Project while tenant B cannot list or open it; the original member-only API isolation test remains intact. No core policy behavior changed. `make check` passes 90 frontend tests and 22 browser journeys; `make build` passes.
+
 Admin dark-theme investigation found that the shell changes base colors but compatibility aliases resolve on the light document root. Delete, the Actions form, and the current breadcrumb inherit those light aliases; dialogs also render outside the shell. The shared Shell now synchronizes mode, preset, and accent with the document root. A Chromium regression first failed with the light Delete color, then passed for Delete, Actions, the current breadcrumb, and the portal dialog in both modes. Screenshots confirm the visual correction. `make check` passes 90 frontend tests and 21 browser journeys; `make build` passes. The live Community server was restarted and the open Post page reloaded, preserving the signed-in member and dark mode.
 
 The shared header now uses the published application name when Theme.displayName is absent. Bundle publication snapshots the name in AppIR, definition-only republication preserves it, and legacy releases use the registered name. Regressions cover init's Bean placeholder, republication/reload, the app-name default, and explicit Theme branding. Preview includes the bundle name, while demo seed still compares operational definitions independently of branding. Final `make check` passes 90 frontend tests and 20 browser journeys; `make build` passes. Community release 6 is active and its Admin header renders Community in the browser. An earlier scheduler test failed intermittently, then passed in isolation and in the final full gate without unrelated changes.
@@ -178,71 +184,3 @@ Stable diagnostic families, source-relative paths, compiler-derived candidates, 
 - v1.0 qualifies one explicit envelope: a single Bean application process backed by managed PostgreSQL and external object storage.
 - Realtime infrastructure, a functions platform, broad OAuth, Redis/messaging abstractions, arbitrary visual design, Kubernetes machinery, and embedded AI chat remain deferred.
 - Bean owns application semantics; providers own infrastructure capabilities.
-
-## Asana Lite (completed)
-
-The accepted slice is a local anonymous project/task application with generic status-board, arbitrary-depth tree, and transactional small-file attachment primitives; application behavior remains metadata-only under `examples/asana`.
-
-- The generic `file` field accepts only bounded multipart input, persists base64 content plus safe metadata in the Action transaction, cleans replacement/hard-delete blobs, and policy-checks live references before download.
-- Compiler-validated `board` presentation groups enum states and invokes a same-Entity transition Action; `tree` presentation renders a selected many-to-one self relation with arbitrary-depth expand/collapse behavior.
-- Anonymous-only compiled applications suppress authentication navigation without weakening protected application behavior.
-- `examples/asana` contains 43 definitions grouped across access, projects, tasks, attachments, and pages. Root task creation is project-bound; subtask creation derives project identity from its immutable parent binding.
-- Focused field, Action, HTTP, compiler, React, and all Go tests pass. The dedicated Playwright journey passes project creation, board movement, three nested task levels, multipart upload, and byte-identical download.
-- `make check` passes, including race tests and all 12 Playwright workflows; `make build` passes with the updated embedded frontend. The Asana Lite goal is complete.
-
-## Reviewable application sources (completed)
-
-Applications use a small manifest plus optional explicit feature-oriented YAML resources; definition documents are flat and CLI diagnostics retain file, line, and column information.
-
-## Reviewable application sources
-
-- The loader supports inline multi-document definitions and explicit local resources, rejects unsafe or duplicate inclusion, and flattens source into the existing canonical Bundle.
-- `bean app validate --file` and import report syntax, schema, duplicate, and compiler diagnostics before database mutation.
-- All eight examples use the new format; blog's 67 definitions are grouped into navigation, access, taxonomy, posts, and comments resources.
-- Focused loader, compiler, CLI, Action, and HTTP tests pass. `make check` passes with all 11 Playwright workflows, and `make build` passes.
-
-## Previous completed work
-
-The Bean-owned frontend is standardized on source-owned shadcn/ui components. Tailwind v4, shared Bean tokens, primitive wrappers, Shell/Auth, public metadata rendering, Application Admin, System Admin, and Studio are implemented and qualified. Accessible AlertDialog confirmations replace browser/custom confirmation dialogs, and lint prevents raw interactive-control regressions outside the primitive directory.
-
-## shadcn/ui verification record
-
-- Frontend lint, TypeScript, production build, and all 9 React tests pass.
-- Playwright runs 11/11 workflows, including a mobile shadcn integration journey covering Admin cards, generated form controls, record confirmation, overflow, and Studio.
-- `make check`, `make test-blog`, `make test-postgres`, and `make build` pass; the PostgreSQL gate includes the complete blog browser journey.
-- The generated frontend remains embedded in `bin/bean`; the current assets are approximately 394 KB JavaScript and 48 KB CSS before compression.
-
-Generic scoped resource lists remain complete. The metadata-driven `resource-list` Block reuses AdminResource presentation and Actions while enforcing immutable parent bindings and allowlisted interactive filters; the blog acceptance route is `/blog/:id/comments`.
-
-## Scoped resource-list verification record
-
-- Compiler and HTTP contracts cover resource references, typed defaults, immutable parent scope, filter allowlists, collision rejection, and member denial.
-- React tests cover AdminResource reuse and default filter transport.
-- The Playwright blog journey proves two posts cannot leak comments across scoped routes and exercises approval plus status filtering.
-- The isolated staged tree passes `make check`; `make test-blog`, `make test-postgres`, and `make build` pass on the integrated worktree.
-
-## v0.5 completed state
-
-Bean v0.5 complete-blog vertical slice is implemented and qualified as `0.5.0-alpha`. The metadata-only `examples/blog` application covers draft/publish posts, categories, many-to-many tags, opt-in local-password signup/login, authenticated comments, editor approval/rejection, public list/detail/category/tag pages, and RSS.
-
-The generic platform additions are a compiler-known sensitive registration Action boundary, server-recomputed route-bound View/Webform inputs, slug and transaction-time bindings, metadata-driven content presentation, conservative rich-text rendering, dependency-ordered relation migrations, and portable to-many View hydration. Core Go and React code contains no blog-name branches.
-
-## v0.5 verification record
-
-- Compiler/HTTP contracts prove fixed-role sensitive signup, safe output/idempotency, independent throttling, CSRF, draft and pending/rejected non-leakage, member denials, binding tamper rejection, publication/moderation audit, and rich-text sanitization.
-- React unit tests cover public rendering, inert rich text, session-aware navigation, and Webform visibility; the frontend has 8 passing unit tests.
-- `make test-blog` passes the complete SQLite browser journey.
-- `make test-postgres` passes reusable DBAL/HTTP contracts plus the same complete browser journey on PostgreSQL 17.
-- `make check` passes vet, frontend lint/typecheck/tests, all Go tests, focused contracts, fuzz-smoke, compatibility, black-box version, race, and Playwright 10/10.
-- `make test-crash` passes both supported crash/restart points.
-- `make build` passes and `bin/bean version` reports `bean 0.5.0-alpha`.
-
-## v0.4 verification record
-
-- `go test ./...` — pass on 2026-08-30.
-- Frontend lint, typecheck, and 6 unit tests — pass.
-- Focused no-JSON Studio Playwright acceptance — pass.
-- `make test-crash` — pass for crash after migration and after activation commit.
-- `make test-postgres` — pass against PostgreSQL 17 for reusable DBAL and Admin/Action/View HTTP parity.
-- `make check` — pass, including vet, frontend gates, all Go tests, fuzz-smoke, compatibility, black-box, race, and Playwright 9/9.
-- `make build` — pass; output is `bin/bean` (`bean 0.4.0-alpha`).
