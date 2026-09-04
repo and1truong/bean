@@ -10,6 +10,23 @@ afterEach(()=>vi.restoreAllMocks())
 function show(path:string){return render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter initialEntries={[path]}><Admin/></MemoryRouter></QueryClientProvider>)}
 
 describe('Admin',()=>{
+  it('groups only eligible controls while preserving typed Action submission and field errors',async()=>{
+    const grouped:any=structuredClone(manifest)
+    grouped.adminResources.article.Form.Layout={Groups:[{Name:'content',Label:'Content',Columns:2,Fields:[{Field:'title',Span:'full'},{Field:'status',Span:'single'}]},{Name:'generated',Label:'Generated',Columns:1,Fields:[{Field:'file',Span:'single'}]}]}
+    let submitted:any
+    vi.spyOn(globalThis,'fetch').mockImplementation(async(input,init)=>{
+      if(String(input).includes('/api/actions/article_create')){submitted=JSON.parse(String(init?.body));return new Response(JSON.stringify({error:{message:'Invalid title',fields:{title:'Choose another title'}}}),{status:422})}
+      return new Response(JSON.stringify(grouped))
+    })
+    show('/article/new')
+    expect(await screen.findByRole('group',{name:'Content'})).toBeInTheDocument()
+    expect(screen.queryByRole('group',{name:'Generated'})).not.toBeInTheDocument()
+    fireEvent.change(screen.getByRole('textbox',{name:'Title'}),{target:{value:'Bean'}})
+    fireEvent.click(screen.getByRole('button',{name:'Save'}))
+    await waitFor(()=>expect(submitted).toEqual({title:'Bean',status:'draft'}))
+    expect(await screen.findByText('Choose another title')).toBeInTheDocument()
+    expect(screen.getByRole('textbox',{name:'Title'})).toHaveAttribute('aria-invalid','true')
+  })
   it.each(['unchanged','edited','created'])('handles %s datetime values without losing the stored instant',async(mode)=>{
     const datetimeManifest:any=structuredClone(manifest)
     const field={Name:'applied_at',Label:'Applied',Type:'datetime',Required:true}

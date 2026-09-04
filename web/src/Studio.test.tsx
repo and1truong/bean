@@ -25,6 +25,20 @@ it('round-trips visual changes through the canonical specification',async()=>{
   expect(spec.fields[0]).toMatchObject({name:'title',required:true})
 })
 
+it('authors ordered grouped Admin forms without Advanced JSON',async()=>{
+  const groupedDefinitions=[...definitions,{apiVersion:'bean/v1alpha1',kind:'AdminResource',metadata:{name:'book'},spec:{entity:'book',form:{fields:['title'],readonly:['version']}}}]
+  vi.spyOn(globalThis,'fetch').mockImplementation(async input=>new Response(JSON.stringify(String(input).endsWith('/definitions')?groupedDefinitions:[]),{status:200}))
+  render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter><Studio/></MemoryRouter></QueryClientProvider>)
+  fireEvent.click(await screen.findByRole('button',{name:'AdminResource: book'}))
+  fireEvent.click(screen.getByRole('button',{name:'Use grouped layout'}))
+  fireEvent.change(screen.getByLabelText('Group label'),{target:{value:'Editorial'}})
+  fireEvent.change(screen.getByLabelText('Group columns'),{target:{value:'2'}})
+  fireEvent.change(screen.getByLabelText('Field span'),{target:{value:'full'}})
+  fireEvent.click(screen.getByRole('checkbox',{name:'Advanced JSON'}))
+  const spec=JSON.parse((screen.getByTestId('definition-spec') as HTMLTextAreaElement).value)
+  expect(spec.form).toEqual({fields:['title'],readonly:['version'],layout:{groups:[{name:'group_1',label:'Editorial',columns:2,fields:[{field:'title',span:'full'}]}]}})
+})
+
 it('offers reference-aware core definition editors',async()=>{
   vi.spyOn(globalThis,'fetch').mockImplementation(async input=>new Response(JSON.stringify(String(input).endsWith('/definitions')?definitions:[]),{status:200}))
   render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter><Studio/></MemoryRouter></QueryClientProvider>)

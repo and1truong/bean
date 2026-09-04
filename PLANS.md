@@ -18,6 +18,17 @@ Presets share a conservative signup/recovery-off baseline. `passwordRecovery` is
 
 Do not expose configuration switches for unimplemented security mechanisms. Local/internal operation must remain email-independent; self-registration stays opt-in for every preset.
 
+# Typed detail/form field layout
+
+Contract: `docs/plans/typed-field-layout.md`. Worktree: `../bean-field-layout`. Root `GOAL.md` is unchanged.
+
+| Milestone | Deliverable | Verification | Status |
+| --- | --- | --- | --- |
+| 0 | Implement bounded Admin/detail field groups and Studio | Blog, schema, React, browser, restart/package contracts | done |
+| 1 | Reconcile Sequence v15 and Authentication v16 | historical snapshots, compatibility matrix, make check/build | done |
+| 2 | Reconcile Recovery v17 and allocate field-layout v18 | committed `8b0129a` ancestry; 608-case matrix, v14–v17 upgrade fixtures, make check (107 React, 26 browser journeys), make build | done |
+| 3 | Merge the qualified feature branch into main | intentionally withheld at user request | pending approval |
+
 # Blog Admin browser investigation
 
 Status: deferred. The user switched to ATS after successful fresh-demo Category/Post create/edit/publish verification. Investigation of the existing Blog credentials remains deferred.

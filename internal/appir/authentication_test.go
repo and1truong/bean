@@ -3,7 +3,7 @@ package appir
 import "testing"
 
 func TestAuthenticationFormatCompatibility(t *testing.T) {
-	for _, format := range []string{LegacyFormat, DirectionalFormat, AuthenticationFormat, CurrentFormat} {
+	for _, format := range []string{LegacyFormat, MenuVariantFormat, DirectionalFormat, AuthenticationFormat, PasswordRecoveryFormat, CurrentFormat} {
 		app := Empty()
 		app.FormatVersion = format
 		app.LocalRegistration = &LocalRegistration{Action: "signup"}
@@ -18,11 +18,11 @@ func TestAuthenticationFormatCompatibility(t *testing.T) {
 			t.Fatal("disabled registration enabled")
 		}
 		err := app.ValidateFormat()
-		if (err == nil) != (format == CurrentFormat || format == AuthenticationFormat) {
+		if (err == nil) != (format == CurrentFormat || format == PasswordRecoveryFormat || format == AuthenticationFormat) {
 			t.Fatalf("format %s: %v", format, err)
 		}
 		app.Authentication.PasswordRecovery = true
-		if (app.ValidateFormat() == nil) != (format == CurrentFormat) {
+		if (app.ValidateFormat() == nil) != (format == CurrentFormat || format == PasswordRecoveryFormat) {
 			t.Fatal("recovery format boundary", format)
 		}
 		if app.FormatVersion != format {

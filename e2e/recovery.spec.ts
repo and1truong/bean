@@ -69,6 +69,12 @@ test('forgot password delivers a fragment link and resets through the browser',a
     await page.getByLabel('Email',{exact:true}).fill('admin@example.test')
     await page.getByLabel('Password',{exact:true}).fill('recovered-password')
     await page.getByTestId('login').click();await expect(page).toHaveURL(origin+'/admin')
+    // The same recovered account uses the v18 grouped Blog form; recovery
+    // presentation and Admin layout must coexist in one compiled application.
+    await page.goto(origin+'/admin/post/new')
+    await expect(page.getByRole('group',{name:'Content',exact:true})).toBeVisible()
+    await expect(page.getByRole('group',{name:'Classification',exact:true})).toBeVisible()
+    await expect(page.getByTestId('field-title')).toBeEditable()
     const replay=await page.request.post(origin+'/api/auth/recovery/reset',{data:{token,password:'other-password',confirmation:'other-password'}})
     expect(replay.status()).toBe(400)
   }finally{

@@ -3,7 +3,7 @@ import {test as base,expect,login} from './fixtures/bean'
 
 const test=base.extend<{}, {appName:string}>({appName:['blog',{scope:'worker'}]})
 
-test('complete blog editorial, identity, and moderation journey',async({page,bean})=>{
+test('complete blog editorial, identity, and moderation journey',async({page,bean},testInfo)=>{
   await page.setViewportSize({width:1100,height:900})
   const panels=page.locator('section[data-component="Page"] > section[data-component="Panel"]')
   const tracks=(panel:Locator)=>panel.evaluate(element=>getComputedStyle(element).gridTemplateColumns.split(' ').filter(Boolean).length)
@@ -33,6 +33,21 @@ test('complete blog editorial, identity, and moderation journey',async({page,bea
 
   async function createPost(title:string,slug:string,body:string){
     await page.goto(bean.baseURL+'/admin/post/new')
+    await expect(page.getByRole('group',{name:'Content',exact:true})).toBeVisible()
+    for(const width of [390,800,1100]){
+      await page.setViewportSize({width,height:900})
+      const titleField=page.locator('[data-layout-field="title"]')
+      const slugField=page.locator('[data-layout-field="slug"]')
+      const bodyField=page.locator('[data-layout-field="body"]')
+      const titleBox=await titleField.boundingBox();const slugBox=await slugField.boundingBox();const bodyBox=await bodyField.boundingBox()
+      expect(titleBox&&slugBox&&bodyBox).toBeTruthy()
+      if(width<768){expect(slugBox!.y).toBeGreaterThan(titleBox!.y);expect(Math.abs(bodyBox!.width-titleBox!.width)).toBeLessThan(2)}
+      else{expect(Math.abs(slugBox!.y-titleBox!.y)).toBeLessThan(2);expect(bodyBox!.width).toBeGreaterThan(titleBox!.width*1.9)}
+      expect(await page.locator('[data-testid="field-layout"] [data-layout-field]').evaluateAll(fields=>fields.map(field=>field.getAttribute('data-layout-field')))).toEqual(['title','slug','excerpt','body','author_display_name','category_id','tags'])
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+    }
+    await page.getByTestId('field-title').focus()
+    for(const name of ['slug','excerpt','body']){await page.keyboard.press('Tab');await expect(page.getByTestId('field-'+name)).toBeFocused()}
     await page.getByTestId('field-title').fill(title)
     await page.getByTestId('field-slug').fill(slug)
     await page.getByTestId('field-excerpt').fill('A complete vertical slice')
@@ -41,11 +56,34 @@ test('complete blog editorial, identity, and moderation journey',async({page,bea
     await page.getByTestId('field-category_id').selectOption({label:'Engineering'})
     await page.getByTestId('field-tags').selectOption([{label:'Go'},{label:'Runtime'}])
     await expect(page.getByTestId('field-status')).toHaveCount(0)
+    if(slug==='bean-ships'){
+      await page.screenshot({path:testInfo.outputPath('grouped-form-light.png'),fullPage:true,animations:'disabled'})
+      await page.getByRole('button',{name:'Use dark theme'}).click()
+      await page.screenshot({path:testInfo.outputPath('grouped-form-dark.png'),fullPage:true,animations:'disabled'})
+      await page.setViewportSize({width:390,height:900})
+      await page.getByTestId('field-body').fill(body+'\n\n'+'unbrokentext'.repeat(200))
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+      await page.getByTestId('field-body').fill(body)
+      await page.evaluate(()=>window.scrollTo(0,0))
+      await page.screenshot({path:testInfo.outputPath('grouped-form-mobile.png'),fullPage:true,animations:'disabled'})
+      await page.getByRole('button',{name:'Use light theme'}).click()
+      await page.setViewportSize({width:1100,height:900})
+    }
     await page.getByTestId('create-post').click()
     await expect(page.getByRole('heading',{name:title})).toBeVisible()
     return page.url().split('/').at(-1)!
   }
   const postID=await createPost('Bean ships','bean-ships','## Safe **Markdown body**.\n\n<script>window.pwned=true</script>\n\n[bad](javascript:alert(1))')
+  await page.getByTestId('field-excerpt').fill('An edited vertical slice')
+  await page.getByTestId('save-post').click()
+  await expect(page).toHaveURL(bean.baseURL+'/admin/post')
+  await page.goto(bean.baseURL+'/admin/post/'+postID)
+  await expect(page.getByTestId('field-excerpt')).toHaveValue('An edited vertical slice')
+  await page.reload()
+  await expect(page.getByRole('group',{name:'Classification'})).toBeVisible()
+  await expect(page.getByTestId('field-excerpt')).toHaveValue('An edited vertical slice')
+  await page.goto(bean.baseURL+'/posts/bean-ships/record')
+  await expect(page.getByText('Bean ships')).toHaveCount(0)
 
   await page.goto(bean.baseURL+'/')
   await expect(page.getByText('Bean ships')).toHaveCount(0)
@@ -84,6 +122,22 @@ test('complete blog editorial, identity, and moderation journey',async({page,bea
   await expect(page.locator('.rich-text script')).toHaveCount(0)
   await expect(page.locator('.rich-text a[href^="javascript:"]')).toHaveCount(0)
   expect(await (await page.request.get(bean.baseURL+'/rss.xml')).text()).toContain('Bean ships')
+  await page.goto(bean.baseURL+'/posts/bean-ships/record')
+  await expect(page.getByRole('heading',{name:'Bean ships',exact:true})).toBeVisible()
+  await expect(page.getByRole('region',{name:'Publication'})).toBeVisible()
+  await page.screenshot({path:testInfo.outputPath('grouped-detail.png'),fullPage:true,animations:'disabled'})
+  await expect(page.getByRole('region',{name:'Content',exact:true})).toContainText('An edited vertical slice')
+  await expect(page.locator('.rich-text strong')).toHaveText('Markdown body')
+  await expect(page.locator('.rich-text script')).toHaveCount(0)
+  await expect(page.locator('.rich-text a[href^="javascript:"]')).toHaveCount(0)
+  for(const width of [390,800,1100]){
+    await page.setViewportSize({width,height:900})
+    const grid=page.getByRole('region',{name:'Publication'}).locator('dl')
+    expect(await tracks(grid)).toBe(width<768?1:2)
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+  }
+  await page.reload()
+  await expect(page.getByRole('region',{name:'Content',exact:true})).toContainText('An edited vertical slice')
 
   const otherPostID=await createPost('Other post','other-post','Other post body.')
   await page.getByRole('button',{name:'Run for 1'}).click()

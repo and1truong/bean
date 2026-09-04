@@ -1,0 +1,488 @@
+{
+  "ReleaseID": "",
+  "AppID": "compatibility",
+  "FormatVersion": "bean/appir/v17",
+  "Version": 1,
+  "Entities": {
+    "note": {
+      "Name": "note",
+      "Label": "note",
+      "Policy": "",
+      "Fields": [
+        {
+          "Name": "title",
+          "Label": "Title",
+          "Type": "string",
+          "Required": false,
+          "Unique": false,
+          "Sensitive": false,
+          "Options": null,
+          "Relation": null
+        }
+      ],
+      "Owner": false,
+      "Tenant": false,
+      "SoftDelete": false,
+      "Indexes": null,
+      "Unique": null,
+      "Validations": null,
+      "Navigation": null
+    }
+  },
+  "Views": {
+    "note_list": {
+      "Name": "note_list",
+      "Entity": "note",
+      "ResultShape": "records",
+      "Fields": [
+        "id",
+        "title",
+        "created_at",
+        "updated_at",
+        "version"
+      ],
+      "Relationships": null,
+      "Filter": null,
+      "ContextFilter": null,
+      "ExposedFilters": null,
+      "Search": {
+        "Fields": null
+      },
+      "FieldFilters": null,
+      "Sort": null,
+      "GroupBy": null,
+      "Aggregates": null,
+      "Policy": "",
+      "DefaultLimit": 50,
+      "MaxLimit": 200,
+      "Displays": {}
+    },
+    "notes": {
+      "Name": "notes",
+      "Entity": "note",
+      "ResultShape": "records",
+      "Fields": [
+        "id",
+        "title"
+      ],
+      "Relationships": null,
+      "Filter": null,
+      "ContextFilter": null,
+      "ExposedFilters": null,
+      "Search": {
+        "Fields": null
+      },
+      "FieldFilters": null,
+      "Sort": null,
+      "GroupBy": null,
+      "Aggregates": null,
+      "Policy": "",
+      "DefaultLimit": 50,
+      "MaxLimit": 200,
+      "Displays": {
+        "detail": {
+          "Type": "block",
+          "Route": "",
+          "Description": "",
+          "EmptyState": "",
+          "Selection": "",
+          "Actions": null,
+          "Title": {
+            "Text": "",
+            "Field": "",
+            "Fallback": ""
+          },
+          "Bindings": null,
+          "Renderer": {
+            "Type": "detail",
+            "TitleField": "title",
+            "BodyField": "",
+            "LinkRoute": "",
+            "LinkField": "",
+            "EmptyState": "",
+            "GroupField": "",
+            "OrderField": "",
+            "ParentField": "",
+            "MoveAction": "",
+            "MetricField": "",
+            "MetricLabel": "",
+            "TimeField": "",
+            "EndField": "",
+            "MetaFields": null,
+            "RichTextFields": null,
+            "Columns": null,
+            "SearchFields": null,
+            "Fields": null
+          },
+          "Controls": null,
+          "Pager": {
+            "Type": "none",
+            "PageSize": 50
+          },
+          "Drill": null
+        }
+      }
+    }
+  },
+  "Actions": {
+    "note_create": {
+      "Name": "note_create",
+      "Entity": "note",
+      "Operation": "create",
+      "Policy": "",
+      "Lifecycle": "",
+      "DefaultRole": "",
+      "Confirm": "",
+      "StateField": "",
+      "Input": {
+        "title": {
+          "Name": "title",
+          "Label": "Title",
+          "Type": "string",
+          "Required": false,
+          "Unique": false,
+          "Sensitive": false,
+          "Options": null,
+          "Relation": null
+        }
+      },
+      "Output": {
+        "created_at": {
+          "Name": "created_at",
+          "Label": "",
+          "Type": "datetime",
+          "Required": false,
+          "Unique": false,
+          "Sensitive": false,
+          "Options": null,
+          "Relation": null
+        },
+        "id": {
+          "Name": "id",
+          "Label": "",
+          "Type": "uuid",
+          "Required": false,
+          "Unique": false,
+          "Sensitive": false,
+          "Options": null,
+          "Relation": null
+        },
+        "title": {
+          "Name": "title",
+          "Label": "Title",
+          "Type": "string",
+          "Required": false,
+          "Unique": false,
+          "Sensitive": false,
+          "Options": null,
+          "Relation": null
+        },
+        "updated_at": {
+          "Name": "updated_at",
+          "Label": "",
+          "Type": "datetime",
+          "Required": false,
+          "Unique": false,
+          "Sensitive": false,
+          "Options": null,
+          "Relation": null
+        },
+        "version": {
+          "Name": "version",
+          "Label": "",
+          "Type": "integer",
+          "Required": false,
+          "Unique": false,
+          "Sensitive": false,
+          "Options": null,
+          "Relation": null
+        }
+      },
+      "Steps": null,
+      "Transitions": null,
+      "When": "",
+      "Derive": null
+    },
+    "note_delete": {
+      "Name": "note_delete",
+      "Entity": "note",
+      "Operation": "delete",
+      "Policy": "",
+      "Lifecycle": "",
+      "DefaultRole": "",
+      "Confirm": "",
+      "StateField": "",
+      "Input": {
+        "id": {
+          "Name": "id",
+          "Label": "",
+          "Type": "uuid",
+          "Required": true,
+          "Unique": false,
+          "Sensitive": false,
+          "Options": null,
+          "Relation": null
+        }
+      },
+      "Output": {
+        "id": {
+          "Name": "id",
+          "Label": "",
+          "Type": "uuid",
+          "Required": false,
+          "Unique": false,
+          "Sensitive": false,
+          "Options": null,
+          "Relation": null
+        }
+      },
+      "Steps": null,
+      "Transitions": null,
+      "When": "",
+      "Derive": null
+    },
+    "note_update": {
+      "Name": "note_update",
+      "Entity": "note",
+      "Operation": "update",
+      "Policy": "",
+      "Lifecycle": "",
+      "DefaultRole": "",
+      "Confirm": "",
+      "StateField": "",
+      "Input": {
+        "id": {
+          "Name": "id",
+          "Label": "",
+          "Type": "uuid",
+          "Required": true,
+          "Unique": false,
+          "Sensitive": false,
+          "Options": null,
+          "Relation": null
+        },
+        "title": {
+          "Name": "title",
+          "Label": "Title",
+          "Type": "string",
+          "Required": false,
+          "Unique": false,
+          "Sensitive": false,
+          "Options": null,
+          "Relation": null
+        }
+      },
+      "Output": {
+        "created_at": {
+          "Name": "created_at",
+          "Label": "",
+          "Type": "datetime",
+          "Required": false,
+          "Unique": false,
+          "Sensitive": false,
+          "Options": null,
+          "Relation": null
+        },
+        "id": {
+          "Name": "id",
+          "Label": "",
+          "Type": "uuid",
+          "Required": false,
+          "Unique": false,
+          "Sensitive": false,
+          "Options": null,
+          "Relation": null
+        },
+        "title": {
+          "Name": "title",
+          "Label": "Title",
+          "Type": "string",
+          "Required": false,
+          "Unique": false,
+          "Sensitive": false,
+          "Options": null,
+          "Relation": null
+        },
+        "updated_at": {
+          "Name": "updated_at",
+          "Label": "",
+          "Type": "datetime",
+          "Required": false,
+          "Unique": false,
+          "Sensitive": false,
+          "Options": null,
+          "Relation": null
+        },
+        "version": {
+          "Name": "version",
+          "Label": "",
+          "Type": "integer",
+          "Required": false,
+          "Unique": false,
+          "Sensitive": false,
+          "Options": null,
+          "Relation": null
+        }
+      },
+      "Steps": null,
+      "Transitions": null,
+      "When": "",
+      "Derive": null
+    }
+  },
+  "Lifecycles": {},
+  "Rules": {},
+  "TestSuites": {},
+  "Extensions": {},
+  "Policies": {},
+  "Webforms": {},
+  "Blocks": {
+    "intro_content": {
+      "Name": "intro_content",
+      "Type": "content",
+      "View": "",
+      "Display": "",
+      "Entity": "",
+      "Webform": "",
+      "Action": "",
+      "Menu": "",
+      "Text": "",
+      "Policy": "",
+      "Resource": "",
+      "Inputs": null,
+      "Bindings": null,
+      "Filters": null,
+      "DefaultFilters": null,
+      "Presentation": {
+        "Mode": "",
+        "TitleField": "",
+        "BodyField": "",
+        "LinkRoute": "",
+        "LinkField": "",
+        "EmptyState": "",
+        "GroupField": "",
+        "OrderField": "",
+        "ParentField": "",
+        "MoveAction": "",
+        "MetricField": "",
+        "MetricLabel": "",
+        "TimeField": "",
+        "EndField": "",
+        "MetaFields": null,
+        "RichTextFields": null,
+        "Columns": null,
+        "SearchFields": null
+      },
+      "Content": [
+        {
+          "Type": "heading",
+          "Text": "Compatibility",
+          "Attribution": "",
+          "Source": "",
+          "Alt": "",
+          "Language": "",
+          "Tone": "",
+          "Direction": "",
+          "Items": null
+        }
+      ]
+    }
+  },
+  "Panels": {
+    "intro_panel": {
+      "Name": "intro_panel",
+      "Layout": "single-column",
+      "Policy": "",
+      "Regions": [
+        {
+          "Name": "main",
+          "CollapseWhenEmpty": false,
+          "Blocks": [
+            "intro_content"
+          ],
+          "Items": null
+        }
+      ]
+    }
+  },
+  "Pages": {},
+  "Sequences": {
+    "intro": {
+      "Name": "intro",
+      "Route": "/intro",
+      "Title": "Compatibility",
+      "Description": "",
+      "Profile": "presentation",
+      "AspectRatio": "wide",
+      "Policy": "",
+      "Frames": [
+        {
+          "Name": "opening",
+          "Title": "Opening",
+          "Layout": "title",
+          "Panel": "intro_panel",
+          "Notes": "",
+          "Direction": "next"
+        },
+        {
+          "Name": "details",
+          "Title": "Details",
+          "Layout": "title",
+          "Panel": "intro_panel",
+          "Notes": "",
+          "Direction": "down"
+        }
+      ]
+    }
+  },
+  "Roles": {},
+  "Menus": {},
+  "Jobs": {},
+  "Filters": {},
+  "AdminResources": {
+    "note": {
+      "Name": "note",
+      "Entity": "note",
+      "Label": "note",
+      "Description": "",
+      "LabelField": "title",
+      "View": "note_list",
+      "CreateAction": "note_create",
+      "UpdateAction": "note_update",
+      "DeleteAction": "note_delete",
+      "List": {
+        "Columns": [
+          "id",
+          "title",
+          "updated_at"
+        ],
+        "Search": [
+          "title"
+        ],
+        "Filters": [],
+        "Sort": [],
+        "PageSize": 25
+      },
+      "Form": {
+        "Fields": [
+          "title"
+        ],
+        "Readonly": [
+          "created_at",
+          "updated_at",
+          "version"
+        ]
+      },
+      "Actions": []
+    }
+  },
+  "Authentication": {
+    "Preset": "internal",
+    "Registration": false,
+    "PasswordRecovery": true
+  },
+  "LocalRegistration": null,
+  "Theme": null,
+  "DemoSeed": null,
+  "OpenAPI": null
+}

@@ -1,0 +1,29 @@
+package main
+
+import (
+ "encoding/json"
+ "fmt"
+ "os"
+
+ "github.com/beanruntime/bean/internal/appir"
+ "github.com/beanruntime/bean/internal/compiler"
+ "github.com/beanruntime/bean/internal/definition"
+)
+
+func main(){
+ def:=func(kind,name string,spec map[string]any)definition.Definition{return definition.Definition{APIVersion:definition.APIVersion,Kind:kind,Metadata:definition.Metadata{Name:name},Spec:spec}}
+ frames:=[]any{map[string]any{"name":"opening","title":"Opening","layout":"title","panel":"intro_panel"},map[string]any{"name":"details","title":"Details","layout":"title","panel":"intro_panel"}}
+ if appir.CurrentFormat!="bean/appir/v14" {frames[0].(map[string]any)["direction"]="next";frames[1].(map[string]any)["direction"]="down"}
+ defs:=[]definition.Definition{
+  def("Entity","note",map[string]any{"fields":[]any{map[string]any{"name":"title","type":"string","label":"Title"}}}),
+  def("View","notes",map[string]any{"entity":"note","fields":[]any{"id","title"},"displays":map[string]any{"detail":map[string]any{"type":"block","renderer":map[string]any{"type":"detail","titleField":"title"}}}}),
+  def("Block","intro_content",map[string]any{"type":"content","content":[]any{map[string]any{"type":"heading","text":"Compatibility"}}}),
+  def("Panel","intro_panel",map[string]any{"layout":"single-column","regions":[]any{map[string]any{"name":"main","blocks":[]any{"intro_content"}}}}),
+  def("Sequence","intro",map[string]any{"route":"/intro","title":"Compatibility","frames":frames}),
+ }
+ if appir.CurrentFormat=="bean/appir/v16" || appir.CurrentFormat=="bean/appir/v17" {spec:=map[string]any{"preset":"internal"};if appir.CurrentFormat=="bean/appir/v17"{spec["passwordRecovery"]=true};defs=append(defs,def("Authentication","auth",spec))}
+ result:=compiler.Compile("compatibility",1,defs)
+ if len(result.Diagnostics)!=0 {panic(fmt.Sprint(result.Diagnostics))}
+ if err:=result.App.ValidateFormat();err!=nil {panic(err)}
+ encoder:=json.NewEncoder(os.Stdout);encoder.SetIndent("","  ");var output any=result.App;if len(os.Args)>1&&os.Args[1]=="source"{output=defs};if err:=encoder.Encode(output);err!=nil{panic(err)}
+}

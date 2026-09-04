@@ -9,6 +9,9 @@
           },
           "type": "array"
         },
+        "layout": {
+          "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_FieldLayout"
+        },
         "readonly": {
           "items": {
             "type": "string"
@@ -49,6 +52,79 @@
           "type": "array"
         }
       },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_FieldGroup": {
+      "additionalProperties": false,
+      "properties": {
+        "columns": {
+          "enum": [
+            1,
+            2
+          ],
+          "type": "integer"
+        },
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_LayoutField"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "type": "array"
+        },
+        "label": {
+          "maxLength": 120,
+          "minLength": 1,
+          "pattern": "\\S",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "label",
+        "fields"
+      ],
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_FieldLayout": {
+      "additionalProperties": false,
+      "properties": {
+        "groups": {
+          "items": {
+            "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_FieldGroup"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "groups"
+      ],
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_LayoutField": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "span": {
+          "enum": [
+            "single",
+            "full"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "field"
+      ],
       "type": "object"
     },
     "github_com_beanruntime_bean_internal_appir_Sort": {

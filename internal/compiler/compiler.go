@@ -1084,6 +1084,13 @@ func validateViews(a *appir.App, state *validationState) []definition.Diagnostic
 		}
 		for _, displayName := range keys(v.Displays) {
 			display := v.Displays[displayName]
+			if display.Renderer.Layout != nil {
+				path := "spec.displays." + displayName + ".renderer.layout"
+				if display.Type != "page" && display.Type != "block" {
+					out = append(out, diagnostic("View", name, path, "field layout requires a page or block Display"))
+				}
+				out = append(out, validateDetailLayout(name, path, v, display.Renderer, a)...)
+			}
 			if strings.HasPrefix(displayName, "_") {
 				continue
 			}
@@ -2975,6 +2982,11 @@ func validateAdminResources(a *appir.App, _ *validationState) []definition.Diagn
 		checkFields("spec.list.filters", resource.List.Filters, true)
 		checkFields("spec.form.fields", resource.Form.Fields, false)
 		checkFields("spec.form.readonly", resource.Form.Readonly, true)
+		layoutFields := nameSet(resource.Form.Fields)
+		for _, field := range resource.Form.Readonly {
+			delete(layoutFields, field)
+		}
+		out = append(out, validateFieldLayout("AdminResource", name, "spec.form.layout", resource.Form.Layout, layoutFields, resource.Form.Fields)...)
 		checkFields("spec.labelField", []string{resource.LabelField}, true)
 		for _, order := range resource.List.Sort {
 			checkFields("spec.list.sort", []string{order.Field}, true)
@@ -3785,6 +3797,7 @@ func generate(a *appir.App, name string, e appir.Entity) {
 
 func normalizeAdminResources(a *appir.App) {
 	for name, resource := range a.AdminResources {
+		normalizeFieldLayout(resource.Form.Layout)
 		entity, ok := a.Entities[resource.Entity]
 		if !ok {
 			continue

@@ -339,6 +339,9 @@ func mappedDefinitionKind[T any](specification T, collection func(*appir.App) ma
 		Storage:       reflect.TypeOf(specification),
 		Normalize:     noDefinitionNormalization,
 		Compile: func(app *appir.App, source definition.Definition) []definition.Diagnostic {
+			if diagnostics := validateSourceFieldLayouts(source); len(diagnostics) > 0 {
+				return diagnostics
+			}
 			var value T
 			if err := definition.DecodeSpec(source.Spec, &value); err != nil {
 				return []definition.Diagnostic{diagError(source, "spec", err)}
@@ -503,6 +506,7 @@ func normalizeViews(app *appir.App) {
 			if display.Type != "page" && display.Type != "block" {
 				continue
 			}
+			normalizeFieldLayout(display.Renderer.Layout)
 			if display.Renderer.Type == "" {
 				display.Renderer.Type = "list"
 			}

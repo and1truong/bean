@@ -106,6 +106,10 @@ Inline content uses the same `ContentBlock` renderer and validation as named con
 
 Frame layouts are closed and compiler-checked against their Panel: `title`, `section`, `statement`, `bullets`, `quote`, `closing`, `two-column`, `comparison`, `image-focus`, `chart-focus`, `table`, `timeline`, `process`, and `architecture`. Content elements are `heading`, `paragraph`, `bullets`, `quote`, `code`, `callout`, `image`, and `diagram`. Images require alt text and an absolute application path or HTTPS URL; content is rendered as text nodes, never executable markup. `bean capabilities --json` reports the exact vocabularies and bounds. Current limits include 1–50 frames, 1–12 rendered Blocks (including inline content items) per frame, 80-code-point titles, 4,000-byte notes, 12 elements per named or inline content Block, six bullets, eight diagram nodes, 120 code lines, and deterministic layout density budgets.
 
+## Typed field layout
+
+`AdminResource.form.layout` and a page/block detail Display's `renderer.layout` accept labelled ordered groups, one/two columns, and `single|full` field spans. Form layouts cover the configured editable fields exactly once; detail layouts reference eligible projected base-record fields and replace legacy renderer field roles. Layout is presentation-only: Views remain the read path and Actions the write path. See [typed field layout](field-layout.md) for syntax, bounds, Studio, accessibility, and compatibility.
+
 ## Admin resources
 
 Every Entity receives a generated AdminResource backed by its generated list View and create/update/delete Actions. Add an explicit definition to control its presentation and domain operations:

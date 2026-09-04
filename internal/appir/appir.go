@@ -10,23 +10,24 @@ import (
 )
 
 const (
-	LegacyFormat         = "bean/appir/v1"
-	LifecycleFormat      = "bean/appir/v2"
-	RuleFormat           = "bean/appir/v3"
-	TestSuiteFormat      = "bean/appir/v4"
-	ExtensionFormat      = "bean/appir/v5"
-	DisplayFormat        = "bean/appir/v6"
-	ExploreFormat        = "bean/appir/v7"
-	SequenceFormat       = "bean/appir/v8"
-	InlinePanelFormat    = "bean/appir/v9"
-	PageSectionFormat    = "bean/appir/v10"
-	RegionCollapseFormat = "bean/appir/v11"
-	PageWidthFormat      = "bean/appir/v12"
-	MenuFormat           = "bean/appir/v13"
-	MenuVariantFormat    = "bean/appir/v14"
-	DirectionalFormat    = "bean/appir/v15"
-	AuthenticationFormat = "bean/appir/v16"
-	CurrentFormat        = "bean/appir/v17"
+	LegacyFormat           = "bean/appir/v1"
+	LifecycleFormat        = "bean/appir/v2"
+	RuleFormat             = "bean/appir/v3"
+	TestSuiteFormat        = "bean/appir/v4"
+	ExtensionFormat        = "bean/appir/v5"
+	DisplayFormat          = "bean/appir/v6"
+	ExploreFormat          = "bean/appir/v7"
+	SequenceFormat         = "bean/appir/v8"
+	InlinePanelFormat      = "bean/appir/v9"
+	PageSectionFormat      = "bean/appir/v10"
+	RegionCollapseFormat   = "bean/appir/v11"
+	PageWidthFormat        = "bean/appir/v12"
+	MenuFormat             = "bean/appir/v13"
+	MenuVariantFormat      = "bean/appir/v14"
+	DirectionalFormat      = "bean/appir/v15"
+	AuthenticationFormat   = "bean/appir/v16"
+	PasswordRecoveryFormat = "bean/appir/v17"
+	CurrentFormat          = "bean/appir/v18"
 )
 
 type Field struct {
@@ -73,6 +74,7 @@ type ViewRenderer struct {
 	MetricField, MetricLabel, TimeField, EndField                 string
 	MetaFields, RichTextFields, Columns, SearchFields             []string
 	Fields                                                        []ViewColumn
+	Layout                                                        *FieldLayout `json:",omitempty"`
 }
 type Display struct {
 	Type, Route, Description, EmptyState string
@@ -499,6 +501,7 @@ type AdminList struct {
 }
 type AdminForm struct {
 	Fields, Readonly []string
+	Layout           *FieldLayout `json:",omitempty"`
 }
 type AdminResource struct {
 	Name, Entity, Label, Description, LabelField   string
@@ -541,15 +544,30 @@ func Empty() *App {
 	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Rules: map[string]Rule{}, TestSuites: map[string]TestSuite{}, Extensions: map[string]Extension{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Sequences: map[string]Sequence{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
 }
 func (a *App) ValidateFormat() error {
-	if a.PasswordRecoveryEnabled() && a.FormatVersion != CurrentFormat {
+	if a.FormatVersion != CurrentFormat {
+		for _, resource := range a.AdminResources {
+			if resource.Form.Layout != nil {
+				return fmt.Errorf("AppIR format %q cannot contain field layouts", a.FormatVersion)
+			}
+		}
+		for _, view := range a.Views {
+			for _, display := range view.Displays {
+				if display.Renderer.Layout != nil {
+					return fmt.Errorf("AppIR format %q cannot contain field layouts", a.FormatVersion)
+				}
+			}
+		}
+	}
+	if a.PasswordRecoveryEnabled() && a.FormatVersion != PasswordRecoveryFormat && a.FormatVersion != CurrentFormat {
 		return fmt.Errorf("AppIR format %q cannot contain password recovery", a.FormatVersion)
 	}
-	if a.Authentication != nil && a.FormatVersion != CurrentFormat && a.FormatVersion != AuthenticationFormat {
+	if a.Authentication != nil && a.FormatVersion != AuthenticationFormat && a.FormatVersion != PasswordRecoveryFormat && a.FormatVersion != CurrentFormat {
 		return fmt.Errorf("AppIR format %q cannot contain Authentication configuration", a.FormatVersion)
 	}
-	// Validate older feature boundaries without mutating the published snapshot.
+	// Only v16/v17/v18 delegate to v15 after their own feature checks. Never promote
+	// v14: that would incorrectly authorize directional Sequence frames.
 	legacy := *a
-	if legacy.FormatVersion == CurrentFormat || legacy.FormatVersion == AuthenticationFormat {
+	if legacy.FormatVersion == AuthenticationFormat || legacy.FormatVersion == PasswordRecoveryFormat || legacy.FormatVersion == CurrentFormat {
 		legacy.FormatVersion = DirectionalFormat
 	}
 	return legacy.validateThroughDirectionalFormat()

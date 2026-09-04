@@ -24,7 +24,7 @@ Preview without mutation using `bean app plan --file ./my-app/app.yaml`; add `--
 
 The Studio core path has typed editors for Entity, View, Action, Policy, and AdminResource. Reference controls are populated from the current draft. Advanced JSON edits the same canonical definition and preserves fields not represented by the visual slice.
 
-Each Entity gets a default administration resource. Define an AdminResource when operators need curated columns, search fields, filters, form ordering, or domain Actions. Its reads still use a View and its writes still use Actions; see `docs/definitions.md` for the contract.
+Each Entity gets a default administration resource. Define an AdminResource when operators need curated columns, search fields, filters, form ordering, or domain Actions. Its reads still use a View and its writes still use Actions; see `docs/definitions.md` for the contract. Use `form.layout` for labelled, ordered field groups with one/two columns and full-row fields, rather than a Panel or one Block per field. Detail Displays share the layout vocabulary under `renderer.layout`; Studio authors both. See [typed field layout](field-layout.md).
 
 For user-authored Markdown, store the source in a textual Entity field, define a named `Filter` with a `markdown` step, and reference it from the public View through `fieldFilters`. Keep the Admin View unfiltered so editors read and update source Markdown rather than generated HTML.
 

@@ -11,6 +11,12 @@ A metadata-only public blog with editorial administration, taxonomy, member regi
 - `posts.yaml` — post publishing, public Views, readable Page sections, and responsive discussion composition
 - `comments.yaml` — comment submission, named discussion Display, Policy-aware form content, and moderation
 
+## Grouped record fields
+
+The Post Admin form groups Content and Classification: Title/Slug and Author/Category pair at medium widths; Excerpt, Body, and Tags use full rows. Mobile keeps the same field order in one column. Layout is ordinary `AdminResource.form.layout` metadata and does not change draft creation or publication Actions.
+
+`/posts/:slug/record` demonstrates the same bounded groups in a readonly detail Display over the existing publication-scoped `published_post` View. The original `/posts/:slug` article, taxonomy, and discussion remain unchanged. See [field layout](../../docs/field-layout.md) for authoring and deliberate limits.
+
 ## Run it
 
 From the repository root:

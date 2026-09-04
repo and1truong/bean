@@ -37,6 +37,11 @@ type Capabilities struct {
 	Presentations           []string `json:"presentations"`
 	ViewDisplayTypes        []string `json:"viewDisplayTypes"`
 	ViewRenderers           []string `json:"viewRenderers"`
+	FieldLayoutColumns      []int    `json:"fieldLayoutColumns"`
+	FieldLayoutSpans        []string `json:"fieldLayoutSpans"`
+	MaxFieldLayoutGroups    int      `json:"maxFieldLayoutGroups"`
+	MaxFieldGroupFields     int      `json:"maxFieldGroupFields"`
+	MaxFieldLayoutFields    int      `json:"maxFieldLayoutFields"`
 	ViewFilterOperators     []string `json:"viewFilterOperators"`
 	ViewControlWidgets      []string `json:"viewControlWidgets"`
 	ViewPagers              []string `json:"viewPagers"`
@@ -119,6 +124,11 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 		Presentations:           presentationNames(),
 		ViewDisplayTypes:        viewDisplayTypes(),
 		ViewRenderers:           viewRendererNames(),
+		FieldLayoutColumns:      []int{1, 2},
+		FieldLayoutSpans:        []string{"single", "full"},
+		MaxFieldLayoutGroups:    maxFieldLayoutGroups,
+		MaxFieldGroupFields:     maxFieldGroupFields,
+		MaxFieldLayoutFields:    maxFieldLayoutFields,
 		ViewFilterOperators:     viewFilterOperators(),
 		ViewControlWidgets:      viewControlWidgets(),
 		ViewPagers:              viewPagerTypes(),
@@ -396,6 +406,7 @@ func definitionSchema(kind string, specification reflect.Type) map[string]any {
 			}
 		}
 	}
+	fieldLayoutSchemaDefinitions(builder.definitions)
 	return document
 }
 

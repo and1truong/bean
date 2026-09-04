@@ -84,6 +84,24 @@ describe('View datetime controls',()=>{
 })
 
 describe('public rendering',()=>{
+  it('renders one authorized detail result in semantic groups without fallback leaks or extra reads',async()=>{
+    let reads=0
+    const Layout={Groups:[{Name:'content',Label:'Content',Columns:2,Fields:[{Field:'title',Span:'single'},{Field:'amount',Span:'single'},{Field:'body',Span:'full'},{Field:'attachment',Span:'single'}]},{Name:'hidden',Label:'Hidden',Columns:1,Fields:[{Field:'secret',Span:'single'}]}]}
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'ViewBlock',props:{name:'record',view:'articles',fieldTypes:{amount:'decimal'},formattedFields:['body'],fileFields:['attachment'],display:{Type:'page',Title:{Text:'Record'},Renderer:{Type:'detail',Layout},Pager:{Type:'none'}}}}})
+      if(path.includes('/api/views/articles')){reads++;return response({data:[{id:'1',title:'Bean',amount:'12345678901234567890.25',body:null,attachment:'blob-1',excerpt:'Do not use this fallback'}],nextCursor:''})}
+      return response({})
+    }))
+    renderApp('/articles/1')
+    expect(await screen.findByRole('region',{name:'Content'})).toBeInTheDocument()
+    expect(screen.queryByRole('region',{name:'Hidden'})).not.toBeInTheDocument()
+    expect(screen.getByText('12345678901234567890.25')).toBeInTheDocument()
+    expect(screen.queryByText('Do not use this fallback')).not.toBeInTheDocument()
+    expect(screen.getByRole('link',{name:'Download attachment'})).toHaveAttribute('href','/api/files/blob-1?view=articles&_page=%2Farticles%2F1&_display=record')
+    expect(reads).toBe(1)
+  })
   it.each([
     {appName:'Community',theme:undefined,expected:'Community'},
     {appName:'Community',theme:{DisplayName:'Custom Community'},expected:'Custom Community'},

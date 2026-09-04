@@ -1,6 +1,6 @@
 # Remaining Panel and composition limitations
 
-Status: idea inventory; all entries below are unscheduled.
+Status: idea inventory; entries are unscheduled unless noted. Typed field layout (item 7) is implemented and qualified on the isolated field-layout branch; integration is pending.
 
 Related: [`panel-bounded-sizing.md`](panel-bounded-sizing.md) and [`menu-navigation.md`](../menu-navigation.md).
 
@@ -72,7 +72,7 @@ Content — full width
 Tags                     Published date
 ```
 
-Panel places Blocks; it does not place Entity fields. Turning every field into a Block would be the wrong abstraction. Ordered groups and field spans belong in typed detail/form renderer metadata.
+Panel places Blocks; it does not place Entity fields. Turning every field into a Block would be the wrong abstraction. [Typed field layout](../field-layout.md) now provides ordered labelled groups, one/two columns and full-row fields in Admin forms and readonly detail Displays. Nested groups, tabs, conditional visibility, Webform parity, and dotted relationship detail fields remain deferred.
 
 ## 8. Dynamic repeated composition
 
@@ -126,7 +126,7 @@ Users may want to hide, reorder, drag, or resize widgets and persist a personal 
 
 1. Deepen Menu with typed static and record-backed targets for primary, optional secondary, and vertical route navigation.
 2. Add bounded Panel track counts and spans only if a maintained example requires them.
-3. Improve typed detail/form field layout instead of using one Block per field.
+3. Integrate the qualified typed detail/form field layout; extend it only when a maintained application demonstrates a remaining gap.
 4. Define a shared-result View Display composition contract if repeated reads become measurable.
 
 ## Deliberate boundaries

@@ -1,4 +1,5 @@
 import {createContext,FormEvent,useContext,useEffect,useMemo,useRef,useState} from 'react'
+import {FieldLayout} from './FieldLayout'
 import {Link,Route,Routes,useLocation,useNavigate,useSearchParams} from 'react-router-dom'
 import {BlocksIcon,CompassIcon,DatabaseIcon,HomeIcon,LogOutIcon,MoonIcon,SunIcon} from 'lucide-react'
 import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query'
@@ -164,6 +165,7 @@ function ViewBlockPage({name,block,display,displayName,displays={},filters={},pa
 	if(result.isPending)content=<LoadingState/>
 	else if(result.error)content=<ErrorAlert error={result.error}/>
 	else if(!result.data.data.length)content=<EmptyState title={display?.EmptyState||effectivePresentation.EmptyState||'Nothing to show.'} description="Adjust the current search or filters and try again."/>
+	else if(mode==='detail'&&renderer?.Layout){const row=result.data.data[0];content=<FieldLayout layout={renderer.Layout} mode="detail" fields={Object.fromEntries(renderer.Layout.Groups.flatMap(group=>group.Fields).filter(item=>Object.hasOwn(row,item.Field)).map(({Field:field})=>[field,<><dt className="mb-1 text-sm font-medium text-muted-foreground">{humanize(field)}</dt><dd>{formattedFields.includes(field)||fileFields.includes(field)?<ViewBody row={row} view={name} page={path} block={block} display={pageDisplay} field={field} rich={formattedFields.includes(field)} file={fileFields.includes(field)} fallback={false}/>:<span className="whitespace-pre-wrap">{fieldTypes[field]==='decimal'||fieldTypes[field]==='money'?String(row[field]??''):displayValue(row[field],fieldTypes[field])}</span>}</dd></>]))}/>}
 	else if(mode==='table')content=<TableView key={[activeDisplayName,display?.Selection,...(display?.Actions||[])].join('|')} rows={result.data.data} fields={renderer?.Fields||[]} fieldTypes={fieldTypes} display={display}/>
 	else if(mode==='board')content=<BoardView rows={result.data.data} presentation={effectivePresentation}/>
 	else if(mode==='tree')content=<TreeView rows={result.data.data} presentation={effectivePresentation}/>
@@ -205,7 +207,7 @@ function TimelineView({rows,presentation}:{rows:Row[];presentation:ViewPresentat
 function formatDemoDate(value:any){const date=new Date(String(value));return Number.isNaN(date.valueOf())?String(value??''):new Intl.DateTimeFormat('en-US',{year:'numeric',month:'short',day:'numeric',timeZone:'UTC'}).format(date)}
 
 function mergeDetail(rows:Row[],meta:string[]){const result={...rows[0]};for(const field of meta){const values=[...new Set(rows.map(row=>row[field]).filter(value=>value!==null&&value!==undefined&&value!==''))];result[field]=values.join(', ')}return result}
-function ViewBody({row,view,page,block,display,field,rich,file}:{row:Row;view:string;page:string;block:string;display:boolean;field:string;rich:boolean;file:boolean}){const selected=row[field];const value=String(selected??row.excerpt??row.description??'');if(file&&selected){const query=new URLSearchParams({view,_page:page});query.set(display?'_display':'_block',block);return <Button variant="outline" asChild><a href={'/api/files/'+encodeURIComponent(String(selected))+'?'+query}>Download attachment</a></Button>}return rich&&selected!==null&&selected!==undefined?<div className="rich-text" dangerouslySetInnerHTML={{__html:String(selected)}}/>:<p className="leading-7">{value}</p>}
+function ViewBody({row,view,page,block,display,field,rich,file,fallback=true}:{row:Row;view:string;page:string;block:string;display:boolean;field:string;rich:boolean;file:boolean;fallback?:boolean}){const selected=row[field];const value=String(selected??(fallback?row.excerpt??row.description:'')??'');if(file&&selected){const query=new URLSearchParams({view,_page:page});query.set(display?'_display':'_block',block);return <Button variant="outline" asChild><a href={'/api/files/'+encodeURIComponent(String(selected))+'?'+query}>Download attachment</a></Button>}return rich&&selected!==null&&selected!==undefined?<div className="rich-text" dangerouslySetInnerHTML={{__html:String(selected)}}/>:<p className="leading-7">{value}</p>}
 function viewLink(template:string,row:Row){return template.replace(/:([a-zA-Z0-9_.]+)/g,(_,field)=>encodeURIComponent(String(row[field]??'')))}
 
 function BoardView({rows,presentation}:{rows:Row[];presentation:ViewPresentation}){

@@ -1,0 +1,100 @@
+[
+  {
+    "apiVersion": "bean/v1alpha1",
+    "kind": "Entity",
+    "metadata": {
+      "name": "note"
+    },
+    "spec": {
+      "fields": [
+        {
+          "label": "Title",
+          "name": "title",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  {
+    "apiVersion": "bean/v1alpha1",
+    "kind": "View",
+    "metadata": {
+      "name": "notes"
+    },
+    "spec": {
+      "displays": {
+        "detail": {
+          "renderer": {
+            "titleField": "title",
+            "type": "detail"
+          },
+          "type": "block"
+        }
+      },
+      "entity": "note",
+      "fields": [
+        "id",
+        "title"
+      ]
+    }
+  },
+  {
+    "apiVersion": "bean/v1alpha1",
+    "kind": "Block",
+    "metadata": {
+      "name": "intro_content"
+    },
+    "spec": {
+      "content": [
+        {
+          "text": "Compatibility",
+          "type": "heading"
+        }
+      ],
+      "type": "content"
+    }
+  },
+  {
+    "apiVersion": "bean/v1alpha1",
+    "kind": "Panel",
+    "metadata": {
+      "name": "intro_panel"
+    },
+    "spec": {
+      "layout": "single-column",
+      "regions": [
+        {
+          "blocks": [
+            "intro_content"
+          ],
+          "name": "main"
+        }
+      ]
+    }
+  },
+  {
+    "apiVersion": "bean/v1alpha1",
+    "kind": "Sequence",
+    "metadata": {
+      "name": "intro"
+    },
+    "spec": {
+      "frames": [
+        {
+          "layout": "title",
+          "name": "opening",
+          "panel": "intro_panel",
+          "title": "Opening"
+        },
+        {
+          "layout": "title",
+          "name": "details",
+          "panel": "intro_panel",
+          "title": "Details"
+        }
+      ],
+      "route": "/intro",
+      "title": "Compatibility"
+    }
+  }
+]

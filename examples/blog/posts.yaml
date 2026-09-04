@@ -80,6 +80,29 @@ displays:
       metaFields: [author_display_name, published_at, category.name, tags.name]
     pager: {type: none, pageSize: 50}
     emptyState: Post not found.
+  record:
+    type: page
+    route: /posts/:slug/record
+    title: {field: title, fallback: Post}
+    bindings:
+      slug: {source: route, name: slug, required: true}
+    renderer:
+      type: detail
+      layout:
+        groups:
+          - name: publication
+            label: Publication
+            columns: 2
+            fields:
+              - {field: author_display_name}
+              - {field: published_at}
+          - name: content
+            label: Content
+            fields:
+              - {field: excerpt}
+              - {field: body, span: full}
+    pager: {type: none, pageSize: 50}
+    emptyState: Post not found.
 entity: post
 exposedFilters:
   slug: {name: slug, required: true, type: slug}
@@ -157,6 +180,23 @@ entity: post
 form:
   fields: [title, slug, excerpt, body, author_display_name, category_id, tags]
   readonly: [status, published_at, created_at, updated_at, version]
+  layout:
+    groups:
+      - name: content
+        label: Content
+        columns: 2
+        fields:
+          - {field: title}
+          - {field: slug}
+          - {field: excerpt, span: full}
+          - {field: body, span: full}
+      - name: classification
+        label: Classification
+        columns: 2
+        fields:
+          - {field: author_display_name}
+          - {field: category_id}
+          - {field: tags, span: full}
 labelField: title
 list:
   columns: [id, title, slug, status, category_id, published_at, updated_at]
