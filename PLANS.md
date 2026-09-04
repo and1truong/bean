@@ -19,10 +19,10 @@ Do not expose configuration switches for unimplemented security mechanisms. Loca
 
 # Blog Admin browser investigation
 
-The user switched to ATS after successful fresh-demo Category/Post create/edit/publish verification. Investigation of the existing Blog credentials remains deferred.
+Status: deferred. The user switched to ATS after successful fresh-demo Category/Post create/edit/publish verification. Investigation of the existing Blog credentials remains deferred.
 
 | Milestone | Deliverable | Evidence | Status |
 | --- | --- | --- | --- |
-| 0 | Inspect the running demo and prepare Blog testing | server and database identity, setup | active |
+| 0 | Inspect the running demo and prepare Blog testing | server and database identity, setup | deferred |
 | 1 | Reproduce Admin behavior through login and editorial navigation | browser observations | pending |
 | 2 | Fix confirmed defects and qualify | focused tests, browser verification, `make check`, `make build` | pending |
