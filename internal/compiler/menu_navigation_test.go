@@ -14,11 +14,11 @@ func TestHierarchicalMenusCompileTypedStaticAndRecordTargets(t *testing.T) {
 		t.Fatalf("diagnostics=%v", result.Diagnostics)
 	}
 	contents := result.App.Menus["book_contents"]
-	if contents.Profile != "workspace" || contents.MaxDepth != 3 || contents.Owner == nil || contents.Owner.Entity != "book" || len(contents.Items) != 0 {
+	if contents.Profile != "workspace" || contents.Variant != "default" || contents.MaxDepth != 3 || contents.Owner == nil || contents.Owner.Entity != "book" || len(contents.Items) != 0 {
 		t.Fatalf("contents=%+v", contents)
 	}
 	main := result.App.Menus["main_navigation"]
-	if main.Profile != "workspace" || main.MaxDepth != 3 || len(main.Items) != 2 || main.Items[0].ID != "home" || main.Items[1].Parent != "home" || main.Items[1].Target.View != "book_pages" {
+	if main.Profile != "workspace" || main.Variant != "line" || main.MaxDepth != 3 || len(main.Items) != 2 || main.Items[0].ID != "home" || main.Items[1].Parent != "home" || main.Items[1].Target.View != "book_pages" {
 		t.Fatalf("main=%+v", main)
 	}
 	navigation := result.App.Entities["book_page"].Navigation
@@ -41,6 +41,7 @@ func TestHierarchicalMenusRejectInvalidScopeTargetsHierarchyAndEntityDestination
 				definitions[index].Spec["items"] = []any{map[string]any{"id": "scoped", "target": map[string]any{"page": "home"}}}
 			}
 			if definitions[index].Metadata.Name == "main_navigation" {
+				definitions[index].Spec["variant"] = "cards"
 				definitions[index].Spec["items"] = []any{
 					map[string]any{"id": "first", "parent": "second", "weight": 1001, "target": map[string]any{"page": "home"}},
 					map[string]any{"id": "second", "parent": "first", "target": map[string]any{"page": "home"}},
@@ -59,6 +60,7 @@ func TestHierarchicalMenusRejectInvalidScopeTargetsHierarchyAndEntityDestination
 	for _, expected := range []struct{ kind, name, path string }{
 		{"Menu", "book_contents", "spec.owner.entity"},
 		{"Menu", "book_contents", "spec.items"},
+		{"Menu", "main_navigation", "spec.variant"},
 		{"Menu", "main_navigation", "spec.items.0.weight"},
 		{"Menu", "main_navigation", "spec.items.0.parent"},
 		{"Menu", "main_navigation", "spec.items.1.target"},
@@ -113,7 +115,7 @@ func menuNavigationDefinitions() []definition.Definition {
 		item("Panel", "home_panel", map[string]any{"layout": "single-column", "regions": []any{map[string]any{"name": "main", "blocks": []any{"home_text"}}}}),
 		item("Page", "home", map[string]any{"route": "/", "panel": "home_panel"}),
 		item("Menu", "book_contents", map[string]any{"profile": "workspace", "owner": map[string]any{"entity": "book"}}),
-		item("Menu", "main_navigation", map[string]any{"profile": "workspace", "items": []any{
+		item("Menu", "main_navigation", map[string]any{"profile": "workspace", "variant": "line", "items": []any{
 			map[string]any{"id": "home", "target": map[string]any{"page": "home"}, "weight": 0},
 			map[string]any{"id": "directory", "label": "Pages", "parent": "home", "target": map[string]any{"view": "book_pages", "display": "directory"}, "weight": 10},
 		}}),

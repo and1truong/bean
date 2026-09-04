@@ -36,7 +36,10 @@ it('offers reference-aware core definition editors',async()=>{
   expect(screen.getByTestId('admin-entity')).toHaveTextContent('book')
   fireEvent.change(screen.getByTestId('definition-kind'),{target:{value:'Menu'}})
   expect(screen.getByLabelText('Profile')).toHaveValue('workspace')
-  expect(screen.getByRole('checkbox',{name:'Advanced JSON'})).not.toBeChecked()
+  expect(screen.getByLabelText('Variant')).toHaveValue('default')
+  fireEvent.change(screen.getByLabelText('Variant'),{target:{value:'line'}})
+  fireEvent.click(screen.getByRole('checkbox',{name:'Advanced JSON'}))
+  expect(JSON.parse((screen.getByTestId('definition-spec') as HTMLTextAreaElement).value).variant).toBe('line')
 })
 
 it('preserves stable Page section IDs while editing Panel references visually',async()=>{

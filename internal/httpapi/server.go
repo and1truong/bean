@@ -1119,7 +1119,7 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 				problem(w, 400, "invalid_menu_context", "View display Menu context is invalid.", requestID(r))
 				return
 			}
-			menuNode := render.Node{Component: "MenuBlock", Props: map[string]any{"name": "@display-menu/" + menuName, "menu": menuName, "profile": definition.Profile, "ownerEntity": definition.Owner.Entity, "ownerID": ownerID}}
+			menuNode := render.Node{Component: "MenuBlock", Props: map[string]any{"name": "@display-menu/" + menuName, "menu": menuName, "profile": definition.Profile, "variant": definition.Variant, "ownerEntity": definition.Owner.Entity, "ownerID": ownerID}}
 			tree.Children = append([]render.Node{menuNode}, tree.Children...)
 		}
 		write(w, 200, map[string]any{"tree": tree})

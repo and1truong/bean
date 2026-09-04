@@ -122,10 +122,6 @@
   .bean-workspace-menu { display: flex; min-width: 0; flex-direction: column; gap: 0.75rem; }
   .bean-workspace-menu-header { display: flex; min-width: 0; flex-direction: column; gap: 0.5rem; }
   .bean-workspace-menu-body, .bean-workspace-content { min-width: 0; }
-  .bean-menu-level { display: flex; max-width: 100%; gap: 0.25rem; overflow-x: auto; padding-bottom: 0.25rem; }
-  .bean-menu-link { @apply whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground; }
-  .bean-menu-link[data-active="true"], .bean-menu-link[aria-current="page"] { @apply bg-muted text-foreground; }
-  .bean-menu-level-vertical { flex-direction: column; overflow-x: visible; }
   .bean-menu-tertiary-desktop { display: none; }
   .bean-menu-tertiary-mobile { display: block; }
 

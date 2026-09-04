@@ -128,6 +128,7 @@ func menuProperties(app *appir.App, block appir.Block, request beanctx.Request, 
 	definition := app.Menus[block.Menu]
 	props["menu"] = block.Menu
 	props["profile"] = definition.Profile
+	props["variant"] = definition.Variant
 	props["ownerEntity"] = ""
 	if definition.Owner != nil {
 		props["ownerEntity"] = definition.Owner.Entity

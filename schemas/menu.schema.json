@@ -125,6 +125,13 @@
         "workspace"
       ],
       "type": "string"
+    },
+    "variant": {
+      "enum": [
+        "default",
+        "line"
+      ],
+      "type": "string"
     }
   },
   "required": [

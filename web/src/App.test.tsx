@@ -72,7 +72,7 @@ describe('public rendering',()=>{
     vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
       const path=String(input)
       if(path.includes('/api/system/session'))return response({authenticated:false})
-      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'MenuBlock',props:{name:'main_menu',menu:'main',profile:'workspace',items:[
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'MenuBlock',props:{name:'main_menu',menu:'main',profile:'workspace',variant:'line',items:[
         {ID:'overview',Label:'Overview',Route:'/',Level:1,Active:true,Children:[
           {ID:'reports',Label:'Reports',Route:'/reports',Level:2,Active:true,Children:[
             {ID:'activity',Label:'Activity',Route:'/activity',Level:3,Current:true,Active:true},
@@ -86,10 +86,13 @@ describe('public rendering',()=>{
     expect(await screen.findByRole('navigation',{name:'Secondary navigation'})).toBeVisible()
     expect(screen.getAllByRole('navigation',{name:'Primary navigation'})).toHaveLength(2)
     expect(screen.getByRole('link',{name:'Activity'})).toHaveAttribute('aria-current','page')
+    expect(screen.getByRole('link',{name:'Activity'})).toHaveAttribute('data-state','active')
+    expect(screen.getByRole('navigation',{name:'Secondary navigation'})).toHaveAttribute('data-variant','line')
     expect(screen.getByLabelText('Section')).toHaveValue('/activity')
     expect(document.querySelector('.bean-workspace-content')).toHaveTextContent('Route content')
     expect(Array.from(document.querySelector('.bean-workspace-menu-body')?.children||[]).map(node=>(node as HTMLElement).className)).toEqual(['bean-menu-tertiary-desktop','bean-workspace-content'])
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
   })
 
   it('loads a scoped Menu instance for a record Page display',async()=>{
@@ -116,6 +119,7 @@ describe('public rendering',()=>{
     expect(workspace).toContainElement(screen.getByText('Panel content'))
     expect(workspace?.querySelector('.bean-workspace-content > [data-region="main"]')).toBeInTheDocument()
     expect(workspace).not.toHaveAttribute('data-has-tertiary')
+    expect(screen.getAllByRole('navigation',{name:'Primary navigation'}).at(-1)).toHaveAttribute('data-variant','default')
     expect(screen.getByRole('navigation',{name:'Page navigation'})).toContainElement(screen.getByRole('link',{name:'Legacy'}))
     expect(screen.getByText('Flat content').closest('.bean-workspace-menu')).toBeNull()
   })

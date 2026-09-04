@@ -1,6 +1,6 @@
 # Dynamic hierarchical Menu navigation
 
-Status: implemented in AppIR v13, Action-managed dynamic placement persistence, server View resolution, Studio/generated editors, and `examples/books`.
+Status: implemented with AppIR v13 navigation contracts and AppIR v14 closed visual variants, Action-managed dynamic placement persistence, server View resolution, Studio/generated editors, and `examples/books`.
 
 Related: [`panel-limitation.md`](ideas/panel-limitation.md).
 
@@ -32,6 +32,7 @@ A Menu definition owns presentation, depth, optional owner scope, and limits:
 kind: Menu
 name: book_contents
 profile: workspace
+variant: line
 maxDepth: 3
 owner:
   entity: book
@@ -284,7 +285,7 @@ The implementation may require generic placement persistence, but SQL and backen
 
 AppIR should contain only immutable navigation behavior:
 
-- Menu definitions, owner scope, profile, depth, and limits;
+- Menu definitions, owner scope, profile, closed visual variant, depth, and limits;
 - normalized static placements;
 - typed Page and View Display targets;
 - Entity label/destination/menu eligibility;
@@ -324,6 +325,7 @@ The interface must remain usable without drag-and-drop. Pointer reordering may b
 ## Responsive and accessibility behavior
 
 - Every Menu level is a labelled `nav`, not an ARIA tablist.
+- Typed Menus accept only `variant: default` or `variant: line`; omission normalizes to `default`. These reuse source-owned shadcn Tabs visual classes without adopting Radix Tabs behavior or semantics.
 - The active destination uses `aria-current="page"`; active ancestors receive presentation state without claiming to be the current page.
 - Source and DOM order follow normalized sibling order.
 - Level 1 and 2 are horizontal and may scroll without reordering on narrow screens.

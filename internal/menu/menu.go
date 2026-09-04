@@ -9,6 +9,8 @@ import (
 
 const (
 	ProfileWorkspace       = "workspace"
+	VariantDefault         = "default"
+	VariantLine            = "line"
 	MaxDefinitions         = 32
 	MaxDepth               = 3
 	MaxPlacements          = 200
@@ -18,7 +20,9 @@ const (
 	MaxLabelOverrideLength = 120
 )
 
-func Profiles() []string { return []string{ProfileWorkspace} }
+func Profiles() []string             { return []string{ProfileWorkspace} }
+func Variants() []string             { return []string{VariantDefault, VariantLine} }
+func ValidVariant(value string) bool { return value == VariantDefault || value == VariantLine }
 
 func IsTypedTarget(target appir.MenuTarget) bool {
 	return target.Page != "" || target.View != "" || target.Display != ""

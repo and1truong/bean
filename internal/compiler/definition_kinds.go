@@ -220,7 +220,7 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 	role.ReferenceCandidates = true
 	menu := mappedDefinitionKind(appir.Menu{}, func(app *appir.App) map[string]appir.Menu { return app.Menus }, nameValue[appir.Menu](func(value *appir.Menu, name string) {
 		value.Name = name
-		typed := value.Profile != "" || value.MaxDepth != 0 || value.Owner != nil
+		typed := value.Profile != "" || value.Variant != "" || value.MaxDepth != 0 || value.Owner != nil
 		for _, item := range value.Items {
 			typed = typed || item.ID != "" || item.Parent != "" || item.Weight != 0 || beanmenu.IsTypedTarget(item.Target)
 		}
@@ -229,6 +229,9 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 		}
 		if value.Profile == beanmenu.ProfileWorkspace && value.MaxDepth == 0 {
 			value.MaxDepth = beanmenu.MaxDepth
+		}
+		if value.Profile == beanmenu.ProfileWorkspace && value.Variant == "" {
+			value.Variant = beanmenu.VariantDefault
 		}
 	}))
 	menu.References = menuReferences

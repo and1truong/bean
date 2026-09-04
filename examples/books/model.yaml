@@ -23,6 +23,7 @@ navigation:
 kind: Menu
 name: book_contents
 profile: workspace
+variant: line
 maxDepth: 3
 owner: {entity: book}
 items: []

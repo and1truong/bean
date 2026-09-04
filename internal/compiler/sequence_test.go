@@ -30,7 +30,7 @@ func TestSequenceCompilesAsInspectablePanelComposition(t *testing.T) {
 	if !reflect.DeepEqual(references, want) {
 		t.Fatalf("references=%v want=%v", references, want)
 	}
-	if first.App.FormatVersion != "bean/appir/v13" {
+	if first.App.FormatVersion != "bean/appir/v14" {
 		t.Fatalf("format=%q", first.App.FormatVersion)
 	}
 }

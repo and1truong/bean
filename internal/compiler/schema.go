@@ -50,6 +50,7 @@ type Capabilities struct {
 	MaxPageSections         int      `json:"maxPageSections"`
 	PageSectionWidths       []string `json:"pageSectionWidths"`
 	MenuProfiles            []string `json:"menuProfiles"`
+	MenuVariants            []string `json:"menuVariants"`
 	MaxMenuDefinitions      int      `json:"maxMenuDefinitions"`
 	MaxMenuDepth            int      `json:"maxMenuDepth"`
 	MaxMenuPlacements       int      `json:"maxMenuPlacements"`
@@ -130,6 +131,7 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 		MaxPageSections:         beanpage.MaxSections,
 		PageSectionWidths:       beanpage.Widths(),
 		MenuProfiles:            beanmenu.Profiles(),
+		MenuVariants:            beanmenu.Variants(),
 		MaxMenuDefinitions:      beanmenu.MaxDefinitions,
 		MaxMenuDepth:            beanmenu.MaxDepth,
 		MaxMenuPlacements:       beanmenu.MaxPlacements,
@@ -284,6 +286,7 @@ func definitionSchema(kind string, specification reflect.Type) map[string]any {
 	}
 	if kind == "Menu" {
 		properties["profile"] = map[string]any{"type": "string", "enum": beanmenu.Profiles()}
+		properties["variant"] = map[string]any{"type": "string", "enum": beanmenu.Variants()}
 		properties["maxDepth"] = map[string]any{"type": "integer", "minimum": beanmenu.MaxDepth, "maximum": beanmenu.MaxDepth}
 		items := properties["items"].(map[string]any)
 		items["maxItems"] = beanmenu.MaxPlacements

@@ -2829,12 +2829,15 @@ func validateMenus(a *appir.App, _ *validationState) []definition.Diagnostic {
 		out = append(out, diagnostic("Menu", "", "", fmt.Sprintf("applications may define at most %d Menus", beanmenu.MaxDefinitions)))
 	}
 	for name, menuDefinition := range a.Menus {
-		typed := menuDefinition.Profile != "" || menuDefinition.MaxDepth != 0 || menuDefinition.Owner != nil
+		typed := menuDefinition.Profile != "" || menuDefinition.Variant != "" || menuDefinition.MaxDepth != 0 || menuDefinition.Owner != nil
 		if typed && menuDefinition.Profile != beanmenu.ProfileWorkspace {
 			out = append(out, diagnostic("Menu", name, "spec.profile", "must be workspace"))
 		}
 		if typed && menuDefinition.MaxDepth != beanmenu.MaxDepth {
 			out = append(out, diagnostic("Menu", name, "spec.maxDepth", fmt.Sprintf("must be %d", beanmenu.MaxDepth)))
+		}
+		if typed && !beanmenu.ValidVariant(menuDefinition.Variant) {
+			out = append(out, diagnostic("Menu", name, "spec.variant", "must be default or line"))
 		}
 		if menuDefinition.Owner != nil {
 			if _, exists := a.Entities[menuDefinition.Owner.Entity]; !exists {

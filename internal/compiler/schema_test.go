@@ -180,7 +180,7 @@ func TestMenuAndEntitySchemasExposeBoundedNavigationContracts(t *testing.T) {
 	menuSchema := compile("Menu")
 	for _, valid := range []map[string]any{
 		{"kind": "Menu", "name": "legacy", "items": []any{map[string]any{"label": "Home", "route": "/"}}},
-		{"kind": "Menu", "name": "main", "profile": "workspace", "maxDepth": 3, "items": []any{
+		{"kind": "Menu", "name": "main", "profile": "workspace", "variant": "line", "maxDepth": 3, "items": []any{
 			map[string]any{"id": "home", "target": map[string]any{"page": "home"}, "weight": -1000},
 			map[string]any{"id": "records", "parent": "home", "target": map[string]any{"view": "records", "display": "list"}}}},
 		{"kind": "Menu", "name": "contents", "profile": "workspace", "owner": map[string]any{"entity": "book"}},
@@ -191,6 +191,7 @@ func TestMenuAndEntitySchemasExposeBoundedNavigationContracts(t *testing.T) {
 	}
 	for _, invalid := range []map[string]any{
 		{"kind": "Menu", "name": "bad_profile", "profile": "tabs"},
+		{"kind": "Menu", "name": "bad_variant", "profile": "workspace", "variant": "pills"},
 		{"kind": "Menu", "name": "bad_depth", "profile": "workspace", "maxDepth": 4},
 		{"kind": "Menu", "name": "bad_target", "profile": "workspace", "items": []any{map[string]any{"id": "item", "target": map[string]any{"page": "home", "view": "records", "display": "list"}}}},
 		{"kind": "Menu", "name": "bad_weight", "profile": "workspace", "items": []any{map[string]any{"id": "item", "weight": 1001, "target": map[string]any{"page": "home"}}}},

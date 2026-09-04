@@ -1,22 +1,21 @@
-# Goal: Workspace Menu/content layout
+# Goal: Shadcn-styled route tabs
 
 Status: complete
 
-Make the generic three-level `workspace` Menu compose navigation and route content as one responsive workspace.
+Adopt the visual language of shadcn Tabs for Bean workspace Menu levels without changing route-navigation semantics.
 
 ## Contract
 
-- Desktop keeps levels 1 and 2 above a lower two-column area.
-- Desktop places the active level-3 `nav` on the left and the route content on the right.
-- Narrow viewports place one labelled native `Section` select above route content and hide the duplicate level-3 link list.
-- Route navigation remains links, `nav`, and `aria-current`; no ARIA tablist/tabpanel behavior.
-- The behavior applies generically to View Page Displays and workspace Menu Blocks mounted with sibling content in Page/Panel composition.
-- Flat Menus and workspace Menus without level 3 retain their existing usable flow.
-- Source, DOM, keyboard, and screen-reader order remains navigation before content.
+- Menu levels remain semantic `<nav>` elements containing React Router links with `aria-current`; no `tablist`, `tab`, or `tabpanel` roles.
+- Checked-in source-owned UI components follow ADR 0010 and reuse shadcn Tabs list/trigger styling over route links.
+- Typed workspace Menus expose only the closed `default` and `line` variants; arbitrary classes, colors, dimensions, and per-item styles remain unavailable.
+- Omitted variant normalizes to `default`; legacy flat Menus remain unchanged.
+- Horizontal and vertical Menu levels preserve responsive layout, active trails, keyboard order, and mobile native-select behavior.
+- AppIR compatibility remains explicit and immutable.
 
 ## Evidence
 
-- React regressions cover View Page Display composition, Menu Block composition, flat Menus, and workspace Menus without level 3.
-- Playwright measures desktop left/right geometry and mobile select-above-content geometry, then changes routes and verifies active state.
-- The existing `examples/books` data remains unchanged.
+- Compiler/schema/AppIR/capability tests cover normalization, invalid variants, and compatibility.
+- React tests cover both variants while asserting route links, `nav`, `aria-current`, and absence of ARIA tabs.
+- Books browser coverage verifies styled active navigation without regressing desktop/mobile geometry or route changes.
 - Completion requires visual verification, `make check`, and `make build`.

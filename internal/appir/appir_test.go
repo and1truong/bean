@@ -323,6 +323,7 @@ func TestHierarchicalMenuContractsRequireV13Format(t *testing.T) {
 	app.Entities["page"] = appir.Entity{Name: "page", Navigation: &appir.EntityNavigation{LabelField: "title", Destination: appir.NavigationDestination{View: "pages", Display: "detail"}, Menus: []string{"contents"}}}
 	app.Menus["contents"] = appir.Menu{Name: "contents", Profile: "workspace", MaxDepth: 3, Owner: &appir.MenuOwner{Entity: "book"}}
 	app.Menus["main"] = appir.Menu{Name: "main", Profile: "workspace", MaxDepth: 3, Items: []appir.MenuItem{{ID: "home", Target: appir.MenuTarget{Page: "home"}}}}
+	app.FormatVersion = appir.MenuFormat
 	if err := app.ValidateFormat(); err != nil {
 		t.Fatal(err)
 	}
@@ -341,5 +342,27 @@ func TestHierarchicalMenuContractsRequireV13Format(t *testing.T) {
 	delete(app.Menus, "main")
 	if err = app.ValidateFormat(); err != nil {
 		t.Fatalf("v12 AppIR rejected legacy flat Menus: %v", err)
+	}
+}
+
+func TestMenuVisualVariantsRequireV14Format(t *testing.T) {
+	app := appir.Empty()
+	app.Menus["main"] = appir.Menu{Name: "main", Profile: "workspace", Variant: "line", MaxDepth: 3}
+	if err := app.ValidateFormat(); err != nil {
+		t.Fatal(err)
+	}
+	clone, err := app.Clone()
+	if err != nil || clone.Menus["main"].Variant != "line" {
+		t.Fatalf("clone=%+v err=%v", clone, err)
+	}
+	app.FormatVersion = appir.MenuFormat
+	if err = app.ValidateFormat(); err == nil {
+		t.Fatal("v13 AppIR accepted Menu visual variants")
+	}
+	menu := app.Menus["main"]
+	menu.Variant = ""
+	app.Menus["main"] = menu
+	if err = app.ValidateFormat(); err != nil {
+		t.Fatalf("v13 AppIR rejected hierarchical Menu without visual variant: %v", err)
 	}
 }
