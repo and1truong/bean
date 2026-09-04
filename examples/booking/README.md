@@ -10,6 +10,13 @@ A resource-booking application that demonstrates deterministic Rules, transactio
 - Cancellation transition and reminder Job
 - Calendar View and home Page
 
+## Definition layout
+
+- `app.yaml` — application entry point
+- `resources.yaml` — bookable resource model
+- `bookings.yaml` — booking model, Rules, Actions, Job, semantic tests, and demo data
+- `calendar.yaml` — calendar View and home-page composition
+
 ## Run it
 
 From the repository root:

@@ -1,19 +1,18 @@
-# Goal: migrate the frontend class merger to `cn`
+# Goal: split the Booking example source
 
 Status: complete
 
-Replace Bean's direct `clsx` and `tailwind-merge` dependencies with the Tailwind CSS v4-compatible `cn` package while preserving the shared application-facing `cn()` API and existing component behavior.
+Split `examples/booking/app.yaml` into an explicit manifest and feature-oriented YAML resources without changing the Booking application's compiled behavior, validation, migration, immutable AppIR, or activation lifecycle.
 
 ## Contract
 
-- Keep the migration small: retain `web/src/lib/utils.ts` and all existing component call sites.
-- Keep `class-variance-authority`; do not alter component APIs, Tailwind configuration, or visual design.
-- Cover conditional inputs and representative Tailwind conflicts, variants, arbitrary values, dark mode, important modifiers, arbitrary variants, and CVA output with semantic regression tests.
-- Evaluate `cn build` and bundle impact without adding generated artifacts or CI complexity unless it clearly benefits Bean.
-- Record a lightweight before/after benchmark as supporting evidence only.
+- Keep `app.yaml` as the `Booking` manifest and list every resource explicitly.
+- Group resource model, booking workflow, and calendar presentation definitions into reviewable local files.
+- Preserve all definition content and the View-read/Action-write boundary.
+- Document the source layout in the example README.
+- Verify with Booking validation and semantic tests, then `make check` and `make build`.
 
 ## Evidence
 
-- Frontend tests, lint, typecheck, build, and available UI tests pass.
-- Repository searches show no direct `clsx`, `tailwind-merge`, or `twMerge` use remains outside unavoidable transitive dependencies.
-- Completion requires `make check` and `make build`.
+- The pre-split and split source sets compile to the identical checksum: `74c8773ce57034f09c4cd0b3f20a504ca596153e26c7dc6410531ecf7c796d8b`.
+- `./bin/bean app validate --file ./examples/booking/app.yaml --json`, `./bin/bean app test --file ./examples/booking/app.yaml --json`, `make check`, and `make build` pass.

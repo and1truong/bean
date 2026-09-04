@@ -2,6 +2,8 @@
 
 ## Current
 
+Booking example source splitting is complete. `examples/booking/app.yaml` is now an explicit manifest for `resources.yaml`, `bookings.yaml`, and `calendar.yaml`; the README documents each responsibility. The pre-split and split source sets produce the same checksum (`74c8773ce57034f09c4cd0b3f20a504ca596153e26c7dc6410531ecf7c796d8b`), and Booking validation/semantic tests, `make check`, and `make build` pass.
+
 The `clsx` + `tailwind-merge` to `cn` migration is complete on `chore/migrate-to-cn`. The frontend has one shared merger at `web/src/lib/utils.ts`; no direct `twMerge()` calls or duplicate helpers exist, and every existing component call site remains unchanged. Direct dependencies now use `cn` 0.2.5 and retain `class-variance-authority`; `clsx` remains only as CVA's transitive dependency. Ten focused regressions cover conditional inputs, spacing/text/background conflicts, responsive/state/dark/arbitrary/important behavior, Tailwind v4 variable shorthand, and CVA output.
 
 A lightweight Bun benchmark used 500,000 calls per run, 20,000 warmups, five isolated runs, and representative Bean class strings. Best observed old/new times were 82.6/16.9 ns for simple conditional calls, 99.8/10.6 ns for variant-heavy calls, 92.9/10.6 ns for conflicts, and 90.5/8.7 ns for repeated warm calls. These microbenchmarks support the dependency choice but do not measure end-to-end UI performance. The default production JS changed from 479,142 to 479,687 raw bytes and from 143,733 to 146,574 gzip bytes; generated CSS is byte-identical.

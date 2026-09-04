@@ -1,0 +1,5 @@
+kind: Entity
+name: resource
+fields:
+  - {label: Name, name: name, required: true, type: string}
+label: Resource
