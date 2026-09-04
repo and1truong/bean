@@ -1,30 +1,12 @@
-# Panel limitations and difficult composition cases
+# Remaining Panel and composition limitations
 
-Status: idea inventory; responsive presets, multiple Page layout bands, policy-aware empty-Region collapse, and safe-gutter semantic section widths are implemented. Remaining cases are unscheduled.
+Status: idea inventory; all entries below are unscheduled.
 
-Related: [`panel-responsive-layout.md`](panel-responsive-layout.md) and [`tabbed-information-architecture.md`](tabbed-information-architecture.md).
+Related: [`panel-bounded-sizing.md`](panel-bounded-sizing.md) and [`tabbed-information-architecture.md`](tabbed-information-architecture.md).
 
-Panel currently provides a flat, compile-time composition of named Regions containing ordered Blocks or inline semantic content. Its layout vocabulary is closed and intentionally avoids arbitrary CSS. The following cases expose boundaries in that model. They are not all necessarily Panel responsibilities.
+Panel provides flat, compile-time composition of named Regions containing ordered Blocks or inline semantic content. Its closed layout vocabulary already supports deterministic responsive presets, ordered Page layout bands, semantic Page section widths, and policy-aware empty-Region collapse. The remaining cases below expose boundaries that may belong to Panel or to another typed Module.
 
-## 1. Multiple layout bands on one Page
-
-A blog page may need several different layouts:
-
-```text
-┌──────────────────────────────────────┐
-│ Hero — full width                    │
-├──────────────────────────┬───────────┤
-│ Article                   │ Sidebar   │
-├──────────────────────────────────────┤
-│ Related posts — 3-column grid        │
-├──────────────────────────────────────┤
-│ Comments — full width                │
-└──────────────────────────────────────┘
-```
-
-Implemented with ordered Page sections. A Page may keep legacy `panel: name` or declare 1–32 ordered `sections: [{panel: hero}, {panel: article_with_sidebar}, ...]`. Each Panel retains its own responsive preset and Policy; source and accessible order stay authoritative. This deliberately avoids nested Panels.
-
-## 2. Nested Panels
+## 1. Nested Panels
 
 A useful structural model might be:
 
@@ -37,11 +19,11 @@ Panel
 └── footer
 ```
 
-Regions currently contain Blocks or inline content, not another Panel. Supporting nested Panels would require explicit contracts for Policy inheritance, context binding, responsive collapse, cycle detection, identity, inspection, and maximum depth.
+Regions currently contain Blocks or inline content, not another Panel. Supporting nested Panels would require explicit contracts for Policy inheritance, context binding, responsive collapse, cycle detection, identity, inspection, and maximum depth. Ordered Page sections should remain the preferred solution for successive layout bands.
 
-## 3. Unequal Block sizes and grid spans
+## 2. Unequal Block sizes and grid spans
 
-Operational dashboards often need mixed spans:
+Operational dashboards may need mixed spans:
 
 ```text
 ┌───────────────────────┬───────────┐
@@ -51,26 +33,13 @@ Operational dashboards often need mixed spans:
 └───────────┴───────────────────────┘
 ```
 
-Panel metadata cannot currently assign column or row spans to a Region or item. A future contract would need bounded integers and deterministic placement rather than arbitrary grid CSS.
+Panel cannot assign column or row spans to a Region or item. A future contract would need bounded integers and deterministic placement rather than arbitrary grid CSS. See [`panel-bounded-sizing.md`](panel-bounded-sizing.md).
 
-## 4. Contained, wide, and full-width content
+## 3. Sticky sidebar or header
 
-Implemented as Page placement rather than Panel sizing:
+A long Page may keep its table of contents visible while the article scrolls. Panel cannot declare sticky positioning, offsets, or breakpoint behavior. A correct design must account for viewport height, nested overflow containers, sticky headers, and disabling sticky behavior on narrow screens.
 
-```yaml
-sections:
-  - {panel: article_body, width: contained}
-  - {panel: related_posts, width: wide}
-  - {panel: hero, width: full}
-```
-
-The runtime owns `48rem` contained, `72rem` wide, and available-viewport full widths, all with safe gutters. A reusable Panel can therefore be placed differently by separate Pages while Sequence remains independent. True edge-to-edge media bleed, background bands, and overlays remain unsupported and belong to a future typed renderer if demonstrated.
-
-## 5. Sticky sidebar or header
-
-A long post may keep its table of contents visible while the article scrolls. Panel cannot declare sticky positioning, offsets, or breakpoint behavior. A correct design must account for viewport height, nested overflow containers, sticky headers, and disabling sticky behavior on narrow screens.
-
-## 6. Responsive interaction changes
+## 4. Responsive interaction changes
 
 Some mobile transformations are not grid collapse:
 
@@ -82,33 +51,17 @@ Some mobile transformations are not grid collapse:
 
 These changes require state, keyboard semantics, and often a different Block renderer. They should not be treated as Panel sizing alone.
 
-## 7. Breakpoint-specific visual order
+## 5. Empty, loading, and error states affecting reflow
 
-Desktop and mobile designs sometimes request different ordering or splitting one Region across multiple positions. Visual order that differs from DOM order can break keyboard navigation, screen-reader reading order, and heading hierarchy. Arbitrary responsive reordering should probably remain unsupported; source order should stay authoritative.
+If one dashboard Block has no rows or fails, should its cell remain stable, collapse, or allow adjacent Blocks to expand? Panel knows static composition and server-authorized Block presence, while result emptiness and errors belong to the Block or Display. Dynamic reflow can create disruptive layout shift, so this requires an explicit typed contract.
 
-## 8. Regions emptied by Policy
+## 6. Multiple Blocks reading the same record
 
-A sidebar may contain only editor-restricted Blocks. For an anonymous actor, every child can be removed by server-side Policy evaluation. The layout contract does not say whether the empty Region should retain its track, collapse, allow `main` to expand, or render a fallback.
-
-Implemented as an opt-in Region semantic:
-
-```yaml
-collapseWhenEmpty: true
-```
-
-The authorized server render tree omits a zero-child opted-in Region, expands a sole survivor across all Panel tracks, and makes an all-collapsed Panel unavailable. View result emptiness does not trigger structural collapse, and client-only hiding is not used.
-
-## 9. Empty, loading, and error states affecting reflow
-
-If one dashboard Block has no rows or fails, should its cell remain stable, collapse, or allow adjacent Blocks to expand? Panel currently knows composition, while empty/error behavior belongs to the Block or Display. Dynamic reflow can also create disruptive layout shift, so this boundary needs an explicit decision.
-
-## 10. Multiple Blocks reading the same record
-
-Authors may try to split one post into `post_title`, `post_teaser`, `post_metadata`, `post_content`, and `post_tags` Blocks to gain layout control. Each View Block may then execute the same detail View independently. Panel has no shared data scope or single-fetch/multiple-renderer contract.
+Authors may split one record into `post_title`, `post_teaser`, `post_metadata`, `post_content`, and `post_tags` Blocks to gain layout control. Each View Block may then execute the same detail View independently. Panel has no shared data scope or single-fetch/multiple-renderer contract.
 
 This is more likely a View Display composition problem than a Panel problem.
 
-## 11. Field layout inside a record
+## 7. Field layout inside a record
 
 A detail or form screen may require:
 
@@ -119,74 +72,66 @@ Content — full width
 Tags                     Published date
 ```
 
-Panel places Blocks; it does not place Entity fields. Turning every field into a Block would be the wrong abstraction. Ordered sections, field groups, and field spans belong in typed detail/form renderer metadata.
+Panel places Blocks; it does not place Entity fields. Turning every field into a Block would be the wrong abstraction. Ordered groups and field spans belong in typed detail/form renderer metadata.
 
-## 12. Dynamic repeated composition
+## 8. Dynamic repeated composition
 
 A CMS may persist an ordered list of text, image, quote, and product-grid sections whose count and types are known only at runtime. Panel is static metadata compiled into immutable AppIR; record data cannot generate an arbitrary Block tree.
 
-If supported, this should be a bounded typed collection/component renderer, not runtime interpretation of arbitrary Panel definitions.
+If supported, this should be a bounded typed collection renderer, not runtime interpretation of arbitrary Panel definitions.
 
-## 13. Tabs, accordions, and master-detail
+## 9. Tabs, accordions, and master-detail
 
-These patterns require more than spatial placement:
+These patterns require URL-addressable active state, lazy data loading, keyboard behavior, conditional visibility, and selection context shared between Blocks. Panel has no interaction state.
 
-- URL-addressable active state;
-- lazy data loading;
-- keyboard behavior;
-- conditional visibility;
-- selection context shared between Blocks.
+The three-level primary, optional secondary, and vertical navigation case is explored in [`tabbed-information-architecture.md`](tabbed-information-architecture.md). Its likely owner is a typed Page navigation Module rather than Panel.
 
-Panel currently has no interaction state. These may justify a typed interactive container rather than expanding base Panel semantics. The three-level Page navigation case is explored in [`tabbed-information-architecture.md`](tabbed-information-architecture.md).
+## 10. Masonry and unpredictable heights
 
-## 14. Masonry and unpredictable heights
+Masonry card layouts complicate source order, keyboard order, server rendering, hydration, print output, and layout stability. They should remain outside Panel core unless a maintained application demonstrates the need.
 
-Masonry card layouts complicate source order, keyboard order, server rendering, hydration, print output, and layout stability. They should remain outside Panel core unless a strong maintained application demonstrates the need.
+## 11. Overlay and layered composition
 
-## 15. Overlay and layered composition
+A hero with text and Actions layered over an image requires aspect ratio, positioning, stacking, contrast, and responsive crop behavior. Adding arbitrary positioning to Panel would move it toward a freeform page builder. A typed accessibility-aware hero renderer is a safer owner.
 
-A hero with text and actions layered over an image requires aspect ratio, positioning, stacking, contrast, and responsive crop behavior. Adding arbitrary positioning to Panel would move it toward a freeform page builder. A typed, accessibility-aware `hero` Block renderer is a safer boundary.
+## 12. Print-specific layout
 
-## 16. Print-specific layout
+Print may need to move a sidebar below content, remove interactive controls, avoid page breaks after headings, repeat table headers, or start sections on new pages. Panel has no general print contract. Print presentation must never bypass Policy or change data visibility.
 
-Print may need to move a sidebar below content, remove interactive controls, avoid page breaks after headings, repeat table headers, or start sections on new pages. Panel currently has no print contract. Print presentation must never become a way to bypass Policy or change data visibility.
-
-## 17. RTL and localization
+## 13. RTL and localization
 
 Physical Region names such as `left` and `right` are ambiguous for right-to-left languages. Semantic names such as `main`, `sidebar`, `start`, and `end` may be more appropriate. Any migration must preserve source, reading, and focus order.
 
-## 18. User-personalized dashboards
+## 14. User-personalized dashboards
 
-Users may want to hide, reorder, drag, or resize widgets and persist a personal layout. Panel is immutable application metadata shared by all users. Personalization would require a bounded preference layer constrained by the compiled Panel and existing Policies, not mutable or arbitrary definitions.
+Users may want to hide, reorder, drag, or resize widgets and persist a personal layout. Panel is immutable application metadata shared by all users. Personalization would require a bounded preference layer constrained by compiled Panel composition and existing Policies.
 
 ## Responsibility map
 
 | Problem | Likely owner |
 | --- | --- |
 | Responsive columns, spans, and gaps | Panel |
-| Multiple structural bands or nested sections | Panel composition |
-| Field order, groups, and field spans | Display/Form renderer |
+| Nested structural composition | Panel composition, only with demonstrated need |
+| Field order, groups, and spans | Display/Form renderer |
 | Hero overlays | Typed Block renderer |
-| Tabs and accordions | Typed interactive container or Block |
+| Tabs and accordions | Typed Page navigation Module |
 | Reusing one View result across presentation sections | View/Display composition |
 | Dynamic database-backed sections | Typed collection renderer |
 | User dashboard customization | Preference layer |
 | Record and Block visibility | Policy and server render tree |
 | Print presentation | Panel, Theme, and renderer contract |
 
-## Candidate priorities
+## Potential follow-ups
 
-1. Complete deterministic responsive behavior for existing presets. **Implemented** with fixed `48rem`/`64rem` runtime breakpoints.
-2. Support multiple layout bands on one Page without arbitrary nesting. **Implemented** with ordered Page `sections` in AppIR v10.
-3. Add bounded main/sidebar spans and grid column counts if examples require them.
-4. Define empty-Region collapse after Policy filtering. **Implemented** as opt-in `collapseWhenEmpty` in AppIR v11.
-5. Add semantic contained/wide/full widths. **Implemented** as safe-gutter Page section placement in AppIR v12; true bleed remains unsupported.
-6. Improve typed detail/form field layout instead of using one Block per field.
+1. Add typed Page navigation for primary, optional secondary, and vertical tabs.
+2. Add bounded Panel track counts and spans only if a maintained example requires them.
+3. Improve typed detail/form field layout instead of using one Block per field.
+4. Define a shared-result View Display composition contract if repeated reads become measurable.
 
-## Non-goals
+## Deliberate boundaries
 
-- Arbitrary HTML, CSS, JavaScript, utility classes, or media queries in metadata.
-- Freeform coordinates, layering, or a general-purpose visual page builder.
-- Client-side layout rules that alter authorization or data visibility.
-- Responsive visual reordering that changes accessible reading or focus order.
-- Runtime parsing of source YAML outside the definition-to-AppIR lifecycle.
+- No arbitrary HTML, CSS, JavaScript, utility classes, or media queries in metadata.
+- No freeform coordinates, layering, or general-purpose visual page builder.
+- No client-side layout rules that alter authorization or data visibility.
+- No responsive visual reordering that changes reading or focus order.
+- No runtime parsing of source YAML outside the definition-to-AppIR lifecycle.
