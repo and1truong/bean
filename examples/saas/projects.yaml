@@ -1,0 +1,249 @@
+kind: Entity
+name: project
+label: Project
+policy: tenant_member
+tenant: true
+fields:
+  - {name: name, label: Name, type: string, required: true}
+  - {name: description, label: Description, type: text}
+  - {name: status, label: Status, type: enum, required: true, options: [planned, active, completed, archived]}
+validations:
+  meaningful_name: project_named
+---
+kind: Rule
+name: project_named
+entity: project
+result: boolean
+expression:
+  op: ne
+  args:
+    - {op: trim, args: [{source: this, path: name}]}
+    - {source: literal, literal: ""}
+---
+kind: Lifecycle
+name: project_delivery
+entity: project
+stateField: status
+initial: planned
+transitions:
+  planned: [active, archived]
+  active: [completed, archived]
+  completed: [archived]
+  archived: [planned]
+---
+kind: Action
+name: start_project
+entity: project
+policy: tenant_member
+operation: transaction
+lifecycle: project_delivery
+input:
+  id: {type: uuid, required: true}
+steps:
+  - op: transition
+    values: {id: $input.id, status: active}
+transitions:
+  planned: [active]
+---
+kind: Action
+name: complete_project
+entity: project
+policy: tenant_member
+operation: transaction
+lifecycle: project_delivery
+input:
+  id: {type: uuid, required: true}
+steps:
+  - op: transition
+    values: {id: $input.id, status: completed}
+transitions:
+  active: [completed]
+---
+kind: Action
+name: archive_project
+entity: project
+policy: tenant_owner
+operation: transaction
+lifecycle: project_delivery
+input:
+  id: {type: uuid, required: true}
+steps:
+  - op: transition
+    values: {id: $input.id, status: archived}
+transitions:
+  planned: [archived]
+  active: [archived]
+  completed: [archived]
+---
+kind: Action
+name: reopen_project
+entity: project
+policy: tenant_owner
+operation: transaction
+lifecycle: project_delivery
+input:
+  id: {type: uuid, required: true}
+steps:
+  - op: transition
+    values: {id: $input.id, status: planned}
+transitions:
+  archived: [planned]
+---
+kind: Action
+name: project_delete
+entity: project
+policy: tenant_owner
+operation: delete
+---
+kind: View
+name: tenant_projects
+entity: project
+policy: tenant_member
+fields: [id, name, description, status, updated_at]
+search: {fields: [name, description]}
+exposedFilters:
+  status: {field: status, operator: eq}
+sort: [{field: updated_at, desc: true}, {field: id}]
+displays:
+  api: {type: json, route: /api/projects}
+  export: {type: csv, route: /projects.csv}
+  page:
+    type: page
+    route: /projects
+    title: {text: Projects}
+    description: Select planned projects to start them, or active projects to complete them. Use the Status filter to work on one stage at a time.
+    renderer:
+      type: table
+      fields:
+        - {field: name, label: Project, linkRoute: /projects/:id}
+        - {field: description, label: Description}
+        - {field: status, label: Status}
+        - {field: updated_at, label: Updated}
+    controls:
+      - {filter: status, label: Status, widget: select}
+    selection: multiple
+    actions: [start_project, complete_project]
+    pager: {type: cursor, pageSize: 10}
+    emptyState: No projects match. Clear the filter or open New project from your workspace.
+  recent:
+    type: block
+    renderer:
+      type: table
+      fields:
+        - {field: name, label: Project, linkRoute: /projects/:id}
+        - {field: status, label: Status}
+        - {field: description, label: Description}
+    pager: {type: cursor, pageSize: 5}
+    emptyState: No projects yet. Open New project to plan your first piece of work.
+---
+kind: View
+name: project_record
+entity: project
+policy: tenant_member
+fields: [id, name, description, status, updated_at]
+exposedFilters:
+  record: {field: id, operator: eq, type: uuid, required: true, unique: true}
+displays:
+  summary:
+    type: block
+    renderer: {type: detail, titleField: name, bodyField: description, metaFields: [status, updated_at]}
+    pager: {type: none, pageSize: 1}
+---
+kind: View
+name: managed_projects
+entity: project
+policy: tenant_owner
+fields: [id, name, status, updated_at]
+search: {fields: [name]}
+exposedFilters:
+  status: {field: status, operator: eq}
+sort: [{field: updated_at, desc: true}]
+displays:
+  page:
+    type: page
+    route: /manage
+    title: {text: Manage projects}
+    description: Owners can archive planned, active, or completed work. Reopen archived projects to return them to planned. These operations keep the project and its history.
+    renderer:
+      type: table
+      fields:
+        - {field: name, label: Project, linkRoute: /projects/:id}
+        - {field: status, label: Status}
+        - {field: updated_at, label: Updated}
+    controls:
+      - {filter: status, label: Status, widget: select}
+    selection: multiple
+    actions: [archive_project, reopen_project]
+    pager: {type: cursor, pageSize: 10}
+    emptyState: No projects match this status.
+---
+kind: View
+name: project_total
+entity: project
+policy: tenant_member
+exposedFilters:
+  status: {field: status, operator: eq}
+aggregates:
+  - {function: count, field: id, alias: project_count}
+displays:
+  metric:
+    type: block
+    renderer: {type: metric, metricField: project_count, metricLabel: Projects in this workspace}
+    pager: {type: none, pageSize: 1}
+    drill:
+      view: tenant_projects
+      display: page
+      bindings:
+        - {source: filter, name: status, filter: status}
+---
+kind: View
+name: projects_by_status
+entity: project
+policy: tenant_member
+fields: [status]
+exposedFilters:
+  status: {field: status, operator: eq}
+groupBy: [{field: status}]
+aggregates:
+  - {function: count, field: id, alias: project_count}
+displays:
+  chart:
+    type: block
+    renderer: {type: chart, groupField: status, metricField: project_count, metricLabel: Projects by status}
+    pager: {type: none, pageSize: 10}
+    drill:
+      view: tenant_projects
+      display: page
+      bindings:
+        - {source: group, name: status, filter: status}
+---
+kind: Webform
+name: create_project
+action: project_create
+confirmation: Project created in Planned. Open Projects to start it.
+elements:
+  - {name: name, type: text, required: true, minLength: 1, maxLength: 120}
+  - {name: description, type: textarea, maxLength: 2000}
+---
+kind: Webform
+name: edit_project
+action: project_update
+confirmation: Project updated. Open Projects or Overview to see the changes.
+elements:
+  - {name: name, type: text, required: true, minLength: 1, maxLength: 120}
+---
+kind: AdminResource
+name: project
+entity: project
+labelField: name
+description: Tenant-scoped project operations. Use the workspace for everyday work.
+list:
+  columns: [name, status, updated_at]
+  search: [name, description]
+  filters: [status]
+  sort: [{field: updated_at, desc: true}]
+  pageSize: 20
+form:
+  fields: [name, description, status]
+  readonly: [created_at, updated_at, version]
+actions: [start_project, complete_project, archive_project, reopen_project]

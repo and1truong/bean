@@ -1,0 +1,41 @@
+kind: TestSuite
+name: archive_project_contract
+target: {kind: Action, name: archive_project}
+tests:
+  - name: owner_archives
+    fixtures:
+      project:
+        - {id: 00000000-0000-4000-8000-000000000501, tenant_id: 00000000-0000-4000-8000-00000000000a, name: Launch, status: active}
+    context:
+      actor: {id: 00000000-0000-4000-8000-000000000502, roles: [owner]}
+      tenant: 00000000-0000-4000-8000-00000000000a
+      time: "2026-09-04T10:00:00Z"
+      requestId: owner_archives
+    input: {id: 00000000-0000-4000-8000-000000000501}
+    expect:
+      result: {id: 00000000-0000-4000-8000-000000000501, status: archived}
+      changes:
+        - {entity: project, id: 00000000-0000-4000-8000-000000000501, values: {status: archived, version: 2}}
+      noEvents: true
+  - name: member_cannot_archive
+    fixtures:
+      project:
+        - {id: 00000000-0000-4000-8000-000000000501, tenant_id: 00000000-0000-4000-8000-00000000000a, name: Launch, status: active}
+    context:
+      actor: {id: 00000000-0000-4000-8000-000000000502, roles: [member]}
+      tenant: 00000000-0000-4000-8000-00000000000a
+      time: "2026-09-04T10:00:00Z"
+      requestId: member_cannot_archive
+    input: {id: 00000000-0000-4000-8000-000000000501}
+    expect: {error: conflict, noChanges: true, noEvents: true}
+  - name: foreign_owner_cannot_archive
+    fixtures:
+      project:
+        - {id: 00000000-0000-4000-8000-000000000501, tenant_id: 00000000-0000-4000-8000-00000000000a, name: Launch, status: active}
+    context:
+      actor: {id: 00000000-0000-4000-8000-000000000502, roles: [owner]}
+      tenant: 00000000-0000-4000-8000-00000000000b
+      time: "2026-09-04T10:00:00Z"
+      requestId: foreign_owner_cannot_archive
+    input: {id: 00000000-0000-4000-8000-000000000501}
+    expect: {error: not_found, noChanges: true, noEvents: true}

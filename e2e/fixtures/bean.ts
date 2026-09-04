@@ -15,11 +15,15 @@ export const test=base.extend<{bean:Bean},{appName:string}>({
     const databaseURL=process.env.BEAN_E2E_DATABASE_URL
     const target=databaseURL?['--database-url',databaseURL]:['--db',join(dir,'bean.db')]
     const port=18100+testInfo.workerIndex
-    execFileSync(bin,['init',...target,'--admin-email','admin@example.test','--admin-password','test-password'])
-    if(appName!=='empty'){
-      execFileSync(bin,['app','import',...target,'--file',join(root,'examples',appName,'app.yaml')])
-      execFileSync(bin,['publish',...target])
-	  if(appName==='ats'||appName==='presentation')execFileSync(bin,['demo','seed',...target,'--file',join(root,'examples',appName,'app.yaml'),'--seed','42'])
+    if(appName==='saas'&&!databaseURL){
+      execFileSync('python3',[join(root,'examples/saas/setup-demo.py'),'--db',join(dir,'bean.db')])
+    }else{
+      execFileSync(bin,['init',...target,'--admin-email','admin@example.test','--admin-password','test-password'])
+      if(appName!=='empty'){
+        execFileSync(bin,['app','import',...target,'--file',join(root,'examples',appName,'app.yaml')])
+        execFileSync(bin,['publish',...target])
+        if(appName==='ats'||appName==='presentation')execFileSync(bin,['demo','seed',...target,'--file',join(root,'examples',appName,'app.yaml'),'--seed','42'])
+      }
     }
     const createUser=(email:string,roles:string,tenant='')=>execFileSync(bin,['user','create',...target,'--email',email,'--password','test-password','--roles',roles,'--tenant',tenant])
     if(appName==='crm'){
@@ -30,6 +34,8 @@ export const test=base.extend<{bean:Bean},{appName:string}>({
     if(appName==='saas'){
       createUser('tenant-a@example.test','member','00000000-0000-4000-8000-00000000000a')
       createUser('tenant-b@example.test','member','00000000-0000-4000-8000-00000000000b')
+      createUser('owner-a@example.test','owner','00000000-0000-4000-8000-00000000000a')
+      createUser('owner-b@example.test','owner','00000000-0000-4000-8000-00000000000b')
     }
     if(appName==='community'){
       createUser('user-a@example.test','member')

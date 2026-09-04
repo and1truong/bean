@@ -1,0 +1,91 @@
+kind: Theme
+name: default
+displayName: Team Workspace
+preset: professional
+accent: indigo
+---
+kind: Role
+name: member
+permissions: [project_work]
+---
+kind: Role
+name: owner
+permissions: [project_work, workspace_manage]
+---
+kind: Policy
+name: public_access
+---
+kind: Policy
+name: tenant_member
+authenticated: true
+tenant: true
+readRoles: [member, owner]
+writeRoles: [member, owner]
+---
+kind: Policy
+name: tenant_owner
+authenticated: true
+tenant: true
+readRoles: [owner]
+writeRoles: [owner]
+---
+kind: Policy
+name: workspace_profile
+authenticated: true
+tenant: true
+readRoles: [member, owner]
+writeRoles: [owner]
+---
+kind: Entity
+name: organisation
+label: Workspace
+policy: workspace_profile
+tenant: true
+fields:
+  - {name: name, label: Name, type: string, required: true}
+  - {name: description, label: About this workspace, type: text}
+---
+kind: View
+name: workspace_profile
+entity: organisation
+policy: workspace_profile
+fields: [id, name, description]
+sort: [{field: name}]
+displays:
+  summary:
+    type: block
+    renderer: {type: detail, titleField: name, bodyField: description}
+    pager: {type: none, pageSize: 1}
+    emptyState: Your workspace has not been provisioned yet. Ask the system administrator to run the demo setup.
+---
+kind: AdminResource
+name: organisation
+entity: organisation
+labelField: name
+description: Tenant-scoped workspace profiles. Owners can edit their workspace through the profile Action.
+list:
+  columns: [name, description, updated_at]
+  search: [name]
+form:
+  fields: [name, description]
+  readonly: [created_at, updated_at, version]
+---
+kind: View
+name: workspace_settings
+entity: organisation
+policy: tenant_owner
+fields: [id, name, description]
+displays:
+  page:
+    type: page
+    route: /settings
+    title: {text: Workspace settings}
+    description: Select your workspace to update its name or description. Your changes are visible only to this workspace.
+    renderer:
+      type: table
+      fields:
+        - {field: name, label: Workspace}
+        - {field: description, label: Description}
+    selection: multiple
+    actions: [organisation_update]
+    pager: {type: none, pageSize: 1}

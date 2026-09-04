@@ -1,0 +1,169 @@
+kind: Menu
+name: workspace_navigation
+profile: workspace
+variant: line
+items:
+  - {id: overview, weight: 0, label: Home, target: {page: home}}
+  - {id: projects, weight: 10, label: Projects, policy: tenant_member, target: {view: tenant_projects, display: page}}
+  - {id: create, weight: 20, label: New, policy: tenant_member, target: {page: new_project}}
+  - {id: manage, weight: 30, label: Manage, policy: tenant_owner, target: {view: managed_projects, display: page}}
+  - {id: settings, weight: 40, label: Settings, policy: tenant_owner, target: {view: workspace_settings, display: page}}
+---
+kind: Block
+name: workspace_menu
+type: menu
+menu: workspace_navigation
+---
+kind: Block
+name: workspace_identity
+type: view
+view: workspace_profile
+display: summary
+policy: tenant_member
+---
+kind: Block
+name: project_metric
+type: view
+view: project_total
+display: metric
+policy: tenant_member
+---
+kind: Block
+name: project_chart
+type: view
+view: projects_by_status
+display: chart
+policy: tenant_member
+---
+kind: Block
+name: recent_projects
+type: view
+view: tenant_projects
+display: recent
+policy: tenant_member
+---
+kind: Block
+name: create_project_form
+type: webform
+webform: create_project
+policy: tenant_member
+---
+kind: Block
+name: project_summary
+type: view
+view: project_record
+display: summary
+policy: tenant_member
+inputs:
+  record: {type: uuid, required: true}
+bindings:
+  record: {source: context, name: id, required: true}
+---
+kind: Block
+name: rename_project_form
+type: webform
+webform: edit_project
+policy: tenant_member
+inputs:
+  id: {type: uuid, required: true}
+bindings:
+  id: {source: context, name: id, required: true}
+---
+kind: Panel
+name: welcome_panel
+layout: single-column
+regions:
+  - name: main
+    items:
+      - block: workspace_menu
+      - content:
+          - {type: heading, text: Your workspace at a glance}
+          - {type: paragraph, text: "Track delivery from planned to completed. Choose a status or a chart bar to focus on the next action."}
+      - block: workspace_identity
+---
+kind: Panel
+name: dashboard_panel
+layout: two-column
+regions:
+  - name: left
+    collapseWhenEmpty: true
+    blocks: [project_metric]
+  - name: right
+    collapseWhenEmpty: true
+    blocks: [project_chart]
+---
+kind: Panel
+name: recent_panel
+layout: single-column
+regions:
+  - name: main
+    collapseWhenEmpty: true
+    blocks: [recent_projects]
+---
+kind: Panel
+name: new_project_panel
+layout: single-column
+regions:
+  - name: main
+    items:
+      - block: workspace_menu
+      - content:
+          - {type: heading, text: Plan a new project}
+          - {type: paragraph, text: "Give your team a clear outcome to work toward. New projects begin in Planned; start and complete them from Projects."}
+      - block: create_project_form
+---
+kind: Panel
+name: project_detail_panel
+layout: single-column
+regions:
+  - name: main
+    items:
+      - block: workspace_menu
+      - block: project_summary
+---
+kind: Panel
+name: project_rename_panel
+layout: single-column
+regions:
+  - name: main
+    items:
+      - content:
+          - {type: heading, text: Rename project}
+          - {type: paragraph, text: "Enter a new name below. To start or complete work, open Projects; owners can archive or reopen it from Manage projects."}
+      - block: rename_project_form
+---
+kind: Page
+name: home
+route: /
+title: Team Workspace
+policy: public_access
+filters:
+  status:
+    label: Status
+    widget: select
+    targets:
+      - {block: project_metric, filter: status}
+      - {block: project_chart, filter: status}
+      - {block: recent_projects, filter: status}
+sections:
+  - {id: welcome, panel: welcome_panel, width: contained}
+  - {id: progress, panel: dashboard_panel, width: contained}
+  - {id: recent, panel: recent_panel, width: contained}
+---
+kind: Page
+name: new_project
+route: /new-project
+title: New project
+policy: tenant_member
+panel: new_project_panel
+---
+kind: Page
+name: project
+route: /projects/:id
+title: Project
+policy: tenant_member
+context:
+  id: {source: route, name: id, required: true}
+sections:
+  - {id: summary, panel: project_detail_panel}
+  - {id: rename, panel: project_rename_panel}

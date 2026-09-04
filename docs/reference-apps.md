@@ -5,7 +5,7 @@
 - `commerce`: inventory, checkout Webform, deterministic payment, order Lifecycle, typed order-notification Extension, and a paid-unfulfilled observe → drill → `advance_order` dashboard.
 - `tracker`: issues/comments, status chart-to-record drill, operational board, selected `move_issue`, and audit.
 - `booking`: overlap-safe booking, cancellation, table/calendar Displays, and reminders.
-- `saas`: organisations, memberships, tenant-scoped projects, and automatic tenant predicates.
+- `saas`: provisioned team workspaces, tenant-scoped project lifecycle, dashboard/filter/drill, owner/member Actions, and isolated JSON/CSV exports.
 - `community`: profiles/posts/comments/reactions/follows with private-to-public transitions.
 - `blog`: draft/publish posts, categories, many-to-many tags, opt-in member signup, bound comments, post-scoped moderation queues, safe Markdown content filtering, public rendering, and RSS.
 - `asana`: split YAML, anonymous local projects, immutable project context, typed task page filters/status chart, board movement, arbitrary-depth trees, and file attachments.
