@@ -1,8 +1,12 @@
 # Definitions
 
-An application source starts with an `app.yaml` manifest containing `apiVersion: bean/v1alpha1`, the application name, and optional explicit local `resources`. Definition documents follow the manifest after `---`, or live in the listed resource files. Each definition has a top-level `kind`, machine `name`, optional `namespace`, and its kind-specific fields. Supported kinds include Entity, View, Action, Lifecycle, Rule, Extension, TestSuite, Webform, Policy, Filter, Block, Panel, Page, Sequence, Role, Menu, Job, AdminResource, LocalRegistration, and DemoSeed.
+An application source starts with an `app.yaml` manifest containing `apiVersion: bean/v1alpha1`, the application name, and optional explicit local `resources`. Definition documents follow the manifest after `---`, or live in the listed resource files. Each definition has a top-level `kind`, machine `name`, optional `namespace`, and its kind-specific fields. Supported kinds include Entity, View, Action, Lifecycle, Rule, Extension, TestSuite, Webform, Policy, Filter, Block, Panel, Page, Sequence, Role, Menu, Job, AdminResource, Authentication, LocalRegistration, and DemoSeed.
 
 Compilation validates envelopes, names, fields, references, relation kinds, limits, Action steps, Panel regions, and route uniqueness. Diagnostics identify the source file, line, column, kind, name, field path, and a corrective message. Generated CRUD is emitted as Views and Actions inside AppIR.
+
+## Authentication
+
+An optional `Authentication` named `auth` declares `preset: local|internal|public` and `registration: true|false` (default false). Enabling registration requires the existing fixed-role `LocalRegistration` contract. Without this new definition legacy behavior is unchanged. See [Authentication configuration](authentication.md) for enforcement, compatibility, and currently unsupported advanced features. Authentication configuration requires AppIR v16.
 
 ## Panel layouts
 

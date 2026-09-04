@@ -24,7 +24,8 @@ const (
 	PageWidthFormat      = "bean/appir/v12"
 	MenuFormat           = "bean/appir/v13"
 	MenuVariantFormat    = "bean/appir/v14"
-	CurrentFormat        = "bean/appir/v15"
+	DirectionalFormat    = "bean/appir/v15"
+	CurrentFormat        = "bean/appir/v16"
 )
 
 type Field struct {
@@ -528,6 +529,7 @@ type App struct {
 	Jobs              map[string]Job
 	Filters           map[string]Filter
 	AdminResources    map[string]AdminResource
+	Authentication    *Authentication
 	LocalRegistration *LocalRegistration
 	Theme             *Theme
 	DemoSeed          *DemoSeed
@@ -538,6 +540,19 @@ func Empty() *App {
 	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Rules: map[string]Rule{}, TestSuites: map[string]TestSuite{}, Extensions: map[string]Extension{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Sequences: map[string]Sequence{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
 }
 func (a *App) ValidateFormat() error {
+	if a.Authentication != nil && a.FormatVersion != CurrentFormat {
+		return fmt.Errorf("AppIR format %q cannot contain Authentication configuration", a.FormatVersion)
+	}
+	// Validate older feature boundaries without mutating the published snapshot.
+	legacy := *a
+	if legacy.FormatVersion == CurrentFormat {
+		legacy.FormatVersion = DirectionalFormat
+	}
+	return legacy.validateThroughDirectionalFormat()
+}
+
+func (a *App) validateThroughDirectionalFormat() error {
+	const CurrentFormat = DirectionalFormat
 	if a.FormatVersion != LegacyFormat && a.FormatVersion != LifecycleFormat && a.FormatVersion != RuleFormat && a.FormatVersion != TestSuiteFormat && a.FormatVersion != ExtensionFormat && a.FormatVersion != DisplayFormat && a.FormatVersion != ExploreFormat && a.FormatVersion != SequenceFormat && a.FormatVersion != InlinePanelFormat && a.FormatVersion != PageSectionFormat && a.FormatVersion != RegionCollapseFormat && a.FormatVersion != PageWidthFormat && a.FormatVersion != MenuFormat && a.FormatVersion != MenuVariantFormat && a.FormatVersion != CurrentFormat {
 		return fmt.Errorf("unsupported AppIR format %q", a.FormatVersion)
 	}

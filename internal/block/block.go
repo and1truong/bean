@@ -17,6 +17,13 @@ func Node(a *appir.App, b appir.Block, ctx map[string]any, c beanctx.Request) (r
 	if b.Policy != "" && !policy.Can(a.Policies[b.Policy], false, c, nil) {
 		return render.Node{}, false, nil
 	}
+	actionName := b.Action
+	if b.Type == "webform" {
+		actionName = a.Webforms[b.Webform].Action
+	}
+	if a.Actions[actionName].Operation == "register_local_user" && !a.RegistrationActionEnabled(actionName) {
+		return render.Node{}, false, nil
+	}
 	props := map[string]any{"name": b.Name, "type": b.Type, "context": ctx}
 	inputs := map[string]any{}
 	for name, definition := range b.Inputs {

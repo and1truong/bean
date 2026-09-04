@@ -56,11 +56,13 @@ type Server struct {
 	Logger         *slog.Logger
 	limiter        *loginLimiter
 	signupLimiter  *loginLimiter
+	accountLimiter *loginLimiter
 }
 
 func (s *Server) Handler() http.Handler {
 	s.limiter = newLoginLimiter()
 	s.signupLimiter = newLoginLimiter()
+	s.accountLimiter = newLoginLimiter()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { write(w, 200, map[string]string{"status": "ok"}) })
 	mux.HandleFunc("GET /readyz", s.ready)
@@ -71,6 +73,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/system/page", s.page)
 	mux.HandleFunc("POST /api/auth/login", s.login)
 	mux.HandleFunc("POST /api/auth/logout", s.logout)
+	mux.HandleFunc("POST /api/auth/password", s.accountPassword)
+	mux.HandleFunc("POST /api/auth/sessions/revoke", s.accountSessions)
 	mux.HandleFunc("GET /api/views/{name}", s.view)
 	mux.HandleFunc("GET /api/menus/{name}", s.menu)
 	mux.HandleFunc("GET /api/files/{id}", s.file)
@@ -136,14 +140,18 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	authNavigation := a.LocalRegistration != nil || len(a.Roles) > 0
+	registration := a.LocalRegistration
+	if !a.RegistrationEnabled() {
+		registration = nil
+	}
+	authNavigation := a.RegistrationEnabled() || len(a.Roles) > 0
 	for _, definition := range a.Policies {
 		authNavigation = authNavigation || definition.Authenticated || definition.Owner || definition.Tenant || len(definition.ReadRoles) > 0 || len(definition.WriteRoles) > 0 || authenticationCondition(definition.Condition)
 	}
 	for _, entity := range a.Entities {
 		authNavigation = authNavigation || entity.Owner || entity.Tenant
 	}
-	write(w, 200, map[string]any{"appId": a.AppID, "releaseId": a.ReleaseID, "version": a.Version, "appName": appName, "authNavigation": authNavigation, "theme": a.Theme, "entities": a.Entities, "views": a.Views, "actions": a.Actions, "lifecycles": a.Lifecycles, "filters": a.Filters, "webforms": a.Webforms, "pages": a.Pages, "localRegistration": a.LocalRegistration})
+	write(w, 200, map[string]any{"appId": a.AppID, "releaseId": a.ReleaseID, "version": a.Version, "appName": appName, "authNavigation": authNavigation, "theme": a.Theme, "entities": a.Entities, "views": a.Views, "actions": a.Actions, "lifecycles": a.Lifecycles, "filters": a.Filters, "webforms": a.Webforms, "pages": a.Pages, "localRegistration": registration, "authentication": a.Authentication})
 }
 func (s *Server) adminManifest(w http.ResponseWriter, r *http.Request) {
 	if !s.editor(w, r) {
@@ -692,7 +700,7 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request) {
 	if key := r.Header.Get("Idempotency-Key"); key != "" {
 		in["_idempotencyKey"] = key
 	}
-	if definition.Operation == "register_local_user" && (a.LocalRegistration == nil || a.LocalRegistration.Action != definition.Name) {
+	if definition.Operation == "register_local_user" && !a.RegistrationActionEnabled(definition.Name) {
 		problem(w, 404, "not_found", "Action not found.", requestID(r))
 		return
 	} else if definition.Operation == "register_local_user" && !s.signupLimiter.allow(s.clientIP(r)) {
@@ -785,7 +793,7 @@ func (s *Server) form(w http.ResponseWriter, r *http.Request) {
 	}
 	actionDefinition := a.Actions[f.Action]
 	if actionDefinition.Operation == "register_local_user" {
-		if a.LocalRegistration == nil || a.LocalRegistration.Action != actionDefinition.Name {
+		if !a.RegistrationActionEnabled(actionDefinition.Name) {
 			problem(w, 404, "not_found", "Webform not found.", requestID(r))
 			return
 		}

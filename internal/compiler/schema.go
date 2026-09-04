@@ -262,6 +262,12 @@ func definitionSchema(kind string, specification reflect.Type) map[string]any {
 	if len(builder.definitions) > 0 {
 		document["$defs"] = builder.definitions
 	}
+	if kind == "Authentication" {
+		document["required"] = []string{"kind", "name", "preset"}
+		properties["name"] = map[string]any{"const": "auth"}
+		properties["preset"] = map[string]any{"type": "string", "enum": []string{"local", "internal", "public"}}
+		properties["registration"] = map[string]any{"type": "boolean", "default": false}
+	}
 	if kind == "View" {
 		groupBy := properties["groupBy"].(map[string]any)
 		groupBy["items"] = map[string]any{"anyOf": []any{map[string]any{"type": "string"}, groupBy["items"]}}

@@ -1,3 +1,8 @@
+kind: Authentication
+name: auth
+preset: internal
+registration: false
+---
 kind: Theme
 name: default
 displayName: Team Workspace

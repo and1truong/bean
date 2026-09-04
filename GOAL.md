@@ -1,27 +1,30 @@
-# Goal: contextual Admin and request-scoped route records
+# Goal: configurable, DX-friendly authentication
 
-Status: complete
+Status: in progress. Milestones 1–3 complete and qualified with `make check` and `make build`; Account Actions also pass PostgreSQL parity. Delivery-backed verification/recovery and onboarding slices remain pending.
 
-Adopt the safe part of Drupal-style route upcasting: resolve an authorized record through a View once for one composed server request and make an immutable snapshot available to declared downstream handlers. Prove the capability with a generic Book → Add Page Admin journey.
-
-Detailed contract and milestones: `docs/plans/contextual-admin-route-records.md`.
-
-## Product outcome
-
-From `/admin/books/:id`, an editor can inspect the authorized contents tree and create a Page in that Book. The contextual form fixes the Book/Menu scope, supports parent, weight, and label override, invokes the existing `create_page` Action with `_navigation`, and returns to the Book.
+Provide built-in account lifecycle features without requiring public-app onboarding or email infrastructure for local/internal applications. Preserve existing applications when no new auth configuration is declared.
 
 ## Contract
 
-- Runtime records are `ResolvedRecord`/`RecordSnapshot` values, not mutable Entity objects.
-- Reads remain View-backed and projection/Policy scoped; incompatible read contracts are never collapsed into one authorization proof.
-- Cache lifetime is one request and one immutable release, authorization context, and reader/transaction scope.
-- Writes re-resolve and authorize inside the Action transaction; GET context is not write authority.
-- Derive the first owner-side affordance from existing Menu, Entity navigation, and AdminResource AppIR.
-- Add no `book_id`, global hooks, process-wide cache, cross-Entity Admin Action, raw placement endpoint, speculative metadata, or new AppIR format.
-- Keep application behavior under `examples/books`; core behavior remains generic.
+- Preserve definition → validation → migration → immutable AppIR → atomic activation.
+- Keep application choices and presentation in metadata; core auth mechanisms remain generic.
+- Offer `local`, `internal`, and `public` presets with explicit per-feature overrides. Presets do not silently enable self-registration or grant roles.
+- Advanced features are optional: email verification, email recovery, invitations, OIDC, and MFA. Disabling a feature closes its backend execution paths as well as hiding UI entry points.
+- Password hashing, authorization, CSRF, safe sessions, and abuse protection are not optional feature flags.
+- Local/internal applications need no email provider. Preserve administrator provisioning; add a secure email-independent recovery path.
+- Reject unsupported features and inconsistent configuration; never advertise verification/recovery without working delivery. Host secrets never enter metadata or AppIR.
+- Reads use Views and account mutations use typed Actions. Preserve sensitive-input handling, transaction boundaries, and session/cache isolation.
+
+## Milestones
+
+1. Improve existing login UX with pending/error states, duplicate-submit protection, password-manager hints, and accessible password visibility controls. No backend or configuration changes in this slice.
+2. Specify and implement metadata presets, overrides, compiled effective capabilities, compatibility, and UI/backend enforcement for supported features. Do not add inert security flags.
+3. Add authenticated password changes and session revocation, then administrator recovery without email.
+4. Add delivery-backed verification and single-use, expiring password recovery with enumeration/abuse defenses. Require an explicit delivery contract before enabling these features.
+5. Add application onboarding/invitations; evaluate OIDC and MFA as separate vertical slices.
 
 ## Completion
 
-- Focused View/Menu/HTTP, Admin React, and Books browser contracts pass milestone by milestone.
-- Existing generic Page creation and target-side NavigationEditor remain compatible.
-- `make check` and `make build` pass.
+Each milestone needs focused tests, including negative enforcement tests where relevant. Run `make check` and `make build` for each delivered slice; keep `PLANS.md` and `docs/progress.md` current. The entire goal is not complete until the agreed core lifecycle and configuration slices are implemented.
+
+Previous completed goal: `docs/plans/contextual-admin-route-records.md`.

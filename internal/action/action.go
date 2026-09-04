@@ -57,6 +57,9 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 	if !ok {
 		return nil, &dbal.Error{Code: dbal.NotFound, Message: "Action not found"}
 	}
+	if a.Operation == "register_local_user" && !app.RegistrationActionEnabled(name) {
+		return nil, &dbal.Error{Code: dbal.NotFound, Message: "registration is not enabled"}
+	}
 	e, entityExists := app.Entities[a.Entity]
 	if !entityExists && a.Operation != "register_local_user" {
 		return nil, &dbal.Error{Code: dbal.InvalidQuery, Message: "Action entity is invalid"}

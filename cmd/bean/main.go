@@ -69,11 +69,14 @@ func run(args []string) error {
 	}
 }
 func usage() error {
-	return fmt.Errorf("usage: bean {init|serve|validate|publish|migrate|capabilities|schema|agent call|mcp serve|app init|app validate|app inspect|app plan|app diff|app publish|app test|app import|app export|user create|demo|demo seed|pattern inspect|package|package verify|version}")
+	return fmt.Errorf("usage: bean {init|serve|validate|publish|migrate|capabilities|schema|agent call|mcp serve|app init|app validate|app inspect|app plan|app diff|app publish|app test|app import|app export|user create|user reset-password|demo|demo seed|pattern inspect|package|package verify|version}")
 }
 func userCommand(args []string) error {
+	if len(args) > 0 && args[0] == "reset-password" {
+		return resetPasswordCommand(args[1:], os.Stdin)
+	}
 	if len(args) == 0 || args[0] != "create" {
-		return fmt.Errorf("usage: bean user create")
+		return fmt.Errorf("usage: bean user {create|reset-password}")
 	}
 	f := flag.NewFlagSet("user create", flag.ContinueOnError)
 	db := f.String("db", "bean.db", "SQLite database")

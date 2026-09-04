@@ -1,0 +1,38 @@
+{
+  "$id": "https://bean.build/schemas/authentication.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "bean/v1alpha1"
+    },
+    "kind": {
+      "const": "Authentication"
+    },
+    "name": {
+      "const": "auth"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "preset": {
+      "enum": [
+        "local",
+        "internal",
+        "public"
+      ],
+      "type": "string"
+    },
+    "registration": {
+      "default": false,
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "kind",
+    "name",
+    "preset"
+  ],
+  "title": "Bean Authentication definition",
+  "type": "object"
+}

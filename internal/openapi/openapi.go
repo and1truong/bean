@@ -24,7 +24,7 @@ func Generate(a *appir.App) (json.RawMessage, error) {
 		paths["/api/views/"+name] = map[string]any{"get": map[string]any{"operationId": "view_" + name, "parameters": parameters, "responses": map[string]any{"200": map[string]any{"description": "View result", "headers": map[string]any{"Bean-Next-Cursor": map[string]any{"schema": map[string]any{"type": "string"}}}, "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": map[string]any{"data": map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": props}}}}}}}, "401": errorResponse(), "403": errorResponse()}}}
 	}
 	for name, actionDefinition := range a.Actions {
-		if actionDefinition.Operation == "register_local_user" && (a.LocalRegistration == nil || a.LocalRegistration.Action != actionDefinition.Name) {
+		if actionDefinition.Operation == "register_local_user" && !a.RegistrationActionEnabled(actionDefinition.Name) {
 			continue
 		}
 		props := map[string]any{}
@@ -65,7 +65,7 @@ func Generate(a *appir.App) (json.RawMessage, error) {
 			output[n] = schema(f.Type)
 		}
 		security := []any{map[string]any{"cookieAuth": []any{}}}
-		if a.LocalRegistration != nil && a.LocalRegistration.Action == actionDefinition.Name {
+		if a.RegistrationActionEnabled(actionDefinition.Name) {
 			security = []any{}
 		}
 		mediaType := "application/json"

@@ -6,6 +6,7 @@ import {api,APIError,FormElement,Manifest,Node,PageFilter,Session,ViewDisplay,Vi
 import {callAction,encodeInput,runActionBatch} from './action-client'
 import {Admin,ResourceListBlock} from './Admin'
 import {Studio} from './Studio'
+import {Account} from './Account'
 import {Explore} from './Explore'
 import {ContentBlock,SequenceView} from './Sequence'
 import {ActiveFilters,DataTable,EmptyState,ErrorAlert,Field,FilterBar,LoadingState,Page,PageHeader,SectionCard,StatusAlert} from '@/components/bean'
@@ -28,8 +29,11 @@ const PageFilterValues=createContext<Record<string,string>>(noPageFilters)
 function Login(){
   const nav=useNavigate();const loc=useLocation();const qc=useQueryClient()
   const[email,setEmail]=useState('');const[password,setPassword]=useState('');const[error,setError]=useState('')
+  const[pending,setPending]=useState(false);const[showPassword,setShowPassword]=useState(false);const submitting=useRef(false)
   async function submit(event:FormEvent){
     event.preventDefault()
+    if(submitting.current)return
+    submitting.current=true;setPending(true);setError('')
     try{
       const result=await api<{csrfToken:string;user:{Roles:string[]}}>('/api/auth/login',{method:'POST',body:JSON.stringify({email,password})})
       sessionStorage.setItem('bean_csrf',result.csrfToken)
@@ -39,8 +43,18 @@ function Login(){
       const requested=new URLSearchParams(loc.search).get('next')||fallback
       nav(requested.startsWith('/')&&!requested.startsWith('//')?requested:fallback)
     }catch(cause){setError((cause as Error).message)}
+    finally{submitting.current=false;setPending(false)}
   }
-  return <Shell><Page narrow><Card><CardHeader><CardTitle><h1 className="text-2xl">Sign in</h1></CardTitle><CardDescription>Access your Bean application.</CardDescription></CardHeader><CardContent><form className="space-y-4" onSubmit={submit}><Field id="login-email" label="Email"><Input id="login-email" data-testid="email" type="email" required value={email} onChange={event=>setEmail(event.target.value)}/></Field><Field id="login-password" label="Password"><Input id="login-password" data-testid="password" type="password" required value={password} onChange={event=>setPassword(event.target.value)}/></Field>{error&&<ErrorAlert error={error}/>}<Button className="w-full" data-testid="login" type="submit">Sign in</Button></form></CardContent></Card></Page></Shell>
+  return <Shell><Page narrow><Card>
+    <CardHeader><CardTitle><h1 className="text-2xl">Sign in</h1></CardTitle><CardDescription>Access your Bean application.</CardDescription></CardHeader>
+    <CardContent>{['password-changed','sessions-revoked'].includes(new URLSearchParams(loc.search).get('notice')||'')&&<p role="status" className="mb-4 text-sm">You have been signed out on all devices. Sign in again to continue.</p>}<form className="space-y-4" onSubmit={submit} aria-busy={pending}>
+      <Field id="login-email" label="Email"><Input id="login-email" name="email" data-testid="email" type="email" autoComplete="username" autoCapitalize="none" spellCheck={false} required disabled={pending} value={email} onChange={event=>setEmail(event.target.value)}/></Field>
+      <Field id="login-password" label="Password"><Input id="login-password" name="password" data-testid="password" type={showPassword?'text':'password'} autoComplete="current-password" required disabled={pending} value={password} onChange={event=>setPassword(event.target.value)}/></Field>
+      <Button type="button" variant="ghost" size="sm" aria-controls="login-password" aria-pressed={showPassword} onClick={()=>setShowPassword(value=>!value)}>{showPassword?'Hide password':'Show password'}</Button>
+      {error&&<ErrorAlert error={error}/>}
+      <Button className="w-full" data-testid="login" type="submit" disabled={pending}>{pending?'Signing in…':'Sign in'}</Button>
+    </form></CardContent>
+  </Card></Page></Shell>
 }
 
 function Shell({children,chrome=true}:{children:React.ReactNode;chrome?:boolean}){
@@ -65,7 +79,7 @@ function Shell({children,chrome=true}:{children:React.ReactNode;chrome?:boolean}
   const setTheme=()=>setColorMode(current=>{const next=current==='light'?'dark':'light';localStorage.setItem('bean_color_mode',next);return next})
   const current=(route:string)=>route==='/'?loc.pathname==='/':loc.pathname===route||loc.pathname.startsWith(route+'/')
   const tools=[{route:'/',label:'Application',icon:HomeIcon,show:true},{route:'/admin',label:'Admin',icon:DatabaseIcon,show:editor},{route:'/explore',label:'Explore',icon:CompassIcon,show:administrator},{route:'/studio',label:'Studio',icon:BlocksIcon,show:administrator}].filter(item=>item.show)
-  return <div className={`bean-app-shell ${colorMode}`} data-testid="application-shell" data-theme={colorMode} data-preset={theme?.Preset||'professional'} data-accent={theme?.Accent||'emerald'}>{chrome&&<header className="bean-topbar"><div className="bean-topbar-inner"><Link className="bean-brand" to="/" aria-disabled={logout.isPending} onClick={stopNavigation}><span className="bean-brand-mark" aria-hidden="true">B</span><span className="truncate">{theme?.DisplayName||manifest.data?.appName||'Bean'}</span></Link><span className="bean-workspace-label">{manifest.data?.appId||'Application workspace'}</span><nav className="ml-auto flex shrink-0 items-center gap-1" aria-label="Primary navigation"><Button size="icon" variant="ghost" onClick={setTheme} aria-label={colorMode==='light'?'Use dark theme':'Use light theme'} title={colorMode==='light'?'Use dark theme':'Use light theme'}>{colorMode==='light'?<MoonIcon/>:<SunIcon/>}</Button>{session.data?.authenticated?<Button variant="ghost" onClick={()=>{logoutStarted.current=true;logout.mutate()}} disabled={logout.isPending}><LogOutIcon data-icon="inline-start"/>Sign out</Button>:manifest.data?.authNavigation!==false?<>{manifest.data?.localRegistration?.Route&&<Button variant="ghost" asChild><Link to={manifest.data.localRegistration.Route}>Sign up</Link></Button>}<Button variant="secondary" asChild><Link to={'/login?next='+encodeURIComponent(loc.pathname)}>Sign in</Link></Button></>:null}</nav></div></header>}<div className="bean-shell-grid" data-has-sidebar={chrome&&editor||undefined}>{chrome&&editor&&<aside className="bean-sidebar"><nav className="bean-sidebar-nav" aria-label="Primary navigation"><p className="bean-sidebar-label">Workspace</p>{tools.map(item=>{const Icon=item.icon;return <Link className="bean-sidebar-link" key={item.route} to={item.route} aria-current={current(item.route)?'page':undefined} aria-disabled={logout.isPending} onClick={stopNavigation}><Icon aria-hidden="true"/><span>{item.label}</span></Link>})}</nav></aside>}<div className="bean-shell-main">{children}</div></div></div>
+  return <div className={`bean-app-shell ${colorMode}`} data-testid="application-shell" data-theme={colorMode} data-preset={theme?.Preset||'professional'} data-accent={theme?.Accent||'emerald'}>{chrome&&<header className="bean-topbar"><div className="bean-topbar-inner"><Link className="bean-brand" to="/" aria-disabled={logout.isPending} onClick={stopNavigation}><span className="bean-brand-mark" aria-hidden="true">B</span><span className="truncate">{theme?.DisplayName||manifest.data?.appName||'Bean'}</span></Link><span className="bean-workspace-label">{manifest.data?.appId||'Application workspace'}</span><nav className="ml-auto flex shrink-0 items-center gap-1" aria-label="Primary navigation"><Button size="icon" variant="ghost" onClick={setTheme} aria-label={colorMode==='light'?'Use dark theme':'Use light theme'} title={colorMode==='light'?'Use dark theme':'Use light theme'}>{colorMode==='light'?<MoonIcon/>:<SunIcon/>}</Button>{session.data?.authenticated?<><Button variant="ghost" asChild><Link to="/admin/system/account" aria-disabled={logout.isPending} onClick={stopNavigation}>Account</Link></Button><Button variant="ghost" onClick={()=>{logoutStarted.current=true;logout.mutate()}} disabled={logout.isPending}><LogOutIcon data-icon="inline-start"/>Sign out</Button></>:manifest.data?.authNavigation!==false?<>{manifest.data?.localRegistration?.Route&&<Button variant="ghost" asChild><Link to={manifest.data.localRegistration.Route}>Sign up</Link></Button>}<Button variant="secondary" asChild><Link to={'/login?next='+encodeURIComponent(loc.pathname)}>Sign in</Link></Button></>:null}</nav></div></header>}<div className="bean-shell-grid" data-has-sidebar={chrome&&editor||undefined}>{chrome&&editor&&<aside className="bean-sidebar"><nav className="bean-sidebar-nav" aria-label="Primary navigation"><p className="bean-sidebar-label">Workspace</p>{tools.map(item=>{const Icon=item.icon;return <Link className="bean-sidebar-link" key={item.route} to={item.route} aria-current={current(item.route)?'page':undefined} aria-disabled={logout.isPending} onClick={stopNavigation}><Icon aria-hidden="true"/><span>{item.label}</span></Link>})}</nav></aside>}<div className="bean-shell-main">{children}</div></div></div>
 }
 
 type RenderProps={
@@ -285,4 +299,4 @@ function Public(){
   return <Shell><Page className="space-y-6"><Renderer node={result.data.tree}/></Page></Shell>
 }
 
-export default function App(){const loc=useLocation();const currentPath=useRef(loc.pathname);currentPath.current=loc.pathname;return <CurrentPath.Provider value={currentPath}><Routes><Route path="/login" element={<Login/>}/><Route path="/explore" element={<Shell><Explore/></Shell>}/><Route path="/studio" element={<Shell><Studio/></Shell>}/><Route path="/admin/*" element={<Shell><Admin/></Shell>}/><Route path="*" element={<Public/>}/></Routes></CurrentPath.Provider>}
+export default function App(){const loc=useLocation();const currentPath=useRef(loc.pathname);currentPath.current=loc.pathname;return <CurrentPath.Provider value={currentPath}><Routes><Route path="/login" element={<Login/>}/><Route path="/explore" element={<Shell><Explore/></Shell>}/><Route path="/studio" element={<Shell><Studio/></Shell>}/><Route path="/admin/system/account" element={<Shell><Account/></Shell>}/><Route path="/admin/*" element={<Shell><Admin/></Shell>}/><Route path="*" element={<Public/>}/></Routes></CurrentPath.Provider>}

@@ -286,6 +286,7 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 	return registry.Must(
 		registry.Identity[definitionKind],
 		registry.Entry[definitionKind]{Name: "Action", Value: action},
+		registry.Entry[definitionKind]{Name: "Authentication", Value: authenticationDefinitionKind()},
 		registry.Entry[definitionKind]{Name: "AdminResource", Value: admin},
 		registry.Entry[definitionKind]{Name: "Block", Value: block},
 		registry.Entry[definitionKind]{Name: "DemoSeed", Value: demoSeed},

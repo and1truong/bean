@@ -19,6 +19,50 @@ describe('App',()=>{
   })
 })
 
+describe('login experience',()=>{
+  it('supports password managers and an accessible non-submitting visibility toggle',()=>{
+    vi.stubGlobal('fetch',vi.fn(async()=>response({})))
+    renderApp('/login')
+    expect(screen.getByLabelText('Email')).toHaveAttribute('autocomplete','username')
+    const password=screen.getByLabelText('Password')
+    expect(password).toHaveAttribute('autocomplete','current-password')
+    expect(password).toHaveAttribute('type','password')
+    fireEvent.change(password,{target:{value:'test-password'}})
+    const toggle=screen.getByRole('button',{name:'Show password'})
+    expect(toggle).toHaveAttribute('type','button')
+    fireEvent.click(toggle)
+    expect(password).toHaveAttribute('type','text')
+    expect(password).toHaveValue('test-password')
+    expect(screen.getByRole('button',{name:'Hide password'})).toHaveAttribute('aria-pressed','true')
+    fireEvent.click(screen.getByRole('button',{name:'Hide password'}))
+    expect(password).toHaveAttribute('type','password')
+  })
+
+  it('blocks duplicate submissions, clears stale errors and allows retry after failure',async()=>{
+    let finish!:(value:Response)=>void
+    const login=vi.fn(()=>new Promise<Response>(resolve=>{finish=resolve}))
+    vi.stubGlobal('fetch',vi.fn((input:string|URL|Request)=>String(input)==='/api/auth/login'?login():Promise.resolve(response({}))))
+    renderApp('/login')
+    fireEvent.change(screen.getByLabelText('Email'),{target:{value:'member@example.test'}})
+    fireEvent.change(screen.getByLabelText('Password'),{target:{value:'test-password'}})
+    const form=screen.getByTestId('login').closest('form')!
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+    expect(login).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('button',{name:'Signing in…'})).toBeDisabled()
+    expect(form).toHaveAttribute('aria-busy','true')
+    await act(async()=>finish(new Response(JSON.stringify({error:{message:'Invalid credentials'}}),{status:401})))
+    expect(await screen.findByText('Invalid credentials')).toBeInTheDocument()
+    expect(screen.getByTestId('login')).toBeEnabled()
+    fireEvent.submit(form)
+    expect(login).toHaveBeenCalledTimes(2)
+    expect(screen.queryByText('Invalid credentials')).not.toBeInTheDocument()
+    await act(async()=>finish(new Response(JSON.stringify({error:{message:'Try again later'}}),{status:429})))
+    expect(await screen.findByText('Try again later')).toBeInTheDocument()
+    expect(screen.getByTestId('login')).toBeEnabled()
+  })
+})
+
 describe('client expressions',()=>{
   it('implements list membership and fails loudly for unknown operators',()=>{
     expect(evaluate({Op:'in',Left:{Source:'input',Name:'status'},Right:{Source:'literal',Literal:['draft','ready']}},{status:'ready'})).toBe(true)

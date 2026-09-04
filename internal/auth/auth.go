@@ -96,7 +96,13 @@ func (s Service) Login(ctx context.Context, email, password string) (Session, er
 		s.TTL = 24 * time.Hour
 	}
 	session.Expires = time.Now().UTC().Add(s.TTL)
-	_, e = s.DB.Insert(ctx, dbal.Insert{Table: "bean_session", Values: map[string]dbal.Value{"id": session.ID, "user_id": session.User.ID, "csrf_token": session.CSRF, "expires_at": session.Expires.Format(time.RFC3339Nano)}})
+	e = s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
+		if err := LockUser(ctx, tx, rows[0]); err != nil {
+			return err
+		}
+		_, err := tx.Insert(ctx, dbal.Insert{Table: "bean_session", Values: map[string]dbal.Value{"id": session.ID, "user_id": session.User.ID, "csrf_token": session.CSRF, "expires_at": session.Expires.Format(time.RFC3339Nano)}})
+		return err
+	})
 	return session, e
 }
 func (s Service) Current(ctx context.Context, id string) (Session, error) {
