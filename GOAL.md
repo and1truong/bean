@@ -1,22 +1,19 @@
-# Goal: Bean Design System v2
+# Goal: migrate the frontend class merger to `cn`
 
 Status: complete
 
-Redesign Bean as a coherent, compact professional tool for building, inspecting, querying, visualizing, and managing structured information.
+Replace Bean's direct `clsx` and `tailwind-merge` dependencies with the Tailwind CSS v4-compatible `cn` package while preserving the shared application-facing `cn()` API and existing component behavior.
 
 ## Contract
 
-- Preserve definition → validation → migration → immutable AppIR → atomic activation, metadata-driven behavior, View reads, and Action writes.
-- Keep React 19, Vite, Tailwind v4, source-owned primitives, React Query, and the existing routing/state architecture.
-- Independently author all implementation under Bean's MIT license. Drupal, Metabase, Linear, GitHub, VS Code, and Grafana are references only; copy no source, styles, components, assets, or packages.
-- Establish semantic light/dark tokens, compact type/spacing/control scales, border-led hierarchy, restrained radius, and overlay-only elevation.
-- Replace rediscovered navigation with a stable application/workspace/module hierarchy for authenticated tools.
-- Prove the system in Studio, Admin data tables, Explore analytics, and generated record forms without changing application logic.
-- Target WCAG 2.2 AA where practical, desktop productivity first, narrow-laptop resilience, and graceful small-screen fallback.
+- Keep the migration small: retain `web/src/lib/utils.ts` and all existing component call sites.
+- Keep `class-variance-authority`; do not alter component APIs, Tailwind configuration, or visual design.
+- Cover conditional inputs and representative Tailwind conflicts, variants, arbitrary values, dark mode, important modifiers, arbitrary variants, and CVA output with semantic regression tests.
+- Evaluate `cn build` and bundle impact without adding generated artifacts or CI complexity unless it clearly benefits Bean.
+- Record a lightweight before/after benchmark as supporting evidence only.
 
 ## Evidence
 
-- A repository-grounded audit and `docs/design-system.md` document decisions and remaining migration work.
-- Focused React tests cover shell/theme, fields, table/filter behavior, and Studio structure.
-- Existing browser journeys verify representative responsive screens and visual captures where supported.
+- Frontend tests, lint, typecheck, build, and available UI tests pass.
+- Repository searches show no direct `clsx`, `tailwind-merge`, or `twMerge` use remains outside unavoidable transitive dependencies.
 - Completion requires `make check` and `make build`.
