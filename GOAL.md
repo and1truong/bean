@@ -1,6 +1,6 @@
 # Goal: configurable, DX-friendly authentication
 
-Status: in progress. Milestones 1–3 complete and qualified with `make check` and `make build`; Account Actions also pass PostgreSQL parity. Delivery-backed verification/recovery and onboarding slices remain pending.
+Status: in progress. Milestones 1–3 complete and qualified with `make check` and `make build`; Account Actions also pass PostgreSQL parity. Milestone 4a (delivery-backed password recovery) is complete with full gates and PostgreSQL parity; email verification and onboarding remain pending.
 
 Provide built-in account lifecycle features without requiring public-app onboarding or email infrastructure for local/internal applications. Preserve existing applications when no new auth configuration is declared.
 

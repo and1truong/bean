@@ -46,23 +46,29 @@ import (
 )
 
 type Server struct {
-	Kernel         *kernel.Kernel
-	Store          *release.Store
-	Auth           auth.Service
-	Actions        action.Service
-	Views          view.Service
-	SecureCookies  bool
-	TrustedProxies []netip.Prefix
-	Logger         *slog.Logger
-	limiter        *loginLimiter
-	signupLimiter  *loginLimiter
-	accountLimiter *loginLimiter
+	Kernel                     *kernel.Kernel
+	Store                      *release.Store
+	Auth                       auth.Service
+	Actions                    action.Service
+	Views                      view.Service
+	SecureCookies              bool
+	TrustedProxies             []netip.Prefix
+	Logger                     *slog.Logger
+	limiter                    *loginLimiter
+	signupLimiter              *loginLimiter
+	accountLimiter             *loginLimiter
+	recoveryLimiter            *loginLimiter
+	recoveryDestinationLimiter *loginLimiter
+	recoveryResetLimiter       *loginLimiter
 }
 
 func (s *Server) Handler() http.Handler {
 	s.limiter = newLoginLimiter()
 	s.signupLimiter = newLoginLimiter()
 	s.accountLimiter = newLoginLimiter()
+	s.recoveryLimiter = newLoginLimiter()
+	s.recoveryDestinationLimiter = newLoginLimiter()
+	s.recoveryResetLimiter = newLoginLimiter()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { write(w, 200, map[string]string{"status": "ok"}) })
 	mux.HandleFunc("GET /readyz", s.ready)
@@ -74,6 +80,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/auth/login", s.login)
 	mux.HandleFunc("POST /api/auth/logout", s.logout)
 	mux.HandleFunc("POST /api/auth/password", s.accountPassword)
+	mux.HandleFunc("POST /api/auth/recovery/request", s.recoveryRequest)
+	mux.HandleFunc("POST /api/auth/recovery/reset", s.recoveryReset)
 	mux.HandleFunc("POST /api/auth/sessions/revoke", s.accountSessions)
 	mux.HandleFunc("GET /api/views/{name}", s.view)
 	mux.HandleFunc("GET /api/menus/{name}", s.menu)

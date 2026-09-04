@@ -3,6 +3,8 @@ package action
 import (
 	"context"
 	"fmt"
+	"github.com/beanruntime/bean/internal/authmail"
+	"strings"
 	"time"
 
 	"github.com/beanruntime/bean/internal/actionstep"
@@ -284,6 +286,9 @@ func executeDeleteStep(execution stepExecution) (stepOutcome, error) {
 }
 
 func executeEmitStep(execution stepExecution) (stepOutcome, error) {
+	if strings.HasPrefix(execution.step.Event, authmail.TopicPrefix) {
+		return stepOutcome{}, &dbal.Error{Code: dbal.InvalidQuery, Message: "reserved auth event topic"}
+	}
 	payload := any(execution.bindings)
 	if len(execution.step.Values) > 0 {
 		resolved, err := resolveValues(execution.step.Values, execution.input, execution.results, execution.request)

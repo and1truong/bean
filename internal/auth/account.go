@@ -92,7 +92,10 @@ func replacePassword(ctx context.Context, tx dbal.Transaction, user dbal.Row, pa
 		return err
 	}
 	_, err = tx.Update(ctx, dbal.Update{Table: "bean_user", Values: map[string]dbal.Value{"password_hash": string(hash)}, Where: dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: user["id"]}, ExpectedRows: 1})
-	return err
+	if err != nil {
+		return err
+	}
+	return invalidateRecovery(ctx, tx, user["id"])
 }
 
 func RevokeSessions(ctx context.Context, tx dbal.Transaction, userID string) error {

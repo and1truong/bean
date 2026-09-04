@@ -15,6 +15,10 @@
     "namespace": {
       "type": "string"
     },
+    "passwordRecovery": {
+      "default": false,
+      "type": "boolean"
+    },
     "preset": {
       "enum": [
         "local",

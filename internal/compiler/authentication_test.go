@@ -32,7 +32,7 @@ func TestAuthenticationPresetsAndRegistration(t *testing.T) {
 func TestAuthenticationRejectsInvalidOrUnsupportedConfiguration(t *testing.T) {
 	for _, spec := range []map[string]any{
 		{"preset": "unknown"}, {}, {"preset": "internal", "registration": true},
-		{"preset": "public", "emailVerification": true}, {"preset": "public", "passwordRecovery": true},
+		{"preset": "public", "emailVerification": true}, {"preset": "public", "oidc": true},
 		{"preset": "local", "csrf": false}, {"preset": "internal", "mfa": true},
 	} {
 		result := compiler.Compile("test", 1, []definition.Definition{{APIVersion: "bean/v1alpha1", Kind: "Authentication", Metadata: definition.Metadata{Name: "auth"}, Spec: spec}})

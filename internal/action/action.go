@@ -14,6 +14,7 @@ import (
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/audit"
 	"github.com/beanruntime/bean/internal/auth"
+	"github.com/beanruntime/bean/internal/authmail"
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/field"
@@ -26,6 +27,7 @@ import (
 type Service struct {
 	DB                 dbal.Database
 	Auth               auth.Service
+	AuthMail           *authmail.Service
 	CreateID           func(appir.Entity, map[string]any) string
 	CreateInvocationID func() string
 	Now                func() time.Time

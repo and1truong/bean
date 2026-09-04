@@ -6,7 +6,7 @@ Compilation validates envelopes, names, fields, references, relation kinds, limi
 
 ## Authentication
 
-An optional `Authentication` named `auth` declares `preset: local|internal|public` and `registration: true|false` (default false). Enabling registration requires the existing fixed-role `LocalRegistration` contract. Without this new definition legacy behavior is unchanged. See [Authentication configuration](authentication.md) for enforcement, compatibility, and currently unsupported advanced features. Authentication configuration requires AppIR v16.
+An optional `Authentication` named `auth` declares `preset: local|internal|public` and `registration: true|false` (default false). Enabling registration requires the existing fixed-role `LocalRegistration` contract. Without this new definition legacy behavior is unchanged. See [Authentication configuration](authentication.md) for enforcement, compatibility, and currently unsupported advanced features. Initial Authentication configuration requires AppIR v16. Optional `passwordRecovery` (default false) requires AppIR v17 and host-configured email delivery before publication/startup.
 
 ## Panel layouts
 

@@ -7,6 +7,7 @@ import {callAction,encodeInput,runActionBatch} from './action-client'
 import {Admin,ResourceListBlock} from './Admin'
 import {Studio} from './Studio'
 import {Account} from './Account'
+import {Recovery} from './Recovery'
 import {Explore} from './Explore'
 import {ContentBlock,SequenceView} from './Sequence'
 import {ActiveFilters,DataTable,EmptyState,ErrorAlert,Field,FilterBar,LoadingState,Page,PageHeader,SectionCard,StatusAlert} from '@/components/bean'
@@ -26,7 +27,13 @@ const noPageFilters:Record<string,string>={}
 const CurrentPath=createContext<React.MutableRefObject<string>|null>(null)
 const PageFilterValues=createContext<Record<string,string>>(noPageFilters)
 
+function AuthenticationPage(){
+  const location=useLocation();const mode=new URLSearchParams(location.search).get('recovery')
+  return mode==='request'||mode==='reset'?<Shell><Recovery key={mode} mode={mode}/></Shell>:<Login/>
+}
+
 function Login(){
+  const manifest=useQuery({queryKey:['manifest'],queryFn:()=>api<Manifest>('/api/system/manifest')})
   const nav=useNavigate();const loc=useLocation();const qc=useQueryClient()
   const[email,setEmail]=useState('');const[password,setPassword]=useState('');const[error,setError]=useState('')
   const[pending,setPending]=useState(false);const[showPassword,setShowPassword]=useState(false);const submitting=useRef(false)
@@ -53,7 +60,7 @@ function Login(){
       <Button type="button" variant="ghost" size="sm" aria-controls="login-password" aria-pressed={showPassword} onClick={()=>setShowPassword(value=>!value)}>{showPassword?'Hide password':'Show password'}</Button>
       {error&&<ErrorAlert error={error}/>}
       <Button className="w-full" data-testid="login" type="submit" disabled={pending}>{pending?'Signing in…':'Sign in'}</Button>
-    </form></CardContent>
+    </form>{manifest.data?.authentication?.PasswordRecovery&&<Link className="mt-4 block text-sm" to="/login?recovery=request">Forgot password?</Link>}</CardContent>
   </Card></Page></Shell>
 }
 
@@ -299,4 +306,4 @@ function Public(){
   return <Shell><Page className="space-y-6"><Renderer node={result.data.tree}/></Page></Shell>
 }
 
-export default function App(){const loc=useLocation();const currentPath=useRef(loc.pathname);currentPath.current=loc.pathname;return <CurrentPath.Provider value={currentPath}><Routes><Route path="/login" element={<Login/>}/><Route path="/explore" element={<Shell><Explore/></Shell>}/><Route path="/studio" element={<Shell><Studio/></Shell>}/><Route path="/admin/system/account" element={<Shell><Account/></Shell>}/><Route path="/admin/*" element={<Shell><Admin/></Shell>}/><Route path="*" element={<Public/>}/></Routes></CurrentPath.Provider>}
+export default function App(){const loc=useLocation();const currentPath=useRef(loc.pathname);currentPath.current=loc.pathname;return <CurrentPath.Provider value={currentPath}><Routes><Route path="/login" element={<AuthenticationPage/>}/><Route path="/explore" element={<Shell><Explore/></Shell>}/><Route path="/studio" element={<Shell><Studio/></Shell>}/><Route path="/admin/system/account" element={<Shell><Account/></Shell>}/><Route path="/admin/*" element={<Shell><Admin/></Shell>}/><Route path="*" element={<Public/>}/></Routes></CurrentPath.Provider>}

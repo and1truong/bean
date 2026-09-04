@@ -8,7 +8,9 @@ import (
 	"strings"
 
 	"github.com/beanruntime/bean/internal/action"
+	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/auth"
+	"github.com/beanruntime/bean/internal/authmail"
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/dbal/postgres"
@@ -48,10 +50,15 @@ func OpenURL(ctx context.Context, databaseURL string, secure bool) (*Runtime, er
 	if err != nil {
 		return nil, err
 	}
-	return OpenURLWithOptions(ctx, databaseURL, secure, Options{ExtensionBearerTokens: bearer})
+	mail, err := authmail.FromEnvironment(os.Getenv(authmail.Environment))
+	if err != nil {
+		return nil, err
+	}
+	return OpenURLWithOptions(ctx, databaseURL, secure, Options{ExtensionBearerTokens: bearer, AuthMail: mail})
 }
 
 type Options struct {
+	AuthMail              *authmail.Service
 	ExtensionProvider     extension.Provider
 	ExtensionBearerTokens map[string]string
 }
@@ -75,7 +82,12 @@ func OpenURLWithOptions(ctx context.Context, databaseURL string, secure bool, op
 		return nil, e
 	}
 	k := kernel.New()
-	store := &release.Store{DB: db, Migrations: db, Inspector: db, Kernel: k, OpenAPI: openapi.Generate}
+	store := &release.Store{DB: db, Migrations: db, Inspector: db, Kernel: k, OpenAPI: openapi.Generate, HostValidation: func(app *appir.App) error {
+		if app.PasswordRecoveryEnabled() && options.AuthMail == nil {
+			return fmt.Errorf("password recovery requires BEAN_AUTH_EMAIL delivery configuration")
+		}
+		return nil
+	}}
 	if e = store.Initialize(ctx); e != nil {
 		db.Close()
 		return nil, e
@@ -85,7 +97,7 @@ func OpenURLWithOptions(ctx context.Context, databaseURL string, secure bool, op
 		return nil, e
 	}
 	authService := auth.Service{DB: db}
-	actions := action.Service{DB: db, Auth: authService}
+	actions := action.Service{DB: db, Auth: authService, AuthMail: options.AuthMail}
 	views := view.Service{DB: db}
 	server := &httpapi.Server{Kernel: k, Store: store, Auth: authService, Actions: actions, Views: views, SecureCookies: secure}
 	runner := job.Runner{DB: db, Handle: func(ctx context.Context, name string, payload map[string]any) error {
@@ -107,6 +119,10 @@ func OpenURLWithOptions(ctx context.Context, databaseURL string, secure bool, op
 		provider = extension.NewHTTPProvider(nil, options.ExtensionBearerTokens)
 	}
 	outbox := event.Runner{DB: db, Deliver: func(ctx context.Context, topic string, payload map[string]any) error {
+		if strings.HasPrefix(topic, authmail.TopicPrefix) {
+			app, _ := k.Active()
+			return actions.DeliverAuthMail(ctx, app, topic, payload)
+		}
 		if extension.IsTopic(topic) {
 			return extension.Deliver(ctx, provider, topic, payload)
 		}
@@ -138,7 +154,7 @@ func OpenInspection(ctx context.Context, databaseURL string) (*Runtime, error) {
 		return nil, err
 	}
 	kernel := kernel.New()
-	store := &release.Store{DB: db, Migrations: db, Inspector: db, Kernel: kernel, OpenAPI: openapi.Generate}
+	store := &release.Store{DB: db, Migrations: db, Inspector: db, Kernel: kernel, OpenAPI: openapi.Generate, HostValidation: func(*appir.App) error { return nil }}
 	if err = store.LoadActive(ctx, "default"); err != nil {
 		db.Close()
 		return nil, err

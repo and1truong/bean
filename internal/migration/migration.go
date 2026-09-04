@@ -327,6 +327,8 @@ func MetadataSchema() []string {
 		`CREATE TABLE IF NOT EXISTS bean_schema_migration (release_id TEXT NOT NULL, sequence INTEGER NOT NULL, description TEXT NOT NULL, applied_at TEXT NOT NULL, PRIMARY KEY(release_id,sequence))`,
 		`CREATE TABLE IF NOT EXISTS bean_active_release (app_id TEXT PRIMARY KEY, release_id TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS bean_user (id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,display_name TEXT,password_hash TEXT NOT NULL,roles TEXT NOT NULL,tenant_id TEXT,created_at TEXT NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS bean_auth_token (id TEXT PRIMARY KEY,digest TEXT NOT NULL UNIQUE,user_id TEXT NOT NULL,app_id TEXT NOT NULL,release_id TEXT NOT NULL,purpose TEXT NOT NULL,expires_at TEXT NOT NULL,consumed_at TEXT,FOREIGN KEY(user_id) REFERENCES bean_user(id) ON DELETE CASCADE)`,
+		`CREATE INDEX IF NOT EXISTS bean_auth_token_user ON bean_auth_token(user_id)`,
 		`CREATE TABLE IF NOT EXISTS bean_session (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,csrf_token TEXT NOT NULL,expires_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES bean_user(id) ON DELETE CASCADE)`,
 		`CREATE TABLE IF NOT EXISTS bean_audit (id TEXT PRIMARY KEY,at TEXT NOT NULL,request_id TEXT,user_id TEXT,tenant_id TEXT,action TEXT NOT NULL,entity_type TEXT,entity_id TEXT,changed_fields TEXT,success INTEGER NOT NULL,error TEXT)`,
 		`CREATE TABLE IF NOT EXISTS bean_outbox (id TEXT PRIMARY KEY,topic TEXT NOT NULL,payload TEXT NOT NULL,created_at TEXT NOT NULL,sequence INTEGER NOT NULL,delivered_at TEXT,status TEXT NOT NULL,attempts INTEGER NOT NULL,retry_delay INTEGER NOT NULL,max_attempts INTEGER NOT NULL,last_error TEXT,claim_token TEXT,claimed_at TEXT,next_attempt_at TEXT)`,

@@ -25,7 +25,8 @@ const (
 	MenuFormat           = "bean/appir/v13"
 	MenuVariantFormat    = "bean/appir/v14"
 	DirectionalFormat    = "bean/appir/v15"
-	CurrentFormat        = "bean/appir/v16"
+	AuthenticationFormat = "bean/appir/v16"
+	CurrentFormat        = "bean/appir/v17"
 )
 
 type Field struct {
@@ -540,12 +541,15 @@ func Empty() *App {
 	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Rules: map[string]Rule{}, TestSuites: map[string]TestSuite{}, Extensions: map[string]Extension{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Sequences: map[string]Sequence{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
 }
 func (a *App) ValidateFormat() error {
-	if a.Authentication != nil && a.FormatVersion != CurrentFormat {
+	if a.PasswordRecoveryEnabled() && a.FormatVersion != CurrentFormat {
+		return fmt.Errorf("AppIR format %q cannot contain password recovery", a.FormatVersion)
+	}
+	if a.Authentication != nil && a.FormatVersion != CurrentFormat && a.FormatVersion != AuthenticationFormat {
 		return fmt.Errorf("AppIR format %q cannot contain Authentication configuration", a.FormatVersion)
 	}
 	// Validate older feature boundaries without mutating the published snapshot.
 	legacy := *a
-	if legacy.FormatVersion == CurrentFormat {
+	if legacy.FormatVersion == CurrentFormat || legacy.FormatVersion == AuthenticationFormat {
 		legacy.FormatVersion = DirectionalFormat
 	}
 	return legacy.validateThroughDirectionalFormat()

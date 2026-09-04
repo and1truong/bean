@@ -267,6 +267,7 @@ func definitionSchema(kind string, specification reflect.Type) map[string]any {
 		properties["name"] = map[string]any{"const": "auth"}
 		properties["preset"] = map[string]any{"type": "string", "enum": []string{"local", "internal", "public"}}
 		properties["registration"] = map[string]any{"type": "boolean", "default": false}
+		properties["passwordRecovery"] = map[string]any{"type": "boolean", "default": false}
 	}
 	if kind == "View" {
 		groupBy := properties["groupBy"].(map[string]any)

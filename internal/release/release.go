@@ -23,11 +23,12 @@ import (
 )
 
 type Store struct {
-	DB         dbal.Database
-	Migrations migration.Executor
-	Inspector  migration.Inspector
-	Kernel     *kernel.Kernel
-	OpenAPI    func(*appir.App) (json.RawMessage, error)
+	DB             dbal.Database
+	Migrations     migration.Executor
+	Inspector      migration.Inspector
+	Kernel         *kernel.Kernel
+	OpenAPI        func(*appir.App) (json.RawMessage, error)
+	HostValidation func(*appir.App) error
 }
 type Published struct {
 	ID          string `json:"id"`
@@ -261,7 +262,11 @@ func (s *Store) Validate(ctx context.Context, appID string) (compiler.Result, er
 	if e != nil {
 		return compiler.Result{}, e
 	}
-	return compiler.Compile(appID, s.nextVersion(ctx, appID), defs), nil
+	result := compiler.Compile(appID, s.nextVersion(ctx, appID), defs)
+	if len(result.Diagnostics) == 0 {
+		return result, s.validateHost(result.App)
+	}
+	return result, nil
 }
 
 func (s *Store) Preview(ctx context.Context, appID string) (compiler.Result, migration.Plan, error) {
@@ -299,6 +304,9 @@ func (s *Store) previewBundle(ctx context.Context, appID string, bundle definiti
 	result.App.Name = bundle.Name
 	if len(result.Diagnostics) > 0 {
 		return result, migration.Plan{}, nil, nil
+	}
+	if err := s.validateHost(result.App); err != nil {
+		return result, migration.Plan{}, nil, err
 	}
 	current, err := s.activeApp(ctx, appID)
 	if err != nil {
@@ -373,6 +381,9 @@ func (s *Store) publishCandidate(ctx context.Context, appID string, r compiler.R
 }
 
 func (s *Store) publishCandidateLocked(ctx context.Context, appID string, r compiler.Result, plan migration.Plan, current *appir.App, definitions []definition.Definition, bundle *definition.Bundle) (Published, []definition.Diagnostic, error) {
+	if err := s.validateHost(r.App); err != nil {
+		return Published{}, nil, err
+	}
 	active, err := s.activeApp(ctx, appID)
 	if err != nil {
 		return Published{}, nil, err
@@ -475,10 +486,23 @@ func (s *Store) LoadActive(ctx context.Context, appID string) error {
 	if a == nil {
 		return nil
 	}
+	if e = s.validateHost(a); e != nil {
+		return e
+	}
 	if e = s.ValidateStorage(ctx, a); e != nil {
 		return e
 	}
 	return s.Kernel.Activate(a)
+}
+
+func (s *Store) validateHost(app *appir.App) error {
+	if s.HostValidation != nil {
+		return s.HostValidation(app)
+	}
+	if app.PasswordRecoveryEnabled() {
+		return fmt.Errorf("password recovery requires host auth email delivery configuration")
+	}
+	return nil
 }
 
 func (s *Store) ValidateStorage(ctx context.Context, app *appir.App) error {

@@ -16,6 +16,7 @@ import (
 	"github.com/beanruntime/bean/internal/actionop"
 	"github.com/beanruntime/bean/internal/actionstep"
 	"github.com/beanruntime/bean/internal/appir"
+	"github.com/beanruntime/bean/internal/authmail"
 	blockcap "github.com/beanruntime/bean/internal/block"
 	beancontent "github.com/beanruntime/bean/internal/content"
 	beanctx "github.com/beanruntime/bean/internal/context"
@@ -1925,6 +1926,9 @@ func validateActions(a *appir.App, _ *validationState) []definition.Diagnostic {
 			}
 			if stepSpecification.RequiresEvent && step.Event == "" {
 				out = append(out, requiredDiagnostic("Action", name, path+".event", "is required"))
+			}
+			if stepSpecification.RequiresEvent && strings.HasPrefix(step.Event, authmail.TopicPrefix) {
+				out = append(out, diagnostic("Action", name, path+".event", "uses the reserved auth topic prefix"))
 			}
 			if stepSpecification.RequiresEvent && strings.HasPrefix(step.Event, beanextension.TopicPrefix) {
 				out = append(out, actionExtensionDiagnostic(name, path+".event", "uses the reserved Extension topic prefix"))
