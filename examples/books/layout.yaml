@@ -1,0 +1,82 @@
+kind: Menu
+name: site_navigation
+profile: workspace
+maxDepth: 3
+items:
+  - id: books
+    target: {page: home}
+    label: Books
+---
+kind: Block
+name: site_menu
+menu: site_navigation
+type: menu
+---
+kind: Block
+name: books
+view: book_records
+display: list
+type: view
+---
+kind: Block
+name: book_summary
+view: book_record
+display: summary
+type: view
+inputs:
+  record: {type: uuid, required: true}
+bindings:
+  record: {source: context, name: id, required: true}
+---
+kind: Block
+name: contents
+menu: book_contents
+type: menu
+inputs:
+  owner_id: {type: uuid, required: true}
+bindings:
+  owner_id: {source: context, name: id, required: true}
+---
+kind: Panel
+name: home_panel
+layout: single-column
+regions:
+  - name: main
+    items:
+      - {block: site_menu}
+      - id: heading
+        content:
+          - {type: heading, text: Books}
+          - {type: paragraph, text: "Each book owns an independent, ordered contents Menu. A page record may be placed in more than one book."}
+      - {block: books}
+---
+kind: Panel
+name: book_panel
+layout: sidebar-main
+regions:
+  - name: sidebar
+    collapseWhenEmpty: true
+    items:
+      - {block: contents}
+  - name: main
+    items:
+      - {block: site_menu}
+      - {block: book_summary}
+      - id: guidance
+        content:
+          - {type: heading, text: Contents}
+          - {type: paragraph, text: "Submit page Actions with _navigation to replace this book's bounded three-level hierarchy atomically."}
+---
+kind: Page
+name: home
+route: /
+title: Books
+panel: home_panel
+---
+kind: Page
+name: book
+route: /books/:id
+title: Book
+context:
+  id: {source: route, name: id, required: true}
+panel: book_panel

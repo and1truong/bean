@@ -68,6 +68,42 @@ describe('public rendering',()=>{
     expect(regions[0]).toHaveAttribute('data-expanded','true')
   })
 
+  it('renders hierarchical workspace navigation as links with an active trail',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'MenuBlock',props:{name:'main_menu',menu:'main',profile:'workspace',items:[
+        {ID:'overview',Label:'Overview',Route:'/',Level:1,Active:true,Children:[
+          {ID:'reports',Label:'Reports',Route:'/reports',Level:2,Active:true,Children:[
+            {ID:'activity',Label:'Activity',Route:'/activity',Level:3,Current:true,Active:true},
+          ]},
+        ]},
+        {ID:'settings',Label:'Settings',Route:'/settings',Level:1},
+      ]}}]}})
+      return response({})
+    }))
+    renderApp('/activity')
+    expect(await screen.findByRole('navigation',{name:'Secondary navigation'})).toBeVisible()
+    expect(screen.getAllByRole('navigation',{name:'Primary navigation'})).toHaveLength(2)
+    expect(screen.getByRole('link',{name:'Activity'})).toHaveAttribute('aria-current','page')
+    expect(screen.getByLabelText('Section')).toHaveValue('/activity')
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+  })
+
+  it('loads a scoped Menu instance for a record Page display',async()=>{
+    const fetcher=vi.fn(async(input:string|URL|Request)=>{
+      const path=String(input)
+      if(path.includes('/api/system/session'))return response({authenticated:false})
+      if(path.includes('/api/system/page'))return response({tree:{component:'Page',children:[{component:'MenuBlock',props:{name:'@display-menu/book_contents',menu:'book_contents',profile:'workspace',ownerEntity:'book',ownerID:'book-1'}}]}})
+      if(path.includes('/api/menus/book_contents'))return response({items:[{ID:'page-1',Label:'Introduction',Route:'/pages/page-1?_menu=book_contents&_owner=book-1',Current:true,Active:true}]})
+      return response({})
+    })
+    vi.stubGlobal('fetch',fetcher)
+    renderApp('/pages/page-1?_menu=book_contents&_owner=book-1')
+    expect(await screen.findByRole('link',{name:'Introduction'})).toHaveAttribute('aria-current','page')
+    expect(fetcher.mock.calls.some(([input])=>String(input).includes('/api/menus/book_contents?_page=%2Fpages%2Fpage-1&_owner=book-1'))).toBe(true)
+  })
+
   it('renders and navigates an accessible semantic Sequence',async()=>{
     const print=vi.fn();vi.stubGlobal('print',print)
     vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{

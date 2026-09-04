@@ -17,6 +17,7 @@ import (
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/field"
+	beanmenu "github.com/beanruntime/bean/internal/menu"
 	"github.com/beanruntime/bean/internal/policy"
 	"github.com/beanruntime/bean/internal/uid"
 	"github.com/beanruntime/bean/internal/valuesource"
@@ -68,6 +69,18 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 		return nil, &dbal.Error{Code: dbal.Conflict, Message: "Action is not permitted"}
 	}
 	input = copyValues(input)
+	navigationRaw, navigationSubmitted := input[beanmenu.ActionInputKey]
+	var navigationSubmission beanmenu.Submission
+	if navigationSubmitted {
+		if a.Operation != "create" && a.Operation != "update" {
+			return nil, &dbal.Error{Code: dbal.InvalidQuery, Message: "navigation input is only allowed for create and update Actions"}
+		}
+		var navigationErr error
+		navigationSubmission, navigationErr = beanmenu.DecodeSubmission(navigationRaw)
+		if navigationErr != nil {
+			return nil, navigationErr
+		}
+	}
 	if a.Operation == "create" {
 		var initialErr error
 		input, initialErr = applyLifecycleInitial(app, e, input)
@@ -195,6 +208,16 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 			return x
 		}
 		var er error
+		if a.Operation == "delete" {
+			var navigationChanged bool
+			navigationChanged, er = beanmenu.DeleteRecordPlacements(ctx, tx, app, e.Name, fmt.Sprint(input["id"]))
+			if navigationChanged {
+				changed = append(changed, "navigation")
+			}
+			if er != nil {
+				return er
+			}
+		}
 		switch a.Operation {
 		case "create":
 			result, er = s.create(ctx, tx, app, e, input, request, createID, now)
@@ -231,6 +254,20 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 		if er != nil {
 			return er
 		}
+		if navigationSubmitted {
+			targetID := createID
+			if result != nil && result["id"] != nil {
+				targetID = fmt.Sprint(result["id"])
+			}
+			var navigationChanged bool
+			navigationChanged, er = beanmenu.ReplaceTargetPlacements(ctx, tx, app, e.Name, targetID, navigationSubmission, request, now)
+			if er != nil {
+				return er
+			}
+			if navigationChanged {
+				changed = append(changed, "navigation")
+			}
+		}
 		for outputName, value := range result {
 			definition, declared := a.Output[outputName]
 			if !declared {
@@ -248,6 +285,7 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 				}
 			}
 			sort.Strings(changed)
+			changed = compactStrings(changed)
 		}
 		if idempotencyKey != "" {
 			encoded, x := json.Marshal(result)
@@ -853,6 +891,18 @@ func userID(c beanctx.Request) string {
 	return c.User.ID
 }
 func systemField(k string) bool { return k == "created_at" || k == "updated_at" || k == "version" }
+func compactStrings(values []string) []string {
+	if len(values) < 2 {
+		return values
+	}
+	out := values[:1]
+	for _, value := range values[1:] {
+		if value != out[len(out)-1] {
+			out = append(out, value)
+		}
+	}
+	return out
+}
 func safeError(e error) string {
 	if x, ok := e.(*dbal.Error); ok {
 		return x.Message

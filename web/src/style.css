@@ -119,6 +119,14 @@
   .rich-text code { @apply rounded bg-muted px-1 py-0.5 font-mono text-sm; }
   .rich-text pre { @apply overflow-x-auto rounded-lg bg-muted p-4; }
 
+  .bean-workspace-menu { display: flex; flex-direction: column; gap: 0.75rem; }
+  .bean-menu-level { display: flex; max-width: 100%; gap: 0.25rem; overflow-x: auto; padding-bottom: 0.25rem; }
+  .bean-menu-link { @apply whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground; }
+  .bean-menu-link[data-active="true"], .bean-menu-link[aria-current="page"] { @apply bg-muted text-foreground; }
+  .bean-menu-level-vertical { flex-direction: column; overflow-x: visible; }
+  .bean-menu-tertiary-desktop { display: none; }
+  .bean-menu-tertiary-mobile { display: block; }
+
   .bean-page { display: flex; flex-direction: column; gap: 1rem; }
   .bean-page-chrome, .bean-panel[data-page-width] { width: 100%; margin-inline: auto; padding-inline: 1rem; }
   .bean-page-chrome, .bean-panel[data-page-width="wide"] { max-width: 72rem; }
@@ -176,6 +184,9 @@
 }
 
 @media (min-width: 48rem) {
+  .bean-menu-tertiary-desktop { display: block; }
+  .bean-menu-tertiary-mobile { display: none; }
+
   .bean-panel[data-layout="two-column"] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

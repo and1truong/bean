@@ -27,10 +27,10 @@ Status values: `pending`, `active`, `done`.
 | --- | --- | --- | --- |
 | 0 | Freeze scoped instances, typed targets, placement lifecycle, bounds, and deferred scope | root goal and Menu idea | done |
 | 1 | Compile hierarchical static targets and Entity navigation into AppIR v13 | AppIR/compiler/schema/inspect/diff tests | done |
-| 2 | Add portable dynamic placement persistence and publication preflight | migration/SQLite/PostgreSQL/release tests | active |
-| 3 | Execute typed placement create/update/delete atomically with Entity Actions | Action and idempotency tests | pending |
-| 4 | Resolve authorized Menu trees and active routes through Views | Menu/HTTP/Policy tests | pending |
-| 5 | Add generated record editing and responsive accessible navigation | React/Studio/browser tests | pending |
+| 2 | Add portable dynamic placement persistence and publication preflight | migration/SQLite/PostgreSQL/release tests | done |
+| 3 | Execute typed placement create/update/delete atomically with Entity Actions | Action and idempotency tests | done |
+| 4 | Resolve authorized Menu trees and active routes through Views | Menu/HTTP/Policy tests | done |
+| 5 | Add generated record editing and responsive accessible navigation | React/Studio/browser tests | active |
 | 6 | Add the maintained Book/Page acceptance slice and qualify the repository | package/restart/`make check`/`make build` | pending |
 
 ## Working rules

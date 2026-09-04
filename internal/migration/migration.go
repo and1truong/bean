@@ -333,6 +333,7 @@ func MetadataSchema() []string {
 		`CREATE TABLE IF NOT EXISTS bean_job (id TEXT PRIMARY KEY,name TEXT NOT NULL,run_at TEXT NOT NULL,status TEXT NOT NULL,payload TEXT NOT NULL,attempts INTEGER NOT NULL,retry_delay INTEGER NOT NULL,last_error TEXT,completed_at TEXT,claim_token TEXT,claimed_at TEXT,next_attempt_at TEXT,max_attempts INTEGER NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS bean_idempotency (action TEXT NOT NULL,key TEXT NOT NULL,input_hash TEXT NOT NULL,result TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(action,key))`,
 		`CREATE TABLE IF NOT EXISTS bean_blob (id TEXT PRIMARY KEY,file_name TEXT NOT NULL,content_type TEXT NOT NULL,size INTEGER NOT NULL,content TEXT NOT NULL,created_at TEXT NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS bean_menu_placement (id TEXT PRIMARY KEY,menu_name TEXT NOT NULL,owner_entity TEXT NOT NULL,owner_id TEXT NOT NULL,target_entity TEXT NOT NULL,target_id TEXT NOT NULL,parent_id TEXT,weight INTEGER NOT NULL,label_override TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(menu_name,owner_id,target_entity,target_id))`,
 	}
 }
 

@@ -1,0 +1,5 @@
+apiVersion: bean/v1alpha1
+name: Books
+resources:
+  - model.yaml
+  - layout.yaml

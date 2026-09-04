@@ -32,6 +32,7 @@ import (
 	"github.com/beanruntime/bean/internal/expr"
 	"github.com/beanruntime/bean/internal/field"
 	"github.com/beanruntime/bean/internal/kernel"
+	beanmenu "github.com/beanruntime/bean/internal/menu"
 	"github.com/beanruntime/bean/internal/page"
 	"github.com/beanruntime/bean/internal/policy"
 	"github.com/beanruntime/bean/internal/release"
@@ -70,6 +71,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/auth/login", s.login)
 	mux.HandleFunc("POST /api/auth/logout", s.logout)
 	mux.HandleFunc("GET /api/views/{name}", s.view)
+	mux.HandleFunc("GET /api/menus/{name}", s.menu)
 	mux.HandleFunc("GET /api/files/{id}", s.file)
 	mux.HandleFunc("POST /api/actions/{name}", s.action)
 	mux.HandleFunc("POST /api/actions/{name}/batch", s.actionBatch)
@@ -951,6 +953,15 @@ func nullable(value string) any {
 	}
 	return value
 }
+
+func stringListContains(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}
 func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 	a, ok := s.Kernel.Active()
 	if !ok {
@@ -985,7 +996,19 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 			problem(w, 400, "missing_context", "Required View display context is missing.", requestID(r))
 			return
 		}
-		write(w, 200, map[string]any{"tree": view.DisplayPageNode(a, matched)})
+		tree := view.DisplayPageNode(a, matched)
+		menuName, ownerID := r.URL.Query().Get("_menu"), r.URL.Query().Get("_owner")
+		if menuName != "" || ownerID != "" {
+			entity := a.Entities[a.Views[matched.View].Entity]
+			definition, menuExists := a.Menus[menuName]
+			if menuName == "" || ownerID == "" || !menuExists || definition.Owner == nil || entity.Navigation == nil || !stringListContains(entity.Navigation.Menus, menuName) {
+				problem(w, 400, "invalid_menu_context", "View display Menu context is invalid.", requestID(r))
+				return
+			}
+			menuNode := render.Node{Component: "MenuBlock", Props: map[string]any{"name": "@display-menu/" + menuName, "menu": menuName, "profile": definition.Profile, "ownerEntity": definition.Owner.Entity, "ownerID": ownerID}}
+			tree.Children = append([]render.Node{menuNode}, tree.Children...)
+		}
+		write(w, 200, map[string]any{"tree": tree})
 		return
 	}
 	if p.Policy != "" {
@@ -1017,6 +1040,47 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	write(w, 200, map[string]any{"tree": tree})
+}
+
+func (s *Server) menu(w http.ResponseWriter, r *http.Request) {
+	a, ok := s.Kernel.Active()
+	if !ok {
+		problem(w, 503, "not_ready", "No active release.", requestID(r))
+		return
+	}
+	definition, exists := a.Menus[r.PathValue("name")]
+	if !exists || definition.Owner == nil {
+		problem(w, 404, "not_found", "Menu not found.", requestID(r))
+		return
+	}
+	requestContext := s.ctx(r)
+	ownerID := r.URL.Query().Get("_owner")
+	if r.URL.Query().Get("_block") != "" {
+		inputs, boundContext, err := s.boundBlockInputs(r, a, "menu", definition.Name)
+		if err != nil {
+			problem(w, 403, "forbidden", "Menu is unavailable for this request.", requestID(r))
+			return
+		}
+		requestContext = boundContext
+		ownerID = fmt.Sprint(inputs["owner_id"])
+	} else {
+		matched, found := view.MatchPageDisplay(a, r.URL.Query().Get("_page"))
+		if !found {
+			problem(w, 403, "forbidden", "Menu is unavailable for this request.", requestID(r))
+			return
+		}
+		entity := a.Entities[a.Views[matched.View].Entity]
+		if entity.Navigation == nil || !stringListContains(entity.Navigation.Menus, definition.Name) {
+			problem(w, 403, "forbidden", "Menu is unavailable for this request.", requestID(r))
+			return
+		}
+	}
+	tree, err := beanmenu.DynamicTree(r.Context(), s.Actions.DB, a, definition.Name, ownerID, requestContext)
+	if err != nil {
+		respondError(w, r, err)
+		return
+	}
+	write(w, 200, map[string]any{"items": tree})
 }
 
 func (s *Server) boundViewInputs(r *http.Request, a *appir.App, target string) (map[string]any, *appir.Display, beanctx.Request, error) {
@@ -1073,7 +1137,7 @@ func (s *Server) boundBlockInputs(r *http.Request, a *appir.App, kind, target st
 		return nil, requestContext, fmt.Errorf("page and block context must be supplied together")
 	}
 	definition, exists := a.Blocks[blockName]
-	if !exists || kind == "view" && definition.View != target || kind == "webform" && definition.Webform != target {
+	if !exists || kind == "view" && definition.View != target || kind == "webform" && definition.Webform != target || kind == "menu" && definition.Menu != target {
 		return nil, requestContext, fmt.Errorf("bound block does not match this request")
 	}
 	p, routeParams, matched := page.Match(a, pagePath)

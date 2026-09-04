@@ -17,6 +17,7 @@ import (
 	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/fault"
 	"github.com/beanruntime/bean/internal/kernel"
+	beanmenu "github.com/beanruntime/bean/internal/menu"
 	"github.com/beanruntime/bean/internal/migration"
 	"github.com/beanruntime/bean/internal/uid"
 )
@@ -269,6 +270,9 @@ func (s *Store) Preview(ctx context.Context, appID string) (compiler.Result, mig
 	if err != nil {
 		return result, plan, &MigrationPlanError{Err: err}
 	}
+	if err = beanmenu.ValidatePublication(ctx, s.DB, current, result.App); err != nil {
+		return result, plan, &MigrationPlanError{Err: err}
+	}
 	return result, plan, nil
 }
 
@@ -294,6 +298,9 @@ func (s *Store) previewBundle(ctx context.Context, appID string, bundle definiti
 	}
 	plan, err := migration.Build(old, result.Schema)
 	if err != nil {
+		return result, plan, current, &MigrationPlanError{Err: err}
+	}
+	if err = beanmenu.ValidatePublication(ctx, s.DB, current, result.App); err != nil {
 		return result, plan, current, &MigrationPlanError{Err: err}
 	}
 	return result, plan, current, nil
@@ -360,6 +367,9 @@ func (s *Store) publishCandidateLocked(ctx context.Context, appID string, r comp
 	}
 	if (current == nil) != (active == nil) || current != nil && current.ReleaseID != active.ReleaseID {
 		return Published{}, nil, &dbal.Error{Code: dbal.Conflict, Message: "active release changed during publication"}
+	}
+	if err = beanmenu.ValidatePublication(ctx, s.DB, active, r.App); err != nil {
+		return Published{}, []definition.Diagnostic{definition.NewDiagnostic(definition.RuleMigration, "Release", appID, "migration", err.Error())}, nil
 	}
 	var e error
 	applyPlan := plan

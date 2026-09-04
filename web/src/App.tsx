@@ -67,7 +67,7 @@ type RenderProps={
   ResourceListBlock:{name?:string;resource?:string;view?:string;filters?:string[];defaultFilters?:Record<string,any>}
   WebformBlock:{name?:string;webform?:string;form?:Manifest['webforms'][string]}
   ActionBlock:{action?:string}
-  MenuBlock:{items?:Array<{Route:string;Label:string}>}
+  MenuBlock:{name?:string;menu?:string;profile?:string;ownerEntity?:string;ownerID?:string;inputs?:Record<string,any>;items?:MenuItem[]}
 }
 type RenderComponent=keyof RenderProps
 type NodeRenderer<K extends RenderComponent>=(props:RenderProps[K],children?:Node[])=>React.ReactNode
@@ -83,7 +83,7 @@ const nodeRenderers:{[K in RenderComponent]:NodeRenderer<K>}={
   ResourceListBlock:props=><ResourceListBlock resource={props.resource||''} view={props.view||''} block={props.name||''} filters={props.filters} defaultFilters={props.defaultFilters}/>,
   WebformBlock:props=><WebformBlock name={props.webform||''} block={props.name||''} renderedForm={props.form}/>,
   ActionBlock:props=><ActionBlock name={props.action||''}/>,
-  MenuBlock:props=><MenuBlock items={props.items||[]}/>,
+  MenuBlock:props=><MenuBlock block={props.name||''} menu={props.menu||''} profile={props.profile||''} ownerEntity={props.ownerEntity||''} ownerID={String(props.ownerID||props.inputs?.owner_id||'')} items={props.items||[]}/>,
 }
 function isRenderComponent(value:string):value is RenderComponent{return Object.hasOwn(nodeRenderers,value)}
 function renderKnownNode(component:RenderComponent,props:Record<string,any>,children?:Node[]){const renderer=nodeRenderers[component] as NodeRenderer<RenderComponent>;return renderer(props,children)}
@@ -235,7 +235,9 @@ function FormField({element,value,error,onChange}:{element:FormElement;value:any
 }
 
 function ActionBlock({name}:{name:string}){const mutation=useMutation({mutationFn:()=>callAction(name,{})});return <div className="space-y-3"><Button onClick={()=>mutation.mutate()} disabled={mutation.isPending}>{humanize(name)}</Button>{mutation.error&&<ErrorAlert error={mutation.error}/>}</div>}
-function MenuBlock({items}:{items:Array<{Route:string;Label:string}>}){return <nav className="flex flex-wrap gap-2" aria-label="Page navigation">{items.map(item=><Button key={item.Route} variant="outline" asChild><Link to={item.Route}>{item.Label}</Link></Button>)}</nav>}
+type MenuItem={ID?:string;Label:string;Route:string;Level?:number;Current?:boolean;Active?:boolean;Children?:MenuItem[]}
+function MenuBlock({block,menu,profile,ownerEntity,ownerID,items}:{block:string;menu:string;profile:string;ownerEntity:string;ownerID:string;items:MenuItem[]}){const location=useLocation();const navigate=useNavigate();const dynamic=useQuery({queryKey:['menu',menu,ownerID,location.pathname,block],queryFn:()=>{const query=new URLSearchParams({_page:location.pathname,_owner:ownerID});if(!block.startsWith('@display-menu/'))query.set('_block',block);return api<{items:MenuItem[]}>('/api/menus/'+encodeURIComponent(menu)+'?'+query)},enabled:Boolean(ownerEntity&&ownerID&&menu&&block)});if(ownerEntity&&!ownerID)return <section role="alert">Menu owner is unavailable.</section>;if(dynamic.isPending&&ownerEntity)return <LoadingState label="Loading navigation…"/>;if(dynamic.error)return <ErrorAlert error={dynamic.error}/>;const resolved=ownerEntity?dynamic.data?.items||[]:items;if(profile!=='workspace')return <nav className="flex flex-wrap gap-2" aria-label="Page navigation">{resolved.map((item,index)=><Button key={item.ID||item.Route||index} variant="outline" asChild><Link aria-current={item.Current?'page':undefined} to={item.Route}>{item.Label}</Link></Button>)}</nav>;const primary=resolved;const activePrimary=primary.find(item=>item.Active)||primary[0];const secondary=activePrimary?.Children||[];const activeSecondary=secondary.find(item=>item.Active)||secondary[0];const tertiary=activeSecondary?.Children||[];return <div className="bean-workspace-menu" data-menu={menu}><MenuLevel label="Primary navigation" items={primary}/>{secondary.length?<MenuLevel label="Secondary navigation" items={secondary}/>:null}{tertiary.length?<><div className="bean-menu-tertiary-desktop"><MenuLevel label="Section navigation" items={tertiary} vertical/></div><div className="bean-menu-tertiary-mobile"><Field id={'menu-'+menu+'-section'} label="Section"><NativeSelect id={'menu-'+menu+'-section'} value={tertiary.find(item=>item.Current)?.Route||''} onChange={event=>navigate(event.target.value)}><NativeSelectOption value="" disabled>Select section…</NativeSelectOption>{tertiary.map(item=><NativeSelectOption key={item.ID||item.Route} value={item.Route}>{item.Label}</NativeSelectOption>)}</NativeSelect></Field></div></>:null}</div>}
+function MenuLevel({label,items,vertical=false}:{label:string;items:MenuItem[];vertical?:boolean}){return <nav className={vertical?'bean-menu-level bean-menu-level-vertical':'bean-menu-level'} aria-label={label}>{items.map(item=><Link className="bean-menu-link" data-active={item.Active||undefined} aria-current={item.Current?'page':undefined} key={item.ID||item.Route} to={item.Route}>{item.Label}</Link>)}</nav>}
 function Pagination({previousDisabled,nextDisabled,previous,next}:{previousDisabled:boolean;nextDisabled:boolean;previous:()=>void;next:()=>void}){return <nav className="flex justify-end gap-2" aria-label="Pagination"><Button variant="outline" disabled={previousDisabled} onClick={previous}>Previous</Button><Button variant="outline" disabled={nextDisabled} onClick={next}>Next</Button></nav>}
 function humanize(value:string){return value.replaceAll('_',' ').replace(/^./,letter=>letter.toUpperCase())}
 

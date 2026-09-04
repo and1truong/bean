@@ -63,6 +63,34 @@ func (s Service) RunPage(ctx context.Context, app *appir.App, name string, param
 	return ReadPage(ctx, s.DB, app, name, ReadOptions{Params: params, ExpressionValues: params.Filter, ApplyExposedFilter: true}, c)
 }
 
+// ReadEntityRecord performs an internal record lookup through the same View-owned
+// Policy, tenancy, ownership, soft-delete, and redaction path as public reads.
+func ReadEntityRecord(ctx context.Context, reader Reader, app *appir.App, entityName, id string, c beanctx.Request) (dbal.Row, error) {
+	entity, exists := app.Entities[entityName]
+	if !exists {
+		return nil, &dbal.Error{Code: dbal.InvalidQuery, Message: "Entity is invalid"}
+	}
+	fields := []string{"id", "created_at", "updated_at", "version"}
+	for _, field := range entity.Fields {
+		fields = append(fields, field.Name)
+	}
+	viewName := "@internal/entity-record"
+	copyApp := *app
+	copyApp.Views = make(map[string]appir.View, len(app.Views)+1)
+	for name, definition := range app.Views {
+		copyApp.Views[name] = definition
+	}
+	copyApp.Views[viewName] = appir.View{Name: viewName, Entity: entityName, Fields: fields, DefaultLimit: 1, MaxLimit: 1}
+	result, err := ReadPage(ctx, reader, &copyApp, viewName, ReadOptions{Params: Params{RecordID: id, Limit: 1}}, c)
+	if err != nil {
+		return nil, err
+	}
+	if len(result.Rows) == 0 {
+		return nil, &dbal.Error{Code: dbal.NotFound, Message: "record not found"}
+	}
+	return result.Rows[0], nil
+}
+
 func ReadPage(ctx context.Context, reader Reader, app *appir.App, name string, options ReadOptions, c beanctx.Request) (Result, error) {
 	params := options.Params
 	v, ok := app.Views[name]

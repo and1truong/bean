@@ -5,7 +5,7 @@ import (
 
 	"github.com/beanruntime/bean/internal/appir"
 	beanctx "github.com/beanruntime/bean/internal/context"
-	"github.com/beanruntime/bean/internal/policy"
+	beanmenu "github.com/beanruntime/bean/internal/menu"
 	"github.com/beanruntime/bean/internal/registry"
 	beanview "github.com/beanruntime/bean/internal/view"
 )
@@ -125,13 +125,14 @@ func actionProperties(_ *appir.App, block appir.Block, _ beanctx.Request, props 
 }
 
 func menuProperties(app *appir.App, block appir.Block, request beanctx.Request, props map[string]any) error {
-	items := []appir.MenuItem{}
-	for _, item := range app.Menus[block.Menu].Items {
-		if item.Policy == "" || policy.Can(app.Policies[item.Policy], false, request, nil) {
-			items = append(items, item)
-		}
+	definition := app.Menus[block.Menu]
+	props["menu"] = block.Menu
+	props["profile"] = definition.Profile
+	props["ownerEntity"] = ""
+	if definition.Owner != nil {
+		props["ownerEntity"] = definition.Owner.Entity
 	}
-	props["items"] = items
+	props["items"] = beanmenu.StaticTree(app, definition, request)
 	return nil
 }
 

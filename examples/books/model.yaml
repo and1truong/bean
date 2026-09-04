@@ -1,0 +1,118 @@
+kind: Entity
+name: book
+label: Book
+fields:
+  - {name: title, label: Title, type: string, required: true}
+---
+kind: Entity
+name: page
+label: Page
+fields:
+  - {name: title, label: Title, type: string, required: true}
+  - {name: body, label: Body, type: text, required: true}
+navigation:
+  labelField: title
+  destination: {view: page_records, display: detail}
+  menus: [book_contents]
+---
+kind: Menu
+name: book_contents
+profile: workspace
+maxDepth: 3
+owner: {entity: book}
+items: []
+---
+kind: View
+name: book_records
+entity: book
+fields: [id, title]
+defaultLimit: 25
+maxLimit: 50
+sort: [{field: title}]
+displays:
+  list:
+    type: block
+    renderer: {type: list, titleField: title, linkRoute: /books/:id}
+    pager: {type: cursor, pageSize: 25}
+---
+kind: View
+name: book_record
+entity: book
+fields: [id, title]
+defaultLimit: 1
+maxLimit: 1
+exposedFilters:
+  record: {field: id, operator: eq, required: true, unique: true, type: uuid}
+displays:
+  summary:
+    type: block
+    renderer: {type: detail, titleField: title}
+    pager: {type: none, pageSize: 1}
+---
+kind: View
+name: page_records
+entity: page
+fields: [id, title, body]
+defaultLimit: 1
+maxLimit: 1
+exposedFilters:
+  record: {field: id, operator: eq, required: true, unique: true, type: uuid}
+displays:
+  detail:
+    type: page
+    route: /pages/:id
+    title: {field: title, fallback: Page}
+    bindings:
+      record: {source: route, name: id, required: true}
+    renderer: {type: detail, titleField: title, bodyField: body}
+    pager: {type: none, pageSize: 1}
+---
+kind: Action
+name: create_book
+entity: book
+operation: create
+input:
+  title: {type: string, required: true}
+---
+kind: Action
+name: update_book
+entity: book
+operation: update
+input:
+  id: {type: uuid, required: true}
+  version: {type: integer, required: true}
+  title: {type: string, required: true}
+---
+kind: Action
+name: delete_book
+entity: book
+operation: delete
+input:
+  id: {type: uuid, required: true}
+  version: {type: integer, required: true}
+---
+kind: Action
+name: create_page
+entity: page
+operation: create
+input:
+  title: {type: string, required: true}
+  body: {type: text, required: true}
+---
+kind: Action
+name: update_page
+entity: page
+operation: update
+input:
+  id: {type: uuid, required: true}
+  version: {type: integer, required: true}
+  title: {type: string, required: true}
+  body: {type: text, required: true}
+---
+kind: Action
+name: delete_page
+entity: page
+operation: delete
+input:
+  id: {type: uuid, required: true}
+  version: {type: integer, required: true}

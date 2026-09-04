@@ -2254,8 +2254,13 @@ func validateBlocks(a *appir.App, _ *validationState) []definition.Diagnostic {
 			}
 		}
 		if block.Menu != "" {
-			if _, ok := a.Menus[block.Menu]; !ok {
+			if menuDefinition, ok := a.Menus[block.Menu]; !ok {
 				out = append(out, missingReferenceDiagnostic("Block", name, "spec.menu", "Menu", block.Menu))
+			} else if menuDefinition.Owner != nil {
+				ownerInput, exists := block.Inputs["owner_id"]
+				if !exists || !ownerInput.Required || ownerInput.Type != "uuid" {
+					out = append(out, diagnostic("Block", name, "spec.inputs.owner_id", "scoped Menu Blocks require a required uuid owner_id input"))
+				}
 			}
 		}
 		if block.Policy != "" {
