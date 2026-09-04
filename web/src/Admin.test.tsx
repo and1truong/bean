@@ -15,8 +15,12 @@ describe('Admin',()=>{
     show('/article')
     expect(await screen.findByRole('heading',{name:'Article'})).toBeInTheDocument()
     expect(await screen.findByText('Bean ships')).toBeInTheDocument()
-    expect(screen.getByRole('columnheader',{name:'Title'})).toBeInTheDocument()
-    expect(screen.getByLabelText('Status')).toBeInTheDocument()
+    expect(screen.getByRole('columnheader',{name:'Title'})).toHaveAttribute('aria-sort','none')
+    expect(screen.getByLabelText('Article records')).toHaveTextContent('1 result')
+    fireEvent.change(screen.getByLabelText('Status'),{target:{value:'draft'}})
+    expect(screen.getByRole('button',{name:'Remove draft filter'})).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button',{name:'Clear all'}))
+    expect(screen.getByLabelText('Status')).toHaveValue('')
   })
 
   it('renders a separate typed create form',async()=>{
@@ -65,7 +69,10 @@ describe('Admin',()=>{
     show('/article/new')
     fireEvent.change(await screen.findByTestId('field-title'),{target:{value:'Duplicate'}})
     fireEvent.click(screen.getByTestId('create-article'))
-    expect(await screen.findByText('must be unique')).toHaveAttribute('role','alert')
+    const error=await screen.findByText('must be unique')
+    expect(error).toHaveAttribute('role','alert')
+    expect(screen.getByTestId('field-title')).toHaveAttribute('aria-invalid','true')
+    expect(screen.getByTestId('field-title')).toHaveAttribute('aria-describedby',error.id)
   })
 
   it('uses the AdminResource View for current file downloads',async()=>{

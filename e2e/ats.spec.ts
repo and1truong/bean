@@ -63,7 +63,7 @@ test('applicant tracker opens populated and operational',async({page,bean})=>{
   await page.getByLabel('Group field').selectOption('stage')
   await page.getByLabel('Page route (optional)').fill('/candidate-stage-snapshot')
   await page.getByTestId('explore-preview').click()
-  await expect(page.getByRole('cell',{name:'Total'})).toBeVisible()
+  await expect(page.getByRole('columnheader',{name:'Total'})).toBeVisible()
   await page.getByTestId('explore-save').click()
   await expect(page.getByText('Saved View candidate_stage_snapshot to the deterministic Studio draft.')).toBeVisible()
   await page.goto(bean.baseURL+'/studio')

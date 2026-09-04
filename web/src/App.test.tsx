@@ -3,7 +3,21 @@ import {afterEach,describe,it,expect,vi} from 'vitest'
 import {MemoryRouter,useNavigate,type NavigateFunction} from 'react-router-dom'
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query'
 import App,{controlInputValue,controlQueryValue,evaluate} from './App'
-describe('App',()=>{it('renders login',()=>{render(<QueryClientProvider client={new QueryClient()}><MemoryRouter initialEntries={['/login']}><App/></MemoryRouter></QueryClientProvider>);expect(screen.getByRole('heading',{name:'Sign in'})).toBeInTheDocument()})})
+describe('App',()=>{
+  it('renders login',()=>{render(<QueryClientProvider client={new QueryClient()}><MemoryRouter initialEntries={['/login']}><App/></MemoryRouter></QueryClientProvider>);expect(screen.getByRole('heading',{name:'Sign in'})).toBeInTheDocument()})
+  it('switches the semantic shell between designed light and dark themes',()=>{
+    localStorage.removeItem('bean_color_mode')
+    render(<QueryClientProvider client={new QueryClient()}><MemoryRouter initialEntries={['/login']}><App/></MemoryRouter></QueryClientProvider>)
+    const shell=screen.getByTestId('application-shell')
+    expect(shell).toHaveAttribute('data-theme','light')
+    fireEvent.click(screen.getByRole('button',{name:'Use dark theme'}))
+    expect(shell).toHaveAttribute('data-theme','dark')
+    expect(shell).toHaveClass('dark')
+    expect(localStorage.getItem('bean_color_mode')).toBe('dark')
+    expect(screen.getByRole('button',{name:'Use light theme'})).toBeInTheDocument()
+    localStorage.removeItem('bean_color_mode')
+  })
+})
 
 describe('client expressions',()=>{
   it('implements list membership and fails loudly for unknown operators',()=>{

@@ -9,8 +9,8 @@ const routeTabsListVariants = cva(
   {
     variants: {
       variant: {
-        default: "rounded-lg bg-muted p-[3px]",
-        line: "gap-1 bg-transparent",
+        default: "rounded-md border border-border bg-surface-subtle p-0.5",
+        line: "gap-1 border-b border-border-subtle bg-transparent",
       },
       orientation: {
         horizontal: "h-9 max-w-full overflow-x-auto",
@@ -30,9 +30,9 @@ const routeTabsLinkVariants = cva(
     variants: {
       variant: {
         default:
-          "h-[calc(100%-1px)] rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30",
+          "h-[calc(100%-1px)] rounded-sm data-[state=active]:bg-surface data-[state=active]:shadow-[0_1px_2px_rgb(0_0_0/0.08)]",
         line:
-          "rounded-none after:absolute after:bg-foreground after:opacity-0 after:transition-opacity data-[state=active]:after:opacity-100",
+          "rounded-none after:absolute after:bg-primary after:opacity-0 after:transition-opacity data-[state=active]:after:opacity-100",
       },
       orientation: {
         horizontal: "after:inset-x-1 after:-bottom-1 after:h-0.5",

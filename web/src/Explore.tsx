@@ -1,7 +1,7 @@
 import {useEffect,useMemo,useState} from 'react'
 import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query'
 import {api,apiResponse,AdminManifest,Entity} from './api'
-import {ErrorAlert,Field,LoadingState,Page,PageHeader,SectionCard,StatusAlert} from '@/components/bean'
+import {DataTable,EmptyState,ErrorAlert,Field,LoadingState,Page,PageHeader,SectionCard,StatusAlert} from '@/components/bean'
 import {Button} from '@/components/ui/button'
 import {Checkbox} from '@/components/ui/checkbox'
 import {Input} from '@/components/ui/input'
@@ -76,8 +76,8 @@ export function Explore(){
   const previewIsCurrent=Boolean(preview.data&&previewedFingerprint===previewFingerprint)
   if(manifest.isPending)return <Page><LoadingState label="Loading Explore…"/></Page>
   if(manifest.error)return <Page narrow><PageHeader title="Explore"/><ErrorAlert error={manifest.error}/></Page>
-  return <Page><PageHeader title="Explore" description="Build a typed View from an existing Entity, preview it with current Policy, then save an ordinary draft definition."/>
-    <SectionCard title="View query"><div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+  return <Page className="max-w-[96rem]"><PageHeader title="Explore" description="Build a typed View from an existing Entity, preview it with current Policy, then save an ordinary draft definition."/>
+    <div className="bean-explore-layout"><SectionCard className="bean-explore-query" title="Query definition" description="Select data, shape the result, and test the query before saving it as a View."><div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       <Field id="explore-entity" label="Entity"><NativeSelect id="explore-entity" data-testid="explore-entity" value={entityName} onChange={event=>setEntityName(event.target.value)}>{entityNames.map(name=><NativeSelectOption key={name}>{name}</NativeSelectOption>)}</NativeSelect></Field>
       <Field id="explore-name" label="View name"><Input id="explore-name" data-testid="explore-name" required pattern="[a-z][a-z0-9_]*" value={viewName} onChange={event=>{setViewName(event.target.value);setReplace(false);setSaved(false)}}/></Field>
       <Field id="explore-mode" label="Result"><NativeSelect id="explore-mode" value={mode} onChange={event=>setMode(event.target.value as ExploreMode)}>{['records','groups','metric'].map(value=><NativeSelectOption key={value}>{value}</NativeSelectOption>)}</NativeSelect></Field>
@@ -88,7 +88,7 @@ export function Explore(){
     <div className="mt-6 flex flex-wrap items-center gap-3"><Button data-testid="explore-preview" disabled={!viewName||(mode==='records'&&!fields.includes('id'))||(mode==='groups'&&!groupField)||!aggregateAlias||preview.isPending} onClick={()=>preview.mutate({fingerprint:previewFingerprint,candidate:previewCandidate})}>{preview.isPending?'Previewing…':'Preview'}</Button>{conflict&&<Check id="explore-replace" label="Replace existing draft" checked={replace} onChange={setReplace}/>}<Button variant="outline" data-testid="explore-save" disabled={!previewIsCurrent||preview.isPending||save.isPending||definitions.isFetching||Boolean(definitions.error)||!definitions.data?.etag||(conflict&&!replace)} onClick={()=>save.mutate()}>{save.isPending?'Saving…':conflict?'Replace draft':'Save draft'}</Button></div>
     {definitions.error&&<ErrorAlert error={definitions.error}/>} {preview.error&&<ErrorAlert error={preview.error}/>} {save.error&&<ErrorAlert error={save.error}/>} {validate.error&&<ErrorAlert error={validate.error}/>} {saved&&<StatusAlert>Saved View {viewName} to the deterministic Studio draft.</StatusAlert>}{validate.data&&<div className="mt-3 rounded-lg bg-muted p-3 text-sm" data-testid="explore-validation"><p>{validate.data.valid?'Draft validates.':'Draft has diagnostics.'} Semantic changes: {validate.data.changes?.length||0}.</p>{Boolean(validate.data.diagnostics?.length)&&<pre className="mt-2 overflow-auto text-xs">{JSON.stringify(validate.data.diagnostics,null,2)}</pre>}</div>}
     </SectionCard>
-    <SectionCard title="Preview" description="Preview is ephemeral and executes through the same compiled View service as a published definition.">{preview.isPending?<LoadingState label="Running View preview…"/>:previewIsCurrent?<PreviewTable rows={preview.data!.data} fields={previewFields(preview.data!.data,mode,fields)}/>:<p className="text-muted-foreground">Configure the View and run a preview.</p>}</SectionCard>
+    <SectionCard className="bean-explore-preview" title="Result preview" description="Ephemeral result from the same compiled View service used after publication.">{preview.isPending?<LoadingState label="Running View preview…"/>:previewIsCurrent?<PreviewTable rows={preview.data!.data} fields={previewFields(preview.data!.data,mode,fields)}/>:<EmptyState title="No preview yet" description="Configure the query, then run Preview to inspect its current result."/>}</SectionCard></div>
   </Page>
 }
 
@@ -110,7 +110,7 @@ function dateLike(type?:string){return ['date','datetime'].includes(type||'')}
 function operators(type?:string){if(searchable(type))return ['eq','contains'];if(['date','datetime','decimal','integer','money'].includes(type||''))return ['eq','gte','lte'];return ['eq']}
 function toggle(values:string[],name:string,checked:boolean){return checked?[...new Set([...values,name])]:values.filter(value=>value!==name)}
 function Check({id,label,checked,onChange,disabled=false}:{id:string;label:string;checked:boolean;onChange:(checked:boolean)=>void;disabled?:boolean}){return <div className="flex items-center gap-2"><Checkbox id={id} checked={checked} disabled={disabled} onCheckedChange={value=>onChange(Boolean(value))}/><Label htmlFor={id}>{label}</Label></div>}
-function PreviewTable({rows,fields}:{rows:Row[];fields:string[]}){if(!rows.length)return <p className="text-muted-foreground">No records match this preview.</p>;return <Table><TableHeader><TableRow>{fields.map(field=><TableHead key={field}>{humanize(field)}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.map((row,index)=><TableRow key={String(row.id??index)}>{fields.map(field=><TableCell key={field}>{display(row[field])}</TableCell>)}</TableRow>)}</TableBody></Table>}
+function PreviewTable({rows,fields}:{rows:Row[];fields:string[]}){if(!rows.length)return <EmptyState title="No matching rows" description="Change the query conditions and preview again."/>;return <DataTable count={rows.length} label="Query preview"><Table><TableHeader><TableRow>{fields.map(field=><TableHead scope="col" key={field}>{humanize(field)}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.map((row,index)=><TableRow key={String(row.id??index)}>{fields.map(field=><TableCell key={field}><span className="block max-w-72 truncate" title={display(row[field])}>{display(row[field])}</span></TableCell>)}</TableRow>)}</TableBody></Table></DataTable>}
 function previewFields(rows:Row[],mode:ExploreMode,fields:string[]){return mode==='records'?fields:Object.keys(rows[0]||{})}
 function display(value:any){if(value==null)return '';if(typeof value==='object')return JSON.stringify(value);return String(value)}
 function humanize(value:string){return value.replaceAll('_',' ').replace(/^./,letter=>letter.toUpperCase())}
