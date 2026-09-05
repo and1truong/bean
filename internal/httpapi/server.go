@@ -81,6 +81,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/auth/logout", s.logout)
 	mux.HandleFunc("POST /api/auth/password", s.accountPassword)
 	mux.HandleFunc("POST /api/auth/recovery/request", s.recoveryRequest)
+	mux.HandleFunc("POST /api/auth/verification/request", s.verificationRequest)
+	mux.HandleFunc("POST /api/auth/verification/confirm", s.verificationConfirm)
 	mux.HandleFunc("POST /api/auth/recovery/reset", s.recoveryReset)
 	mux.HandleFunc("POST /api/auth/sessions/revoke", s.accountSessions)
 	mux.HandleFunc("GET /api/views/{name}", s.view)
@@ -490,6 +492,10 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	session, e := s.Auth.Login(r.Context(), in.Email, in.Password)
+	if e == auth.ErrEmailUnverified {
+		problem(w, 403, "email_unverified", "Verify your email before signing in.", requestID(r))
+		return
+	}
 	if e != nil {
 		problem(w, 401, "invalid_credentials", "Invalid email or password.", requestID(r))
 		return

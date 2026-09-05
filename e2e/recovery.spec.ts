@@ -9,7 +9,7 @@ import {randomBytes} from 'node:crypto'
 
 // A local STARTTLS SMTP sink exercises the actual host transport and durable
 // outbox. Its temporary CA is trusted only by this test's host mail configuration.
-test('forgot password delivers a fragment link and resets through the browser',async({page},testInfo)=>{
+for(const verification of [false,true])test(verification?'existing and newly registered accounts verify email before login':'forgot password delivers a fragment link and resets through the browser',async({page},testInfo)=>{
   const root=resolve(import.meta.dirname,'..');const binary=join(root,'bin/bean')
   const dir=mkdtempSync(join(tmpdir(),'bean-recovery-e2e-'));const messages:string[]=[]
   let child:ChildProcess|undefined
@@ -45,11 +45,41 @@ test('forgot password delivers a fragment link and resets through the browser',a
     const port=19200+testInfo.workerIndex;const origin=`http://127.0.0.1:${port}`
     const env={...process.env,BEAN_AUTH_EMAIL:JSON.stringify({address:`127.0.0.1:${smtpPort}`,from:'bean@example.test',origin,key:randomBytes(32).toString('base64'),rootCAFile:join(dir,'cert.pem')})}
     const db=join(dir,'bean.db');const source=join(dir,'blog');cpSync(join(root,'examples/blog'),source,{recursive:true})
-    appendFileSync(join(source,'access.yaml'),'\n---\nkind: Authentication\nname: auth\npreset: public\npasswordRecovery: true\nregistration: true\n')
+    appendFileSync(join(source,'access.yaml'),`\n---\nkind: Authentication\nname: auth\npreset: public\npasswordRecovery: ${!verification}\nemailVerification: ${verification}\nregistration: true\n`)
     for(const args of [['init','--db',db],['app','import','--db',db,'--file',join(source,'app.yaml')],['publish','--db',db]])execFileSync(binary,args,{env,stdio:'pipe'})
     child=spawn(binary,['serve','--db',db,'--addr',`127.0.0.1:${port}`],{env,stdio:['ignore','pipe','pipe']})
     let serverOutput='';child.stderr!.on('data',chunk=>{serverOutput+=String(chunk)})
     await expect.poll(async()=>{try{if(child!.exitCode!==null)throw new Error(serverOutput);return (await fetch(origin+'/healthz')).ok}catch(error){if(child!.exitCode!==null)throw error;return false}}).toBe(true)
+    if(verification){
+      await page.goto(origin+'/login')
+      await page.getByLabel('Email',{exact:true}).fill('admin@example.test');await page.getByLabel('Password',{exact:true}).fill('test-password');await page.getByTestId('login').click()
+      await expect(page.getByRole('alert')).toContainText('Verify your email before signing in.')
+      await page.getByRole('link',{name:'Verify email or resend link'}).click()
+      await expect(page.getByRole('button',{name:'Send verification link'})).toBeEnabled()
+      await page.getByLabel('Email',{exact:true}).fill('admin@example.test');await page.getByRole('button',{name:'Send verification link'}).click()
+      await expect(page.getByRole('status')).toContainText('If this account needs verification')
+      await expect.poll(()=>messages.length,{timeout:15000}).toBe(1)
+      for(const [index,email,password] of [[0,'admin@example.test','test-password'],[1,'new-member@example.test','member-password']] as const){
+        if(index===1){
+          await page.getByRole('button',{name:'Sign out',exact:true}).click()
+          await expect(page.getByRole('link',{name:'Sign in',exact:true})).toBeVisible()
+          const signup=await page.request.post(origin+'/api/actions/register_member',{data:{display_name:'Member',email,password,password_confirmation:password}});expect(signup.ok()).toBeTruthy()
+          await expect.poll(()=>messages.length,{timeout:15000}).toBe(2)
+        }
+        const link=messages[index].split('\n').find(line=>line.startsWith(origin+'/login?verification=confirm#token='))!
+        expect(link).toBeTruthy();const token=new URL(link).hash.slice('#token='.length)
+        await page.goto(link);await expect(page).toHaveURL(origin+'/login?verification=confirm')
+        expect((await page.request.post(origin+'/api/auth/login',{data:{email,password}})).status()).toBe(403)
+        expect(await page.evaluate(()=>JSON.stringify({...sessionStorage,...localStorage}))).not.toContain(token)
+        await page.getByLabel('Account password',{exact:true}).fill(password)
+        await page.getByRole('button',{name:'Verify email',exact:true}).click();await expect(page).toHaveURL(origin+'/login?notice=email-verified')
+        await expect(page.getByRole('status')).toContainText('Email verified')
+        expect((await page.request.post(origin+'/api/auth/verification/confirm',{data:{token,password}})).status()).toBe(400)
+        await page.getByLabel('Email',{exact:true}).fill(email);await page.getByLabel('Password',{exact:true}).fill(password);await page.getByTestId('login').click()
+        await expect(page).toHaveURL(index===0?origin+'/admin':origin+'/')
+      }
+      return
+    }
     await page.goto(origin+'/login');await page.getByRole('link',{name:'Forgot password?'}).click()
     await expect(page.getByRole('button',{name:'Send reset link',exact:true})).toBeEnabled()
     await page.getByLabel('Email',{exact:true}).fill('admin@example.test')

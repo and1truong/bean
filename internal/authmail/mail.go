@@ -25,6 +25,8 @@ const Environment = "BEAN_AUTH_EMAIL"
 const TopicPrefix = "__bean_auth."
 const RequestTopic = TopicPrefix + "recovery_request"
 const DeliveryTopic = TopicPrefix + "recovery_delivery"
+const VerificationRequestTopic = TopicPrefix + "verification_request"
+const VerificationDeliveryTopic = TopicPrefix + "verification_delivery"
 
 var ErrConfiguration = errors.New("invalid auth email configuration: require SMTP address, sender, safe origin and a base64 32-byte key")
 var ErrDelivery = errors.New("auth email delivery failed")
@@ -39,7 +41,7 @@ type Config struct {
 	Key        string `json:"key"`
 	RootCAFile string `json:"rootCAFile"`
 }
-type Message struct{ To, Link string }
+type Message struct{ To, Link, Purpose string }
 type Sender interface {
 	Send(context.Context, Message) error
 }
@@ -171,6 +173,12 @@ func (s *Service) Open(topic string, payload map[string]any) (Envelope, error) {
 	return message, nil
 }
 func (s *Service) Send(ctx context.Context, message Envelope) error {
+	return s.send(ctx, message, false)
+}
+func (s *Service) SendVerification(ctx context.Context, message Envelope) error {
+	return s.send(ctx, message, true)
+}
+func (s *Service) send(ctx context.Context, message Envelope, verification bool) error {
 	if !message.Expires.After(time.Now()) {
 		return nil
 	}
@@ -179,7 +187,12 @@ func (s *Service) Send(ctx context.Context, message Envelope) error {
 	}
 	// Fragment credentials never reach HTTP request paths or Referer headers.
 	link := s.origin + "/login?recovery=reset#token=" + url.QueryEscape(message.Token)
-	if err := s.sender.Send(ctx, Message{To: message.Email, Link: link}); err != nil {
+	purpose := "password_reset"
+	if verification {
+		link = s.origin + "/login?verification=confirm#token=" + url.QueryEscape(message.Token)
+		purpose = "email_verify"
+	}
+	if err := s.sender.Send(ctx, Message{To: message.Email, Link: link, Purpose: purpose}); err != nil {
 		return ErrDelivery
 	}
 	return nil

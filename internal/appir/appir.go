@@ -27,7 +27,8 @@ const (
 	DirectionalFormat      = "bean/appir/v15"
 	AuthenticationFormat   = "bean/appir/v16"
 	PasswordRecoveryFormat = "bean/appir/v17"
-	CurrentFormat          = "bean/appir/v18"
+	FieldLayoutFormat      = "bean/appir/v18"
+	CurrentFormat          = "bean/appir/v19"
 )
 
 type Field struct {
@@ -544,7 +545,10 @@ func Empty() *App {
 	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Rules: map[string]Rule{}, TestSuites: map[string]TestSuite{}, Extensions: map[string]Extension{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Sequences: map[string]Sequence{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
 }
 func (a *App) ValidateFormat() error {
-	if a.FormatVersion != CurrentFormat {
+	if a.EmailVerificationEnabled() && a.FormatVersion != CurrentFormat {
+		return fmt.Errorf("AppIR format %q cannot contain email verification", a.FormatVersion)
+	}
+	if a.FormatVersion != CurrentFormat && a.FormatVersion != FieldLayoutFormat {
 		for _, resource := range a.AdminResources {
 			if resource.Form.Layout != nil {
 				return fmt.Errorf("AppIR format %q cannot contain field layouts", a.FormatVersion)
@@ -558,16 +562,16 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.PasswordRecoveryEnabled() && a.FormatVersion != PasswordRecoveryFormat && a.FormatVersion != CurrentFormat {
+	if a.PasswordRecoveryEnabled() && a.FormatVersion != PasswordRecoveryFormat && a.FormatVersion != FieldLayoutFormat && a.FormatVersion != CurrentFormat {
 		return fmt.Errorf("AppIR format %q cannot contain password recovery", a.FormatVersion)
 	}
-	if a.Authentication != nil && a.FormatVersion != AuthenticationFormat && a.FormatVersion != PasswordRecoveryFormat && a.FormatVersion != CurrentFormat {
+	if a.Authentication != nil && a.FormatVersion != AuthenticationFormat && a.FormatVersion != PasswordRecoveryFormat && a.FormatVersion != FieldLayoutFormat && a.FormatVersion != CurrentFormat {
 		return fmt.Errorf("AppIR format %q cannot contain Authentication configuration", a.FormatVersion)
 	}
-	// Only v16/v17/v18 delegate to v15 after their own feature checks. Never promote
+	// Only v16/v17/v18/v19 delegate to v15 after their own feature checks. Never promote
 	// v14: that would incorrectly authorize directional Sequence frames.
 	legacy := *a
-	if legacy.FormatVersion == AuthenticationFormat || legacy.FormatVersion == PasswordRecoveryFormat || legacy.FormatVersion == CurrentFormat {
+	if legacy.FormatVersion == AuthenticationFormat || legacy.FormatVersion == PasswordRecoveryFormat || legacy.FormatVersion == FieldLayoutFormat || legacy.FormatVersion == CurrentFormat {
 		legacy.FormatVersion = DirectionalFormat
 	}
 	return legacy.validateThroughDirectionalFormat()

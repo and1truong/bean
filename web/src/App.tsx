@@ -30,6 +30,8 @@ const PageFilterValues=createContext<Record<string,string>>(noPageFilters)
 
 function AuthenticationPage(){
   const location=useLocation();const mode=new URLSearchParams(location.search).get('recovery')
+  const verification=new URLSearchParams(location.search).get('verification')
+  if(verification==='request'||verification==='confirm')return <Shell><Recovery key={'verification-'+verification} verification mode={verification==='request'?'request':'reset'}/></Shell>
   return mode==='request'||mode==='reset'?<Shell><Recovery key={mode} mode={mode}/></Shell>:<Login/>
 }
 
@@ -55,13 +57,13 @@ function Login(){
   }
   return <Shell><Page narrow><Card>
     <CardHeader><CardTitle><h1 className="text-2xl">Sign in</h1></CardTitle><CardDescription>Access your Bean application.</CardDescription></CardHeader>
-    <CardContent>{['password-changed','sessions-revoked'].includes(new URLSearchParams(loc.search).get('notice')||'')&&<p role="status" className="mb-4 text-sm">You have been signed out on all devices. Sign in again to continue.</p>}<form className="space-y-4" onSubmit={submit} aria-busy={pending}>
+    <CardContent>{new URLSearchParams(loc.search).get('notice')==='email-verified'&&<p role="status" className="mb-4 text-sm">Email verified. Sign in to continue.</p>}{['password-changed','sessions-revoked'].includes(new URLSearchParams(loc.search).get('notice')||'')&&<p role="status" className="mb-4 text-sm">You have been signed out on all devices. Sign in again to continue.</p>}<form className="space-y-4" onSubmit={submit} aria-busy={pending}>
       <Field id="login-email" label="Email"><Input id="login-email" name="email" data-testid="email" type="email" autoComplete="username" autoCapitalize="none" spellCheck={false} required disabled={pending} value={email} onChange={event=>setEmail(event.target.value)}/></Field>
       <Field id="login-password" label="Password"><Input id="login-password" name="password" data-testid="password" type={showPassword?'text':'password'} autoComplete="current-password" required disabled={pending} value={password} onChange={event=>setPassword(event.target.value)}/></Field>
       <Button type="button" variant="ghost" size="sm" aria-controls="login-password" aria-pressed={showPassword} onClick={()=>setShowPassword(value=>!value)}>{showPassword?'Hide password':'Show password'}</Button>
       {error&&<ErrorAlert error={error}/>}
       <Button className="w-full" data-testid="login" type="submit" disabled={pending}>{pending?'Signing in…':'Sign in'}</Button>
-    </form>{manifest.data?.authentication?.PasswordRecovery&&<Link className="mt-4 block text-sm" to="/login?recovery=request">Forgot password?</Link>}</CardContent>
+    </form>{manifest.data?.authentication?.PasswordRecovery&&<Link className="mt-4 block text-sm" to="/login?recovery=request">Forgot password?</Link>}{manifest.data?.authentication?.EmailVerification&&<Link className="mt-4 block text-sm" to="/login?verification=request">Verify email or resend link</Link>}</CardContent>
   </Card></Page></Shell>
 }
 

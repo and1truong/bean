@@ -83,8 +83,8 @@ func OpenURLWithOptions(ctx context.Context, databaseURL string, secure bool, op
 	}
 	k := kernel.New()
 	store := &release.Store{DB: db, Migrations: db, Inspector: db, Kernel: k, OpenAPI: openapi.Generate, HostValidation: func(app *appir.App) error {
-		if app.PasswordRecoveryEnabled() && options.AuthMail == nil {
-			return fmt.Errorf("password recovery requires BEAN_AUTH_EMAIL delivery configuration")
+		if app.RequiresAuthMail() && options.AuthMail == nil {
+			return fmt.Errorf("auth email features require BEAN_AUTH_EMAIL delivery configuration")
 		}
 		return nil
 	}}
@@ -96,7 +96,7 @@ func OpenURLWithOptions(ctx context.Context, databaseURL string, secure bool, op
 		db.Close()
 		return nil, e
 	}
-	authService := auth.Service{DB: db}
+	authService := auth.Service{DB: db, VerificationRequired: func() bool { app, ok := k.Active(); return ok && app.EmailVerificationEnabled() }}
 	actions := action.Service{DB: db, Auth: authService, AuthMail: options.AuthMail}
 	views := view.Service{DB: db}
 	server := &httpapi.Server{Kernel: k, Store: store, Auth: authService, Actions: actions, Views: views, SecureCookies: secure}

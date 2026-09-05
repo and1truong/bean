@@ -55,6 +55,9 @@ func (s Service) DeliverAuthMail(ctx context.Context, app *appir.App, topic stri
 	if err != nil {
 		return err
 	}
+	if topic == authmail.VerificationRequestTopic || topic == authmail.VerificationDeliveryTopic {
+		return s.deliverVerification(ctx, app, topic, message)
+	}
 	if app == nil || !app.PasswordRecoveryEnabled() || app.AppID != message.AppID || app.ReleaseID != message.ReleaseID || !message.Expires.After(s.now()) {
 		return nil
 	}

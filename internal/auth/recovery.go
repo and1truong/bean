@@ -23,12 +23,19 @@ func invalidRecovery() error {
 // IssueRecovery runs under the account lock and retains consumed rows as
 // durable request receipts, so worker retries cannot reissue a used token.
 func IssueRecovery(ctx context.Context, tx dbal.Transaction, id, email, appID, releaseID string, expires time.Time) (string, error) {
+	return issueEmailToken(ctx, tx, id, email, appID, releaseID, "password_reset", expires)
+}
+
+func issueEmailToken(ctx context.Context, tx dbal.Transaction, id, email, appID, releaseID, purpose string, expires time.Time) (string, error) {
 	user, err := userForAccount(ctx, tx, "email", normalizeEmail(email))
 	if dbal.IsCode(err, dbal.NotFound) {
 		return "", nil
 	}
 	if err != nil {
 		return "", err
+	}
+	if purpose == "email_verify" && user["email_verified_at"] != nil {
+		return "", nil
 	}
 	existing, err := tx.Select(ctx, dbal.Select{Table: "bean_auth_token", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id}, Limit: 1})
 	if err != nil {
@@ -42,7 +49,7 @@ func IssueRecovery(ctx context.Context, tx dbal.Transaction, id, email, appID, r
 		return "", err
 	}
 	token := base64.RawURLEncoding.EncodeToString(raw)
-	_, err = tx.Insert(ctx, dbal.Insert{Table: "bean_auth_token", Values: map[string]dbal.Value{"id": id, "digest": recoveryDigest(token), "user_id": user["id"], "app_id": appID, "release_id": releaseID, "purpose": "password_reset", "expires_at": expires.UTC().Format(time.RFC3339Nano)}})
+	_, err = tx.Insert(ctx, dbal.Insert{Table: "bean_auth_token", Values: map[string]dbal.Value{"id": id, "digest": recoveryDigest(token), "user_id": user["id"], "app_id": appID, "release_id": releaseID, "purpose": purpose, "expires_at": expires.UTC().Format(time.RFC3339Nano)}})
 	return token, err
 }
 

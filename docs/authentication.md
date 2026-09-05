@@ -11,7 +11,7 @@ preset: internal
 registration: false
 ```
 
-There is at most one `Authentication`, named `auth`. `preset` is required and accepts `local`, `internal`, or `public`. All three have the same conservative effective defaults: registration and password recovery are disabled. Preset names describe deployment intent; **`public` does not automatically enable email features or claim production readiness**.
+There is at most one `Authentication`, named `auth`. `preset` is required and accepts `local`, `internal`, or `public`. All three have the same conservative effective defaults: registration, password recovery and email verification are disabled. Preset names describe deployment intent; **`public` does not automatically enable email features or claim production readiness**.
 
 To opt into registration, set `registration: true` and retain a valid `LocalRegistration` definition pointing to a `register_local_user` Action with a compiler-validated, non-privileged default role. The preset never creates a role, selects a tenant, or creates a workspace.
 
@@ -28,7 +28,7 @@ See `examples/blog/access.yaml` for the complete registration Action, role, form
 
 Without `Authentication`, existing behavior is preserved: `LocalRegistration` is the signup opt-in. With explicit `Authentication`, `registration` defaults to false, even when `LocalRegistration` exists. Login, logout, administrator provisioning, and current sessions are unaffected by toggling registration; existing accounts are not deleted.
 
-Configuration is validated before publication and stored in immutable AppIR (v16 for the initial Authentication contract, v17 for password recovery). Failed publication does not change active capabilities. Earlier AppIR releases remain loadable, but cannot contain the new configuration. Republish definitions to activate a change; do not edit an active snapshot.
+Configuration is validated before publication and stored in immutable AppIR (v16 for the initial Authentication contract, v17 for password recovery, v19 for email verification). Failed publication does not change active capabilities. Earlier AppIR releases remain loadable, but cannot contain the new configuration. Republish definitions to activate a change; do not edit an active snapshot.
 
 ## Account security (no email required)
 
@@ -78,8 +78,23 @@ Generate a random encryption key (for example `openssl rand -base64 32`) and ret
 
 Metadata startup adds `bean_auth_token` and its user index. Token rows store digests, not bearer tokens. Outbox requests/delivery payloads are authenticated-encrypted under the host key; do not treat database backups as containing usable plaintext links. Consumed token receipts and outbox history are retained for retry safety; automatic retention cleanup is not implemented. Drain pending mail before rotating the host encryption key, or expect old envelopes to fail decryption. Operators can inspect sanitized outbox status for delivery failures; there is no claim that accepted requests guarantee email delivery.
 
+## Email ownership verification (opt-in)
+
+Add `emailVerification: true` to `Authentication` to require mailbox verification before local-password login or session use. It is independent of `registration` and `passwordRecovery` and uses the same `BEAN_AUTH_EMAIL` host configuration, encrypted outbox, STARTTLS transport and bounded retries. Publication/startup fails without configured delivery. Presets never enable it implicitly.
+
+**Existing accounts are not grandfathered.** The additive `bean_user.email_verified_at` column starts null, including for host-provisioned administrators. Before enabling, ensure account mailboxes are reachable and keep host CLI/database access available. After enabling, existing users can choose **Verify email or resend link** on the login page. If delivery is misconfigured, a host operator can disable the metadata flag and republish; host password reset does not falsely mark email ownership verified.
+
+- Registration creates the unverified account and queues its encrypted verification request in the same transaction. If enqueue fails, account creation rolls back. Application-authored signup confirmation text should direct users to check email when this option is enabled.
+- `POST /api/auth/verification/request` accepts only `{ "email": "..." }`. Unknown, already-verified and unverified addresses receive the same 202 response; the worker sends only for an existing unverified account. Recovery and verification share bounded IP/destination/token-attempt mail throttles to limit combined abuse.
+- The link uses `/login?verification=confirm#token=...`. It expires after 15 minutes and binds purpose, account and release. The browser removes its fragment and retains the token only in memory; GET/mount does not verify anything.
+- `POST /api/auth/verification/confirm` requires `{ "token": "...", "password": "..." }`. The password is the account's **current password**, not a new password. Requiring both proofs prevents a mailbox owner from accidentally activating an unsolicited account created with an attacker's password. Only confirm an account you created; ignore unsolicited requests.
+- Confirmation atomically records verification, consumes outstanding verification tokens, revokes all sessions and writes a secret-free audit. It does not auto-login, change the email/password, grant roles, or clear a different account's incidental cookie.
+- While enabled, a correct-password login for an unverified account returns 403 with a verification-required message. Unknown/wrong credentials remain generic 401 responses. Session resolution and direct built-in Account Actions also reject unverified accounts. Previously issued sessions are not revived by confirmation.
+- Recovery never implicitly verifies email. Password replacement invalidates already-issued verification tokens; request a new verification link afterward. There is currently no email-change operation; a future one must clear verification and invalidate old tokens.
+- Disabling removes entry points and blocks request/confirmation Actions and queued delivery, while allowing ordinary local login again. Republishing invalidates previous-release links. Verified state persists for the unchanged account email across disable/re-enable cycles.
+
 ## Security and future slices
 
 Password hashing, authorization, session protections, CSRF, and throttling are not optional switches. Existing Secure-cookie and trusted-proxy host settings still need correct deployment configuration.
 
-Email verification, invitations, per-device session listing, OIDC, and MFA remain planned. Their configuration keys are currently rejected, not accepted as inert feature flags. Advanced features will only become available alongside working backend enforcement, delivery where needed, and negative tests. Local/internal applications will retain an email-independent administration path.
+Invitations, per-device session listing, OIDC, and MFA remain planned. Their configuration keys are currently rejected, not accepted as inert feature flags. Advanced features will only become available alongside working backend enforcement, delivery where needed, and negative tests. Local/internal applications will retain an email-independent administration path.

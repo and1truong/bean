@@ -326,7 +326,7 @@ func MetadataSchema() []string {
 		`CREATE TABLE IF NOT EXISTS bean_release_definition (release_id TEXT NOT NULL, definition_id TEXT NOT NULL, revision INTEGER NOT NULL, PRIMARY KEY(release_id,definition_id))`,
 		`CREATE TABLE IF NOT EXISTS bean_schema_migration (release_id TEXT NOT NULL, sequence INTEGER NOT NULL, description TEXT NOT NULL, applied_at TEXT NOT NULL, PRIMARY KEY(release_id,sequence))`,
 		`CREATE TABLE IF NOT EXISTS bean_active_release (app_id TEXT PRIMARY KEY, release_id TEXT NOT NULL)`,
-		`CREATE TABLE IF NOT EXISTS bean_user (id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,display_name TEXT,password_hash TEXT NOT NULL,roles TEXT NOT NULL,tenant_id TEXT,created_at TEXT NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS bean_user (id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,display_name TEXT,email_verified_at TEXT,password_hash TEXT NOT NULL,roles TEXT NOT NULL,tenant_id TEXT,created_at TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS bean_auth_token (id TEXT PRIMARY KEY,digest TEXT NOT NULL UNIQUE,user_id TEXT NOT NULL,app_id TEXT NOT NULL,release_id TEXT NOT NULL,purpose TEXT NOT NULL,expires_at TEXT NOT NULL,consumed_at TEXT,FOREIGN KEY(user_id) REFERENCES bean_user(id) ON DELETE CASCADE)`,
 		`CREATE INDEX IF NOT EXISTS bean_auth_token_user ON bean_auth_token(user_id)`,
 		`CREATE TABLE IF NOT EXISTS bean_session (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,csrf_token TEXT NOT NULL,expires_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES bean_user(id) ON DELETE CASCADE)`,
@@ -346,7 +346,7 @@ func UpgradeMetadata(ctx context.Context, inspector Inspector, executor Executor
 		name string
 		sql  string
 	}{
-		"bean_user":        {{"display_name", `ALTER TABLE "bean_user" ADD COLUMN "display_name" TEXT`}},
+		"bean_user":        {{"display_name", `ALTER TABLE "bean_user" ADD COLUMN "display_name" TEXT`}, {"email_verified_at", `ALTER TABLE "bean_user" ADD COLUMN "email_verified_at" TEXT`}},
 		"bean_idempotency": {{"input_hash", `ALTER TABLE "bean_idempotency" ADD COLUMN "input_hash" TEXT`}},
 		"bean_job": {
 			{"claim_token", `ALTER TABLE "bean_job" ADD COLUMN "claim_token" TEXT`},

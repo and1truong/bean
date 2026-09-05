@@ -20,8 +20,9 @@ type Session struct {
 	TenantID string
 }
 type Service struct {
-	DB  dbal.Database
-	TTL time.Duration
+	DB                   dbal.Database
+	TTL                  time.Duration
+	VerificationRequired func() bool
 }
 
 func (s Service) Bootstrap(ctx context.Context, email, password string) error {
@@ -100,6 +101,9 @@ func (s Service) Login(ctx context.Context, email, password string) (Session, er
 		if err := LockUser(ctx, tx, rows[0]); err != nil {
 			return err
 		}
+		if err := s.CheckVerified(rows[0]); err != nil {
+			return err
+		}
 		_, err := tx.Insert(ctx, dbal.Insert{Table: "bean_session", Values: map[string]dbal.Value{"id": session.ID, "user_id": session.User.ID, "csrf_token": session.CSRF, "expires_at": session.Expires.Format(time.RFC3339Nano)}})
 		return err
 	})
@@ -117,6 +121,9 @@ func (s Service) Current(ctx context.Context, id string) (Session, error) {
 	users, e := s.DB.Select(ctx, dbal.Select{Table: "bean_user", Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: rows[0]["user_id"]}, Limit: 1})
 	if e != nil || len(users) == 0 {
 		return Session{}, &dbal.Error{Code: dbal.NotFound, Message: "user not found"}
+	}
+	if err := s.CheckVerified(users[0]); err != nil {
+		return Session{}, err
 	}
 	out := sessionFromUser(users[0])
 	out.ID = id

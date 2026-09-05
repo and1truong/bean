@@ -499,8 +499,8 @@ func (s *Store) validateHost(app *appir.App) error {
 	if s.HostValidation != nil {
 		return s.HostValidation(app)
 	}
-	if app.PasswordRecoveryEnabled() {
-		return fmt.Errorf("password recovery requires host auth email delivery configuration")
+	if app.RequiresAuthMail() {
+		return fmt.Errorf("auth email features require host auth email delivery configuration")
 	}
 	return nil
 }
