@@ -1,6 +1,6 @@
 # Goal: configurable, DX-friendly authentication
 
-Status: in progress. Milestones 1–3 complete and qualified with `make check` and `make build`; Account Actions also pass PostgreSQL parity. Milestones 4a–4b (delivery-backed recovery and email verification) are complete with full gates and PostgreSQL parity; onboarding/invitations remain pending.
+Status: complete for the agreed current scope. Milestones 1–4 are implemented and qualified with `make check`, `make build`, and PostgreSQL parity. The user deferred onboarding and invitations; they are not required for this goal. OIDC and MFA remain outside the implemented scope.
 
 Provide built-in account lifecycle features without requiring public-app onboarding or email infrastructure for local/internal applications. Preserve existing applications when no new auth configuration is declared.
 
@@ -21,7 +21,7 @@ Provide built-in account lifecycle features without requiring public-app onboard
 2. Specify and implement metadata presets, overrides, compiled effective capabilities, compatibility, and UI/backend enforcement for supported features. Do not add inert security flags.
 3. Add authenticated password changes and session revocation, then administrator recovery without email.
 4. Add delivery-backed verification and single-use, expiring password recovery with enumeration/abuse defenses. Require an explicit delivery contract before enabling these features.
-5. Add application onboarding/invitations; evaluate OIDC and MFA as separate vertical slices.
+5. Deferred by the user: application onboarding/invitations. Do not implement unless requested again. OIDC and MFA are separate future considerations.
 
 ## Completion
 

@@ -2,7 +2,7 @@
 
 # Configurable authentication
 
-Contract: `GOAL.md`. Status: in progress. Existing compiler/AppIR/sequence working-tree edits are unrelated and must be preserved.
+Contract: `GOAL.md`. Status: complete for the current scope (milestones 1–4). Onboarding/invitations are deferred at the user's request; OIDC/MFA remain outside scope.
 
 | Milestone | Deliverable | Verification | Status |
 | --- | --- | --- | --- |
@@ -12,7 +12,7 @@ Contract: `GOAL.md`. Status: in progress. Existing compiler/AppIR/sequence worki
 | 3 | Password change, session revocation, email-independent host recovery | built-in Account Actions, CSRF/unknown-field/isolation/throttle tests, audit-failure rollback, stale-login/reset regression, CLI stdin and ordinary-member browser journey; make check, make build and PostgreSQL parity pass | done |
 | 4a | Opt-in email password recovery with encrypted durable delivery | expiry/replay/concurrency/rollback/retry, non-enumerating requests, SMTP STARTTLS browser, make check/build and PostgreSQL parity | done |
 | 4b | Email ownership verification with enforced account state | registration/login/session, rollback, token purpose/expiry/concurrency, SMTP browser and PostgreSQL parity; make check/build pass; `docs/plans/auth-email-verification.md` | done |
-| 5 | Application onboarding/invitations; evaluate OIDC/MFA | metadata-driven vertical journeys | pending |
+| 5 | Application onboarding/invitations | excluded from current scope at the user's request | deferred |
 
 Presets keep signup/recovery/verification off by default. `passwordRecovery` (AppIR v17) and `emailVerification` (AppIR v19) require host delivery; MFA and other unimplemented switches remain rejected. Milestone 4a contract: `docs/plans/auth-email-recovery.md`. `public` is deployment intent, not a production-readiness claim. Runtime details: `docs/authentication.md`.
 
