@@ -1,6 +1,6 @@
 # Field-layout compatibility reconciliation
 
-Status: complete and qualified on `feat/typed-field-layout`, based on committed main **`8b0129a`**. **Not merged into main.**
+Status: complete, qualified and merged into `main` by user-authorized fast-forward at **`40ab41c`**, based on Recovery **`8b0129a`**.
 
 ## Final version ownership
 
@@ -39,8 +39,8 @@ CLI/compiler version assertions now expect v18 while retaining Sequence and auth
 
 ## Preserved work and integration
 
-Main's branch, runtime, databases, index and `GOAL.md` are not modified by this work. The feature branch is based on actual Recovery commit `8b0129a`, not a synthetic Recovery snapshot. The original field-layout prototypes remain available at `backup/typed-field-layout-v15` and `backup/typed-field-layout-v17` for audit only.
+Reconciliation was isolated from main until the user authorized the fast-forward. Main now includes `40ab41c`; no live database or `GOAL.md` change was made. Superseded local proposal notes were preserved in a named Git stash before integration. The feature branch is based on actual Recovery commit `8b0129a`, not a synthetic Recovery snapshot. The original field-layout prototypes remain available at `backup/typed-field-layout-v15` and `backup/typed-field-layout-v17` for audit only.
 
 Those private prototype formats are not supported historical formats: v15 belongs to Sequence and v17 belongs to Recovery. Rebuild disposable prototype packages/databases from source with v18 rather than changing persisted version headers to bypass validation.
 
-Reconciliation and qualification are complete; the only remaining integration step is the main merge, intentionally withheld at the user's request. Any future unrelated metadata feature should allocate a version after v18 rather than reusing this format.
+Reconciliation and integration are complete. `make check` (107 frontend tests, 26 browser journeys) and `make build` were rerun on main after the fast-forward. Any future unrelated metadata feature should allocate a version after v18 rather than reusing this format.

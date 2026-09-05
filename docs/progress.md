@@ -15,12 +15,6 @@ Status: in progress. Contract: [`GOAL.md`](../GOAL.md). Milestones 1–3 and 4a 
 
 Runtime and security details: [`docs/authentication.md`](authentication.md).
 
-## Typed detail/form field layout
-
-Status: implemented, reconciled and qualified; awaiting the main merge intentionally withheld by the user. Contract: [`docs/plans/typed-field-layout.md`](plans/typed-field-layout.md).
-
-`feat/typed-field-layout` is based on committed Recovery `8b0129a`, not the temporary snapshot used during development. AppIR v18 field layouts coexist with v15 Sequence, v16 Authentication and v17 Recovery. All 608 compatibility combinations and actual v14–v17 fixture upgrades pass, including database reopen, zero physical migrations and failed-publication isolation. `make check` passes 107 frontend tests and 26 browser journeys; explicit `make build` passes. The combined Recovery journey resets a password and opens grouped Blog controls in the same application. Main's runtime, index, databases and `GOAL.md` are unchanged; documentation archival is preserved. See [`compatibility report`](reports/field-layout-compatibility.md).
-
 ## Blog Admin browser investigation
 
 Status: deferred.

@@ -1,6 +1,6 @@
 # Remaining Panel and composition limitations
 
-Status: idea inventory; entries are unscheduled unless noted. Typed field layout (item 7) is implemented and qualified on the isolated field-layout branch; integration is pending.
+Status: idea inventory; entries are unscheduled unless noted. Typed field layout (item 7) is implemented, qualified and merged into main as AppIR v18.
 
 Related: [`panel-bounded-sizing.md`](panel-bounded-sizing.md) and [`menu-navigation.md`](../menu-navigation.md).
 
@@ -126,7 +126,7 @@ Users may want to hide, reorder, drag, or resize widgets and persist a personal 
 
 1. Deepen Menu with typed static and record-backed targets for primary, optional secondary, and vertical route navigation.
 2. Add bounded Panel track counts and spans only if a maintained example requires them.
-3. Integrate the qualified typed detail/form field layout; extend it only when a maintained application demonstrates a remaining gap.
+3. Extend the shipped typed detail/form field layout only when a maintained application demonstrates a remaining gap.
 4. Define a shared-result View Display composition contract if repeated reads become measurable.
 
 ## Deliberate boundaries

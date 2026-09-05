@@ -59,7 +59,7 @@
 | Application Admin | Search/filter/sort/page, typed forms, relations, domain/bulk Actions, history | complete | HTTP, React, CMS and Studio browser tests |
 | System Admin | Safe users/roles, release/migration/queue visibility, retry/cancel, CSRF and audit | complete | HTTP secret-exclusion/mutation tests and React tests |
 | Studio | Typed Entity/View/Page/Action/Policy/AdminResource editors including common Explore query/display/filter/drill/action semantics and grouped field layouts | complete | React core-editor tests |
-| Typed field layout | Bounded labelled groups, one/two columns and full-row fields in Admin forms and readonly detail Displays; no query or write changes | complete and reconciled as AppIR v18; main merge pending | schema/compiler/AppIR/inspect/diff, React/Studio, Blog browser, restart/package; see [field layout](field-layout.md) |
+| Typed field layout | Bounded labelled groups, one/two columns and full-row fields in Admin forms and readonly detail Displays; no query or write changes | complete; AppIR v18, merged into main | schema/compiler/AppIR/inspect/diff, React/Studio, Blog browser, restart/package; see [field layout](field-layout.md) |
 | Studio | Lossless advanced JSON, diagnostics, schema/migration preview, release preview | complete | round-trip unit and release handler tests |
 | Visual acceptance | Core application authored and published without specification JSON | complete | `studio-builder.spec.ts` |
 | Qualification | contract, fuzz-smoke, compatibility, race, black-box, crash, PostgreSQL and Playwright | complete | terminal make targets |

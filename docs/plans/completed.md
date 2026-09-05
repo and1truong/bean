@@ -2,6 +2,7 @@
 
 Historical plans and their verification evidence are archived one plan per file. Active and proposed work remains in [`PLANS.md`](../../PLANS.md).
 
+- [Typed detail/form field layout — AppIR v18, merged at `40ab41c`](archive/typed-field-layout.md)
 - [Shared bar chart presentation](archive/shared-bar-chart-presentation.md)
 - [Contextual Admin and request-scoped route records plan](archive/contextual-admin-and-request-scoped-route-records-plan.md)
 - [SaaS Team Workspace implementation](archive/saas-team-workspace-implementation.md)
