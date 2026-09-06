@@ -1,8 +1,31 @@
 > Completed plans are archived in [`docs/plans/completed.md`](docs/plans/completed.md).
 
+# Extended semantic content and composition
+
+Contract: `GOAL.md`. Status: complete.
+
+| Slice | Deliverable | Verification | Status |
+| --- | --- | --- | --- |
+| 1 | AppIR v20 scaffold; heading levels, ordered list, safe link, divider through all content seams | focused AppIR/compiler/schema/projection/Vitest tests | done |
+| 2 | Literal static table and density integration | compiler/schema/render/accessibility tests | done |
+| 3 | Compatible image plus audio, YouTube, playlist and visibility lifecycle | URL/compiler/render/network/lifecycle tests | done |
+| 4 | Tabs Block compiler, projection, keyboard behavior, print and media reset | compiler/schema/projection/Vitest/Playwright tests | done |
+| 5 | `choices` in named, inline and tab content with isolated/resettable state | compiler/schema/projection/Vitest/Playwright tests | done |
+| 6 | Presentation examples, docs, compatibility/activation/browser matrix and full qualification | generated-schema parity, browser journeys, `make check`, `make build` | done |
+
+# Content Block authoring guide
+
+Contract: `GOAL.md`. Status: complete.
+
+| Milestone | Deliverable | Verification | Status |
+| --- | --- | --- | --- |
+| 1 | A task-oriented Content Block reference covering placement, elements, fields, defaults, limits, and safe image sources | documentation/source review | done |
+| 2 | Links from the application and definition guides; remove duplicated low-level detail | link review | done |
+| 3 | Repository qualification | `make check` and `make build` | done |
+
 # Configurable authentication
 
-Contract: `GOAL.md`. Status: complete for the current scope (milestones 1–4). Onboarding/invitations are deferred at the user's request; OIDC/MFA remain outside scope.
+Status: complete for the current scope (milestones 1–4). Onboarding/invitations are deferred at the user's request; OIDC/MFA remain outside scope.
 
 | Milestone | Deliverable | Verification | Status |
 | --- | --- | --- | --- |

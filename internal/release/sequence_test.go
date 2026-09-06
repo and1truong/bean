@@ -8,6 +8,7 @@ import (
 	"github.com/beanruntime/bean/examples"
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/dbal/sqlite"
+	"github.com/beanruntime/bean/internal/definition"
 	"github.com/beanruntime/bean/internal/kernel"
 	"github.com/beanruntime/bean/internal/openapi"
 	"github.com/beanruntime/bean/internal/release"
@@ -40,8 +41,16 @@ func TestCurrentAppIRPublicationSurvivesRestart(t *testing.T) {
 	}
 	active, exists := reloadedKernel.Active()
 	sequence := active.Sequences["bean_introduction"]
-	if !exists || active.FormatVersion != appir.CurrentFormat || active.ReleaseID != published.ID || len(sequence.Frames) != 10 || sequence.Frames[1].Direction != "down" || len(active.Panels["frame_architecture"].Regions[0].Items[0].Content) == 0 {
+	if !exists || active.FormatVersion != appir.CurrentFormat || active.ReleaseID != published.ID || len(sequence.Frames) != 17 || sequence.Frames[1].Direction != "down" || len(active.Panels["frame_architecture"].Regions[0].Items[0].Content) == 0 || len(active.Blocks["boundary_tabs"].Tabs) != 2 {
 		t.Fatalf("active=%+v sequence=%+v", active, sequence)
+	}
+	invalid := bundle
+	invalid.Definitions = append(append([]definition.Definition{}, bundle.Definitions...), definition.Definition{APIVersion: definition.APIVersion, Kind: "Block", Metadata: definition.Metadata{Name: "invalid_quiz"}, Spec: map[string]any{"type": "content", "content": []any{map[string]any{"type": "choices", "question": "Who writes?", "choices": []any{map[string]any{"id": "view", "text": "View"}, map[string]any{"id": "action", "text": "Action"}}, "answer": "missing"}}}})
+	if _, _, diagnostics, err = reloaded.PublishBundle(ctx, "default", invalid); err != nil || len(diagnostics) == 0 {
+		t.Fatalf("invalid semantic publication: err=%v diagnostics=%v", err, diagnostics)
+	}
+	if stillActive, _ := reloadedKernel.Active(); stillActive.ReleaseID != published.ID {
+		t.Fatal("invalid semantic publication replaced active release")
 	}
 
 	trackerBundle, err := examples.Load("tracker")

@@ -107,6 +107,62 @@ regions:
           - {type: paragraph, text: "Model its Entity, route reads through Views, route writes through Actions, then publish the validated bundle."}
           - {type: callout, tone: success, text: "bean demo run presentation"}
 ---
+kind: Panel
+name: frame_semantic_content
+layout: single-column
+regions:
+  - {name: main, blocks: [semantic_content]}
+---
+kind: Panel
+name: frame_static_table
+layout: single-column
+regions:
+  - {name: main, blocks: [static_boundaries]}
+---
+kind: Panel
+name: frame_local_media
+layout: single-column
+regions:
+  - {name: main, blocks: [local_media]}
+---
+kind: Panel
+name: frame_external_media
+layout: single-column
+regions:
+  - {name: main, blocks: [external_media]}
+---
+kind: Panel
+name: frame_tabs_horizontal
+layout: single-column
+regions:
+  - name: main
+    items:
+      - content:
+          - {type: heading, level: 2, text: "Explore application boundaries"}
+      - block: boundary_tabs
+---
+kind: Panel
+name: frame_tabs_vertical
+layout: single-column
+regions:
+  - {name: main, blocks: [vertical_boundary_tabs]}
+---
+kind: Panel
+name: frame_choices
+layout: single-column
+regions:
+  - name: main
+    items:
+      - content:
+          - type: choices
+            question: "Bean allows writes through which primitive?"
+            choices:
+              - {id: view, text: View}
+              - {id: action, text: Action}
+              - {id: panel, text: Panel}
+            answer: action
+            explanation: "Views read; Actions are the write boundary."
+---
 kind: Sequence
 name: bean_introduction
 route: /presentations/bean
@@ -124,4 +180,11 @@ frames:
   - {name: capabilities, title: "Live data, same runtime", direction: down, layout: chart-focus, panel: frame_capabilities, notes: "This chart is queried and rendered through the normal View path."}
   - {name: safety, title: Boundaries stay explicit, direction: next, layout: comparison, panel: frame_safety, notes: "Application meaning and infrastructure integration have distinct owners."}
   - {name: examples, title: Examples are executable proofs, direction: down, layout: two-column, panel: frame_examples, notes: "Examples prove reusable semantics instead of application-specific branches."}
+  - {name: semantic_content, title: Semantic content vocabulary, direction: next, layout: bullets, panel: frame_semantic_content, notes: "The content vocabulary is closed, safe, and compiler-validated."}
+  - {name: static_table, title: "Literal table, live data elsewhere", direction: down, layout: table, panel: frame_static_table, notes: "Static tables contain literal strings; View tables render data."}
+  - {name: local_media, title: Local image and audio, direction: next, layout: image-focus, panel: frame_local_media, notes: "Audio waits for explicit loading and always keeps its transcript visible."}
+  - {name: external_media, title: Explicit external media loading, direction: down, layout: bullets, panel: frame_external_media, notes: "No YouTube request occurs before the user loads a player."}
+  - {name: tabs_horizontal, title: Horizontal application tabs, direction: next, layout: bullets, panel: frame_tabs_horizontal, notes: "Arrow keys select bounded in-payload tab content."}
+  - {name: tabs_vertical, title: Vertical release tabs, direction: down, layout: bullets, panel: frame_tabs_vertical, notes: "Vertical tabs use Up and Down without taking Left and Right."}
+  - {name: choices, title: Check one answer, direction: down, layout: statement, panel: frame_choices, notes: "Quiz state stays in this browser component and resets when the frame is left."}
   - {name: start, title: Start with one useful workflow, direction: next, layout: closing, panel: frame_close, notes: "Close with the shortest runnable path."}

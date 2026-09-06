@@ -44,6 +44,7 @@ var capabilities = registry.Must(
 	entry("menu", Specification{Component: "MenuBlock"}, menuProperties),
 	entry("resource-list", Specification{Component: "ResourceListBlock", InputTarget: ResourceInputTarget, RequiresResource: true, RequiresEditorReadPolicy: true, DerivesViewFromResource: true}, resourceListProperties),
 	entry("text", Specification{Component: "TextBlock"}, textProperties),
+	entry("tabs", Specification{Component: "TabsBlock"}, tabsProperties),
 	entry("view", Specification{Component: "ViewBlock", InputTarget: ViewInputTarget, SupportsPresentation: true}, viewProperties),
 	entry("webform", Specification{Component: "WebformBlock", InputTarget: WebformInputTarget}, webformProperties),
 )
@@ -68,6 +69,14 @@ func textProperties(_ *appir.App, block appir.Block, _ beanctx.Request, props ma
 
 func contentProperties(_ *appir.App, block appir.Block, _ beanctx.Request, props map[string]any) error {
 	props["content"] = block.Content
+	return nil
+}
+
+func tabsProperties(_ *appir.App, block appir.Block, _ beanctx.Request, props map[string]any) error {
+	props["label"] = block.Label
+	props["orientation"] = block.Orientation
+	props["variant"] = block.Variant
+	props["tabs"] = block.Tabs
 	return nil
 }
 

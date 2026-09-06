@@ -18,7 +18,27 @@ export type ViewDrill={View:string;Display:string;Route:string;Bindings?:Array<{
 export type ViewDisplay={Type:string;Route?:string;Description?:string;EmptyState?:string;Selection?:string;Actions?:string[];Title?:{Text?:string;Field?:string;Fallback?:string};Renderer:ViewRenderer;Controls?:ViewControl[];Pager?:{Type?:string;PageSize?:number};Drill?:ViewDrill}
 export type ViewFilter={Field?:string;Operator?:string;Name?:string;Label?:string;Type?:string;Required?:boolean;Options?:string[]}
 export type PageFilter={Label?:string;Type?:string;Widget?:string;Default?:any;Options?:string[];Targets?:Array<{Block:string;Filter:string}>}
-export type ContentElement={Type:string;Text?:string;Attribution?:string;Source?:string;Alt?:string;Language?:string;Tone?:string;Direction?:string;Items?:string[]}
+type ContentBase={Type:string}
+export type TableColumn={id:string;Label:string}
+export type ContentChoice={id:string;Text:string}
+export type ContentElement=
+  | ContentBase&{Type:'heading';Text:string;Level?:2|3|4}
+  | ContentBase&{Type:'paragraph';Text:string}
+  | ContentBase&{Type:'bullets';Items:string[]}
+  | ContentBase&{Type:'quote';Text:string;Attribution?:string}
+  | ContentBase&{Type:'code';Text:string;Language?:string}
+  | ContentBase&{Type:'callout';Text:string;Tone?:'info'|'success'|'warning'}
+  | ContentBase&{Type:'image';Source:string;Alt:string}
+  | ContentBase&{Type:'diagram';Items:string[];Direction?:'horizontal'|'vertical'}
+  | ContentBase&{Type:'ordered_list';Items:string[]}
+  | ContentBase&{Type:'link';Label:string;Target:string;OpenIn?:'same_tab'|'new_tab'}
+  | ContentBase&{Type:'divider'}
+  | ContentBase&{Type:'table';Caption:string;Columns:TableColumn[];Rows:string[][];RowHeader?:'none'|'first'}
+  | ContentBase&{Type:'audio';Source:string;Title:string;Transcript:string}
+  | ContentBase&{Type:'youtube';VideoID:string;Title:string;Transcript:string}
+  | ContentBase&{Type:'youtube_playlist';PlaylistID:string;Title:string;Transcript:string}
+  | ContentBase&{Type:'choices';Question:string;Choices:ContentChoice[];Answer:string;Explanation?:string}
+export type ContentTab={id:string;Label:string;Content:ContentElement[]}
 export type ViewPresentation={Mode?:string;TitleField?:string;BodyField?:string;LinkRoute?:string;LinkField?:string;EmptyState?:string;MetaFields?:string[];RichTextFields?:string[];GroupField?:string;OrderField?:string;ParentField?:string;MoveAction?:string;Columns?:string[];MetricField?:string;MetricLabel?:string;TimeField?:string;EndField?:string;SearchFields?:string[]}
 export type Node={component:string;props?:Record<string,any>;children?:Node[]}
 export class APIError extends Error{fields?:Record<string,string>;status?:number;constructor(message:string,fields?:Record<string,string>,status?:number){super(message);this.fields=fields;this.status=status}}
