@@ -22,6 +22,7 @@ The Post Admin form groups Content and Classification: Title/Slug and Author/Cat
 From the repository root:
 
 ```bash
+./bin/bean init --db ./tmp/blog.db --admin-email admin@example.test --admin-password test-password
 ./bin/bean app validate --file ./examples/blog/app.yaml
 ./bin/bean app publish --file ./examples/blog/app.yaml --db ./tmp/blog.db --json
 ./bin/bean serve --db ./tmp/blog.db --addr 127.0.0.1:8080
