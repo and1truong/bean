@@ -4,30 +4,33 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/beanruntime/bean/internal/expr"
 	"github.com/beanruntime/bean/internal/rule"
 )
 
 const (
-	LegacyFormat           = "bean/appir/v1"
-	LifecycleFormat        = "bean/appir/v2"
-	RuleFormat             = "bean/appir/v3"
-	TestSuiteFormat        = "bean/appir/v4"
-	ExtensionFormat        = "bean/appir/v5"
-	DisplayFormat          = "bean/appir/v6"
-	ExploreFormat          = "bean/appir/v7"
-	SequenceFormat         = "bean/appir/v8"
-	InlinePanelFormat      = "bean/appir/v9"
-	PageSectionFormat      = "bean/appir/v10"
-	RegionCollapseFormat   = "bean/appir/v11"
-	PageWidthFormat        = "bean/appir/v12"
-	MenuFormat             = "bean/appir/v13"
-	MenuVariantFormat      = "bean/appir/v14"
-	DirectionalFormat      = "bean/appir/v15"
-	AuthenticationFormat   = "bean/appir/v16"
-	PasswordRecoveryFormat = "bean/appir/v17"
-	CurrentFormat          = "bean/appir/v18"
+	LegacyFormat            = "bean/appir/v1"
+	LifecycleFormat         = "bean/appir/v2"
+	RuleFormat              = "bean/appir/v3"
+	TestSuiteFormat         = "bean/appir/v4"
+	ExtensionFormat         = "bean/appir/v5"
+	DisplayFormat           = "bean/appir/v6"
+	ExploreFormat           = "bean/appir/v7"
+	SequenceFormat          = "bean/appir/v8"
+	InlinePanelFormat       = "bean/appir/v9"
+	PageSectionFormat       = "bean/appir/v10"
+	RegionCollapseFormat    = "bean/appir/v11"
+	PageWidthFormat         = "bean/appir/v12"
+	MenuFormat              = "bean/appir/v13"
+	MenuVariantFormat       = "bean/appir/v14"
+	DirectionalFormat       = "bean/appir/v15"
+	AuthenticationFormat    = "bean/appir/v16"
+	PasswordRecoveryFormat  = "bean/appir/v17"
+	FieldLayoutFormat       = "bean/appir/v18"
+	EmailVerificationFormat = "bean/appir/v19"
+	CurrentFormat           = "bean/appir/v20"
 )
 
 type Field struct {
@@ -335,10 +338,79 @@ type Block struct {
 	DefaultFilters                                                                   map[string]any
 	Presentation                                                                     ViewPresentation
 	Content                                                                          []ContentElement
+	Label, Orientation, Variant                                                      string       `json:",omitempty"`
+	Tabs                                                                             []ContentTab `json:",omitempty"`
 }
 type ContentElement struct {
 	Type, Text, Attribution, Source, Alt, Language, Tone, Direction string
 	Items                                                           []string
+	Level                                                           int             `json:",omitempty"`
+	Label, Target, OpenIn, Caption, RowHeader                       string          `json:",omitempty"`
+	Title, Transcript, Question                                     string          `json:",omitempty"`
+	VideoID                                                         string          `json:"videoId,omitempty"`
+	PlaylistID                                                      string          `json:"playlistId,omitempty"`
+	Answer, Explanation                                             string          `json:",omitempty"`
+	Columns                                                         []TableColumn   `json:",omitempty"`
+	Rows                                                            [][]string      `json:",omitempty"`
+	Choices                                                         []ContentChoice `json:",omitempty"`
+}
+
+func (element *ContentElement) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	for _, names := range [][2]string{{"videoId", "VideoID"}, {"playlistId", "PlaylistID"}} {
+		source, canonical := names[0], names[1]
+		if value, exists := fields[source]; exists {
+			if _, duplicate := fields[canonical]; duplicate {
+				return fmt.Errorf("duplicate fields %q and %q", source, canonical)
+			}
+			fields[canonical] = value
+			delete(fields, source)
+		}
+	}
+	normalized, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	type plain ContentElement
+	decoder := json.NewDecoder(bytes.NewReader(normalized))
+	decoder.DisallowUnknownFields()
+	return decoder.Decode((*plain)(element))
+}
+
+func (element ContentElement) MarshalJSON() ([]byte, error) {
+	type plain ContentElement
+	encoded, err := json.Marshal(plain(element))
+	if err != nil {
+		return nil, err
+	}
+	var fields map[string]json.RawMessage
+	if err = json.Unmarshal(encoded, &fields); err != nil {
+		return nil, err
+	}
+	for _, names := range [][2]string{{"videoId", "VideoID"}, {"playlistId", "PlaylistID"}} {
+		if value, exists := fields[names[0]]; exists {
+			fields[names[1]] = value
+			delete(fields, names[0])
+		}
+	}
+	return json.Marshal(fields)
+}
+
+type TableColumn struct {
+	ID    string `json:"id"`
+	Label string
+}
+type ContentChoice struct {
+	ID   string `json:"id"`
+	Text string
+}
+type ContentTab struct {
+	ID      string `json:"id"`
+	Label   string
+	Content []ContentElement
 }
 type ViewPresentation struct {
 	Mode, TitleField, BodyField, LinkRoute, LinkField, EmptyState string
@@ -511,40 +583,47 @@ type AdminResource struct {
 	Actions                                        []string
 }
 type App struct {
-	ReleaseID, AppID  string
-	Name              string `json:",omitempty"`
-	FormatVersion     string
-	Version           int
-	Entities          map[string]Entity
-	Views             map[string]View
-	Actions           map[string]Action
-	Lifecycles        map[string]Lifecycle
-	Rules             map[string]Rule
-	TestSuites        map[string]TestSuite
-	Extensions        map[string]Extension
-	Policies          map[string]Policy
-	Webforms          map[string]Webform
-	Blocks            map[string]Block
-	Panels            map[string]Panel
-	Pages             map[string]Page
-	Sequences         map[string]Sequence
-	Roles             map[string]Role
-	Menus             map[string]Menu
-	Jobs              map[string]Job
-	Filters           map[string]Filter
-	AdminResources    map[string]AdminResource
-	Authentication    *Authentication
-	LocalRegistration *LocalRegistration
-	Theme             *Theme
-	DemoSeed          *DemoSeed
-	OpenAPI           json.RawMessage
+	ReleaseID, AppID       string
+	Name                   string `json:",omitempty"`
+	FormatVersion          string
+	Version                int
+	Entities               map[string]Entity
+	Views                  map[string]View
+	Actions                map[string]Action
+	Lifecycles             map[string]Lifecycle
+	Rules                  map[string]Rule
+	TestSuites             map[string]TestSuite
+	Extensions             map[string]Extension
+	Policies               map[string]Policy
+	Webforms               map[string]Webform
+	Blocks                 map[string]Block
+	Panels                 map[string]Panel
+	Pages                  map[string]Page
+	Sequences              map[string]Sequence
+	Roles                  map[string]Role
+	Menus                  map[string]Menu
+	Jobs                   map[string]Job
+	Filters                map[string]Filter
+	AdminResources         map[string]AdminResource
+	Authentication         *Authentication
+	LocalRegistration      *LocalRegistration
+	Theme                  *Theme
+	DemoSeed               *DemoSeed
+	OpenAPI                json.RawMessage
+	extendedSemanticFields bool
 }
 
 func Empty() *App {
 	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Rules: map[string]Rule{}, TestSuites: map[string]TestSuite{}, Extensions: map[string]Extension{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Sequences: map[string]Sequence{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
 }
 func (a *App) ValidateFormat() error {
-	if a.FormatVersion != CurrentFormat {
+	if extendedSemanticContent(a) && a.FormatVersion != CurrentFormat {
+		return fmt.Errorf("AppIR format %q cannot contain extended semantic content or Tabs Blocks", a.FormatVersion)
+	}
+	if a.EmailVerificationEnabled() && a.FormatVersion != EmailVerificationFormat && a.FormatVersion != CurrentFormat {
+		return fmt.Errorf("AppIR format %q cannot contain email verification", a.FormatVersion)
+	}
+	if a.FormatVersion != CurrentFormat && a.FormatVersion != EmailVerificationFormat && a.FormatVersion != FieldLayoutFormat {
 		for _, resource := range a.AdminResources {
 			if resource.Form.Layout != nil {
 				return fmt.Errorf("AppIR format %q cannot contain field layouts", a.FormatVersion)
@@ -558,19 +637,53 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.PasswordRecoveryEnabled() && a.FormatVersion != PasswordRecoveryFormat && a.FormatVersion != CurrentFormat {
+	if a.PasswordRecoveryEnabled() && a.FormatVersion != PasswordRecoveryFormat && a.FormatVersion != FieldLayoutFormat && a.FormatVersion != EmailVerificationFormat && a.FormatVersion != CurrentFormat {
 		return fmt.Errorf("AppIR format %q cannot contain password recovery", a.FormatVersion)
 	}
-	if a.Authentication != nil && a.FormatVersion != AuthenticationFormat && a.FormatVersion != PasswordRecoveryFormat && a.FormatVersion != CurrentFormat {
+	if a.Authentication != nil && a.FormatVersion != AuthenticationFormat && a.FormatVersion != PasswordRecoveryFormat && a.FormatVersion != FieldLayoutFormat && a.FormatVersion != EmailVerificationFormat && a.FormatVersion != CurrentFormat {
 		return fmt.Errorf("AppIR format %q cannot contain Authentication configuration", a.FormatVersion)
 	}
-	// Only v16/v17/v18 delegate to v15 after their own feature checks. Never promote
+	// Only v16/v17/v18/v19/v20 delegate to v15 after their own feature checks. Never promote
 	// v14: that would incorrectly authorize directional Sequence frames.
 	legacy := *a
-	if legacy.FormatVersion == AuthenticationFormat || legacy.FormatVersion == PasswordRecoveryFormat || legacy.FormatVersion == CurrentFormat {
+	if legacy.FormatVersion == AuthenticationFormat || legacy.FormatVersion == PasswordRecoveryFormat || legacy.FormatVersion == FieldLayoutFormat || legacy.FormatVersion == EmailVerificationFormat || legacy.FormatVersion == CurrentFormat {
 		legacy.FormatVersion = DirectionalFormat
 	}
 	return legacy.validateThroughDirectionalFormat()
+}
+
+func extendedSemanticContent(a *App) bool {
+	if a.extendedSemanticFields {
+		return true
+	}
+	extended := func(elements []ContentElement) bool {
+		for _, element := range elements {
+			if element.Type == "ordered_list" || element.Type == "link" || element.Type == "divider" || element.Type == "table" || element.Type == "audio" || element.Type == "youtube" || element.Type == "youtube_playlist" || element.Type == "choices" || element.Level != 0 || element.Label != "" || element.Target != "" || element.OpenIn != "" || element.Caption != "" || element.RowHeader != "" || element.Title != "" || element.Transcript != "" || element.Question != "" || element.VideoID != "" || element.PlaylistID != "" || element.Answer != "" || element.Explanation != "" || element.Columns != nil || element.Rows != nil || element.Choices != nil {
+				return true
+			}
+		}
+		return false
+	}
+	for _, block := range a.Blocks {
+		if block.Type == "tabs" || block.Label != "" || block.Orientation != "" || block.Variant != "" || block.Tabs != nil || extended(block.Content) {
+			return true
+		}
+		for _, tab := range block.Tabs {
+			if extended(tab.Content) {
+				return true
+			}
+		}
+	}
+	for _, panel := range a.Panels {
+		for _, region := range panel.Regions {
+			for _, item := range region.Items {
+				if extended(item.Content) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func (a *App) validateThroughDirectionalFormat() error {
@@ -758,5 +871,75 @@ func Decode(encoded []byte) (*App, error) {
 	decoder := json.NewDecoder(bytes.NewReader(encoded))
 	decoder.UseNumber()
 	err := decoder.Decode(&out)
+	if err == nil && out.FormatVersion != CurrentFormat {
+		out.extendedSemanticFields = encodedExtendedSemanticFields(encoded)
+	}
 	return &out, err
+}
+
+func encodedExtendedSemanticFields(encoded []byte) bool {
+	var root map[string]any
+	if json.Unmarshal(encoded, &root) != nil {
+		return false
+	}
+	blocks, _ := objectField(root, "Blocks").(map[string]any)
+	for _, rawBlock := range blocks {
+		block, _ := rawBlock.(map[string]any)
+		if hasObjectField(block, "Label", "Orientation", "Variant", "Tabs") || encodedExtendedElements(objectField(block, "Content")) {
+			return true
+		}
+	}
+	panels, _ := objectField(root, "Panels").(map[string]any)
+	for _, rawPanel := range panels {
+		panel, _ := rawPanel.(map[string]any)
+		regions, _ := objectField(panel, "Regions").([]any)
+		for _, rawRegion := range regions {
+			region, _ := rawRegion.(map[string]any)
+			items, _ := objectField(region, "Items").([]any)
+			for _, rawItem := range items {
+				item, _ := rawItem.(map[string]any)
+				if encodedExtendedElements(objectField(item, "Content")) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func encodedExtendedElements(raw any) bool {
+	elements, _ := raw.([]any)
+	for _, rawElement := range elements {
+		element, _ := rawElement.(map[string]any)
+		if element == nil {
+			continue
+		}
+		if kind, _ := objectField(element, "Type").(string); kind == "ordered_list" || kind == "link" || kind == "divider" || kind == "table" || kind == "audio" || kind == "youtube" || kind == "youtube_playlist" || kind == "choices" {
+			return true
+		}
+		if hasObjectField(element, "Level", "Label", "Target", "OpenIn", "Caption", "RowHeader", "Title", "Transcript", "Question", "videoId", "playlistId", "Answer", "Explanation", "Columns", "Rows", "Choices") {
+			return true
+		}
+	}
+	return false
+}
+
+func objectField(object map[string]any, name string) any {
+	for key, value := range object {
+		if strings.EqualFold(key, name) {
+			return value
+		}
+	}
+	return nil
+}
+
+func hasObjectField(object map[string]any, names ...string) bool {
+	for key := range object {
+		for _, name := range names {
+			if strings.EqualFold(key, name) {
+				return true
+			}
+		}
+	}
+	return false
 }

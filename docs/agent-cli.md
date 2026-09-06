@@ -103,6 +103,7 @@ Codes and structured fields are the compatibility interface. Human messages may 
 | `BEAN-E2701` | unsafe or incompatible migration contract |
 | `BEAN-E2851` | invalid TestSuite target, case, fixture, context, assertion, or bound |
 | `BEAN-E2871` | invalid Extension contract, Action binding, timeout, retry, endpoint, or closed vocabulary |
+| `BEAN-E2881` | invalid Sequence, semantic content, Tabs Block, layout, density, or accessibility-bound metadata contract |
 | `BEAN-E2900` | other typed definition semantic failure |
 | `BEAN-T1001` | failed semantic TestSuite assertion |
 | `BEAN-T1101` | explicit TestSuite uses the reserved generated identity prefix |
@@ -115,13 +116,13 @@ Sensitive inputs, file bytes, secrets, passwords, and database credentials are e
 
 ## Schemas and capabilities
 
-`bean capabilities --json` reports definition/API versions, definition kinds, semantic primitives, field types, Action operations and steps, Block types, View display/render/control/pager vocabularies, serializers, layouts, database backends, and hard limits. `semanticPrimitives` contains `Lifecycle` and `Rule`; `ruleOperators`, `ruleSources`, and the node/depth/literal/value limits expose the closed evaluator contract. `testSuiteTargets` and the suite/case/fixture/encoded-byte limits expose the bounds shared by explicit and generated TestSuites. Extension capability fields expose the single `http` transport, `none`/`bearer` authentication, closed permission/effect vocabularies, stable failure categories, and timeout/attempt/delay/response bounds.
+`bean capabilities --json` reports definition/API versions, definition kinds, semantic primitives, field types, Action operations and steps, Block types, View display/render/control/pager vocabularies, serializers, layouts, database backends, and hard limits. Content capability fields publish all element types, heading levels, link targets/open modes, table row-header modes, media kinds/source policy, tab orientations/variants, and the content/tab/ID/text bounds from the same constants used by compilation. `semanticPrimitives` contains `Lifecycle` and `Rule`; `ruleOperators`, `ruleSources`, and the node/depth/literal/value limits expose the closed evaluator contract. `testSuiteTargets` and the suite/case/fixture/encoded-byte limits expose the bounds shared by explicit and generated TestSuites. Extension capability fields expose the single `http` transport, `none`/`bearer` authentication, closed permission/effect vocabularies, stable failure categories, and timeout/attempt/delay/response bounds.
 
 `bean schema [Kind] --json` returns canonical Draft 2020-12 JSON Schema. `bean schema --output ./schemas` writes `bean.schema.json` and one lower-case file per definition kind. The checked-in [schemas](../schemas) directory is generated from the same Go specification types used by compiler decoding; tests fail if those files drift or stop covering a maintained example.
 
-JSON Schema describes document shape and rejects unknown properties. Cross-definition references and semantic constraints remain compiler responsibilities and are visible through diagnostics, capabilities, and `app inspect`.
+JSON Schema describes document shape and rejects unknown properties. Block, inline Panel, and tab content share one closed discriminated `ContentElement` schema. Duplicate IDs, quiz answer references, table row widths, and the total tab-content count remain compiler responsibilities because standard schema cannot express those relationships directly; schema descriptions identify each constraint.
 
-v0.14 stores first-class View display semantics in `bean/appir/v6`; v0.15 stores View-owned search and later Explore semantics in `bean/appir/v7`. The runtime still loads v1 releases without Lifecycle, Rule, TestSuite, Extension, or first-class display semantics; v2 with Lifecycle; v3 with Rules; v4 with TestSuites; v5 with Extensions plus legacy serializer displays and field-shaped exposed filters; and v6 with first-class View displays. Newer semantics are invalid under older formats so older runtimes cannot silently discard them.
+AppIR v20 stores extended semantic content and Tabs Blocks while retaining the separate v19 email-verification boundary. New content fields and variants are rejected under every older format, including named, inline, and nested tab positions; historical omitted heading levels stay omitted and render as level 2. The runtime still loads prior formats only with the features owned by those versions, and rejects unsupported future versions. Newer semantics are invalid under older formats so a reader cannot silently discard them.
 
 ## Inspection, plan, and diff
 

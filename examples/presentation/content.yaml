@@ -7,3 +7,76 @@ content:
   - {type: quote, text: "Turn product intent into definitions that people can review and agents can repair.", attribution: Bean}
   - {type: paragraph, text: "Probabilistic authors need a deterministic runtime with explicit semantics, bounded diagnostics, and one activation path."}
   - {type: callout, tone: info, text: "The same definitions drive validation, migration, runtime behavior, inspection, and tests."}
+---
+kind: Block
+name: semantic_content
+type: content
+content:
+  - {type: heading, level: 3, text: "Semantic content stays bounded"}
+  - {type: ordered_list, items: [Define, Validate, Publish]}
+  - {type: link, label: "Open the architecture frame", target: "/presentations/bean?frame=architecture", openIn: same_tab}
+  - {type: divider}
+---
+kind: Block
+name: static_boundaries
+type: content
+content:
+  - {type: paragraph, text: "This literal table explains a fixed concept. Live records still belong to a View table Display."}
+  - type: table
+    caption: Read and write boundaries
+    columns:
+      - {id: primitive, label: Primitive}
+      - {id: responsibility, label: Responsibility}
+    rows:
+      - [View, Read]
+      - [Action, Write]
+    rowHeader: first
+---
+kind: Block
+name: local_media
+type: content
+content:
+  - {type: image, source: "/assets/bean-release-flow.png", alt: "Definitions pass through validation and migration into immutable AppIR before atomic activation"}
+  - {type: audio, source: "/assets/bean-intro.wav", title: "Bean two-tone audio demonstration", transcript: "A short lower tone is followed by a higher tone."}
+---
+kind: Block
+name: external_media
+type: content
+content:
+  - {type: youtube, videoId: "M7lc1UVf-VE", title: "YouTube embedded-player demonstration", transcript: "A technical demonstration of the YouTube embedded player interface."}
+  - {type: youtube_playlist, playlistId: "PLBCF2DAC6FFB574DE", title: "Google Developers video playlist", transcript: "A playlist of developer education videos. The provider controls which selected videos and captions are available."}
+---
+kind: Block
+name: boundary_tabs
+type: tabs
+label: Application boundaries
+orientation: horizontal
+variant: underline
+tabs:
+  - id: reads
+    label: Reads
+    content:
+      - {type: heading, level: 3, text: "Read boundary"}
+      - {type: paragraph, text: "Views own application reads."}
+  - id: writes
+    label: Writes
+    content:
+      - {type: paragraph, text: "Actions own application writes."}
+      - type: choices
+        question: "Which primitive owns writes?"
+        choices:
+          - {id: view, text: View}
+          - {id: action, text: Action}
+        answer: action
+        explanation: "Views read; Actions own mutations and effects."
+---
+kind: Block
+name: vertical_boundary_tabs
+type: tabs
+label: Release boundaries
+orientation: vertical
+variant: pills
+tabs:
+  - {id: definition, label: Definition, content: [{type: paragraph, text: "Authors declare typed metadata."}]}
+  - {id: compiler, label: Compiler, content: [{type: paragraph, text: "Validation and normalization produce immutable AppIR."}]}
+  - {id: activation, label: Activation, content: [{type: paragraph, text: "A valid release activates atomically."}]}

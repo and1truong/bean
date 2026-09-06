@@ -3,9 +3,18 @@ package appir
 // Authentication contains validated application choices, never host credentials.
 // Omitted configuration preserves the pre-configuration registration contract.
 type Authentication struct {
-	Preset           string
-	Registration     bool
-	PasswordRecovery bool
+	Preset            string
+	Registration      bool
+	PasswordRecovery  bool
+	EmailVerification bool
+}
+
+func (a *App) EmailVerificationEnabled() bool {
+	return a.Authentication != nil && a.Authentication.EmailVerification
+}
+
+func (a *App) RequiresAuthMail() bool {
+	return a.PasswordRecoveryEnabled() || a.EmailVerificationEnabled()
 }
 
 func (a *App) PasswordRecoveryEnabled() bool {

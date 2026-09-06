@@ -60,6 +60,9 @@ func (s *smtpSender) Send(ctx context.Context, message Message) error {
 		return ErrDelivery
 	}
 	body := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: Reset your password\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nA password reset was requested for your account.\r\nOpen this link to choose a new password. It expires in 15 minutes.\r\n\r\n%s\r\n\r\nIf you did not request this, ignore this message.\r\n", s.config.From, message.To, message.Link)
+	if message.Purpose == "email_verify" {
+		body = fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: Verify your email\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nVerify your account email using this link and your account password. The link expires in 15 minutes.\r\nOnly confirm if you created this account. Otherwise ignore this message.\r\n\r\n%s\r\n", s.config.From, message.To, message.Link)
+	}
 	if _, err := writer.Write([]byte(body)); err != nil {
 		return ErrDelivery
 	}

@@ -51,6 +51,14 @@ func TestHistoricalReleaseFieldLayoutUpgrade(t *testing.T) {
 				t.Fatal(err)
 			}
 			expected.FormatVersion = appir.CurrentFormat
+			for name, block := range expected.Blocks {
+				for index := range block.Content {
+					if block.Content[index].Type == "heading" && block.Content[index].Level == 0 {
+						block.Content[index].Level = 2
+					}
+				}
+				expected.Blocks[name] = block
+			}
 			if version == 14 {
 				sequence := expected.Sequences["intro"]
 				for i := range sequence.Frames {

@@ -2211,6 +2211,9 @@ func validateBlocks(a *appir.App, _ *validationState) []definition.Diagnostic {
 		} else if len(block.Content) > 0 {
 			out = append(out, sequenceDiagnostic("Block", name, "spec.content", "is only supported by a content Block"))
 		}
+		if block.Type == "tabs" {
+			out = append(out, validateTabsBlock(name, block)...)
+		}
 		if blockSpecification.RequiresEditorReadPolicy && (block.Policy == "" || !editorOnlyReadPolicy(a.Policies[block.Policy])) {
 			out = append(out, diagnostic("Block", name, "spec.policy", "resource-list Block must be restricted to editor and administrator roles"))
 		}
@@ -2375,6 +2378,7 @@ func validateContentElements(kind, name, contentPath string, elements []appir.Co
 		out = append(out, sequenceDiagnostic(kind, name, contentPath, fmt.Sprintf("exceeds the maximum of %d elements", beancontent.MaxElements)))
 	}
 	types, tones, directions := nameSet(beancontent.Types()), nameSet(beancontent.Tones()), nameSet(beancontent.Directions())
+	openModes, rowHeaderModes := nameSet(beancontent.LinkOpenModes()), nameSet(beancontent.RowHeaderModes())
 	for index, element := range elements {
 		path := fmt.Sprintf("%s.%d", contentPath, index)
 		if !types[element.Type] {
@@ -2385,6 +2389,9 @@ func validateContentElements(kind, name, contentPath string, elements []appir.Co
 		case "heading", "paragraph", "quote", "code", "callout":
 			if strings.TrimSpace(element.Text) == "" {
 				out = append(out, sequenceDiagnostic(kind, name, path+".text", "is required"))
+			}
+			if element.Type == "heading" && element.Level != 2 && element.Level != 3 && element.Level != 4 {
+				out = append(out, sequenceDiagnostic(kind, name, path+".level", "must be 2, 3, or 4"))
 			}
 		case "bullets":
 			if len(element.Items) == 0 || len(element.Items) > beancontent.MaxBulletItems {
@@ -2404,6 +2411,46 @@ func validateContentElements(kind, name, contentPath string, elements []appir.Co
 			if !directions[element.Direction] {
 				out = append(out, sequenceDiagnostic(kind, name, path+".direction", "has no supported diagram direction"))
 			}
+		case "ordered_list":
+			if len(element.Items) == 0 || len(element.Items) > beancontent.MaxOrderedItems {
+				out = append(out, sequenceDiagnostic(kind, name, path+".items", fmt.Sprintf("must contain between 1 and %d items", beancontent.MaxOrderedItems)))
+			}
+			for itemIndex, item := range element.Items {
+				if strings.TrimSpace(item) == "" || utf8.RuneCountInString(item) > beancontent.MaxItemRunes {
+					out = append(out, sequenceDiagnostic(kind, name, fmt.Sprintf("%s.items.%d", path, itemIndex), fmt.Sprintf("must be non-blank and at most %d code points", beancontent.MaxItemRunes)))
+				}
+			}
+		case "link":
+			out = append(out, boundedTextDiagnostics(kind, name, path+".label", element.Label, beancontent.MaxLabelRunes)...)
+			if !beancontent.ValidLinkTarget(element.Target) {
+				out = append(out, sequenceDiagnostic(kind, name, path+".target", "must be a safe absolute application path or HTTPS URL"))
+			}
+			if !openModes[element.OpenIn] {
+				out = append(out, sequenceDiagnostic(kind, name, path+".openIn", "must be same_tab or new_tab"))
+			}
+		case "divider":
+		case "table":
+			out = append(out, validateStaticTable(kind, name, path, element)...)
+			if !rowHeaderModes[element.RowHeader] {
+				out = append(out, sequenceDiagnostic(kind, name, path+".rowHeader", "must be none or first"))
+			}
+		case "audio":
+			out = append(out, validateMediaText(kind, name, path, element)...)
+			if !beancontent.ValidAudioSource(element.Source) {
+				out = append(out, sequenceDiagnostic(kind, name, path+".source", "must be a safe absolute application path or HTTPS URL without query or fragment"))
+			}
+		case "youtube":
+			out = append(out, validateMediaText(kind, name, path, element)...)
+			if !beancontent.ValidVideoID(element.VideoID) {
+				out = append(out, sequenceDiagnostic(kind, name, path+".videoId", "must be an 11-character YouTube video ID"))
+			}
+		case "youtube_playlist":
+			out = append(out, validateMediaText(kind, name, path, element)...)
+			if !beancontent.ValidPlaylistID(element.PlaylistID) {
+				out = append(out, sequenceDiagnostic(kind, name, path+".playlistId", "must be a 10-80 character YouTube playlist ID"))
+			}
+		case "choices":
+			out = append(out, validateChoices(kind, name, path, element)...)
 		}
 		if element.Type == "callout" && !tones[element.Tone] {
 			out = append(out, sequenceDiagnostic(kind, name, path+".tone", "has no supported callout tone"))
@@ -2411,6 +2458,113 @@ func validateContentElements(kind, name, contentPath string, elements []appir.Co
 		if element.Type == "code" && strings.Count(element.Text, "\n")+1 > beancontent.MaxCodeLines {
 			out = append(out, sequenceDiagnostic(kind, name, path+".text", fmt.Sprintf("exceeds the maximum of %d code lines", beancontent.MaxCodeLines)))
 		}
+	}
+	return out
+}
+
+func boundedTextDiagnostics(kind, name, path, value string, maximum int) []definition.Diagnostic {
+	if strings.TrimSpace(value) == "" {
+		return []definition.Diagnostic{sequenceDiagnostic(kind, name, path, "is required")}
+	}
+	if utf8.RuneCountInString(value) > maximum {
+		return []definition.Diagnostic{sequenceDiagnostic(kind, name, path, fmt.Sprintf("exceeds the maximum of %d code points", maximum))}
+	}
+	return nil
+}
+
+func validateStaticTable(kind, name, path string, element appir.ContentElement) []definition.Diagnostic {
+	out := boundedTextDiagnostics(kind, name, path+".caption", element.Caption, beancontent.MaxLabelRunes)
+	if len(element.Columns) == 0 || len(element.Columns) > beancontent.MaxColumns {
+		out = append(out, sequenceDiagnostic(kind, name, path+".columns", fmt.Sprintf("must contain between 1 and %d columns", beancontent.MaxColumns)))
+	}
+	seen := map[string]bool{}
+	for index, column := range element.Columns {
+		columnPath := fmt.Sprintf("%s.columns.%d", path, index)
+		if !beancontent.ValidMachineID(column.ID) {
+			out = append(out, sequenceDiagnostic(kind, name, columnPath+".id", "must be a 1-64 character machine ID"))
+		} else if seen[column.ID] {
+			out = append(out, sequenceDiagnostic(kind, name, columnPath+".id", "duplicates another column id"))
+		}
+		seen[column.ID] = true
+		out = append(out, boundedTextDiagnostics(kind, name, columnPath+".label", column.Label, beancontent.MaxColumnLabelRunes)...)
+	}
+	if len(element.Rows) == 0 || len(element.Rows) > beancontent.MaxRows {
+		out = append(out, sequenceDiagnostic(kind, name, path+".rows", fmt.Sprintf("must contain between 1 and %d rows", beancontent.MaxRows)))
+	}
+	for rowIndex, row := range element.Rows {
+		rowPath := fmt.Sprintf("%s.rows.%d", path, rowIndex)
+		if len(row) != len(element.Columns) {
+			out = append(out, sequenceDiagnostic(kind, name, rowPath, "must contain exactly one cell per column"))
+		}
+		for cellIndex, cell := range row {
+			if utf8.RuneCountInString(cell) > beancontent.MaxItemRunes {
+				out = append(out, sequenceDiagnostic(kind, name, fmt.Sprintf("%s.%d", rowPath, cellIndex), fmt.Sprintf("exceeds the maximum of %d code points", beancontent.MaxItemRunes)))
+			}
+		}
+		if element.RowHeader == "first" && (len(row) == 0 || strings.TrimSpace(row[0]) == "") {
+			out = append(out, sequenceDiagnostic(kind, name, rowPath+".0", "must be non-blank when rowHeader is first"))
+		}
+	}
+	return out
+}
+
+func validateMediaText(kind, name, path string, element appir.ContentElement) []definition.Diagnostic {
+	out := boundedTextDiagnostics(kind, name, path+".title", element.Title, beancontent.MaxMediaTitleRunes)
+	out = append(out, boundedTextDiagnostics(kind, name, path+".transcript", element.Transcript, beancontent.MaxTranscriptRunes)...)
+	return out
+}
+
+func validateChoices(kind, name, path string, element appir.ContentElement) []definition.Diagnostic {
+	out := boundedTextDiagnostics(kind, name, path+".question", element.Question, beancontent.MaxQuestionRunes)
+	if len(element.Choices) < beancontent.MinChoices || len(element.Choices) > beancontent.MaxChoices {
+		out = append(out, sequenceDiagnostic(kind, name, path+".choices", fmt.Sprintf("must contain between %d and %d choices", beancontent.MinChoices, beancontent.MaxChoices)))
+	}
+	seen := map[string]bool{}
+	for index, choice := range element.Choices {
+		choicePath := fmt.Sprintf("%s.choices.%d", path, index)
+		if !beancontent.ValidMachineID(choice.ID) {
+			out = append(out, sequenceDiagnostic(kind, name, choicePath+".id", "must be a 1-64 character machine ID"))
+		} else if seen[choice.ID] {
+			out = append(out, sequenceDiagnostic(kind, name, choicePath+".id", "duplicates another choice id"))
+		}
+		seen[choice.ID] = true
+		out = append(out, boundedTextDiagnostics(kind, name, choicePath+".text", choice.Text, beancontent.MaxChoiceTextRunes)...)
+	}
+	if !beancontent.ValidMachineID(element.Answer) || !seen[element.Answer] {
+		out = append(out, sequenceDiagnostic(kind, name, path+".answer", "must reference one declared choice id"))
+	}
+	if utf8.RuneCountInString(element.Explanation) > beancontent.MaxExplanationRunes {
+		out = append(out, sequenceDiagnostic(kind, name, path+".explanation", fmt.Sprintf("exceeds the maximum of %d code points", beancontent.MaxExplanationRunes)))
+	}
+	return out
+}
+
+func validateTabsBlock(name string, block appir.Block) []definition.Diagnostic {
+	out := boundedTextDiagnostics("Block", name, "spec.label", block.Label, beancontent.MaxLabelRunes)
+	if block.Orientation != "horizontal" && block.Orientation != "vertical" {
+		out = append(out, sequenceDiagnostic("Block", name, "spec.orientation", "must be horizontal or vertical"))
+	}
+	if block.Variant != "underline" && block.Variant != "pills" {
+		out = append(out, sequenceDiagnostic("Block", name, "spec.variant", "must be underline or pills"))
+	}
+	if len(block.Tabs) < beancontent.MinTabs || len(block.Tabs) > beancontent.MaxTabs {
+		out = append(out, sequenceDiagnostic("Block", name, "spec.tabs", "must contain between 2 and 6 tabs"))
+	}
+	seen, total := map[string]bool{}, 0
+	for index, tab := range block.Tabs {
+		path := fmt.Sprintf("spec.tabs.%d", index)
+		if !beancontent.ValidMachineID(tab.ID) {
+			out = append(out, sequenceDiagnostic("Block", name, path+".id", "must be a 1-64 character machine ID"))
+		} else if seen[tab.ID] {
+			out = append(out, sequenceDiagnostic("Block", name, path+".id", "duplicates another tab id"))
+		}
+		seen[tab.ID] = true
+		out = append(out, boundedTextDiagnostics("Block", name, path+".label", tab.Label, beancontent.MaxColumnLabelRunes)...)
+		out = append(out, validateContentElements("Block", name, path+".content", tab.Content)...)
+		total += len(tab.Content)
+	}
+	if total > beancontent.MaxTabElements {
+		out = append(out, sequenceDiagnostic("Block", name, "spec.tabs", "contains more than 24 content elements across tabs"))
 	}
 	return out
 }
@@ -2809,6 +2963,14 @@ func sequenceFrameWeight(a *appir.App, blocks []appir.Block) (int, map[string]bo
 			weight += beancontent.Weight(block.Content)
 			for _, element := range block.Content {
 				features[element.Type] = true
+			}
+		case "tabs":
+			weight += utf8.RuneCountInString(block.Label) + len(block.Tabs)*20
+			for _, tab := range block.Tabs {
+				weight += utf8.RuneCountInString(tab.Label) + beancontent.Weight(tab.Content)
+				for _, element := range tab.Content {
+					features[element.Type] = true
+				}
 			}
 		case "text":
 			weight += utf8.RuneCountInString(block.Text)
@@ -3917,6 +4079,18 @@ func normalizeBlocks(a *appir.App) {
 	for name, block := range a.Blocks {
 		if block.Type == "content" {
 			beancontent.Normalize(block.Content)
+			a.Blocks[name] = block
+		}
+		if block.Type == "tabs" {
+			if block.Orientation == "" {
+				block.Orientation = "horizontal"
+			}
+			if block.Variant == "" {
+				block.Variant = "underline"
+			}
+			for index := range block.Tabs {
+				beancontent.Normalize(block.Tabs[index].Content)
+			}
 			a.Blocks[name] = block
 		}
 		if block.Type != "view" || block.View == "" || block.Display != "" {

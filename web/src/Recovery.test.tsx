@@ -31,6 +31,23 @@ it('keeps tokens out of the URL/storage and consumes them only on explicit POST'
  expect(await screen.findByRole('heading',{name:'Sign in'})).toBeInTheDocument()
  expect(reset).toHaveBeenCalledTimes(1)
 })
+it('requires the account password for explicit email confirmation, not merely a link visit',async()=>{
+ const confirm=vi.fn(async()=>response({ok:true}))
+ vi.stubGlobal('fetch',vi.fn((url:string,init?:RequestInit)=>{
+  if(url==='/api/auth/verification/confirm'){expect(JSON.parse(String(init?.body))).toEqual({token:'verification-token',password:'account-password'});return confirm()}
+  return Promise.resolve(response({authentication:{EmailVerification:true,PasswordRecovery:false}}))
+ }))
+ renderRecovery('/login?verification=confirm#token=verification-token')
+ expect(await screen.findByLabelText('Account password')).toHaveAttribute('autocomplete','current-password')
+ expect(screen.queryByLabelText('Confirm new password')).not.toBeInTheDocument()
+ expect(confirm).not.toHaveBeenCalled()
+ await waitFor(()=>expect(screen.getByTestId('location').textContent).not.toContain('verification-token'))
+ fireEvent.change(screen.getByLabelText('Account password'),{target:{value:'account-password'}})
+ fireEvent.click(screen.getByRole('button',{name:'Verify email'}))
+ expect(await screen.findByRole('heading',{name:'Sign in'})).toBeInTheDocument()
+ expect(screen.getByRole('status')).toHaveTextContent('Email verified. Sign in to continue.')
+ expect(confirm).toHaveBeenCalledTimes(1)
+})
 it('uses a generic queued response and blocks duplicate requests while pending',async()=>{
  let finish!:(response:Response)=>void
  const request=vi.fn(()=>new Promise<Response>(resolve=>{finish=resolve}))

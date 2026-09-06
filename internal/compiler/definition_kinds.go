@@ -166,6 +166,13 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 		return references(reference("action", "Action", app.Webforms[name].Action))
 	}
 	block := mappedDefinitionKind(appir.Block{}, func(app *appir.App) map[string]appir.Block { return app.Blocks }, nameValue[appir.Block](func(value *appir.Block, name string) { value.Name = name }))
+	compileBlock := block.Compile
+	block.Compile = func(app *appir.App, source definition.Definition) []definition.Diagnostic {
+		if diagnostics := validateBlockContentSource(source); len(diagnostics) > 0 {
+			return diagnostics
+		}
+		return compileBlock(app, source)
+	}
 	block.References = blockReferences
 	block.FieldEntity = func(app *appir.App, name string) string { return app.Views[app.Blocks[name].View].Entity }
 	block.ReferenceCandidates = true
@@ -365,6 +372,9 @@ func panelDefinitionKind() definitionKind {
 		Normalize:     noDefinitionNormalization,
 		Validate:      noDefinitionValidation,
 		Compile: func(app *appir.App, source definition.Definition) []definition.Diagnostic {
+			if diagnostics := validatePanelContentSource(source); len(diagnostics) > 0 {
+				return diagnostics
+			}
 			var decoded panelSource
 			if err := definition.DecodeSpec(source.Spec, &decoded); err != nil {
 				return []definition.Diagnostic{diagError(source, "spec", err)}
@@ -398,6 +408,123 @@ func panelDefinitionKind() definitionKind {
 		},
 		Names: func(app *appir.App) []string { return mapNames(app.Panels) },
 	}
+}
+
+func validateBlockContentSource(source definition.Definition) []definition.Diagnostic {
+	typeName, _ := source.Spec["type"].(string)
+	out := []definition.Diagnostic{}
+	if typeName == "content" {
+		if value, present := source.Spec["content"]; present {
+			out = append(out, contentSourceDiagnostics("Block", source.Metadata.Name, beancontent.ValidateSource(value, "spec.content"))...)
+		}
+	}
+	newFields := []string{"label", "orientation", "variant", "tabs"}
+	if typeName != "tabs" {
+		for _, field := range newFields {
+			if _, present := source.Spec[field]; present {
+				out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec."+field, "is only supported by a tabs Block"))
+			}
+		}
+		return out
+	}
+	allowed := map[string]bool{"type": true, "policy": true, "label": true, "orientation": true, "variant": true, "tabs": true}
+	fieldNames := keys(source.Spec)
+	for _, field := range fieldNames {
+		if !allowed[field] {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec."+field, "is not supported by a tabs Block"))
+		}
+	}
+	for _, field := range []string{"label", "tabs"} {
+		if value, present := source.Spec[field]; !present || value == nil {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec."+field, "is required"))
+		}
+	}
+	for _, field := range []string{"label", "orientation", "variant"} {
+		if value, present := source.Spec[field]; present {
+			if _, ok := value.(string); !ok {
+				out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec."+field, "must be a string"))
+			}
+		}
+	}
+	if value, present := source.Spec["orientation"].(string); present && value != "horizontal" && value != "vertical" {
+		out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec.orientation", "must be horizontal or vertical"))
+	}
+	if value, present := source.Spec["variant"].(string); present && value != "underline" && value != "pills" {
+		out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec.variant", "must be underline or pills"))
+	}
+	rawTabs, ok := source.Spec["tabs"].([]any)
+	if !ok {
+		if _, present := source.Spec["tabs"]; present && source.Spec["tabs"] != nil {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec.tabs", "must be a list of tabs"))
+		}
+		return out
+	}
+	for index, rawTab := range rawTabs {
+		path := fmt.Sprintf("spec.tabs.%d", index)
+		tab, ok := rawTab.(map[string]any)
+		if !ok {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path, "must be an object"))
+			continue
+		}
+		for _, field := range keys(tab) {
+			if field != "id" && field != "label" && field != "content" {
+				out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path+"."+field, "is not supported by a tab"))
+			}
+		}
+		for _, field := range []string{"id", "label", "content"} {
+			if value, present := tab[field]; !present || value == nil {
+				out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path+"."+field, "is required"))
+			}
+		}
+		for _, field := range []string{"id", "label"} {
+			if value, present := tab[field]; present {
+				if _, ok := value.(string); !ok {
+					out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path+"."+field, "must be a string"))
+				}
+			}
+		}
+		if value, present := tab["content"]; present && value != nil {
+			out = append(out, contentSourceDiagnostics("Block", source.Metadata.Name, beancontent.ValidateSource(value, path+".content"))...)
+		}
+	}
+	return out
+}
+
+func validatePanelContentSource(source definition.Definition) []definition.Diagnostic {
+	regions, ok := source.Spec["regions"].([]any)
+	if !ok {
+		return nil
+	}
+	out := []definition.Diagnostic{}
+	for regionIndex, rawRegion := range regions {
+		region, ok := rawRegion.(map[string]any)
+		if !ok {
+			continue
+		}
+		items, ok := region["items"].([]any)
+		if !ok {
+			continue
+		}
+		for itemIndex, rawItem := range items {
+			item, ok := rawItem.(map[string]any)
+			if !ok {
+				continue
+			}
+			if value, present := item["content"]; present {
+				path := fmt.Sprintf("spec.regions.%d.items.%d.content", regionIndex, itemIndex)
+				out = append(out, contentSourceDiagnostics("Panel", source.Metadata.Name, beancontent.ValidateSource(value, path))...)
+			}
+		}
+	}
+	return out
+}
+
+func contentSourceDiagnostics(kind, name string, issues []beancontent.SourceIssue) []definition.Diagnostic {
+	out := make([]definition.Diagnostic, len(issues))
+	for index, issue := range issues {
+		out[index] = sequenceDiagnostic(kind, name, issue.Path, issue.Message)
+	}
+	return out
 }
 
 func nameValue[T any](set func(*T, string)) func(string, *T) {

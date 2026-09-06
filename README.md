@@ -8,7 +8,7 @@ Bean's direction is to make probabilistic agents safe to build with through a de
 Definitions -> validation -> additive migration -> immutable AppIR -> atomic activation
 HTTP -> policy -> View reads / Action writes -> typed DBAL -> SQLite/PostgreSQL
 Page -> Panel -> Block -> typed render tree -> embedded React registry
-Sequence -> ordered frame -> Panel -> bounded semantic content / View Display
+Sequence -> ordered frame -> Panel -> content / Tabs Block / View Display
 View -> canonical query -> named page/block/serialized display
 Explore -> candidate View -> preview -> Studio draft -> validate/diff/publish
 Agent -> CLI or MCP -> Definition / Release / Application Plane -> shared services
@@ -60,7 +60,7 @@ Build a populated local demo from typed metadata, or inspect an ordinary-definit
 ./bin/bean demo --app presentation --db ./tmp/presentation.db --addr 127.0.0.1:8080
 ```
 
-See [docs/agent-cli.md](docs/agent-cli.md) for the versioned envelope, diagnostic codes, exit statuses, inspection, semantic diff, and compatibility rules.
+See [docs/agent-cli.md](docs/agent-cli.md) for the versioned envelope, diagnostic codes, exit statuses, inspection, semantic diff, and compatibility rules. Application authors can start with [Creating an application](docs/creating-an-app.md), use [Definitions](docs/definitions.md) as the reference, and consult [Content Blocks](docs/content-blocks.md) for static content, safe links/media, literal tables, tabs, and choices.
 
 The provider-neutral protocol can also be called one-to-one or served to a local MCP host:
 
@@ -78,7 +78,7 @@ PostgreSQL uses the same commands with `--database-url` or `BEAN_DATABASE_URL`:
 ./bin/bean serve --database-url 'postgres://bean:secret@db/bean?sslmode=require' --addr 127.0.0.1:8080
 ```
 
-Run `./bin/bean demo --app presentation --db ./tmp/presentation.db --addr 127.0.0.1:8080` and open `/presentations/bean` for the ten-frame, five-chapter Bean introduction with horizontal and vertical navigation. The populated applicant tracker remains available with `--app ats`. Open `/explore` as an administrator to select any Entity, configure a record/group/metric View, preview it through the normal Policy path, and save it to the deterministic Studio draft. Open `/`, `/admin`, `/admin/system`, `/studio`, `/docs`, or `/openapi.json` for the other surfaces. Studio visually edits the common Explore query, Display, Page-filter, drill, and record-Action path, with Advanced JSON for uncommon combinations; validate and review semantic and migration changes before publishing.
+Run `./bin/bean demo --app presentation --db ./tmp/presentation.db --addr 127.0.0.1:8080` and open `/presentations/bean` for the seventeen-frame, eight-chapter Bean introduction with horizontal and vertical navigation. The populated applicant tracker remains available with `--app ats`. Open `/explore` as an administrator to select any Entity, configure a record/group/metric View, preview it through the normal Policy path, and save it to the deterministic Studio draft. Open `/`, `/admin`, `/admin/system`, `/studio`, `/docs`, or `/openapi.json` for the other surfaces. Studio visually edits the common Explore query, Display, Page-filter, drill, and record-Action path, with Advanced JSON for uncommon combinations; validate and review semantic and migration changes before publishing.
 
 Core modules live under `internal/`: compilation/release, deterministic Rule evaluation, DBAL/SQLite/PostgreSQL/migrations, field/View/Action, auth/policy, webform, render/page/sequence composition, demo seeding/patterns, OpenAPI/HTTP, audit/events/jobs, and embedded UI assets. Eleven metadata-only examples live under `examples/`, including Asana Lite, the populated ATS Explore slice, and the Bean introduction presentation.
 

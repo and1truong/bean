@@ -6,6 +6,10 @@
     "apiVersion": {
       "const": "bean/v1alpha1"
     },
+    "emailVerification": {
+      "default": false,
+      "type": "boolean"
+    },
     "kind": {
       "const": "Authentication"
     },

@@ -24,85 +24,111 @@ import (
 const JSONSchemaVersion = "https://json-schema.org/draft/2020-12/schema"
 
 type Capabilities struct {
-	DefinitionAPIVersion    string   `json:"definitionAPIVersion"`
-	CLIAPIVersion           string   `json:"cliAPIVersion"`
-	AgentProtocolAPIVersion string   `json:"agentProtocolAPIVersion,omitempty"`
-	AppIRFormat             string   `json:"appIRFormat"`
-	DefinitionKinds         []string `json:"definitionKinds"`
-	SemanticPrimitives      []string `json:"semanticPrimitives"`
-	FieldTypes              []string `json:"fieldTypes"`
-	ActionOperations        []string `json:"actionOperations"`
-	ActionSteps             []string `json:"actionSteps"`
-	BlockTypes              []string `json:"blockTypes"`
-	Presentations           []string `json:"presentations"`
-	ViewDisplayTypes        []string `json:"viewDisplayTypes"`
-	ViewRenderers           []string `json:"viewRenderers"`
-	FieldLayoutColumns      []int    `json:"fieldLayoutColumns"`
-	FieldLayoutSpans        []string `json:"fieldLayoutSpans"`
-	MaxFieldLayoutGroups    int      `json:"maxFieldLayoutGroups"`
-	MaxFieldGroupFields     int      `json:"maxFieldGroupFields"`
-	MaxFieldLayoutFields    int      `json:"maxFieldLayoutFields"`
-	ViewFilterOperators     []string `json:"viewFilterOperators"`
-	ViewControlWidgets      []string `json:"viewControlWidgets"`
-	ViewPagers              []string `json:"viewPagers"`
-	ViewResultShapes        []string `json:"viewResultShapes"`
-	ViewGroupBuckets        []string `json:"viewGroupBuckets"`
-	ViewAggregateFunctions  []string `json:"viewAggregateFunctions"`
-	ViewDrillSources        []string `json:"viewDrillSources"`
-	ViewSelections          []string `json:"viewSelections"`
-	DisplaySerializers      []string `json:"displaySerializers"`
-	PanelLayouts            []string `json:"panelLayouts"`
-	MaxPageSections         int      `json:"maxPageSections"`
-	PageSectionWidths       []string `json:"pageSectionWidths"`
-	MenuProfiles            []string `json:"menuProfiles"`
-	MenuVariants            []string `json:"menuVariants"`
-	MaxMenuDefinitions      int      `json:"maxMenuDefinitions"`
-	MaxMenuDepth            int      `json:"maxMenuDepth"`
-	MaxMenuPlacements       int      `json:"maxMenuPlacements"`
-	SequenceProfiles        []string `json:"sequenceProfiles"`
-	SequenceAspectRatios    []string `json:"sequenceAspectRatios"`
-	SequenceFrameLayouts    []string `json:"sequenceFrameLayouts"`
-	SequenceFrameDirections []string `json:"sequenceFrameDirections"`
-	ContentElementTypes     []string `json:"contentElementTypes"`
-	ContentTones            []string `json:"contentTones"`
-	DiagramDirections       []string `json:"diagramDirections"`
-	MaxSequenceFrames       int      `json:"maxSequenceFrames"`
-	MaxSequenceTitleRunes   int      `json:"maxSequenceTitleRunes"`
-	MaxSequenceNotesBytes   int      `json:"maxSequenceNotesBytes"`
-	MaxSequenceFrameBlocks  int      `json:"maxSequenceFrameBlocks"`
-	MaxSequenceContentUnits int      `json:"maxSequenceContentUnits"`
-	MaxContentElements      int      `json:"maxContentElements"`
-	MaxContentBulletItems   int      `json:"maxContentBulletItems"`
-	MaxContentDiagramItems  int      `json:"maxContentDiagramItems"`
-	MaxContentCodeLines     int      `json:"maxContentCodeLines"`
-	DatabaseBackends        []string `json:"databaseBackends"`
-	MaxViewLimit            int      `json:"maxViewLimit"`
-	MaxFileBytes            int      `json:"maxFileBytes"`
-	ThemePresets            []string `json:"themePresets"`
-	ThemeAccents            []string `json:"themeAccents"`
-	DemoSeedProfiles        []string `json:"demoSeedProfiles"`
-	RuleOperators           []string `json:"ruleOperators"`
-	RuleSources             []string `json:"ruleSources"`
-	MaxRuleNodes            int      `json:"maxRuleNodes"`
-	MaxRuleDepth            int      `json:"maxRuleDepth"`
-	MaxRuleLiteralBytes     int      `json:"maxRuleLiteralBytes"`
-	MaxRuleValueBytes       int      `json:"maxRuleValueBytes"`
-	TestSuiteTargets        []string `json:"testSuiteTargets"`
-	MaxTestSuites           int      `json:"maxTestSuites"`
-	MaxTestCases            int      `json:"maxTestCases"`
-	MaxTestFixtures         int      `json:"maxTestFixtures"`
-	MaxTestSuiteBytes       int      `json:"maxTestSuiteBytes"`
-	ExtensionTransports     []string `json:"extensionTransports"`
-	ExtensionPermissions    []string `json:"extensionPermissions"`
-	ExtensionSideEffects    []string `json:"extensionSideEffects"`
-	ExtensionAuthentication []string `json:"extensionAuthentication"`
-	ExtensionIdempotency    []string `json:"extensionIdempotency"`
-	ExtensionTransactions   []string `json:"extensionTransactions"`
-	ExtensionFailures       []string `json:"extensionFailures"`
-	MaxExtensionTimeout     int      `json:"maxExtensionTimeoutSeconds"`
-	MaxExtensionAttempts    int      `json:"maxExtensionAttempts"`
-	MaxExtensionDelay       int      `json:"maxExtensionDelaySeconds"`
-	MaxExtensionResponse    int      `json:"maxExtensionResponseBytes"`
+	DefinitionAPIVersion       string   `json:"definitionAPIVersion"`
+	CLIAPIVersion              string   `json:"cliAPIVersion"`
+	AgentProtocolAPIVersion    string   `json:"agentProtocolAPIVersion,omitempty"`
+	AppIRFormat                string   `json:"appIRFormat"`
+	DefinitionKinds            []string `json:"definitionKinds"`
+	SemanticPrimitives         []string `json:"semanticPrimitives"`
+	FieldTypes                 []string `json:"fieldTypes"`
+	ActionOperations           []string `json:"actionOperations"`
+	ActionSteps                []string `json:"actionSteps"`
+	BlockTypes                 []string `json:"blockTypes"`
+	Presentations              []string `json:"presentations"`
+	ViewDisplayTypes           []string `json:"viewDisplayTypes"`
+	ViewRenderers              []string `json:"viewRenderers"`
+	FieldLayoutColumns         []int    `json:"fieldLayoutColumns"`
+	FieldLayoutSpans           []string `json:"fieldLayoutSpans"`
+	MaxFieldLayoutGroups       int      `json:"maxFieldLayoutGroups"`
+	MaxFieldGroupFields        int      `json:"maxFieldGroupFields"`
+	MaxFieldLayoutFields       int      `json:"maxFieldLayoutFields"`
+	ViewFilterOperators        []string `json:"viewFilterOperators"`
+	ViewControlWidgets         []string `json:"viewControlWidgets"`
+	ViewPagers                 []string `json:"viewPagers"`
+	ViewResultShapes           []string `json:"viewResultShapes"`
+	ViewGroupBuckets           []string `json:"viewGroupBuckets"`
+	ViewAggregateFunctions     []string `json:"viewAggregateFunctions"`
+	ViewDrillSources           []string `json:"viewDrillSources"`
+	ViewSelections             []string `json:"viewSelections"`
+	DisplaySerializers         []string `json:"displaySerializers"`
+	PanelLayouts               []string `json:"panelLayouts"`
+	MaxPageSections            int      `json:"maxPageSections"`
+	PageSectionWidths          []string `json:"pageSectionWidths"`
+	MenuProfiles               []string `json:"menuProfiles"`
+	MenuVariants               []string `json:"menuVariants"`
+	MaxMenuDefinitions         int      `json:"maxMenuDefinitions"`
+	MaxMenuDepth               int      `json:"maxMenuDepth"`
+	MaxMenuPlacements          int      `json:"maxMenuPlacements"`
+	SequenceProfiles           []string `json:"sequenceProfiles"`
+	SequenceAspectRatios       []string `json:"sequenceAspectRatios"`
+	SequenceFrameLayouts       []string `json:"sequenceFrameLayouts"`
+	SequenceFrameDirections    []string `json:"sequenceFrameDirections"`
+	ContentElementTypes        []string `json:"contentElementTypes"`
+	ContentTones               []string `json:"contentTones"`
+	DiagramDirections          []string `json:"diagramDirections"`
+	HeadingLevels              []int    `json:"headingLevels"`
+	LinkTargetKinds            []string `json:"linkTargetKinds"`
+	LinkOpenModes              []string `json:"linkOpenModes"`
+	TableRowHeaderModes        []string `json:"tableRowHeaderModes"`
+	MediaKinds                 []string `json:"mediaKinds"`
+	MediaSourcePolicy          string   `json:"mediaSourcePolicy"`
+	TabOrientations            []string `json:"tabOrientations"`
+	TabVariants                []string `json:"tabVariants"`
+	MaxSequenceFrames          int      `json:"maxSequenceFrames"`
+	MaxSequenceTitleRunes      int      `json:"maxSequenceTitleRunes"`
+	MaxSequenceNotesBytes      int      `json:"maxSequenceNotesBytes"`
+	MaxSequenceFrameBlocks     int      `json:"maxSequenceFrameBlocks"`
+	MaxSequenceContentUnits    int      `json:"maxSequenceContentUnits"`
+	MaxContentElements         int      `json:"maxContentElements"`
+	MaxContentBulletItems      int      `json:"maxContentBulletItems"`
+	MaxContentDiagramItems     int      `json:"maxContentDiagramItems"`
+	MaxContentCodeLines        int      `json:"maxContentCodeLines"`
+	MaxContentOrderedItems     int      `json:"maxContentOrderedItems"`
+	MaxContentItemRunes        int      `json:"maxContentItemRunes"`
+	MaxContentLabelRunes       int      `json:"maxContentLabelRunes"`
+	MaxContentTargetRunes      int      `json:"maxContentTargetRunes"`
+	MaxContentTableColumns     int      `json:"maxContentTableColumns"`
+	MaxContentTableRows        int      `json:"maxContentTableRows"`
+	MaxContentColumnLabelRunes int      `json:"maxContentColumnLabelRunes"`
+	MaxContentMediaTitleRunes  int      `json:"maxContentMediaTitleRunes"`
+	MaxContentTranscriptRunes  int      `json:"maxContentTranscriptRunes"`
+	MinContentChoices          int      `json:"minContentChoices"`
+	MaxContentChoices          int      `json:"maxContentChoices"`
+	MaxContentQuestionRunes    int      `json:"maxContentQuestionRunes"`
+	MaxContentChoiceTextRunes  int      `json:"maxContentChoiceTextRunes"`
+	MaxContentExplanationRunes int      `json:"maxContentExplanationRunes"`
+	MaxContentMachineIDRunes   int      `json:"maxContentMachineIDRunes"`
+	MinTabs                    int      `json:"minTabs"`
+	MaxTabs                    int      `json:"maxTabs"`
+	MaxTabContentElements      int      `json:"maxTabContentElements"`
+	DatabaseBackends           []string `json:"databaseBackends"`
+	MaxViewLimit               int      `json:"maxViewLimit"`
+	MaxFileBytes               int      `json:"maxFileBytes"`
+	ThemePresets               []string `json:"themePresets"`
+	ThemeAccents               []string `json:"themeAccents"`
+	DemoSeedProfiles           []string `json:"demoSeedProfiles"`
+	RuleOperators              []string `json:"ruleOperators"`
+	RuleSources                []string `json:"ruleSources"`
+	MaxRuleNodes               int      `json:"maxRuleNodes"`
+	MaxRuleDepth               int      `json:"maxRuleDepth"`
+	MaxRuleLiteralBytes        int      `json:"maxRuleLiteralBytes"`
+	MaxRuleValueBytes          int      `json:"maxRuleValueBytes"`
+	TestSuiteTargets           []string `json:"testSuiteTargets"`
+	MaxTestSuites              int      `json:"maxTestSuites"`
+	MaxTestCases               int      `json:"maxTestCases"`
+	MaxTestFixtures            int      `json:"maxTestFixtures"`
+	MaxTestSuiteBytes          int      `json:"maxTestSuiteBytes"`
+	ExtensionTransports        []string `json:"extensionTransports"`
+	ExtensionPermissions       []string `json:"extensionPermissions"`
+	ExtensionSideEffects       []string `json:"extensionSideEffects"`
+	ExtensionAuthentication    []string `json:"extensionAuthentication"`
+	ExtensionIdempotency       []string `json:"extensionIdempotency"`
+	ExtensionTransactions      []string `json:"extensionTransactions"`
+	ExtensionFailures          []string `json:"extensionFailures"`
+	MaxExtensionTimeout        int      `json:"maxExtensionTimeoutSeconds"`
+	MaxExtensionAttempts       int      `json:"maxExtensionAttempts"`
+	MaxExtensionDelay          int      `json:"maxExtensionDelaySeconds"`
+	MaxExtensionResponse       int      `json:"maxExtensionResponseBytes"`
 }
 
 func AgentCapabilities(cliAPIVersion string) Capabilities {
@@ -111,85 +137,111 @@ func AgentCapabilities(cliAPIVersion string) Capabilities {
 
 func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabilities {
 	return Capabilities{
-		DefinitionAPIVersion:    definition.APIVersion,
-		CLIAPIVersion:           cliAPIVersion,
-		AgentProtocolAPIVersion: agentProtocolAPIVersion,
-		AppIRFormat:             appir.CurrentFormat,
-		DefinitionKinds:         definitionKindRegistry().Names(),
-		SemanticPrimitives:      []string{"Lifecycle", "Rule"},
-		FieldTypes:              field.Types(),
-		ActionOperations:        actionop.Names(),
-		ActionSteps:             actionstep.Names(),
-		BlockTypes:              block.Names(),
-		Presentations:           presentationNames(),
-		ViewDisplayTypes:        viewDisplayTypes(),
-		ViewRenderers:           viewRendererNames(),
-		FieldLayoutColumns:      []int{1, 2},
-		FieldLayoutSpans:        []string{"single", "full"},
-		MaxFieldLayoutGroups:    maxFieldLayoutGroups,
-		MaxFieldGroupFields:     maxFieldGroupFields,
-		MaxFieldLayoutFields:    maxFieldLayoutFields,
-		ViewFilterOperators:     viewFilterOperators(),
-		ViewControlWidgets:      viewControlWidgets(),
-		ViewPagers:              viewPagerTypes(),
-		ViewResultShapes:        []string{"groups", "metric", "records"},
-		ViewGroupBuckets:        []string{"day", "month", "week"},
-		ViewAggregateFunctions:  []string{"average", "count", "max", "min", "sum"},
-		ViewDrillSources:        []string{"filter", "group"},
-		ViewSelections:          []string{"multiple", "none", "single"},
-		DisplaySerializers:      displaySerializerNames(),
-		PanelLayouts:            panelLayoutNames(),
-		MaxPageSections:         beanpage.MaxSections,
-		PageSectionWidths:       beanpage.Widths(),
-		MenuProfiles:            beanmenu.Profiles(),
-		MenuVariants:            beanmenu.Variants(),
-		MaxMenuDefinitions:      beanmenu.MaxDefinitions,
-		MaxMenuDepth:            beanmenu.MaxDepth,
-		MaxMenuPlacements:       beanmenu.MaxPlacements,
-		SequenceProfiles:        beansequence.Profiles(),
-		SequenceAspectRatios:    beansequence.AspectRatios(),
-		SequenceFrameLayouts:    beansequence.Layouts(),
-		SequenceFrameDirections: beansequence.Directions(),
-		ContentElementTypes:     beancontent.Types(),
-		ContentTones:            beancontent.Tones(),
-		DiagramDirections:       beancontent.Directions(),
-		MaxSequenceFrames:       beansequence.MaxFrames,
-		MaxSequenceTitleRunes:   beansequence.MaxTitleRunes,
-		MaxSequenceNotesBytes:   beansequence.MaxNotesBytes,
-		MaxSequenceFrameBlocks:  beansequence.MaxBlocksPerFrame,
-		MaxSequenceContentUnits: beansequence.BaseContentBudget,
-		MaxContentElements:      beancontent.MaxElements,
-		MaxContentBulletItems:   beancontent.MaxBulletItems,
-		MaxContentDiagramItems:  beancontent.MaxDiagramItems,
-		MaxContentCodeLines:     beancontent.MaxCodeLines,
-		DatabaseBackends:        []string{"postgresql", "sqlite"},
-		MaxViewLimit:            200,
-		MaxFileBytes:            field.MaxFileBytes,
-		ThemePresets:            themePresetNames(),
-		ThemeAccents:            themeAccentNames(),
-		DemoSeedProfiles:        demoSeedProfileNames(),
-		RuleOperators:           rule.Operators(),
-		RuleSources:             rule.Sources(),
-		MaxRuleNodes:            rule.MaxNodes,
-		MaxRuleDepth:            rule.MaxDepth,
-		MaxRuleLiteralBytes:     rule.MaxLiteralBytes,
-		MaxRuleValueBytes:       rule.MaxValueBytes,
-		TestSuiteTargets:        append([]string{}, testsuite.TargetKinds...),
-		MaxTestSuites:           testsuite.MaxSuites,
-		MaxTestCases:            testsuite.MaxCases,
-		MaxTestFixtures:         testsuite.MaxFixtures,
-		MaxTestSuiteBytes:       testsuite.MaxEncodedSize,
-		ExtensionTransports:     beanextension.Transports(),
-		ExtensionPermissions:    beanextension.Permissions(),
-		ExtensionSideEffects:    beanextension.SideEffects(),
-		ExtensionAuthentication: beanextension.Authentications(),
-		ExtensionIdempotency:    beanextension.IdempotencyModes(),
-		ExtensionTransactions:   beanextension.TransactionModes(),
-		ExtensionFailures:       beanextension.FailureModes(),
-		MaxExtensionTimeout:     beanextension.MaxTimeoutSeconds,
-		MaxExtensionAttempts:    beanextension.MaxAttempts,
-		MaxExtensionDelay:       beanextension.MaxDelaySeconds,
-		MaxExtensionResponse:    beanextension.MaxResponseBytes,
+		DefinitionAPIVersion:       definition.APIVersion,
+		CLIAPIVersion:              cliAPIVersion,
+		AgentProtocolAPIVersion:    agentProtocolAPIVersion,
+		AppIRFormat:                appir.CurrentFormat,
+		DefinitionKinds:            definitionKindRegistry().Names(),
+		SemanticPrimitives:         []string{"Lifecycle", "Rule"},
+		FieldTypes:                 field.Types(),
+		ActionOperations:           actionop.Names(),
+		ActionSteps:                actionstep.Names(),
+		BlockTypes:                 block.Names(),
+		Presentations:              presentationNames(),
+		ViewDisplayTypes:           viewDisplayTypes(),
+		ViewRenderers:              viewRendererNames(),
+		FieldLayoutColumns:         []int{1, 2},
+		FieldLayoutSpans:           []string{"single", "full"},
+		MaxFieldLayoutGroups:       maxFieldLayoutGroups,
+		MaxFieldGroupFields:        maxFieldGroupFields,
+		MaxFieldLayoutFields:       maxFieldLayoutFields,
+		ViewFilterOperators:        viewFilterOperators(),
+		ViewControlWidgets:         viewControlWidgets(),
+		ViewPagers:                 viewPagerTypes(),
+		ViewResultShapes:           []string{"groups", "metric", "records"},
+		ViewGroupBuckets:           []string{"day", "month", "week"},
+		ViewAggregateFunctions:     []string{"average", "count", "max", "min", "sum"},
+		ViewDrillSources:           []string{"filter", "group"},
+		ViewSelections:             []string{"multiple", "none", "single"},
+		DisplaySerializers:         displaySerializerNames(),
+		PanelLayouts:               panelLayoutNames(),
+		MaxPageSections:            beanpage.MaxSections,
+		PageSectionWidths:          beanpage.Widths(),
+		MenuProfiles:               beanmenu.Profiles(),
+		MenuVariants:               beanmenu.Variants(),
+		MaxMenuDefinitions:         beanmenu.MaxDefinitions,
+		MaxMenuDepth:               beanmenu.MaxDepth,
+		MaxMenuPlacements:          beanmenu.MaxPlacements,
+		SequenceProfiles:           beansequence.Profiles(),
+		SequenceAspectRatios:       beansequence.AspectRatios(),
+		SequenceFrameLayouts:       beansequence.Layouts(),
+		SequenceFrameDirections:    beansequence.Directions(),
+		ContentElementTypes:        beancontent.Types(),
+		ContentTones:               beancontent.Tones(),
+		DiagramDirections:          beancontent.Directions(),
+		HeadingLevels:              beancontent.HeadingLevels(),
+		LinkTargetKinds:            []string{"application_path", "https"},
+		LinkOpenModes:              beancontent.LinkOpenModes(),
+		TableRowHeaderModes:        beancontent.RowHeaderModes(),
+		MediaKinds:                 []string{"audio", "image", "youtube", "youtube_playlist"},
+		MediaSourcePolicy:          "absolute application path or HTTPS; audio forbids query and fragment; YouTube accepts validated IDs only",
+		TabOrientations:            beancontent.TabOrientations(),
+		TabVariants:                beancontent.TabVariants(),
+		MaxSequenceFrames:          beansequence.MaxFrames,
+		MaxSequenceTitleRunes:      beansequence.MaxTitleRunes,
+		MaxSequenceNotesBytes:      beansequence.MaxNotesBytes,
+		MaxSequenceFrameBlocks:     beansequence.MaxBlocksPerFrame,
+		MaxSequenceContentUnits:    beansequence.BaseContentBudget,
+		MaxContentElements:         beancontent.MaxElements,
+		MaxContentBulletItems:      beancontent.MaxBulletItems,
+		MaxContentDiagramItems:     beancontent.MaxDiagramItems,
+		MaxContentCodeLines:        beancontent.MaxCodeLines,
+		MaxContentOrderedItems:     beancontent.MaxOrderedItems,
+		MaxContentItemRunes:        beancontent.MaxItemRunes,
+		MaxContentLabelRunes:       beancontent.MaxLabelRunes,
+		MaxContentTargetRunes:      beancontent.MaxTargetRunes,
+		MaxContentTableColumns:     beancontent.MaxColumns,
+		MaxContentTableRows:        beancontent.MaxRows,
+		MaxContentColumnLabelRunes: beancontent.MaxColumnLabelRunes,
+		MaxContentMediaTitleRunes:  beancontent.MaxMediaTitleRunes,
+		MaxContentTranscriptRunes:  beancontent.MaxTranscriptRunes,
+		MinContentChoices:          beancontent.MinChoices,
+		MaxContentChoices:          beancontent.MaxChoices,
+		MaxContentQuestionRunes:    beancontent.MaxQuestionRunes,
+		MaxContentChoiceTextRunes:  beancontent.MaxChoiceTextRunes,
+		MaxContentExplanationRunes: beancontent.MaxExplanationRunes,
+		MaxContentMachineIDRunes:   beancontent.MaxMachineIDRunes,
+		MinTabs:                    beancontent.MinTabs,
+		MaxTabs:                    beancontent.MaxTabs,
+		MaxTabContentElements:      beancontent.MaxTabElements,
+		DatabaseBackends:           []string{"postgresql", "sqlite"},
+		MaxViewLimit:               200,
+		MaxFileBytes:               field.MaxFileBytes,
+		ThemePresets:               themePresetNames(),
+		ThemeAccents:               themeAccentNames(),
+		DemoSeedProfiles:           demoSeedProfileNames(),
+		RuleOperators:              rule.Operators(),
+		RuleSources:                rule.Sources(),
+		MaxRuleNodes:               rule.MaxNodes,
+		MaxRuleDepth:               rule.MaxDepth,
+		MaxRuleLiteralBytes:        rule.MaxLiteralBytes,
+		MaxRuleValueBytes:          rule.MaxValueBytes,
+		TestSuiteTargets:           append([]string{}, testsuite.TargetKinds...),
+		MaxTestSuites:              testsuite.MaxSuites,
+		MaxTestCases:               testsuite.MaxCases,
+		MaxTestFixtures:            testsuite.MaxFixtures,
+		MaxTestSuiteBytes:          testsuite.MaxEncodedSize,
+		ExtensionTransports:        beanextension.Transports(),
+		ExtensionPermissions:       beanextension.Permissions(),
+		ExtensionSideEffects:       beanextension.SideEffects(),
+		ExtensionAuthentication:    beanextension.Authentications(),
+		ExtensionIdempotency:       beanextension.IdempotencyModes(),
+		ExtensionTransactions:      beanextension.TransactionModes(),
+		ExtensionFailures:          beanextension.FailureModes(),
+		MaxExtensionTimeout:        beanextension.MaxTimeoutSeconds,
+		MaxExtensionAttempts:       beanextension.MaxAttempts,
+		MaxExtensionDelay:          beanextension.MaxDelaySeconds,
+		MaxExtensionResponse:       beanextension.MaxResponseBytes,
 	}
 }
 
@@ -278,6 +330,7 @@ func definitionSchema(kind string, specification reflect.Type) map[string]any {
 		properties["preset"] = map[string]any{"type": "string", "enum": []string{"local", "internal", "public"}}
 		properties["registration"] = map[string]any{"type": "boolean", "default": false}
 		properties["passwordRecovery"] = map[string]any{"type": "boolean", "default": false}
+		properties["emailVerification"] = map[string]any{"type": "boolean", "default": false}
 	}
 	if kind == "View" {
 		groupBy := properties["groupBy"].(map[string]any)
@@ -359,6 +412,26 @@ func definitionSchema(kind string, specification reflect.Type) map[string]any {
 			}
 		}
 	}
+	if kind == "Block" {
+		properties["type"] = map[string]any{"type": "string", "enum": block.Names()}
+		properties["label"] = boundedString(beancontent.MaxLabelRunes)
+		properties["orientation"] = map[string]any{"type": "string", "enum": beancontent.TabOrientations(), "default": "horizontal"}
+		properties["variant"] = map[string]any{"type": "string", "enum": beancontent.TabVariants(), "default": "underline"}
+		content := properties["content"].(map[string]any)
+		content["minItems"] = 1
+		content["maxItems"] = beancontent.MaxElements
+		tabs := properties["tabs"].(map[string]any)
+		tabs["minItems"] = beancontent.MinTabs
+		tabs["maxItems"] = beancontent.MaxTabs
+		forbidden := []any{}
+		for _, field := range []string{"view", "display", "entity", "webform", "action", "menu", "text", "resource", "inputs", "bindings", "filters", "defaultFilters", "presentation", "content"} {
+			forbidden = append(forbidden, map[string]any{"required": []string{field}})
+		}
+		document["oneOf"] = []any{
+			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "tabs"}}, "required": []string{"type", "label", "tabs"}, "not": map[string]any{"anyOf": forbidden}},
+			map[string]any{"properties": map[string]any{"type": map[string]any{"enum": without(block.Names(), "tabs")}}, "required": []string{"type"}, "not": map[string]any{"anyOf": []any{map[string]any{"required": []string{"label"}}, map[string]any{"required": []string{"orientation"}}, map[string]any{"required": []string{"variant"}}, map[string]any{"required": []string{"tabs"}}}}},
+		}
+	}
 	if kind == "Rule" {
 		properties["result"] = map[string]any{"type": "string", "enum": []string{string(rule.Boolean), string(rule.Date), string(rule.DateTime), string(rule.Integer), string(rule.Number), string(rule.String), string(rule.Strings)}}
 		document["required"] = []string{"kind", "name", "result", "expression"}
@@ -407,7 +480,111 @@ func definitionSchema(kind string, specification reflect.Type) map[string]any {
 		}
 	}
 	fieldLayoutSchemaDefinitions(builder.definitions)
+	semanticContentSchemaDefinitions(builder.definitions)
 	return document
+}
+
+func without(values []string, omitted string) []string {
+	out := []string{}
+	for _, value := range values {
+		if value != omitted {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func semanticContentSchemaDefinitions(definitions map[string]any) {
+	for name, raw := range definitions {
+		schema := raw.(map[string]any)
+		switch {
+		case strings.HasSuffix(name, "internal_appir_ContentElement"):
+			definitions[name] = contentElementSchema()
+		case strings.HasSuffix(name, "internal_appir_TableColumn"):
+			schema["required"] = []string{"id", "label"}
+			properties := schema["properties"].(map[string]any)
+			delete(properties, "iD")
+			properties["id"] = machineIDSchema()
+			properties["label"] = boundedString(beancontent.MaxColumnLabelRunes)
+		case strings.HasSuffix(name, "internal_appir_ContentChoice"):
+			schema["required"] = []string{"id", "text"}
+			properties := schema["properties"].(map[string]any)
+			delete(properties, "iD")
+			properties["id"] = machineIDSchema()
+			properties["text"] = boundedString(beancontent.MaxChoiceTextRunes)
+		case strings.HasSuffix(name, "internal_appir_ContentTab"):
+			schema["required"] = []string{"id", "label", "content"}
+			schema["description"] = "Tab IDs are unique within the Block; all tab content lists contain at most 24 elements in total. These constraints are compiler-enforced."
+			properties := schema["properties"].(map[string]any)
+			delete(properties, "iD")
+			properties["id"] = machineIDSchema()
+			properties["label"] = boundedString(beancontent.MaxColumnLabelRunes)
+			content := properties["content"].(map[string]any)
+			content["minItems"] = 1
+			content["maxItems"] = beancontent.MaxElements
+		}
+	}
+}
+
+func contentElementSchema() map[string]any {
+	stringValue := map[string]any{"type": "string"}
+	text := func(max int) map[string]any {
+		schema := map[string]any{"type": "string"}
+		if max > 0 {
+			schema["maxLength"] = max
+		}
+		return schema
+	}
+	nonBlank := func(max int) map[string]any {
+		schema := text(max)
+		schema["pattern"] = "\\S"
+		return schema
+	}
+	stringList := func(minimum, maximum, maxLength int) map[string]any {
+		item := any(stringValue)
+		if maxLength > 0 {
+			item = text(maxLength)
+		}
+		return map[string]any{"type": "array", "minItems": minimum, "maxItems": maximum, "items": item}
+	}
+	variants := []any{
+		contentVariant("heading", []string{"text"}, map[string]any{"text": nonBlank(0), "level": map[string]any{"type": "integer", "enum": beancontent.HeadingLevels(), "default": 2}}),
+		contentVariant("paragraph", []string{"text"}, map[string]any{"text": nonBlank(0)}),
+		contentVariant("bullets", []string{"items"}, map[string]any{"items": stringList(1, beancontent.MaxBulletItems, 0)}),
+		contentVariant("quote", []string{"text"}, map[string]any{"text": nonBlank(0), "attribution": stringValue}),
+		contentVariant("code", []string{"text"}, map[string]any{"text": nonBlank(0), "language": stringValue}),
+		contentVariant("callout", []string{"text"}, map[string]any{"text": nonBlank(0), "tone": map[string]any{"type": "string", "enum": beancontent.Tones(), "default": "info"}}),
+		contentVariant("image", []string{"source", "alt"}, map[string]any{"source": stringValue, "alt": nonBlank(0)}),
+		contentVariant("diagram", []string{"items"}, map[string]any{"items": stringList(2, beancontent.MaxDiagramItems, 0), "direction": map[string]any{"type": "string", "enum": beancontent.Directions(), "default": "horizontal"}}),
+		contentVariant("ordered_list", []string{"items"}, map[string]any{"items": map[string]any{"type": "array", "minItems": 1, "maxItems": beancontent.MaxOrderedItems, "items": nonBlank(beancontent.MaxItemRunes)}}),
+		contentVariant("link", []string{"label", "target"}, map[string]any{"label": nonBlank(beancontent.MaxLabelRunes), "target": nonBlank(beancontent.MaxTargetRunes), "openIn": map[string]any{"type": "string", "enum": beancontent.LinkOpenModes(), "default": "same_tab"}}),
+		contentVariant("divider", nil, nil),
+		contentVariant("table", []string{"caption", "columns", "rows"}, map[string]any{
+			"caption": nonBlank(beancontent.MaxLabelRunes), "columns": map[string]any{"type": "array", "minItems": 1, "maxItems": beancontent.MaxColumns, "items": map[string]any{"$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_TableColumn"}},
+			"rows": map[string]any{"type": "array", "minItems": 1, "maxItems": beancontent.MaxRows, "items": stringList(1, beancontent.MaxColumns, beancontent.MaxItemRunes)}, "rowHeader": map[string]any{"type": "string", "enum": beancontent.RowHeaderModes(), "default": "none"},
+		}),
+		contentVariant("audio", []string{"source", "title", "transcript"}, map[string]any{"source": nonBlank(beancontent.MaxTargetRunes), "title": nonBlank(beancontent.MaxMediaTitleRunes), "transcript": nonBlank(beancontent.MaxTranscriptRunes)}),
+		contentVariant("youtube", []string{"videoId", "title", "transcript"}, map[string]any{"videoId": map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_-]{11}$"}, "title": nonBlank(beancontent.MaxMediaTitleRunes), "transcript": nonBlank(beancontent.MaxTranscriptRunes)}),
+		contentVariant("youtube_playlist", []string{"playlistId", "title", "transcript"}, map[string]any{"playlistId": map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_-]{10,80}$"}, "title": nonBlank(beancontent.MaxMediaTitleRunes), "transcript": nonBlank(beancontent.MaxTranscriptRunes)}),
+		contentVariant("choices", []string{"question", "choices", "answer"}, map[string]any{"question": nonBlank(beancontent.MaxQuestionRunes), "choices": map[string]any{"type": "array", "minItems": beancontent.MinChoices, "maxItems": beancontent.MaxChoices, "items": map[string]any{"$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ContentChoice"}}, "answer": machineIDSchema(), "explanation": text(beancontent.MaxExplanationRunes)}),
+	}
+	return map[string]any{"oneOf": variants, "description": "Closed semantic content variants. The compiler additionally enforces non-blank text, URL safety, unique IDs, choices answer references, and table row widths."}
+}
+
+func contentVariant(typeName string, required []string, properties map[string]any) map[string]any {
+	allProperties := map[string]any{"type": map[string]any{"const": typeName}}
+	for name, schema := range properties {
+		allProperties[name] = schema
+	}
+	return map[string]any{"type": "object", "additionalProperties": false, "required": append([]string{"type"}, required...), "properties": allProperties}
+}
+
+func boundedString(maximum int) map[string]any {
+	return map[string]any{"type": "string", "maxLength": maximum, "pattern": "\\S"}
+}
+
+func machineIDSchema() map[string]any {
+	return map[string]any{"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "maxLength": beancontent.MaxMachineIDRunes}
 }
 
 type schemaBuilder struct {

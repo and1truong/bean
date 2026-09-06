@@ -253,6 +253,9 @@ func (s Service) Execute(ctx context.Context, app *appir.App, name string, input
 			result, er = execution.steps(ctx, tx, app, a, input, request)
 		case "register_local_user":
 			result, er = s.Auth.RegisterInTransaction(ctx, tx, fmt.Sprint(input["display_name"]), fmt.Sprint(input["email"]), fmt.Sprint(input["password"]), fmt.Sprint(input["password_confirmation"]), a.DefaultRole)
+			if er == nil && app.EmailVerificationEnabled() {
+				er = s.queueVerification(ctx, tx, app, fmt.Sprint(result["email"]))
+			}
 		default:
 			er = &dbal.Error{Code: dbal.InvalidQuery, Message: "unsupported Action operation"}
 		}

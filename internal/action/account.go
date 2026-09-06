@@ -37,6 +37,9 @@ func (s Service) accountMutation(ctx context.Context, sessionID, requestID, oper
 		if err != nil {
 			return err
 		}
+		if err := s.Auth.CheckVerified(user); err != nil {
+			return err
+		}
 		if err := mutate(tx, user); err != nil {
 			return err
 		}

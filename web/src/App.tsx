@@ -10,7 +10,9 @@ import {Studio} from './Studio'
 import {Account} from './Account'
 import {Recovery} from './Recovery'
 import {Explore} from './Explore'
-import {ContentBlock,SequenceView} from './Sequence'
+import {SequenceView} from './Sequence'
+import {ContentBlock} from './Content'
+import {TabsBlock} from './Tabs'
 import {ActiveFilters,DataTable,EmptyState,ErrorAlert,Field,FilterBar,LoadingState,Page,PageHeader,SectionCard,StatusAlert} from '@/components/bean'
 import {AlertDialog,AlertDialogAction,AlertDialogCancel,AlertDialogContent,AlertDialogDescription,AlertDialogFooter,AlertDialogHeader,AlertDialogTitle} from '@/components/ui/alert-dialog'
 import {Button} from '@/components/ui/button'
@@ -30,6 +32,8 @@ const PageFilterValues=createContext<Record<string,string>>(noPageFilters)
 
 function AuthenticationPage(){
   const location=useLocation();const mode=new URLSearchParams(location.search).get('recovery')
+  const verification=new URLSearchParams(location.search).get('verification')
+  if(verification==='request'||verification==='confirm')return <Shell><Recovery key={'verification-'+verification} verification mode={verification==='request'?'request':'reset'}/></Shell>
   return mode==='request'||mode==='reset'?<Shell><Recovery key={mode} mode={mode}/></Shell>:<Login/>
 }
 
@@ -55,13 +59,13 @@ function Login(){
   }
   return <Shell><Page narrow><Card>
     <CardHeader><CardTitle><h1 className="text-2xl">Sign in</h1></CardTitle><CardDescription>Access your Bean application.</CardDescription></CardHeader>
-    <CardContent>{['password-changed','sessions-revoked'].includes(new URLSearchParams(loc.search).get('notice')||'')&&<p role="status" className="mb-4 text-sm">You have been signed out on all devices. Sign in again to continue.</p>}<form className="space-y-4" onSubmit={submit} aria-busy={pending}>
+    <CardContent>{new URLSearchParams(loc.search).get('notice')==='email-verified'&&<p role="status" className="mb-4 text-sm">Email verified. Sign in to continue.</p>}{['password-changed','sessions-revoked'].includes(new URLSearchParams(loc.search).get('notice')||'')&&<p role="status" className="mb-4 text-sm">You have been signed out on all devices. Sign in again to continue.</p>}<form className="space-y-4" onSubmit={submit} aria-busy={pending}>
       <Field id="login-email" label="Email"><Input id="login-email" name="email" data-testid="email" type="email" autoComplete="username" autoCapitalize="none" spellCheck={false} required disabled={pending} value={email} onChange={event=>setEmail(event.target.value)}/></Field>
       <Field id="login-password" label="Password"><Input id="login-password" name="password" data-testid="password" type={showPassword?'text':'password'} autoComplete="current-password" required disabled={pending} value={password} onChange={event=>setPassword(event.target.value)}/></Field>
       <Button type="button" variant="ghost" size="sm" aria-controls="login-password" aria-pressed={showPassword} onClick={()=>setShowPassword(value=>!value)}>{showPassword?'Hide password':'Show password'}</Button>
       {error&&<ErrorAlert error={error}/>}
       <Button className="w-full" data-testid="login" type="submit" disabled={pending}>{pending?'Signing in…':'Sign in'}</Button>
-    </form>{manifest.data?.authentication?.PasswordRecovery&&<Link className="mt-4 block text-sm" to="/login?recovery=request">Forgot password?</Link>}</CardContent>
+    </form>{manifest.data?.authentication?.PasswordRecovery&&<Link className="mt-4 block text-sm" to="/login?recovery=request">Forgot password?</Link>}{manifest.data?.authentication?.EmailVerification&&<Link className="mt-4 block text-sm" to="/login?verification=request">Verify email or resend link</Link>}</CardContent>
   </Card></Page></Shell>
 }
 
@@ -96,6 +100,7 @@ type RenderProps={
   Region:{name?:string;expanded?:boolean}
   TextBlock:{text?:string}
   ContentBlock:{content?:import('./api').ContentElement[]}
+  TabsBlock:{label?:string;orientation?:'horizontal'|'vertical';variant?:'underline'|'pills';tabs?:import('./api').ContentTab[]}
   Sequence:{title?:string;description?:string;profile?:string;aspectRatio?:string;protected?:boolean}
   ViewBlock:{name?:string;view?:string;display?:ViewDisplay;displayName?:string;displays?:Record<string,ViewDisplay>;filters?:Record<string,ViewFilter>;pageFilters?:Record<string,string>;fieldTypes?:Record<string,string>;presentation?:ViewPresentation;searchFields?:string[];formattedFields?:string[];fileFields?:string[];maxRows?:number}
   EntityBlock:{name?:string;entity?:string;presentation?:ViewPresentation;formattedFields?:string[];fileFields?:string[]}
@@ -112,6 +117,7 @@ const nodeRenderers:{[K in RenderComponent]:NodeRenderer<K>}={
   Region:(props,children)=><StructuralNode component="Region" name={props.name} expanded={props.expanded} children={children}/>,
   TextBlock:props=><p>{props.text}</p>,
   ContentBlock:props=><ContentBlock content={props.content||[]}/>,
+  TabsBlock:props=><TabsBlock label={props.label||''} orientation={props.orientation} variant={props.variant} tabs={props.tabs||[]}/>,
   Sequence:(props,children)=><SequenceView {...props} children={children} renderNode={node=><Renderer node={node}/>}/>,
   ViewBlock:props=><ViewBlock name={props.view||''} block={props.name||''} display={props.display} displayName={props.displayName} displays={props.displays} filters={props.filters||{}} pageFilters={props.pageFilters||noPageFilters} fieldTypes={props.fieldTypes||{}} presentation={props.presentation||{}} searchFields={props.searchFields||[]} formattedFields={props.formattedFields||[]} fileFields={props.fileFields||[]} maxRows={props.maxRows}/>,
   EntityBlock:props=><ViewBlock name={(props.entity||'')+'_list'} block={props.name||''} presentation={props.presentation||{}} formattedFields={props.formattedFields||[]} fileFields={props.fileFields||[]}/>,

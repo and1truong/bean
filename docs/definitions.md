@@ -6,7 +6,7 @@ Compilation validates envelopes, names, fields, references, relation kinds, limi
 
 ## Authentication
 
-An optional `Authentication` named `auth` declares `preset: local|internal|public` and `registration: true|false` (default false). Enabling registration requires the existing fixed-role `LocalRegistration` contract. Without this new definition legacy behavior is unchanged. See [Authentication configuration](authentication.md) for enforcement, compatibility, and currently unsupported advanced features. Initial Authentication configuration requires AppIR v16. Optional `passwordRecovery` (default false) requires AppIR v17 and host-configured email delivery before publication/startup.
+An optional `Authentication` named `auth` declares `preset: local|internal|public` and `registration: true|false` (default false). Enabling registration requires the existing fixed-role `LocalRegistration` contract. Without this new definition legacy behavior is unchanged. See [Authentication configuration](authentication.md) for enforcement, compatibility, and currently unsupported advanced features. Initial Authentication configuration requires AppIR v16. Optional `passwordRecovery` (default false) requires AppIR v17; `emailVerification` (default false) requires AppIR v19. Both require host-configured email delivery before publication/startup.
 
 ## Panel layouts
 
@@ -104,7 +104,34 @@ A Panel region has two compatible source forms. Existing `blocks: [name, ...]` r
 
 Inline content uses the same `ContentBlock` renderer and validation as named content Blocks. It has no independent policy: it is visible when its enclosing Page or Sequence and Panel are visible. A referenced named Block still applies its own Policy, so hiding that Block does not hide neighboring inline content. Compiler diagnostics are owned by the Panel and use source-indexed paths such as `spec.regions.0.items.1.content.0.alt`.
 
-Frame layouts are closed and compiler-checked against their Panel: `title`, `section`, `statement`, `bullets`, `quote`, `closing`, `two-column`, `comparison`, `image-focus`, `chart-focus`, `table`, `timeline`, `process`, and `architecture`. Content elements are `heading`, `paragraph`, `bullets`, `quote`, `code`, `callout`, `image`, and `diagram`. Images require alt text and an absolute application path or HTTPS URL; content is rendered as text nodes, never executable markup. `bean capabilities --json` reports the exact vocabularies and bounds. Current limits include 1–50 frames, 1–12 rendered Blocks (including inline content items) per frame, 80-code-point titles, 4,000-byte notes, 12 elements per named or inline content Block, six bullets, eight diagram nodes, 120 code lines, and deterministic layout density budgets.
+A Tabs Block is the bounded composition container for tabbed static content:
+
+```yaml
+kind: Block
+name: application_boundaries
+type: tabs
+label: Application boundaries
+orientation: horizontal
+variant: underline
+tabs:
+  - id: reads
+    label: Reads
+    content:
+      - {type: heading, level: 3, text: "Read boundary"}
+      - {type: paragraph, text: "Views own application reads."}
+  - id: writes
+    label: Writes
+    content:
+      - {type: paragraph, text: "Actions own application writes."}
+```
+
+`label` and `tabs` are required. `orientation` is `horizontal` by default or `vertical`; `variant` is `underline` by default or `pills`. A Block has 2–6 source-ordered tabs with required, container-unique 1–64 character machine `id`, non-blank `label` of at most 80 code points, and a direct 1–12 element content list. All tab lists together contain at most 24 elements. Tabs cannot contain Block or Panel references, another Tabs Block, or an alternate content source. The whole Block has one optional Policy; tabs have no independent Policy. Tabs are referenced from Panels through the ordinary Block path and require AppIR v20.
+
+The first tab starts active. Native tab buttons implement automatic orientation-aware arrow selection, Home/End and wrap; the selected panel is focusable and inactive panels leave the accessibility tree and tab order. Switching tabs resets quiz/media state in the departed tab. Leaving and returning to a Sequence frame resets the Block to its first tab, while ordinary rerenders preserve selection. Print shows every tab label and content in source order.
+
+Frame layouts are closed and compiler-checked against their Panel: `title`, `section`, `statement`, `bullets`, `quote`, `closing`, `two-column`, `comparison`, `image-focus`, `chart-focus`, `table`, `timeline`, `process`, and `architecture`. See [Content Blocks](content-blocks.md) for the element vocabulary, defaults, bounds, safe URLs, media, and quiz behavior. `bean capabilities --json` reports the exact contract. Current Sequence limits include 1–50 frames, 1–12 rendered Blocks (including inline items) per frame, 80-code-point titles, 4,000-byte notes, and unchanged deterministic layout budgets.
+
+Density counts the complete payload, including inactive tabs: ordered-list item text plus 20 per item; link label plus 20; divider 20; table caption/header/cells plus 20 per column and row; media title/transcript plus 180; quiz question/options/explanation plus 20 per choice; and Tabs Block/tab labels, every tab content weight, plus 20 per tab. IDs and the quiz answer do not add weight. Static table data remains literal; data-backed tables continue through View/Display.
 
 ## Typed field layout
 
