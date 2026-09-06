@@ -1,39 +1,470 @@
 {
   "$defs": {
-    "github_com_beanruntime_bean_internal_appir_ContentElement": {
+    "github_com_beanruntime_bean_internal_appir_ContentChoice": {
       "additionalProperties": false,
       "properties": {
-        "alt": {
-          "type": "string"
-        },
-        "attribution": {
-          "type": "string"
-        },
-        "direction": {
-          "type": "string"
-        },
-        "items": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "language": {
-          "type": "string"
-        },
-        "source": {
+        "id": {
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_]*$",
           "type": "string"
         },
         "text": {
-          "type": "string"
-        },
-        "tone": {
-          "type": "string"
-        },
-        "type": {
+          "maxLength": 120,
+          "pattern": "\\S",
           "type": "string"
         }
       },
+      "required": [
+        "id",
+        "text"
+      ],
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_ContentElement": {
+      "description": "Closed semantic content variants. The compiler additionally enforces non-blank text, URL safety, unique IDs, choices answer references, and table row widths.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "level": {
+              "default": 2,
+              "enum": [
+                2,
+                3,
+                4
+              ],
+              "type": "integer"
+            },
+            "text": {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "type": {
+              "const": "heading"
+            }
+          },
+          "required": [
+            "type",
+            "text"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "text": {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "type": {
+              "const": "paragraph"
+            }
+          },
+          "required": [
+            "type",
+            "text"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 6,
+              "minItems": 1,
+              "type": "array"
+            },
+            "type": {
+              "const": "bullets"
+            }
+          },
+          "required": [
+            "type",
+            "items"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "attribution": {
+              "type": "string"
+            },
+            "text": {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "type": {
+              "const": "quote"
+            }
+          },
+          "required": [
+            "type",
+            "text"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "language": {
+              "type": "string"
+            },
+            "text": {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "type": {
+              "const": "code"
+            }
+          },
+          "required": [
+            "type",
+            "text"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "text": {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "tone": {
+              "default": "info",
+              "enum": [
+                "info",
+                "success",
+                "warning"
+              ],
+              "type": "string"
+            },
+            "type": {
+              "const": "callout"
+            }
+          },
+          "required": [
+            "type",
+            "text"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "alt": {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "type": {
+              "const": "image"
+            }
+          },
+          "required": [
+            "type",
+            "source",
+            "alt"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "direction": {
+              "default": "horizontal",
+              "enum": [
+                "horizontal",
+                "vertical"
+              ],
+              "type": "string"
+            },
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 8,
+              "minItems": 2,
+              "type": "array"
+            },
+            "type": {
+              "const": "diagram"
+            }
+          },
+          "required": [
+            "type",
+            "items"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "items": {
+              "items": {
+                "maxLength": 240,
+                "pattern": "\\S",
+                "type": "string"
+              },
+              "maxItems": 6,
+              "minItems": 1,
+              "type": "array"
+            },
+            "type": {
+              "const": "ordered_list"
+            }
+          },
+          "required": [
+            "type",
+            "items"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "label": {
+              "maxLength": 120,
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "openIn": {
+              "default": "same_tab",
+              "enum": [
+                "new_tab",
+                "same_tab"
+              ],
+              "type": "string"
+            },
+            "target": {
+              "maxLength": 2048,
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "type": {
+              "const": "link"
+            }
+          },
+          "required": [
+            "type",
+            "label",
+            "target"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "divider"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "caption": {
+              "maxLength": 120,
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "columns": {
+              "items": {
+                "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_TableColumn"
+              },
+              "maxItems": 6,
+              "minItems": 1,
+              "type": "array"
+            },
+            "rowHeader": {
+              "default": "none",
+              "enum": [
+                "first",
+                "none"
+              ],
+              "type": "string"
+            },
+            "rows": {
+              "items": {
+                "items": {
+                  "maxLength": 240,
+                  "type": "string"
+                },
+                "maxItems": 6,
+                "minItems": 1,
+                "type": "array"
+              },
+              "maxItems": 12,
+              "minItems": 1,
+              "type": "array"
+            },
+            "type": {
+              "const": "table"
+            }
+          },
+          "required": [
+            "type",
+            "caption",
+            "columns",
+            "rows"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "source": {
+              "maxLength": 2048,
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "title": {
+              "maxLength": 120,
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "transcript": {
+              "maxLength": 4000,
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "type": {
+              "const": "audio"
+            }
+          },
+          "required": [
+            "type",
+            "source",
+            "title",
+            "transcript"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "maxLength": 120,
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "transcript": {
+              "maxLength": 4000,
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "type": {
+              "const": "youtube"
+            },
+            "videoId": {
+              "pattern": "^[A-Za-z0-9_-]{11}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "videoId",
+            "title",
+            "transcript"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "playlistId": {
+              "pattern": "^[A-Za-z0-9_-]{10,80}$",
+              "type": "string"
+            },
+            "title": {
+              "maxLength": 120,
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "transcript": {
+              "maxLength": 4000,
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "type": {
+              "const": "youtube_playlist"
+            }
+          },
+          "required": [
+            "type",
+            "playlistId",
+            "title",
+            "transcript"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "answer": {
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_]*$",
+              "type": "string"
+            },
+            "choices": {
+              "items": {
+                "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ContentChoice"
+              },
+              "maxItems": 6,
+              "minItems": 2,
+              "type": "array"
+            },
+            "explanation": {
+              "maxLength": 400,
+              "type": "string"
+            },
+            "question": {
+              "maxLength": 240,
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "type": {
+              "const": "choices"
+            }
+          },
+          "required": [
+            "type",
+            "question",
+            "choices",
+            "answer"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "github_com_beanruntime_bean_internal_appir_TableColumn": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 80,
+          "pattern": "\\S",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
       "type": "object"
     },
     "github_com_beanruntime_bean_internal_compiler_panelRegionItemSource": {

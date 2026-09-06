@@ -241,6 +241,55 @@ func TestPanelSchemaAcceptsOrderedInlineContentAndRejectsAmbiguousItems(t *testi
 	}
 }
 
+func TestSemanticContentSchemasAreClosedAcrossCompositionSeams(t *testing.T) {
+	compile := func(kind string) *jsonschema.Schema {
+		document := compiler.DefinitionSchemas()[kind]
+		validator := jsonschema.NewCompiler()
+		location := document["$id"].(string)
+		if err := validator.AddResource(location, schemaJSONValue(t, document)); err != nil {
+			t.Fatal(err)
+		}
+		compiled, err := validator.Compile(location)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return compiled
+	}
+	block := compile("Block")
+	panel := compile("Panel")
+	table := map[string]any{"type": "table", "caption": "Boundaries", "columns": []any{map[string]any{"id": "primitive", "label": "Primitive"}}, "rows": []any{[]any{"View"}}}
+	quiz := map[string]any{"type": "choices", "question": "Who writes?", "choices": []any{map[string]any{"id": "view", "text": "View"}, map[string]any{"id": "action", "text": "Action"}}, "answer": "action"}
+	tabs := []any{
+		map[string]any{"id": "reads", "label": "Reads", "content": []any{map[string]any{"type": "paragraph", "text": "Views read."}}},
+		map[string]any{"id": "writes", "label": "Writes", "content": []any{quiz}},
+	}
+	for _, valid := range []struct {
+		schema *jsonschema.Schema
+		value  map[string]any
+	}{
+		{block, map[string]any{"kind": "Block", "name": "content", "type": "content", "content": []any{table}}},
+		{block, map[string]any{"kind": "Block", "name": "tabs", "type": "tabs", "label": "Boundaries", "tabs": tabs}},
+		{panel, map[string]any{"kind": "Panel", "name": "panel", "regions": []any{map[string]any{"name": "main", "items": []any{map[string]any{"content": []any{map[string]any{"type": "heading", "level": 4, "text": "Inline"}}}}}}}},
+	} {
+		if err := valid.schema.Validate(valid.value); err != nil {
+			t.Fatalf("valid semantic schema value rejected: %v", err)
+		}
+	}
+	for _, invalid := range []struct {
+		schema *jsonschema.Schema
+		value  map[string]any
+	}{
+		{block, map[string]any{"kind": "Block", "name": "bad", "type": "content", "content": []any{map[string]any{"type": "heading", "level": 1, "text": "Bad"}}}},
+		{block, map[string]any{"kind": "Block", "name": "bad", "type": "content", "content": []any{map[string]any{"type": "paragraph", "text": "Bad", "label": "foreign"}}}},
+		{block, map[string]any{"kind": "Block", "name": "bad", "type": "tabs", "label": "Tabs", "content": []any{map[string]any{"type": "paragraph", "text": "foreign"}}, "tabs": []any{map[string]any{"id": "one", "label": "One", "content": []any{map[string]any{"type": "paragraph", "text": "One"}}}, map[string]any{"id": "two", "label": "Two", "content": []any{map[string]any{"block": "other"}}}}}},
+		{panel, map[string]any{"kind": "Panel", "name": "bad", "regions": []any{map[string]any{"name": "main", "items": []any{map[string]any{"content": []any{map[string]any{"type": "choices", "question": "Missing answer", "choices": quiz["choices"]}}}}}}}},
+	} {
+		if err := invalid.schema.Validate(invalid.value); err == nil {
+			t.Fatalf("schema accepted invalid semantic content: %#v", invalid.value)
+		}
+	}
+}
+
 func TestCanonicalManifestSchemaValidatesContract(t *testing.T) {
 	document := compiler.ManifestSchema()
 	validator := jsonschema.NewCompiler()

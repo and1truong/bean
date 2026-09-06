@@ -13,8 +13,8 @@ import (
 func TestEveryAcceptedBlockTypeHasRenderer(t *testing.T) {
 	app := appir.Empty()
 	app.Menus["main"] = appir.Menu{Name: "main", Items: []appir.MenuItem{{Label: "Home", Route: "/"}}}
-	tests := map[string]string{"text": "TextBlock", "content": "ContentBlock", "view": "ViewBlock", "entity": "EntityBlock", "webform": "WebformBlock", "action": "ActionBlock", "menu": "MenuBlock", "resource-list": "ResourceListBlock"}
-	wantNames := []string{"action", "content", "entity", "menu", "resource-list", "text", "view", "webform"}
+	tests := map[string]string{"text": "TextBlock", "content": "ContentBlock", "tabs": "TabsBlock", "view": "ViewBlock", "entity": "EntityBlock", "webform": "WebformBlock", "action": "ActionBlock", "menu": "MenuBlock", "resource-list": "ResourceListBlock"}
+	wantNames := []string{"action", "content", "entity", "menu", "resource-list", "tabs", "text", "view", "webform"}
 	if got := block.Names(); !reflect.DeepEqual(got, wantNames) {
 		t.Fatalf("registered Block types=%v want=%v", got, wantNames)
 	}
@@ -23,7 +23,7 @@ func TestEveryAcceptedBlockTypeHasRenderer(t *testing.T) {
 		if !registered || specification.Component != component {
 			t.Fatalf("type=%s specification=%+v registered=%v", kind, specification, registered)
 		}
-		node, allowed, e := block.Node(app, appir.Block{Name: kind, Type: kind, Text: "text", Content: []appir.ContentElement{{Type: "paragraph", Text: "content"}}, View: "view", Entity: "entity", Webform: "form", Action: "action", Menu: "main"}, map[string]any{}, beanctx.Request{})
+		node, allowed, e := block.Node(app, appir.Block{Name: kind, Type: kind, Text: "text", Content: []appir.ContentElement{{Type: "paragraph", Text: "content"}}, Label: "Tabs", Tabs: []appir.ContentTab{{ID: "one", Label: "One"}}, View: "view", Entity: "entity", Webform: "form", Action: "action", Menu: "main"}, map[string]any{}, beanctx.Request{})
 		if e != nil || !allowed || node.Component != component {
 			t.Fatalf("type=%s node=%+v allowed=%v err=%v", kind, node, allowed, e)
 		}
@@ -49,6 +49,24 @@ func TestRequiredTypedInputFailsSafely(t *testing.T) {
 	definition := appir.Block{Name: "record", Type: "text", Inputs: map[string]appir.Field{"id": {Name: "id", Type: "uuid", Required: true}}, Bindings: map[string]appir.ContextBinding{"id": {Source: "context", Name: "id"}}}
 	if _, _, e := block.Node(app, definition, map[string]any{}, beanctx.Request{}); e == nil {
 		t.Fatal("missing required input accepted")
+	}
+}
+
+func TestTabsProjectionPreservesMetadataContentAndPolicy(t *testing.T) {
+	app := appir.Empty()
+	app.Policies["public"] = appir.Policy{}
+	definition := appir.Block{Name: "boundaries", Type: "tabs", Policy: "public", Label: "Application boundaries", Orientation: "vertical", Variant: "pills", Tabs: []appir.ContentTab{
+		{ID: "reads", Label: "Reads", Content: []appir.ContentElement{{Type: "paragraph", Text: "Views read."}}},
+		{ID: "writes", Label: "Writes", Content: []appir.ContentElement{{Type: "choices", Question: "Who writes?", Choices: []appir.ContentChoice{{ID: "view", Text: "View"}, {ID: "action", Text: "Action"}}, Answer: "action"}}},
+	}}
+	node, allowed, err := block.Node(app, definition, nil, beanctx.Request{})
+	if err != nil || !allowed || node.Component != "TabsBlock" || node.Props["label"] != definition.Label || node.Props["orientation"] != "vertical" || node.Props["variant"] != "pills" || !reflect.DeepEqual(node.Props["tabs"], definition.Tabs) {
+		t.Fatalf("node=%+v allowed=%v err=%v", node, allowed, err)
+	}
+	definition.Policy = "denied"
+	app.Policies["denied"] = appir.Policy{Authenticated: true}
+	if _, allowed, err = block.Node(app, definition, nil, beanctx.Request{}); err != nil || allowed {
+		t.Fatalf("denied policy allowed=%v err=%v", allowed, err)
 	}
 }
 

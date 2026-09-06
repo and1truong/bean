@@ -2,9 +2,28 @@
 
 > Completed work and its verification evidence are indexed in [`docs/plans/completed.md`](plans/completed.md) and stored under [`docs/plans/archive/`](plans/archive/). This file tracks only active, proposed, or deferred work.
 
+## Extended semantic content and composition
+
+Status: complete. Contract: [`GOAL.md`](../GOAL.md).
+
+- Added the closed semantic vocabulary through source presence checks, deterministic compiler validation/defaults, AppIR v20, shared projection and React: heading levels, ordered lists, safe links, dividers, literal tables, compatible images, explicit-load audio/YouTube/playlist, and single-choice `choices`.
+- Added `Block type: tabs` at the existing Block reference seam with typed bounded tab content, Policy/projection support, orientation-aware keyboard behavior, per-instance state, inactive-content reset, media unload, and complete print output. Named Blocks, inline Panel content, and tab content share the same closed element contract and schema.
+- Generated schemas and CLI/protocol capabilities publish the new enums, bounds, source policy, and v20 format. Compiler/schema/AppIR/release tests cover source types and locations, URL/ID/table/tab/quiz rules, density, historical/current/future format gates, immutable round trips, and invalid-publication atomicity.
+- Extended `/presentations/bean` to 17 metadata-only frames across eight chapters while retaining all prior stable frames, inline composition, `product_statement`, and the live chart. Local image/audio assets and intercepted YouTube fixtures keep browser tests deterministic.
+- Focused verification passes: semantic compiler/content/block/release/AppIR Go tests; 70 semantic/App Vitest tests; and both presentation Playwright journeys. Generated schemas were refreshed with `go run ./cmd/bean schema --output schemas --json`.
+- Final qualification passes: `make check` (all Go/unit/integration/contracts/fuzz-smoke/compatibility/black-box/race checks, 117 Vitest tests, and 28 Playwright journeys) and `make build`.
+
+## Content Block authoring guide
+
+Status: complete. Contract: [`GOAL.md`](../GOAL.md).
+
+- Added [Content Blocks](content-blocks.md), a reader-oriented reference for closed-vocabulary content placement, fields, defaults, bounds, image safety rules, and examples.
+- Linked it from the README, application guide, and definition reference; CLI schema/capabilities output remains the version-exact machine reference.
+- `make check` and `make build` pass.
+
 ## Configurable authentication
 
-Status: complete for the current scope. Contract: [`GOAL.md`](../GOAL.md). Milestones 1–4 (account security, email recovery and verification) are complete. The user deferred onboarding/invitations; no further auth implementation is scheduled.
+Status: complete for the current scope. Milestones 1–4 (account security, email recovery and verification) are complete. The user deferred onboarding/invitations; no further auth implementation is scheduled.
 
 - Login now has duplicate-submit protection, pending/error behavior, password-manager hints, and an accessible password visibility control.
 - Optional `Authentication` metadata compiles into immutable AppIR v16. Registration defaults off for explicit `local`, `internal`, and `public` presets, while omitted configuration preserves legacy behavior. Disabled registration is blocked across UI, HTTP, Webform, direct Action execution, and OpenAPI.
