@@ -336,6 +336,16 @@ func MetadataSchema() []string {
 		`CREATE TABLE IF NOT EXISTS bean_idempotency (action TEXT NOT NULL,key TEXT NOT NULL,input_hash TEXT NOT NULL,result TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(action,key))`,
 		`CREATE TABLE IF NOT EXISTS bean_blob (id TEXT PRIMARY KEY,file_name TEXT NOT NULL,content_type TEXT NOT NULL,size INTEGER NOT NULL,content TEXT NOT NULL,created_at TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS bean_menu_placement (id TEXT PRIMARY KEY,menu_name TEXT NOT NULL,owner_entity TEXT NOT NULL,owner_id TEXT NOT NULL,target_entity TEXT NOT NULL,target_id TEXT NOT NULL,parent_id TEXT,weight INTEGER NOT NULL,label_override TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(menu_name,owner_id,target_entity,target_id))`,
+		`CREATE TABLE IF NOT EXISTS bean_run (id TEXT PRIMARY KEY,app_id TEXT NOT NULL,release_id TEXT NOT NULL,scenario TEXT NOT NULL,trigger_kind TEXT NOT NULL,status TEXT NOT NULL,error TEXT,claim_token TEXT,claimed_at TEXT,started_at TEXT,finished_at TEXT,created_at TEXT NOT NULL)`,
+		`CREATE INDEX IF NOT EXISTS bean_run_status ON bean_run(status)`,
+		`CREATE TABLE IF NOT EXISTS bean_run_session (id TEXT PRIMARY KEY,run_id TEXT NOT NULL,adapter TEXT NOT NULL,status TEXT NOT NULL,ref TEXT,error TEXT,created_at TEXT NOT NULL,closed_at TEXT,FOREIGN KEY(run_id) REFERENCES bean_run(id) ON DELETE CASCADE)`,
+		`CREATE INDEX IF NOT EXISTS bean_run_session_run ON bean_run_session(run_id)`,
+		`CREATE TABLE IF NOT EXISTS bean_run_step (id TEXT PRIMARY KEY,run_id TEXT NOT NULL,session_id TEXT,node_id TEXT NOT NULL,attempt INTEGER NOT NULL,status TEXT NOT NULL,output TEXT,error TEXT,created_at TEXT NOT NULL,started_at TEXT,finished_at TEXT,UNIQUE(run_id,node_id,attempt),FOREIGN KEY(run_id) REFERENCES bean_run(id) ON DELETE CASCADE)`,
+		`CREATE INDEX IF NOT EXISTS bean_run_step_run ON bean_run_step(run_id)`,
+		`CREATE TABLE IF NOT EXISTS bean_run_artifact (id TEXT PRIMARY KEY,run_id TEXT NOT NULL,step_id TEXT,kind TEXT NOT NULL,content_type TEXT NOT NULL,size INTEGER NOT NULL,ref TEXT NOT NULL,created_at TEXT NOT NULL,FOREIGN KEY(run_id) REFERENCES bean_run(id) ON DELETE CASCADE)`,
+		`CREATE INDEX IF NOT EXISTS bean_run_artifact_run ON bean_run_artifact(run_id)`,
+		`CREATE TABLE IF NOT EXISTS bean_run_event (id TEXT PRIMARY KEY,run_id TEXT NOT NULL,step_id TEXT,sequence INTEGER NOT NULL,kind TEXT NOT NULL,payload TEXT NOT NULL,created_at TEXT NOT NULL,UNIQUE(run_id,sequence),FOREIGN KEY(run_id) REFERENCES bean_run(id) ON DELETE CASCADE)`,
+		`CREATE INDEX IF NOT EXISTS bean_run_event_run ON bean_run_event(run_id)`,
 	}
 }
 
