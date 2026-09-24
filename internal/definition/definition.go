@@ -65,6 +65,7 @@ const (
 	RuleTestSuite        DiagnosticRule = "test-suite"
 	RuleExtension        DiagnosticRule = "extension"
 	RuleSequence         DiagnosticRule = "sequence"
+	RuleScenario         DiagnosticRule = "scenario"
 	RuleGeneral          DiagnosticRule = "general"
 )
 
@@ -165,6 +166,8 @@ func codeForRule(rule DiagnosticRule) string {
 		return "BEAN-E2871"
 	case RuleSequence:
 		return "BEAN-E2881"
+	case RuleScenario:
+		return "BEAN-E2891"
 	default:
 		return "BEAN-E2900"
 	}

@@ -104,6 +104,7 @@ Codes and structured fields are the compatibility interface. Human messages may 
 | `BEAN-E2851` | invalid TestSuite target, case, fixture, context, assertion, or bound |
 | `BEAN-E2871` | invalid Extension contract, Action binding, timeout, retry, endpoint, or closed vocabulary |
 | `BEAN-E2881` | invalid Sequence, semantic content, Tabs Block, layout, density, or accessibility-bound metadata contract |
+| `BEAN-E2891` | invalid Scenario node, edge, condition, bound, or Action reference |
 | `BEAN-E2900` | other typed definition semantic failure |
 | `BEAN-T1001` | failed semantic TestSuite assertion |
 | `BEAN-T1101` | explicit TestSuite uses the reserved generated identity prefix |

@@ -15,7 +15,7 @@ func TestFieldLayoutFormatCompatibilityMatrix(t *testing.T) {
 	// Exercise each gate independently and in combination, including unsupported
 	// future formats. Empty snapshots of every historically supported format work.
 	for version := 1; version <= 21; version++ {
-		for mask := 0; mask < 64; mask++ {
+		for mask := 0; mask < 128; mask++ {
 			t.Run(fmt.Sprintf("v%d/features-%06b", version, mask), func(t *testing.T) {
 				app := appir.Empty()
 				app.FormatVersion = fmt.Sprintf("bean/appir/v%d", version)
@@ -43,12 +43,15 @@ func TestFieldLayoutFormatCompatibilityMatrix(t *testing.T) {
 					}
 					app.Authentication.EmailVerification = true
 				}
+				if mask&64 != 0 {
+					app.Scenarios["flow"] = appir.Scenario{Start: "start", Nodes: []appir.ScenarioNode{{ID: "start", Type: "pause"}}}
+				}
 				before, err := json.Marshal(app)
 				if err != nil {
 					t.Fatal(err)
 				}
 				err = app.ValidateFormat()
-				allowed := version <= 20 && (mask&1 == 0 || version >= 15) && (mask&2 == 0 || version >= 16) && (mask&12 == 0 || version >= 18) && (mask&16 == 0 || version >= 17) && (mask&32 == 0 || version >= 19)
+				allowed := version <= 21 && (mask&1 == 0 || version >= 15) && (mask&2 == 0 || version >= 16) && (mask&12 == 0 || version >= 18) && (mask&16 == 0 || version >= 17) && (mask&32 == 0 || version >= 19) && (mask&64 == 0 || version >= 21)
 				if (err == nil) != allowed {
 					t.Fatalf("allowed=%v err=%v", allowed, err)
 				}

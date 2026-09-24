@@ -503,6 +503,8 @@ func diagnosticRule(kind, path string) definition.DiagnosticRule {
 		return definition.RuleFixture
 	case kind == "TestSuite":
 		return definition.RuleTestSuite
+	case kind == "Scenario":
+		return definition.RuleScenario
 	case kind == "Extension":
 		return definition.RuleExtension
 	case strings.Contains(strings.ToLower(path), "field"):
@@ -601,7 +603,7 @@ func routesOverlap(left, right string) bool {
 func validate(a *appir.App) []definition.Diagnostic {
 	state := &validationState{routes: map[string]string{}}
 	out := []definition.Diagnostic{}
-	for _, kind := range []string{"Theme", "DemoSeed", "Filter", "Page", "View", "Sequence", "Entity", "Lifecycle", "Rule", "Extension", "Action", "TestSuite", "Webform", "Policy", "Block", "LocalRegistration", "Authentication", "Panel", "Job", "Menu", "AdminResource", "Role"} {
+	for _, kind := range []string{"Theme", "DemoSeed", "Filter", "Page", "View", "Sequence", "Entity", "Lifecycle", "Rule", "Extension", "Action", "TestSuite", "Scenario", "Webform", "Policy", "Block", "LocalRegistration", "Authentication", "Panel", "Job", "Menu", "AdminResource", "Role"} {
 		registered, _ := definitionKindRegistry().Lookup(kind)
 		out = append(out, registered.Validate(a, state)...)
 	}

@@ -30,7 +30,9 @@ const (
 	PasswordRecoveryFormat  = "bean/appir/v17"
 	FieldLayoutFormat       = "bean/appir/v18"
 	EmailVerificationFormat = "bean/appir/v19"
-	CurrentFormat           = "bean/appir/v20"
+	SemanticContentFormat   = "bean/appir/v20"
+	ScenarioFormat          = "bean/appir/v21"
+	CurrentFormat           = ScenarioFormat
 )
 
 type Field struct {
@@ -600,6 +602,7 @@ type App struct {
 	Panels                 map[string]Panel
 	Pages                  map[string]Page
 	Sequences              map[string]Sequence
+	Scenarios              map[string]Scenario
 	Roles                  map[string]Role
 	Menus                  map[string]Menu
 	Jobs                   map[string]Job
@@ -614,16 +617,19 @@ type App struct {
 }
 
 func Empty() *App {
-	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Rules: map[string]Rule{}, TestSuites: map[string]TestSuite{}, Extensions: map[string]Extension{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Sequences: map[string]Sequence{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
+	return &App{FormatVersion: CurrentFormat, Entities: map[string]Entity{}, Views: map[string]View{}, Actions: map[string]Action{}, Lifecycles: map[string]Lifecycle{}, Rules: map[string]Rule{}, TestSuites: map[string]TestSuite{}, Extensions: map[string]Extension{}, Policies: map[string]Policy{}, Webforms: map[string]Webform{}, Blocks: map[string]Block{}, Panels: map[string]Panel{}, Pages: map[string]Page{}, Sequences: map[string]Sequence{}, Scenarios: map[string]Scenario{}, Roles: map[string]Role{}, Menus: map[string]Menu{}, Jobs: map[string]Job{}, Filters: map[string]Filter{}, AdminResources: map[string]AdminResource{}}
 }
 func (a *App) ValidateFormat() error {
-	if extendedSemanticContent(a) && a.FormatVersion != CurrentFormat {
+	if len(a.Scenarios) > 0 && a.FormatVersion != CurrentFormat {
+		return fmt.Errorf("AppIR format %q cannot contain Scenario definitions", a.FormatVersion)
+	}
+	if extendedSemanticContent(a) && a.FormatVersion != SemanticContentFormat && a.FormatVersion != CurrentFormat {
 		return fmt.Errorf("AppIR format %q cannot contain extended semantic content or Tabs Blocks", a.FormatVersion)
 	}
-	if a.EmailVerificationEnabled() && a.FormatVersion != EmailVerificationFormat && a.FormatVersion != CurrentFormat {
+	if a.EmailVerificationEnabled() && a.FormatVersion != EmailVerificationFormat && a.FormatVersion != SemanticContentFormat && a.FormatVersion != CurrentFormat {
 		return fmt.Errorf("AppIR format %q cannot contain email verification", a.FormatVersion)
 	}
-	if a.FormatVersion != CurrentFormat && a.FormatVersion != EmailVerificationFormat && a.FormatVersion != FieldLayoutFormat {
+	if a.FormatVersion != CurrentFormat && a.FormatVersion != SemanticContentFormat && a.FormatVersion != EmailVerificationFormat && a.FormatVersion != FieldLayoutFormat {
 		for _, resource := range a.AdminResources {
 			if resource.Form.Layout != nil {
 				return fmt.Errorf("AppIR format %q cannot contain field layouts", a.FormatVersion)
@@ -637,16 +643,16 @@ func (a *App) ValidateFormat() error {
 			}
 		}
 	}
-	if a.PasswordRecoveryEnabled() && a.FormatVersion != PasswordRecoveryFormat && a.FormatVersion != FieldLayoutFormat && a.FormatVersion != EmailVerificationFormat && a.FormatVersion != CurrentFormat {
+	if a.PasswordRecoveryEnabled() && a.FormatVersion != PasswordRecoveryFormat && a.FormatVersion != FieldLayoutFormat && a.FormatVersion != EmailVerificationFormat && a.FormatVersion != SemanticContentFormat && a.FormatVersion != CurrentFormat {
 		return fmt.Errorf("AppIR format %q cannot contain password recovery", a.FormatVersion)
 	}
-	if a.Authentication != nil && a.FormatVersion != AuthenticationFormat && a.FormatVersion != PasswordRecoveryFormat && a.FormatVersion != FieldLayoutFormat && a.FormatVersion != EmailVerificationFormat && a.FormatVersion != CurrentFormat {
+	if a.Authentication != nil && a.FormatVersion != AuthenticationFormat && a.FormatVersion != PasswordRecoveryFormat && a.FormatVersion != FieldLayoutFormat && a.FormatVersion != EmailVerificationFormat && a.FormatVersion != SemanticContentFormat && a.FormatVersion != CurrentFormat {
 		return fmt.Errorf("AppIR format %q cannot contain Authentication configuration", a.FormatVersion)
 	}
-	// Only v16/v17/v18/v19/v20 delegate to v15 after their own feature checks. Never promote
+	// Only v16/v17/v18/v19/v20/v21 delegate to v15 after their own feature checks. Never promote
 	// v14: that would incorrectly authorize directional Sequence frames.
 	legacy := *a
-	if legacy.FormatVersion == AuthenticationFormat || legacy.FormatVersion == PasswordRecoveryFormat || legacy.FormatVersion == FieldLayoutFormat || legacy.FormatVersion == EmailVerificationFormat || legacy.FormatVersion == CurrentFormat {
+	if legacy.FormatVersion == AuthenticationFormat || legacy.FormatVersion == PasswordRecoveryFormat || legacy.FormatVersion == FieldLayoutFormat || legacy.FormatVersion == EmailVerificationFormat || legacy.FormatVersion == SemanticContentFormat || legacy.FormatVersion == CurrentFormat {
 		legacy.FormatVersion = DirectionalFormat
 	}
 	return legacy.validateThroughDirectionalFormat()
@@ -873,6 +879,9 @@ func Decode(encoded []byte) (*App, error) {
 	err := decoder.Decode(&out)
 	if err == nil && out.FormatVersion != CurrentFormat {
 		out.extendedSemanticFields = encodedExtendedSemanticFields(encoded)
+	}
+	if out.Scenarios == nil {
+		out.Scenarios = map[string]Scenario{}
 	}
 	return &out, err
 }
