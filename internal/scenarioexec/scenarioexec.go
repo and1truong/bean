@@ -50,6 +50,9 @@ type Executor struct {
 	// Empty defaults to bean-artifacts under the OS temp dir.
 	ArtifactDir string
 	Now         func() time.Time
+	// PauseRequested, when set, asks the walk to stop cooperatively
+	// before the next node: the run pauses as if a pause node were hit.
+	PauseRequested func(runID string) bool
 }
 
 const conditionCheckMillis = int64(2000)
@@ -85,7 +88,7 @@ func (e Executor) Execute(ctx context.Context, runID string, compiled appir.Scen
 	executor.events.Add(1)
 	go executor.pumpEvents()
 	paused, failure := executor.walk(ctx)
-	if failure != "" {
+	if failure != "" && ctx.Err() == nil {
 		executor.captureTrace(context.Background())
 	}
 	// Close before finishing so the event pump drains every late console and
@@ -97,6 +100,9 @@ func (e Executor) Execute(ctx context.Context, runID string, compiled appir.Scen
 			return e.failRun(ctx, runID, token, pauseErr)
 		}
 		return ErrPaused
+	}
+	if ctx.Err() != nil {
+		return e.Runs.Finish(context.WithoutCancel(ctx), runID, token, scenariorun.RunCancelled, "cancelled")
 	}
 	if failure == "" {
 		return e.Runs.Finish(ctx, runID, token, scenariorun.RunCompleted, "")
@@ -161,6 +167,9 @@ func (w *walker) walk(ctx context.Context) (bool, string) {
 	visited := 0
 	for nodeID != "" {
 		visited++
+		if w.exec.PauseRequested != nil && w.exec.PauseRequested(w.runID) {
+			return true, ""
+		}
 		if visited > scenariorun.MaxStepsPerRun {
 			return false, fmt.Sprintf("step bound %d exceeded", scenariorun.MaxStepsPerRun)
 		}
@@ -509,9 +518,9 @@ func (w *walker) evaluate(ctx context.Context, kind, ref, text string) (bool, er
 	}
 }
 
-// artifactRoot is the directory run evidence files live under; artifact
+// ArtifactRoot is the directory run evidence files live under; artifact
 // rows store paths relative to it so a later file server can resolve them.
-func (e Executor) artifactRoot() string {
+func (e Executor) ArtifactRoot() string {
 	if e.ArtifactDir != "" {
 		return e.ArtifactDir
 	}
@@ -523,7 +532,7 @@ func (w *walker) writeArtifact(ctx context.Context, stepID, kind, contentType, e
 	if len(bytes) == 0 {
 		return
 	}
-	dir := filepath.Join(w.exec.artifactRoot(), w.runID)
+	dir := filepath.Join(w.exec.ArtifactRoot(), w.runID)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return
 	}

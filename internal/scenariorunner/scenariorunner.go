@@ -1,0 +1,176 @@
+// Package scenariorunner drives pending scenario runs through
+// scenarioexec on the in-process browser adapter and mediates run
+// control: a claimed run can be asked to pause cooperatively between
+// nodes, stopped, or resumed once paused. Claimed work is tracked by
+// run id so HTTP control lands on the goroutine actually executing it.
+package scenariorunner
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sync"
+	"sync/atomic"
+
+	"github.com/beanruntime/bean/internal/appir"
+	"github.com/beanruntime/bean/internal/scenarioexec"
+	"github.com/beanruntime/bean/internal/scenariorun"
+	"github.com/beanruntime/bean/internal/uid"
+)
+
+// Runner claims pending runs and executes them against the compiled
+// scenario resolved by Scenario.
+type Runner struct {
+	Store       scenariorun.Store
+	Sessions    scenarioexec.SessionFactory
+	Secrets     scenarioexec.SecretResolver
+	ArtifactDir string
+	// Scenario resolves the compiled graph a pending run executes.
+	Scenario func(ctx context.Context, run scenariorun.Run) (appir.Scenario, error)
+
+	mu      sync.Mutex
+	handles map[string]*handle
+}
+
+// handle tracks one in-flight execution for control delivery.
+type handle struct {
+	cancel context.CancelFunc
+	pause  atomic.Bool
+}
+
+func (r *Runner) handle(id string) *handle {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.handles == nil {
+		return nil
+	}
+	return r.handles[id]
+}
+
+// PauseRequested reports whether an in-flight run was asked to pause;
+// scenarioexec consults it before each node.
+func (r *Runner) PauseRequested(id string) bool {
+	h := r.handle(id)
+	return h != nil && h.pause.Load()
+}
+
+// RunOnce claims every pending run not already executing in this
+// process and launches it in its own goroutine. Call it periodically
+// (the serve loop ticks it alongside the job runner) and after enqueue
+// or resume for prompt pickup.
+func (r *Runner) RunOnce(ctx context.Context) error {
+	runs, err := r.Store.List(ctx, scenariorun.RunFilter{Status: scenariorun.RunPending})
+	if err != nil {
+		return err
+	}
+	for _, run := range runs {
+		r.launch(ctx, run)
+	}
+	return nil
+}
+
+func (r *Runner) launch(ctx context.Context, run scenariorun.Run) {
+	r.mu.Lock()
+	if r.handles == nil {
+		r.handles = map[string]*handle{}
+	}
+	if _, exists := r.handles[run.ID]; exists {
+		r.mu.Unlock()
+		return
+	}
+	runCtx, cancel := context.WithCancel(context.Background())
+	h := &handle{cancel: cancel}
+	r.handles[run.ID] = h
+	r.mu.Unlock()
+	go r.execute(runCtx, run, h)
+}
+
+func (r *Runner) execute(ctx context.Context, run scenariorun.Run, h *handle) {
+	defer func() {
+		cancel := h.cancel
+		r.mu.Lock()
+		delete(r.handles, run.ID)
+		r.mu.Unlock()
+		cancel()
+	}()
+	compiled, err := r.Scenario(ctx, run)
+	if err != nil {
+		r.fail(run.ID, err)
+		return
+	}
+	executor := scenarioexec.Executor{
+		Runs:           r.Store,
+		Sessions:       r.Sessions,
+		Secrets:        r.Secrets,
+		ArtifactDir:    r.ArtifactDir,
+		PauseRequested: r.PauseRequested,
+	}
+	if err := executor.Execute(ctx, run.ID, compiled); err != nil && !errors.Is(err, scenarioexec.ErrPaused) {
+		r.fail(run.ID, err)
+	}
+}
+
+// fail claims and finishes a run whose execution never got going (the
+// scenario failed to resolve) or returned with its claim still held.
+func (r *Runner) fail(runID string, cause error) {
+	token := uid.New()
+	ctx := context.Background()
+	if claimed, err := r.Store.Claim(ctx, runID, token); err != nil || !claimed {
+		return
+	}
+	_ = r.Store.Finish(ctx, runID, token, scenariorun.RunFailed, fmt.Sprintf("run failed: %s", cause))
+}
+
+// RequestPause asks an in-flight run to pause before its next node.
+// Pausing is cooperative: the executor stores the pause before
+// returning, so the run row flips only once execution actually stops.
+func (r *Runner) RequestPause(ctx context.Context, runID string) error {
+	run, found, err := r.Store.Get(ctx, runID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("run %q not found", runID)
+	}
+	if run.Status != scenariorun.RunRunning {
+		return fmt.Errorf("run %q is %s", runID, run.Status)
+	}
+	if h := r.handle(runID); h != nil {
+		h.pause.Store(true)
+		return nil
+	}
+	return fmt.Errorf("run %q is not executing on this server", runID)
+}
+
+// Resume moves a paused run back to pending for the next RunOnce.
+func (r *Runner) Resume(ctx context.Context, runID string) error {
+	if err := r.Store.Resume(ctx, runID); err != nil {
+		return err
+	}
+	return r.RunOnce(ctx)
+}
+
+// Stop cancels a pending or paused run immediately, or asks an
+// in-flight run to stop: the executor observes the cancelled context
+// and finishes the run cancelled itself.
+func (r *Runner) Stop(ctx context.Context, runID string) error {
+	run, found, err := r.Store.Get(ctx, runID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("run %q not found", runID)
+	}
+	switch run.Status {
+	case scenariorun.RunPending, scenariorun.RunPaused:
+		return r.Store.Cancel(ctx, runID)
+	case scenariorun.RunRunning:
+		if h := r.handle(runID); h != nil {
+			h.cancel()
+			return nil
+		}
+		return fmt.Errorf("run %q is not executing on this server", runID)
+	default:
+		return fmt.Errorf("run %q is already %s", runID, run.Status)
+	}
+}
