@@ -173,7 +173,7 @@ nodes:
     text: Invalid credentials
 ```
 
-Scenarios can also be authored three assisted ways, all returning a draft the user reviews in the Studio graph editor before saving — never a silently persisted definition: `POST /api/scenario-generate` drafts a spec from a natural-language prompt (compile-checked, bounded retries), `POST /api/scenario-runs/{id}/save-as-test` drafts a spec from a run's recorded trace, and `GET /api/scenario-proposals` drafts a spec from the application itself — `internal/scenariopropose` walks the compiled route surface and proposes a `happy_path` check per unprotected page (navigate, assert the route and title render) and an `auth_check` per policy-gated page (navigate unauthenticated, assert the `/login` redirect), skipping parameterized routes and names already taken by saved scenarios.
+Scenarios can also be authored four assisted ways, all returning a draft the user reviews in the Studio graph editor before saving — never a silently persisted definition: `POST /api/scenario-generate` drafts a spec from a natural-language prompt (compile-checked, bounded retries), `POST /api/scenario-runs/{id}/save-as-test` drafts a spec from a run's recorded trace, `POST /api/scenario-runs/{id}/repair` drafts a corrected spec for a failed run and returns a node-level graph diff for review, and `GET /api/scenario-proposals` drafts a spec from the application itself — `internal/scenariopropose` walks the compiled route surface and proposes a `happy_path` check per unprotected page (navigate, assert the route and title render) and an `auth_check` per policy-gated page (navigate unauthenticated, assert the `/login` redirect), skipping parameterized routes and names already taken by saved scenarios.
 
 ## Typed field layout
 
