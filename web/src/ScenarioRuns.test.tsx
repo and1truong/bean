@@ -90,6 +90,20 @@ it('saves the run trace as an editable scenario draft',async()=>{
   expect(useEditor.getState().spec).toContain('saved run')
 })
 
+it('proposes a repair draft with a graph diff for a failed run',async()=>{
+  const fetchMock=fetchFor({'/api/scenarios':scenarios,[`/api/scenario-runs/${run.ID}`]:{run,sessions:[],steps,artifacts:[]},[`/api/scenario-runs/${run.ID}/events`]:{events:[]},[`/api/scenario-runs/${run.ID}/repair`]:{valid:true,name:'smoke',spec:{title:'Smoke',start:'open',nodes:[{id:'open',type:'navigate',url:'http://app.test/',next:'check'},{id:'check',type:'assert',assertion:'text_present',text:'ok'},{id:'verify',type:'wait',condition:'navigation'}]},diff:['node verify added','node open changed url']}})
+  mount(<ScenarioRunDetail/>,`/studio/runs/${run.ID}`)
+  fireEvent.click(await screen.findByTestId('propose-repair'))
+  await waitFor(()=>expect(fetchMock).toHaveBeenCalledWith(`/api/scenario-runs/${run.ID}/repair`,expect.objectContaining({method:'POST'})))
+  const draft=await screen.findByTestId('repair-draft')
+  expect(draft).toHaveTextContent('node verify added')
+  expect(draft).toHaveTextContent('node open changed url')
+  fireEvent.click(screen.getByTestId('load-repair-draft'))
+  expect(useEditor.getState().name).toBe('smoke')
+  expect(useEditor.getState().kind).toBe('Scenario')
+  expect(useEditor.getState().spec).toContain('verify')
+})
+
 it('drives manual ops on a paused run',async()=>{
   const pausedRun={...run,Status:'paused',FinishedAt:'',Error:''}
   const fetchMock=fetchFor({'/api/scenarios':scenarios,[`/api/scenario-runs/${run.ID}`]:{run:pausedRun,sessions:[],steps:[steps[0]],artifacts:[]},[`/api/scenario-runs/${run.ID}/events`]:{events:[]},[`/api/scenario-runs/${run.ID}/manual`]:{snapshot:'<encoded tree>'}})
