@@ -13,9 +13,13 @@ package scenarioexec
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/beanruntime/bean/internal/appir"
@@ -41,9 +45,11 @@ type Executor struct {
 	Runs     scenariorun.Store
 	Sessions SessionFactory
 	Secrets  SecretResolver
-	// StepTimeout bounds one step's browser calls; zero uses the node's own
-	// timeout (scenario.DefaultTimeoutSeconds).
-	Now func() time.Time
+	// ArtifactDir roots the files captured as run evidence (screenshots,
+	// DOM snapshots, traces). Artifact rows store the path relative to it.
+	// Empty defaults to bean-artifacts under the OS temp dir.
+	ArtifactDir string
+	Now         func() time.Time
 }
 
 const conditionCheckMillis = int64(2000)
@@ -71,13 +77,21 @@ func (e Executor) Execute(ctx context.Context, runID string, compiled appir.Scen
 	if err = e.Runs.UpdateSession(ctx, sessionRow.ID, scenariorun.SessionActive, "", ""); err != nil {
 		return e.failRun(ctx, runID, token, err)
 	}
-	defer session.Close(context.Background())
 	nodes := make(map[string]appir.ScenarioNode, len(compiled.Nodes))
 	for _, node := range compiled.Nodes {
 		nodes[node.ID] = node
 	}
 	executor := &walker{exec: e, runID: runID, sessionID: sessionRow.ID, session: session, scenario: compiled, nodes: nodes}
+	executor.events.Add(1)
+	go executor.pumpEvents()
 	paused, failure := executor.walk(ctx)
+	if failure != "" {
+		executor.captureTrace(context.Background())
+	}
+	// Close before finishing so the event pump drains every late console and
+	// network observation into the log ahead of the terminal event.
+	_ = session.Close(context.Background())
+	executor.events.Wait()
 	if paused {
 		if pauseErr := e.Runs.Pause(ctx, runID, token); pauseErr != nil {
 			return e.failRun(ctx, runID, token, pauseErr)
@@ -100,6 +114,11 @@ func (e Executor) failRun(ctx context.Context, runID, token string, cause error)
 	return cause
 }
 
+func jsonString(value string) string {
+	encoded, _ := json.Marshal(value)
+	return string(encoded)
+}
+
 func bounded(value string, max int) string {
 	runes := []rune(value)
 	if len(runes) > max {
@@ -117,6 +136,21 @@ type walker struct {
 	lastPass  bool
 	snapshot  *browserapi.Snapshot
 	nodes     map[string]appir.ScenarioNode
+	events    sync.WaitGroup
+}
+
+// pumpEvents pipes adapter page observations into the run log until the
+// session's event channel closes (session end). Every event is its own
+// short transaction, so streaming never holds a lock across a browser call.
+func (w *walker) pumpEvents() {
+	defer w.events.Done()
+	for event := range w.session.Events() {
+		kind := scenariorun.EventConsole
+		if event.Kind == browserapi.EventRequest || event.Kind == browserapi.EventResponse || event.Kind == browserapi.EventRequestFailed {
+			kind = scenariorun.EventNetwork
+		}
+		_ = w.exec.Runs.RecordEvent(context.Background(), w.runID, "", kind, string(event.Data))
+	}
 }
 
 // walk executes the scenario graph from the start node until it reaches a
@@ -184,7 +218,9 @@ func (w *walker) executeNode(ctx context.Context, node appir.ScenarioNode) (stri
 	}
 	if runErr != nil {
 		w.lastPass = false
-		_ = w.exec.Runs.FinishStep(ctx, step.ID, scenariorun.StepFailed, "", bounded(runErr.Error(), scenariorun.MaxErrorRunes))
+		if err := w.exec.Runs.FinishStep(ctx, step.ID, scenariorun.StepFailed, "", bounded(runErr.Error(), scenariorun.MaxErrorRunes)); err != nil {
+			return "", err
+		}
 		w.captureArtifact(ctx, step.ID)
 		if node.OnFail != "" {
 			return node.OnFail, nil
@@ -194,7 +230,9 @@ func (w *walker) executeNode(ctx context.Context, node appir.ScenarioNode) (stri
 	if node.Type != scenario.NodeBranch {
 		w.lastPass = true
 	}
-	_ = w.exec.Runs.FinishStep(ctx, step.ID, scenariorun.StepPassed, bounded(output, scenariorun.MaxOutputBytes), "")
+	if err := w.exec.Runs.FinishStep(ctx, step.ID, scenariorun.StepPassed, bounded(output, scenariorun.MaxOutputBytes), ""); err != nil {
+		return "", err
+	}
 	switch node.Type {
 	case scenario.NodeBranch:
 		return w.branchTarget(ctx, node)
@@ -313,7 +351,19 @@ func (w *walker) refreshSnapshot(ctx context.Context) error {
 		return err
 	}
 	w.snapshot = &snapshot
+	w.recordSnapshot(ctx)
 	return nil
+}
+
+// recordSnapshot logs the normalized page view; the encoded tree rides in
+// the payload while it fits the event bound, else only metadata is kept.
+func (w *walker) recordSnapshot(ctx context.Context) {
+	encoded := w.snapshot.Encode()
+	payload := fmt.Sprintf(`{"snapshot":%q,"nodes":%d,"tree":%s}`, w.snapshot.ID, len(w.snapshot.Nodes), jsonString(encoded))
+	if len(payload) > scenariorun.MaxPayloadBytes {
+		payload = fmt.Sprintf(`{"snapshot":%q,"nodes":%d}`, w.snapshot.ID, len(w.snapshot.Nodes))
+	}
+	_ = w.exec.Runs.RecordEvent(ctx, w.runID, "", scenariorun.EventBrowserSnapshot, payload)
 }
 
 func (w *walker) condition(ctx context.Context, kind, ref, text string, timeout time.Duration) (browserapi.Condition, error) {
@@ -341,7 +391,9 @@ func (w *walker) assert(ctx context.Context, node appir.ScenarioNode) (string, e
 		if err != nil {
 			return "", err
 		}
-		if !strings.Contains(extracted.Value, node.Text) {
+		met := strings.Contains(extracted.Value, node.Text)
+		w.recordAssertion(ctx, node, met, fmt.Sprintf(`{"actual":%q}`, extracted.Value))
+		if !met {
 			return "", fmt.Errorf("ref %s text %q does not contain %q", node.Ref, extracted.Value, node.Text)
 		}
 		return fmt.Sprintf(`{"actual":%q}`, extracted.Value), nil
@@ -354,10 +406,16 @@ func (w *walker) assert(ctx context.Context, node appir.ScenarioNode) (string, e
 	if err != nil {
 		return "", err
 	}
+	w.recordAssertion(ctx, node, result.Met, "{}")
 	if !result.Met {
 		return "", fmt.Errorf("assertion %q not met", node.Assertion)
 	}
 	return "{}", nil
+}
+
+func (w *walker) recordAssertion(ctx context.Context, node appir.ScenarioNode, met bool, detail string) {
+	_ = w.exec.Runs.RecordEvent(ctx, w.runID, "", scenariorun.EventAssertion,
+		fmt.Sprintf(`{"node":%q,"assertion":%q,"met":%t,"detail":%s}`, node.ID, node.Assertion, met, detail))
 }
 
 func (w *walker) extract(ctx context.Context, node appir.ScenarioNode) (string, error) {
@@ -451,14 +509,55 @@ func (w *walker) evaluate(ctx context.Context, kind, ref, text string) (bool, er
 	}
 }
 
-func (w *walker) captureArtifact(ctx context.Context, stepID string) {
-	capture, err := w.session.Screenshot(ctx)
-	if err != nil || len(capture.Bytes) == 0 {
+// artifactRoot is the directory run evidence files live under; artifact
+// rows store paths relative to it so a later file server can resolve them.
+func (e Executor) artifactRoot() string {
+	if e.ArtifactDir != "" {
+		return e.ArtifactDir
+	}
+	return filepath.Join(os.TempDir(), "bean-artifacts")
+}
+
+// writeArtifact persists bytes as a run evidence file and records the row.
+func (w *walker) writeArtifact(ctx context.Context, stepID, kind, contentType, ext string, bytes []byte) {
+	if len(bytes) == 0 {
+		return
+	}
+	dir := filepath.Join(w.exec.artifactRoot(), w.runID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+	name := fmt.Sprintf("%s-%s.%s", stepID, kind, ext)
+	if stepID == "" {
+		name = fmt.Sprintf("run-%s.%s", kind, ext)
+	}
+	rel := filepath.Join(w.runID, name)
+	if err := os.WriteFile(filepath.Join(dir, name), bytes, 0o644); err != nil {
 		return
 	}
 	_, _ = w.exec.Runs.RecordArtifact(ctx, scenariorun.Artifact{
 		RunID: w.runID, StepID: stepID,
-		Kind: scenariorun.ArtifactScreenshot, ContentType: capture.ContentType,
-		Size: int64(len(capture.Bytes)), Ref: "inline",
+		Kind: kind, ContentType: contentType,
+		Size: int64(len(bytes)), Ref: filepath.ToSlash(rel),
 	})
+}
+
+// captureArtifact persists the diagnosis bundle for a failed step: the
+// viewport screenshot and a fresh DOM snapshot of the post-failure state.
+func (w *walker) captureArtifact(ctx context.Context, stepID string) {
+	capture, err := w.session.Screenshot(ctx)
+	if err == nil {
+		w.writeArtifact(ctx, stepID, scenariorun.ArtifactScreenshot, capture.ContentType, "png", capture.Bytes)
+	}
+	if snapshot, err := w.session.Snapshot(ctx); err == nil {
+		w.writeArtifact(ctx, stepID, scenariorun.ArtifactDOM, "text/plain", "txt", []byte(snapshot.Encode()))
+	}
+}
+
+// captureTrace stops the session's trace on a failed run and stores the zip.
+func (w *walker) captureTrace(ctx context.Context) {
+	capture, err := w.session.Trace(ctx)
+	if err == nil {
+		w.writeArtifact(ctx, "", scenariorun.ArtifactTrace, capture.ContentType, "zip", capture.Bytes)
+	}
 }

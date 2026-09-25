@@ -316,6 +316,24 @@ type Capture struct {
 	Bytes       []byte `json:"bytes"`
 }
 
+// Event kinds a session may emit while it is live.
+const (
+	EventConsole       = "console"
+	EventRequest       = "request"
+	EventResponse      = "response"
+	EventRequestFailed = "request_failed"
+	EventPageError     = "page_error"
+)
+
+// Event is one adapter-observed page occurrence during a session: console
+// output, network activity, or an uncaught page error. Data is the
+// adapter-normalized payload as JSON — only primitives, never adapter types.
+type Event struct {
+	Kind string          `json:"kind"`
+	Data json.RawMessage `json:"data"`
+	Time time.Time       `json:"time"`
+}
+
 // Session is the Semantic Browser API surface. One Session is one browser
 // context bound to one caller (a scenario StepExecution driver or an agent).
 // Every method takes and returns only the serialized contract types defined in
@@ -340,6 +358,12 @@ type Session interface {
 	Extract(ctx context.Context, ref Ref, as string, attribute string) (Extraction, error)
 	// Screenshot captures the current viewport.
 	Screenshot(ctx context.Context) (Capture, error)
+	// Trace returns the execution trace recorded since Open (zip bytes).
+	// Tracing ends on the first successful call or at Close.
+	Trace(ctx context.Context) (Capture, error)
+	// Events streams page occurrences (console, network, page errors) for
+	// the session's lifetime; the channel is closed when the session ends.
+	Events() <-chan Event
 	// Close releases the browser context. Idempotent.
 	Close(ctx context.Context) error
 }

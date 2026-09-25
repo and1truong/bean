@@ -28,6 +28,7 @@ const loginPage = `<!doctype html><html><head><title>Sign in</title></head><body
 <button id="submit" type="submit">Continue</button>
 </form>
 </main>
+<script>console.log("bean login page");fetch("/ping");</script>
 </body></html>`
 
 const donePage = `<!doctype html><html><head><title>Done</title></head><body><main><h1>Welcome</h1><p id="banner">Login accepted</p></main></body></html>`
@@ -35,6 +36,10 @@ const donePage = `<!doctype html><html><head><title>Done</title></head><body><ma
 func newServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/ping" {
+			w.WriteHeader(204)
+			return
+		}
 		w.Header().Set("content-type", "text/html")
 		if r.URL.Path == "/done" {
 			fmt.Fprint(w, donePage)
@@ -177,6 +182,48 @@ func TestUnknownRefAndWaitTimeout(t *testing.T) {
 	var callErr *browserplaywright.CallError
 	if !errors.As(err, &callErr) || callErr.Code != "timeout" {
 		t.Fatalf("timeout error=%v", err)
+	}
+}
+
+func TestSessionStreamsPageEventsAndTrace(t *testing.T) {
+	server := newServer(t)
+	session, ctx := newSession(t)
+
+	deadline := time.Now().Add(30 * time.Second)
+	var consoleSeen, networkSeen bool
+	if _, err := session.Open(ctx, server.URL+"/login"); err != nil {
+		t.Fatal(err)
+	}
+	for !(consoleSeen && networkSeen) && time.Now().Before(deadline) {
+		select {
+		case event, ok := <-session.Events():
+			if !ok {
+				t.Fatal("events channel closed mid-session")
+			}
+			switch event.Kind {
+			case browserapi.EventConsole, browserapi.EventPageError:
+				if strings.Contains(string(event.Data), "bean login page") {
+					consoleSeen = true
+				}
+			case browserapi.EventRequest, browserapi.EventResponse, browserapi.EventRequestFailed:
+				if strings.Contains(string(event.Data), "/ping") {
+					networkSeen = true
+				}
+			}
+		case <-ctx.Done():
+			t.Fatal("timed out waiting for page events")
+		}
+	}
+	if !consoleSeen || !networkSeen {
+		t.Fatalf("console=%v network=%v", consoleSeen, networkSeen)
+	}
+
+	capture, err := session.Trace(ctx)
+	if err != nil || capture.ContentType != "application/zip" || len(capture.Bytes) < 4 || string(capture.Bytes[:2]) != "PK" {
+		t.Fatalf("trace=%d bytes ct=%q err=%v", len(capture.Bytes), capture.ContentType, err)
+	}
+	if _, err = session.Trace(ctx); err == nil {
+		t.Fatal("second trace succeeded")
 	}
 }
 

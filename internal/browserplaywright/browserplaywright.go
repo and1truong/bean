@@ -23,6 +23,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/beanruntime/bean/internal/browserapi"
 )
@@ -76,6 +77,7 @@ func (a Adapter) NewSession(ctx context.Context) (browserapi.Session, error) {
 		stdin:   stdin,
 		pending: map[uint64]chan response{},
 		done:    make(chan struct{}),
+		events:  make(chan browserapi.Event, 1024),
 	}
 	go session.readLoop(stdout)
 	go session.waitLoop()
@@ -98,6 +100,15 @@ type wireResponse struct {
 	ID     uint64          `json:"id"`
 	Result json.RawMessage `json:"result"`
 	Error  *wireError      `json:"error"`
+	Event  *wireEvent      `json:"event"`
+}
+
+// wireEvent is the unsolicited {"event":...} frame the sidecar pushes for
+// page observations (console, network, page errors) while a session lives.
+type wireEvent struct {
+	Kind string          `json:"kind"`
+	Time time.Time       `json:"time"`
+	Data json.RawMessage `json:"data"`
 }
 
 type wireError struct {
@@ -136,6 +147,7 @@ type session struct {
 	pending map[uint64]chan response
 	dead    error // set once the process exits or the read loop ends
 	done    chan struct{}
+	events  chan browserapi.Event
 }
 
 func (s *session) call(ctx context.Context, method string, params any, out any) error {
@@ -191,6 +203,14 @@ func (s *session) readLoop(stdout io.Reader) {
 		if err := json.Unmarshal(scanner.Bytes(), &message); err != nil {
 			continue
 		}
+		if message.Event != nil {
+			event := browserapi.Event{Kind: message.Event.Kind, Data: message.Event.Data, Time: message.Event.Time}
+			select {
+			case s.events <- event:
+			default: // a slow consumer must not stall the read loop
+			}
+			continue
+		}
 		s.mu.Lock()
 		channel, found := s.pending[message.ID]
 		if found {
@@ -207,6 +227,7 @@ func (s *session) readLoop(stdout io.Reader) {
 		}
 	}
 	s.fail(ErrSessionDead)
+	close(s.events)
 }
 
 func (s *session) waitLoop() {
@@ -349,6 +370,29 @@ func (s *session) Screenshot(ctx context.Context) (browserapi.Capture, error) {
 		return browserapi.Capture{}, err
 	}
 	return browserapi.Capture{ContentType: result.ContentType, Bytes: bytes}, nil
+}
+
+// Trace stops the session's tracing run and returns the zip. Only the first
+// call captures; the trace also ends when the session closes.
+func (s *session) Trace(ctx context.Context) (browserapi.Capture, error) {
+	var result struct {
+		ContentType string `json:"content_type"`
+		BytesBase64 string `json:"bytes_base64"`
+	}
+	if err := s.call(ctx, "trace", nil, &result); err != nil {
+		return browserapi.Capture{}, translate(err)
+	}
+	bytes, err := base64.StdEncoding.DecodeString(result.BytesBase64)
+	if err != nil {
+		return browserapi.Capture{}, err
+	}
+	return browserapi.Capture{ContentType: result.ContentType, Bytes: bytes}, nil
+}
+
+// Events returns the channel of page observations for this session. It is
+// closed when the session ends (Close or process exit).
+func (s *session) Events() <-chan browserapi.Event {
+	return s.events
 }
 
 func (s *session) Close(ctx context.Context) error {
