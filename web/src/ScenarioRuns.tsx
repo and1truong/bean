@@ -73,6 +73,148 @@ const stepSentence=(node:ScenarioNode):string=>{
   }
 }
 
+// The event explorer renders the run's event stream as browsable rows —
+// relative time, status, a human label, and the important value — grouped
+// under the step they occurred in, with run/session lifecycle collapsed and
+// raw JSON reserved for an explicit expand per row.
+type EventCategory='assertion'|'network'|'console'|'lifecycle'|'artifact'|'policy'|'secret'|'manual'|'other'
+type EventSeverity='success'|'danger'|'info'|'warning'|'neutral'
+type EventRow={seq:number;at:number;kind:string;category:EventCategory;severity:EventSeverity;statusLabel:string;label:string;value:string;data:Record<string,any>;payload:string;step:string;asset:boolean}
+const parsePayload=(raw:string):Record<string,any>=>{try{const data=JSON.parse(raw);return data&&typeof data==='object'?data:{}}catch{return{}}}
+const shortUrl=(url:string)=>{if(!url)return'';try{const parsed=new URL(url);return parsed.pathname+parsed.search||'/'}catch{return url}}
+const assetTypes=['script','stylesheet','font','image','media','manifest']
+const lifecycleKinds=['run_enqueued','run_claimed','run_paused','run_resumed','run_finished','session_opened','session_updated','session_closed','resume_point']
+const severityLabel=(severity:EventSeverity)=>({success:'ok',danger:'fail',warning:'warn',info:'info',neutral:'info'})[severity]
+const lifecycleLabel=(kind:string,data:Record<string,any>)=>({run_enqueued:'Run queued',run_claimed:'Run claimed by the executor',run_paused:'Run paused',run_resumed:'Run resumed',run_finished:data.status?`Run finished — ${data.status}`:'Run finished',session_opened:'Browser session opened',session_updated:'Browser session updated',session_closed:'Browser session closed',resume_point:`Resume boundary recorded: "${data.resume_node}"`})[kind]||kind
+
+// eventRow maps one stored event to a human row. Sidecar stream payloads
+// (console_event/network_event) only carry their frame data, so the frame
+// kind is inferred from its fields: error → failed request, status →
+// response, host without method → blocked, method+resource_type → request.
+const eventRow=(event:RunEvent,step:string,t0:number,nodes:Map<string,ScenarioNode>):EventRow=>{
+  const data=parsePayload(event.Payload)
+  const row:EventRow={seq:event.Sequence,at:Math.max(0,parseTime(event.CreatedAt)-t0),kind:event.Kind,category:'other',severity:'neutral',statusLabel:'info',label:event.Kind,value:'',data,payload:event.Payload,step,asset:false}
+  if(lifecycleKinds.includes(event.Kind)){row.category='lifecycle';row.severity='info';row.label=lifecycleLabel(event.Kind,data);row.statusLabel='info';return row}
+  const node=nodes.get(String(data.node||''))
+  switch(event.Kind){
+    case 'assertion_result':{
+      row.category='assertion';row.severity=data.met?'success':'danger';row.statusLabel=data.met?'passed':'failed'
+      row.label=node?assertSentence(node):`Check "${data.assertion||'assertion'}"`
+      const detail=typeof data.detail==='string'&&data.detail&&data.detail!=='{}'?data.detail:''
+      row.value=detail
+      row.step=String(data.node||'')||step
+      return row
+    }
+    case 'console_event':{
+      row.category='console'
+      if(data.message){row.label='Page error';row.value=String(data.message);row.severity='danger'}
+      else{row.label=`console.${data.type||'log'}`;row.value=String(data.text||'');row.severity=data.type==='error'?'danger':data.type==='warning'?'warning':'neutral'}
+      row.statusLabel=severityLabel(row.severity);return row
+    }
+    case 'network_event':{
+      row.category='network'
+      if(data.error!==undefined){row.severity='danger';row.label=`${data.method||'GET'} ${shortUrl(data.url)}`;row.value=`failed — ${data.error||'request failed'}`}
+      else if(data.status!==undefined){row.severity=data.status>=400?'danger':'success';row.label=shortUrl(data.url);row.value=`· ${data.status}`}
+      else if(data.host!==undefined&&!data.method){row.severity='warning';row.label=shortUrl(data.url);row.value=`blocked by policy (${data.host})`}
+      else{row.severity='success';row.label=`${data.method||'GET'} ${shortUrl(data.url)}`;row.asset=assetTypes.includes(String(data.resource_type||''))}
+      row.statusLabel=severityLabel(row.severity);return row
+    }
+    case 'policy_blocked':row.category='policy';row.severity='warning';row.label='Blocked by egress policy';row.value=String(data.host||shortUrl(data.url));row.statusLabel='warn';return row
+    case 'policy_pause':row.category='policy';row.severity='warning';row.label=`Paused for approval before "${data.node}" (${data.type})`;row.step=String(data.node||'')||step;row.statusLabel='warn';return row
+    case 'secret_used':row.category='secret';row.severity='info';row.label=`Secret "${data.name}" resolved`;row.step=String(data.node||'')||step;row.statusLabel='info';return row
+    case 'manual_action':row.category='manual';row.severity='info';row.label=`Manual ${data.op||'action'}`;row.value=String(data.url||data.ref||'');row.statusLabel='info';return row
+    case 'artifact_recorded':row.category='artifact';row.severity='info';row.label=`${data.kind||'Artifact'} recorded`;row.statusLabel='info';return row
+    case 'browser_snapshot':row.category='artifact';row.severity='info';row.label='Page snapshot recorded';row.statusLabel='info';return row
+    default:return row
+  }
+}
+
+// buildEventRows folds the flat event stream into display rows: step_started
+// and step_finished mark group boundaries rather than render (the check list
+// already shows them), and a request row absorbs its matching response so
+// each network call reads once as `GET /path · 200`.
+const buildEventRows=(events:RunEvent[],nodes:Map<string,ScenarioNode>):EventRow[]=>{
+  const rows:EventRow[]=[]
+  const openRequest=new Map<string,EventRow>()
+  let step=''
+  let t0=0
+  for(const event of events){
+    if(!t0)t0=parseTime(event.CreatedAt)||1
+    const data=parsePayload(event.Payload)
+    if(event.Kind==='step_started'){step=String(data.node||'');continue}
+    if(event.Kind==='step_finished'){step='';continue}
+    if(event.Kind==='network_event'&&data.status!==undefined){
+      const request=openRequest.get(String(data.url))
+      if(request){request.value=`· ${data.status}`;request.severity=Number(data.status)>=400?'danger':'success';request.statusLabel=severityLabel(request.severity);request.payload+=`\n${event.Payload}`;openRequest.delete(String(data.url));continue}
+    }
+    const row=eventRow(event,step,t0,nodes)
+    if(event.Kind==='network_event'&&data.method&&data.resource_type!==undefined)openRequest.set(String(data.url),row)
+    rows.push(row)
+  }
+  return rows
+}
+
+type EventGroup={key:string;label:string;rows:EventRow[]}
+const groupEventRows=(rows:EventRow[],nodes:Map<string,ScenarioNode>):EventGroup[]=>{
+  const groups:EventGroup[]=[]
+  const byKey=new Map<string,EventGroup>()
+  for(const row of rows){
+    const key=row.category==='lifecycle'?'':row.step
+    let group=byKey.get(key)
+    if(!group){
+      const node=nodes.get(key)
+      group={key,label:key?(node?(node.label||stepSentence(node)):key):'Run lifecycle',rows:[]}
+      byKey.set(key,group);groups.push(group)
+    }
+    group.rows.push(row)
+  }
+  return groups
+}
+
+function EventRowItem({row,prefix='event-row'}:{row:EventRow;prefix?:string}){
+  const[open,setOpen]=useState(false)
+  const fields=Object.entries(row.data).filter(([key])=>!/token|claim|session/i.test(key))
+  return <li className="min-w-0"><Button variant="ghost" data-testid={`${prefix}-${row.seq}`} className="flex h-auto w-full items-start justify-start gap-2 rounded px-2 py-1 text-left text-sm hover:bg-muted/70" onClick={()=>setOpen(!open)}>
+    <span className="w-11 shrink-0 pt-0.5 font-mono text-xs text-muted-foreground">{`+${(row.at/1000).toFixed(1)}s`}</span>
+    <StatusIndicator status={row.severity} label={row.statusLabel}/>
+    <span className="min-w-0 flex-1 whitespace-normal break-words">{row.label}{row.value&&<span className="text-muted-foreground"> {row.value}</span>}</span>
+  </Button>
+  {open&&<div className="ml-13 mt-1 space-y-1 rounded-md bg-muted p-2 text-xs" data-testid={`${prefix}-detail-${row.seq}`}>
+    {fields.map(([key,value])=><p key={key} className="break-all"><span className="font-medium">{key}:</span> {typeof value==='object'?JSON.stringify(value):String(value)}</p>)}
+    <Button variant="ghost" className="h-6 px-1 text-xs" data-testid={`${prefix}-copy-${row.seq}`} onClick={()=>void navigator.clipboard?.writeText(row.payload)}>Copy JSON</Button>
+    <details><summary className="cursor-pointer text-muted-foreground">Raw payload</summary><pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-all">{row.payload}</pre></details>
+  </div>}
+  </li>
+}
+
+function EventExplorer({events,steps,nodes}:{events:RunEvent[];steps:Step[];nodes:Map<string,ScenarioNode>}){
+  const[filter,setFilter]=useState('checks')
+  const[search,setSearch]=useState('')
+  const rows=buildEventRows(events,nodes)
+  const assertions=rows.filter(row=>row.category==='assertion').length
+  const network=rows.filter(row=>row.category==='network').length
+  const consoleErrors=rows.filter(row=>row.category==='console'&&row.severity==='danger').length
+  const matches=(row:EventRow)=>{
+    if(search&&`${row.label} ${row.value}`.toLowerCase().includes(search.toLowerCase())===false)return false
+    switch(filter){
+      case 'checks':return row.category==='assertion'||row.severity==='danger'||row.severity==='warning'
+      case 'network':return row.category==='network'
+      case 'console':return row.category==='console'
+      case 'lifecycle':return row.category==='lifecycle'
+      default:return true
+    }
+  }
+  const groups=groupEventRows(rows.filter(matches),nodes).map(group=>({...group,main:group.rows.filter(row=>!row.asset||row.severity!=='success'||!!search),assets:group.rows.filter(row=>row.asset&&row.severity==='success'&&!search)})).filter(group=>group.main.length+group.assets.length>0)
+  const renderRows=(list:EventRow[])=><ul className="space-y-0.5">{list.map(row=><EventRowItem key={row.seq} row={row}/>)}</ul>
+  return <div data-testid="event-explorer">
+    <p className="text-sm text-muted-foreground" data-testid="event-summary">{steps.length} steps · {assertions} assertions · {network} network requests · {consoleErrors} console errors</p>
+    <div className="mt-2 flex flex-wrap items-end gap-2"><Field id="event-filter" label="Show"><NativeSelect id="event-filter" data-testid="event-filter" value={filter} onChange={event=>setFilter(event.target.value)}><NativeSelectOption value="checks">Failures and checks</NativeSelectOption><NativeSelectOption value="all">All</NativeSelectOption><NativeSelectOption value="network">Network</NativeSelectOption><NativeSelectOption value="console">Console</NativeSelectOption><NativeSelectOption value="lifecycle">Lifecycle</NativeSelectOption></NativeSelect></Field><Field id="event-search" label="Search"><Input id="event-search" data-testid="event-search" value={search} onChange={event=>setSearch(event.target.value)} placeholder="Filter events…"/></Field></div>
+    <div className="mt-3 space-y-2">{groups.map(group=>group.key===''?<details key="lifecycle" className="rounded-md border" data-testid="event-group-lifecycle"><summary className="cursor-pointer px-3 py-2 text-sm font-medium">{group.label} ({group.main.length+group.assets.length})</summary><div className="px-1 pb-1">{renderRows(group.main)}{group.assets.length>0&&<details data-testid="network-assets"><summary className="cursor-pointer px-2 py-1 text-sm text-muted-foreground">Network ({group.assets.length})</summary>{renderRows(group.assets)}</details>}</div></details>:<div key={group.key} data-testid={`event-group-${group.key}`}><p className="px-2 pb-1 text-xs font-semibold uppercase text-muted-foreground">{group.label}</p>{renderRows(group.main)}{group.assets.length>0&&<details data-testid={`network-assets-${group.key}`}><summary className="cursor-pointer px-2 py-1 text-sm text-muted-foreground">Network ({group.assets.length})</summary>{renderRows(group.assets)}</details>}</div>)}
+    {!groups.length&&<p className="px-2 py-3 text-sm text-muted-foreground">No events match.</p>}</div>
+    <details className="mt-3" data-testid="run-event-log-details"><summary className="cursor-pointer text-xs font-semibold uppercase text-muted-foreground">Raw event stream ({events.length})</summary><pre className="mt-1 max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs whitespace-pre-wrap break-all" data-testid="run-event-log">{events.map(event=>`#${event.Sequence} ${event.Kind} ${event.Payload}`).join('\n')||'Waiting for events…'}</pre></details>
+  </div>
+}
+
 export function ScenarioRuns(){
   const nav=useNavigate();const[status,setStatus]=useState('');const[scenario,setScenario]=useState('')
   const runs=useQuery({queryKey:['scenario-runs',status],queryFn:()=>api<{runs:Run[]}>('/api/scenario-runs'+(status?'?status='+encodeURIComponent(status):'')),refetchInterval:5000})
@@ -109,9 +251,11 @@ export function ScenarioRunDetail(){
   const steps=detail.data?.steps||[]
   const artifacts=detail.data?.artifacts||[]
   const chosen=steps.find(step=>step.ID===selected)||steps.filter(step=>step.Status==='failed').at(-1)||steps.at(-1)
-  const stepEvents=(events.data?.events||[]).filter(event=>chosen&&event.StepID===chosen.ID)
   const stepArtifacts=artifacts.filter(artifact=>chosen&&artifact.StepID===chosen.ID)
   const scenario=detail.data?scenarios.data?.[detail.data.run.Scenario]:undefined
+  const nodeById=new Map((scenario?.nodes||[]).map(node=>[node.id,node]))
+  const eventRows=buildEventRows(events.data?.events||[],nodeById)
+  const stepEvents=eventRows.filter(row=>chosen&&row.step===chosen.NodeID)
   const statusByNode=new Map<string,Step>()
   for(const step of steps)statusByNode.set(step.NodeID,step)
   if(detail.isPending)return <Page><LoadingState label="Loading run…"/></Page>
@@ -146,11 +290,11 @@ export function ScenarioRunDetail(){
         {chosen?.Error&&(setupFailure(chosen.Error)?<details className="mb-3" data-testid="step-error-details"><summary className="cursor-pointer text-xs font-semibold uppercase text-muted-foreground">Launcher output</summary><pre className="mt-1 max-h-48 overflow-auto rounded-md bg-destructive/10 p-3 font-mono text-xs text-destructive" data-testid="step-error">{chosen.Error}</pre></details>:<p className="mb-3 rounded-md bg-destructive/10 p-3 font-mono text-xs text-destructive" data-testid="step-error">{chosen.Error}</p>)}
         {chosen?.Output&&chosen.Output!=='{}'&&<p className="mb-3 rounded-md bg-muted p-3 font-mono text-xs" data-testid="step-output">{chosen.Output}</p>}
         {stepArtifacts.map(artifact=>artifact.ContentType.startsWith('image/')?<a key={artifact.ID} href={`/api/scenario-runs/${id}/artifacts/${artifact.ID}`} target="_blank" rel="noreferrer"><img className="mb-3 w-full rounded-md border" src={`/api/scenario-runs/${id}/artifacts/${artifact.ID}`} alt={`${artifact.Kind} for ${chosen?.NodeID}`} data-testid="step-screenshot"/></a>:<p key={artifact.ID} className="mb-1 text-sm"><a className="font-mono text-xs underline" href={`/api/scenario-runs/${id}/artifacts/${artifact.ID}`} target="_blank" rel="noreferrer">{artifact.Kind}: {artifact.Ref}</a></p>)}
-        {stepEvents.length>0&&<details className="mt-3" data-testid="step-events-details"><summary className="cursor-pointer text-xs font-semibold uppercase text-muted-foreground">Step events ({stepEvents.length})</summary><pre className="mt-1 max-h-48 overflow-auto rounded-md bg-muted p-2 text-xs" data-testid="step-events">{stepEvents.map(event=>`#${event.Sequence} ${event.Kind} ${event.Payload}`).join('\n')}</pre></details>}
+        {stepEvents.length>0&&<details className="mt-3" data-testid="step-events-details"><summary className="cursor-pointer text-xs font-semibold uppercase text-muted-foreground">Step events ({stepEvents.length})</summary><ul className="mt-1 max-h-48 space-y-0.5 overflow-auto rounded-md bg-muted p-2" data-testid="step-events">{stepEvents.map(row=><EventRowItem key={row.seq} row={row} prefix="step-event-row"/>)}</ul></details>}
         {!chosen&&<EmptyState title="No step" description="Step diagnostics appear once the run claims steps."/>}
       </div></SectionCard>
     </div>
-    <SectionCard><details data-testid="run-event-log-details"><summary className="cursor-pointer text-sm font-semibold">Technical details · {(events.data?.events||[]).length} events</summary><pre className="mt-2 max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs" data-testid="run-event-log">{(events.data?.events||[]).map(event=>`#${event.Sequence} ${event.Kind} ${event.Payload}`).join('\n')||'Waiting for events…'}</pre></details></SectionCard>
+    <SectionCard title="Event explorer"><EventExplorer events={events.data?.events||[]} steps={steps} nodes={nodeById}/></SectionCard>
   </Page>
 }
 
