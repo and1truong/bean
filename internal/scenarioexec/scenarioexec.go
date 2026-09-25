@@ -218,7 +218,9 @@ func (w *walker) executeNode(ctx context.Context, node appir.ScenarioNode) (stri
 	}
 	if runErr != nil {
 		w.lastPass = false
-		_ = w.exec.Runs.FinishStep(ctx, step.ID, scenariorun.StepFailed, "", bounded(runErr.Error(), scenariorun.MaxErrorRunes))
+		if err := w.exec.Runs.FinishStep(ctx, step.ID, scenariorun.StepFailed, "", bounded(runErr.Error(), scenariorun.MaxErrorRunes)); err != nil {
+			return "", err
+		}
 		w.captureArtifact(ctx, step.ID)
 		if node.OnFail != "" {
 			return node.OnFail, nil
@@ -228,7 +230,9 @@ func (w *walker) executeNode(ctx context.Context, node appir.ScenarioNode) (stri
 	if node.Type != scenario.NodeBranch {
 		w.lastPass = true
 	}
-	_ = w.exec.Runs.FinishStep(ctx, step.ID, scenariorun.StepPassed, bounded(output, scenariorun.MaxOutputBytes), "")
+	if err := w.exec.Runs.FinishStep(ctx, step.ID, scenariorun.StepPassed, bounded(output, scenariorun.MaxOutputBytes), ""); err != nil {
+		return "", err
+	}
 	switch node.Type {
 	case scenario.NodeBranch:
 		return w.branchTarget(ctx, node)

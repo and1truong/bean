@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -191,6 +192,19 @@ func (s Store) now() time.Time {
 
 func timestamp(value time.Time) string { return value.UTC().Format(time.RFC3339Nano) }
 
+// writeMu serializes write transactions against the bean_run_* tables. The
+// store is a value type used from several goroutines at once (the executor
+// walker and the event pump, for instance), and two overlapping write
+// transactions can hit a snapshot conflict that busy_timeout cannot wait
+// out, so contention is excluded instead.
+var writeMu sync.Mutex
+
+func (s Store) write(ctx context.Context, fn func(dbal.Transaction) error) error {
+	writeMu.Lock()
+	defer writeMu.Unlock()
+	return s.DB.Transaction(ctx, fn)
+}
+
 func parseTimestamp(value any) time.Time {
 	t, _ := time.Parse(time.RFC3339Nano, fmt.Sprint(value))
 	return t.UTC()
@@ -239,7 +253,7 @@ func (s Store) Enqueue(ctx context.Context, run Run) (Run, error) {
 	}
 	run.Status = RunPending
 	run.CreatedAt = s.now()
-	return run, s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
+	return run, s.write(ctx, func(tx dbal.Transaction) error {
 		if _, err := tx.Insert(ctx, dbal.Insert{Table: "bean_run", Values: runValues(run)}); err != nil {
 			return err
 		}
@@ -253,7 +267,7 @@ func (s Store) Enqueue(ctx context.Context, run Run) (Run, error) {
 func (s Store) Claim(ctx context.Context, id, token string) (bool, error) {
 	now := s.now()
 	claimed := false
-	err := s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
+	err := s.write(ctx, func(tx dbal.Transaction) error {
 		result, err := tx.Update(ctx, dbal.Update{Table: "bean_run", Values: map[string]dbal.Value{"status": RunRunning, "claim_token": token, "claimed_at": timestamp(now), "started_at": timestamp(now)}, Where: dbal.And(
 			dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id},
 			dbal.Predicate{Op: dbal.OpEQ, Column: "status", Value: RunPending},
@@ -304,7 +318,7 @@ func (s Store) Finish(ctx context.Context, id, token, status, cause string) erro
 		sessionStatus = SessionFailed
 		stepStatus = StepFailed
 	}
-	return s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
+	return s.write(ctx, func(tx dbal.Transaction) error {
 		result, err := tx.Update(ctx, dbal.Update{Table: "bean_run", Values: map[string]dbal.Value{"status": status, "error": nullable(cause), "claim_token": nil, "claimed_at": nil, "finished_at": timestamp(now)}, Where: dbal.And(
 			dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id},
 			dbal.Predicate{Op: dbal.OpEQ, Column: "status", Value: RunRunning},
@@ -348,7 +362,7 @@ func (s Store) RecoverStale(ctx context.Context, lease time.Duration) (int, erro
 	recovered := 0
 	for _, row := range rows {
 		id := text(row["id"])
-		err = s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
+		err = s.write(ctx, func(tx dbal.Transaction) error {
 			result, err := tx.Update(ctx, dbal.Update{Table: "bean_run", Values: map[string]dbal.Value{"status": RunFailed, "error": "runner claim expired", "claim_token": nil, "claimed_at": nil, "finished_at": timestamp(now)}, Where: staleFor(id, now, lease), ExpectedRows: 1})
 			if err != nil {
 				return err
@@ -387,7 +401,7 @@ func staleFor(id string, now time.Time, lease time.Duration) dbal.Predicate {
 }
 
 func (s Store) transition(ctx context.Context, id string, where dbal.Predicate, values map[string]dbal.Value, eventKind, payload string) error {
-	return s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
+	return s.write(ctx, func(tx dbal.Transaction) error {
 		if _, err := tx.Update(ctx, dbal.Update{Table: "bean_run", Values: values, Where: where, ExpectedRows: 1}); err != nil {
 			return err
 		}
@@ -410,7 +424,7 @@ func (s Store) OpenSession(ctx context.Context, session Session) (Session, error
 		return Session{}, fmt.Errorf("invalid session status %q", session.Status)
 	}
 	session.CreatedAt = s.now()
-	return session, s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
+	return session, s.write(ctx, func(tx dbal.Transaction) error {
 		if _, err := tx.Insert(ctx, dbal.Insert{Table: "bean_run_session", Values: sessionValues(session)}); err != nil {
 			return err
 		}
@@ -431,7 +445,7 @@ func (s Store) UpdateSession(ctx context.Context, id, status, ref, cause string)
 		values["ref"] = ref
 	}
 	var runID string
-	return s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
+	return s.write(ctx, func(tx dbal.Transaction) error {
 		rows, err := tx.Select(ctx, dbal.Select{Table: "bean_run_session", Columns: []string{"run_id"}, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id}, Limit: 1})
 		if err != nil || len(rows) != 1 {
 			return fmt.Errorf("session %q not found", id)
@@ -485,7 +499,7 @@ func (s Store) StartStep(ctx context.Context, step StepExecution) (StepExecution
 	step.Status = StepRunning
 	step.CreatedAt = s.now()
 	step.StartedAt = step.CreatedAt
-	return step, s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
+	return step, s.write(ctx, func(tx dbal.Transaction) error {
 		if _, err := tx.Insert(ctx, dbal.Insert{Table: "bean_run_step", Values: stepValues(step)}); err != nil {
 			return err
 		}
@@ -505,7 +519,7 @@ func (s Store) FinishStep(ctx context.Context, id, status, output, cause string)
 		return fmt.Errorf("step error exceeds %d runes", MaxErrorRunes)
 	}
 	var runID string
-	return s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
+	return s.write(ctx, func(tx dbal.Transaction) error {
 		rows, err := tx.Select(ctx, dbal.Select{Table: "bean_run_step", Columns: []string{"run_id"}, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id}, Limit: 1})
 		if err != nil || len(rows) != 1 {
 			return fmt.Errorf("step %q not found", id)
@@ -544,7 +558,7 @@ func (s Store) RecordArtifact(ctx context.Context, artifact Artifact) (Artifact,
 		artifact.ID = uid.New()
 	}
 	artifact.CreatedAt = s.now()
-	return artifact, s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
+	return artifact, s.write(ctx, func(tx dbal.Transaction) error {
 		if _, err := tx.Insert(ctx, dbal.Insert{Table: "bean_run_artifact", Values: artifactValues(artifact)}); err != nil {
 			return err
 		}
@@ -556,7 +570,7 @@ func (s Store) RecordArtifact(ctx context.Context, artifact Artifact) (Artifact,
 // transaction; use it for events that are not themselves state mutations
 // (browser snapshots, console/network activity, assertion outcomes).
 func (s Store) RecordEvent(ctx context.Context, runID, stepID, kind, payload string) error {
-	return s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
+	return s.write(ctx, func(tx dbal.Transaction) error {
 		return s.appendEvent(ctx, tx, runID, stepID, kind, payload)
 	})
 }
