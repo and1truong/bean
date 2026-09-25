@@ -33,6 +33,18 @@ type Runner struct {
 
 	mu      sync.Mutex
 	handles map[string]*handle
+	held    *scenarioexec.Held
+}
+
+// heldSessions lazily creates the registry of parked (paused) live
+// sessions; shared by every executor the runner spawns.
+func (r *Runner) heldSessions() *scenarioexec.Held {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.held == nil {
+		r.held = &scenarioexec.Held{}
+	}
+	return r.held
 }
 
 // handle tracks one in-flight execution for control delivery.
@@ -108,6 +120,7 @@ func (r *Runner) execute(ctx context.Context, run scenariorun.Run, h *handle) {
 		ArtifactDir:    r.ArtifactDir,
 		PauseRequested: r.PauseRequested,
 		Policy:         r.Policy,
+		Held:           r.heldSessions(),
 	}
 	if err := executor.Execute(ctx, run.ID, compiled); err != nil && !errors.Is(err, scenarioexec.ErrPaused) {
 		r.fail(run.ID, err)
@@ -146,7 +159,27 @@ func (r *Runner) RequestPause(ctx context.Context, runID string) error {
 	return fmt.Errorf("run %q is not executing on this server", runID)
 }
 
-// Resume moves a paused run back to pending for the next RunOnce.
+// Manual executes one human-driven browser op on a paused run's held
+// session — the takeover surface. The op is recorded as a manual_action
+// event so it lands in the run timeline marked as manual.
+func (r *Runner) Manual(ctx context.Context, runID string, op scenarioexec.Manual) (string, error) {
+	run, found, err := r.Store.Get(ctx, runID)
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return "", fmt.Errorf("run %q not found", runID)
+	}
+	if run.Status != scenariorun.RunPaused {
+		return "", fmt.Errorf("run %q is %s — takeover needs a paused run", runID, run.Status)
+	}
+	return r.heldSessions().Manual(ctx, runID, op)
+}
+
+// Resume moves a paused run back to pending for the next RunOnce. When
+// the runner still holds the paused session the walk continues on the
+// same browser at the recorded resume point; otherwise the resume point
+// event lets the walk continue logically on a fresh session.
 func (r *Runner) Resume(ctx context.Context, runID string) error {
 	if err := r.Store.Resume(ctx, runID); err != nil {
 		return err
@@ -166,7 +199,10 @@ func (r *Runner) Stop(ctx context.Context, runID string) error {
 		return fmt.Errorf("run %q not found", runID)
 	}
 	switch run.Status {
-	case scenariorun.RunPending, scenariorun.RunPaused:
+	case scenariorun.RunPaused:
+		r.heldSessions().Close(runID)
+		return r.Store.Cancel(ctx, runID)
+	case scenariorun.RunPending:
 		return r.Store.Cancel(ctx, runID)
 	case scenariorun.RunRunning:
 		if h := r.handle(runID); h != nil {

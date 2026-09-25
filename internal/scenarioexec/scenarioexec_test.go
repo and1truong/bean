@@ -208,8 +208,7 @@ func TestPauseLeavesRunResumable(t *testing.T) {
 
 	compiled := loginScenario(server.URL+"/login", "checkpoint")
 	compiled.Nodes = append(compiled.Nodes,
-		appir.ScenarioNode{ID: "checkpoint", Type: "pause", Next: "check_done"},
-		appir.ScenarioNode{ID: "check_done", Type: "assert", Assertion: "url_contains", Text: "/done"},
+		appir.ScenarioNode{ID: "checkpoint", Type: "pause", Next: "reopen"},
 	)
 	run := enqueue(t, store, "login")
 	if err := executor.Execute(ctx, run.ID, compiled); !errors.Is(err, scenarioexec.ErrPaused) {
@@ -222,15 +221,171 @@ func TestPauseLeavesRunResumable(t *testing.T) {
 	if err := store.Resume(ctx, run.ID); err != nil {
 		t.Fatal(err)
 	}
-	// Resume drives the remaining nodes under a fresh session.
+	// Resume continues at the recorded boundary (checkpoint's outgoing
+	// edge) on a fresh session — already-run nodes are not re-executed, so
+	// the boundary must be self-sufficient (re-navigate before asserting).
 	resumed := loginScenario(server.URL+"/login", "")
 	resumed.Nodes = append(resumed.Nodes,
+		appir.ScenarioNode{ID: "reopen", Type: "navigate", URL: server.URL + "/done", Next: "check_done"},
 		appir.ScenarioNode{ID: "check_done", Type: "assert", Assertion: "url_contains", Text: "/done"},
 	)
 	if err := executor.Execute(ctx, run.ID, resumed); err != nil {
 		t.Fatalf("resume execute: %v", err)
 	}
 	persisted, _, _ = store.Get(ctx, run.ID)
+	if persisted.Status != scenariorun.RunCompleted {
+		t.Fatalf("run=%+v", persisted)
+	}
+	steps, err := store.Steps(ctx, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(steps) != 7 {
+		t.Fatalf("steps=%v", steps)
+	}
+	for _, step := range steps {
+		if step.Attempt != 1 {
+			t.Fatalf("node %s re-ran on resume: %+v", step.NodeID, step)
+		}
+	}
+}
+
+// TestTakeoverHoldsSessionForManualOps covers the takeover loop: a pause
+// node parks the walk with the browser still open, human ops run against
+// the live session and land in the log as manual_action events, and
+// resume continues on the same session at the recorded boundary.
+func TestTakeoverHoldsSessionForManualOps(t *testing.T) {
+	server, store, executor, _ := newExecutor(t)
+	executor.Held = &scenarioexec.Held{}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	compiled := loginScenario(server.URL+"/login", "done_nav")
+	compiled.Nodes = append(compiled.Nodes, appir.ScenarioNode{ID: "done_nav", Type: "navigate", URL: server.URL + "/done"})
+	// Park between the two fills.
+	for i, node := range compiled.Nodes {
+		if node.ID == "fill_email" {
+			compiled.Nodes[i].Next = "human"
+		}
+	}
+	compiled.Nodes = append(compiled.Nodes, appir.ScenarioNode{ID: "human", Type: "pause", Next: "fill_password"})
+	run := enqueue(t, store, "login")
+	if err := executor.Execute(ctx, run.ID, compiled); !errors.Is(err, scenarioexec.ErrPaused) {
+		t.Fatalf("execute err=%v", err)
+	}
+	persisted, _, _ := store.Get(ctx, run.ID)
+	if persisted.Status != scenariorun.RunPaused {
+		t.Fatalf("run=%+v", persisted)
+	}
+
+	snapshot, err := executor.Held.Manual(ctx, run.ID, scenarioexec.Manual{Op: scenarioexec.ManualSnapshot})
+	if err != nil || !strings.Contains(snapshot, "Sign in") {
+		t.Fatalf("manual snapshot=%q err=%v", snapshot, err)
+	}
+	if _, err = executor.Held.Manual(ctx, run.ID, scenarioexec.Manual{Op: scenarioexec.ManualFill, Ref: "Password", Secret: "PASSWORD"}); err != nil {
+		t.Fatalf("manual secret fill: %v", err)
+	}
+	if _, err = executor.Held.Manual(ctx, run.ID, scenarioexec.Manual{Op: "bogus"}); err == nil {
+		t.Fatal("expected unsupported manual op to error")
+	}
+	if _, err = executor.Held.Manual(ctx, "other-run", scenarioexec.Manual{Op: scenarioexec.ManualSnapshot}); err == nil {
+		t.Fatal("expected manual op on non-held run to error")
+	}
+
+	if err := store.Resume(ctx, run.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := executor.Execute(ctx, run.ID, compiled); err != nil {
+		t.Fatalf("resume execute: %v", err)
+	}
+	persisted, _, _ = store.Get(ctx, run.ID)
+	if persisted.Status != scenariorun.RunCompleted {
+		t.Fatalf("run=%+v", persisted)
+	}
+
+	// Takeover reuses the parked session — one session row for the run.
+	sessions, err := store.Sessions(ctx, run.ID)
+	if err != nil || len(sessions) != 1 {
+		t.Fatalf("sessions=%+v err=%v", sessions, err)
+	}
+	steps, err := store.Steps(ctx, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range steps {
+		if step.Attempt != 1 {
+			t.Fatalf("node %s re-ran on resume: %+v", step.NodeID, step)
+		}
+	}
+	events, err := store.Events(ctx, run.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manual, resumePoint int
+	for _, event := range events {
+		if event.Kind == scenariorun.EventManualAction {
+			manual++
+		}
+		if event.Kind == scenariorun.EventResumePoint {
+			if !strings.Contains(event.Payload, `"resume_node":"fill_password"`) {
+				t.Fatalf("resume_point payload=%s", event.Payload)
+			}
+			resumePoint++
+		}
+	}
+	// Three manual ops logged — snapshot + fill + the rejected bogus op.
+	if manual != 3 || resumePoint != 1 {
+		t.Fatalf("manual=%d resumePoint=%d", manual, resumePoint)
+	}
+}
+
+// TestResumeWithoutHeldSessionContinuesAtBoundary covers the degraded
+// path: the runner process lost the parked session (or none was held),
+// so resume opens a fresh session and still starts at the boundary node
+// rather than the scenario start.
+func TestResumeWithoutHeldSessionContinuesAtBoundary(t *testing.T) {
+	server, store, executor, _ := newExecutor(t)
+	executor.Held = &scenarioexec.Held{}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	compiled := appir.Scenario{
+		Name: "login", Start: "open_login",
+		Nodes: []appir.ScenarioNode{
+			{ID: "open_login", Type: "navigate", URL: server.URL + "/login", Next: "human"},
+			{ID: "human", Type: "pause", Next: "done_nav"},
+			{ID: "done_nav", Type: "navigate", URL: server.URL + "/done", Next: "check_done"},
+			{ID: "check_done", Type: "assert", Assertion: "url_contains", Text: "/done"},
+		},
+	}
+	run := enqueue(t, store, "login")
+	if err := executor.Execute(ctx, run.ID, compiled); !errors.Is(err, scenarioexec.ErrPaused) {
+		t.Fatalf("execute err=%v", err)
+	}
+	if err := store.Resume(ctx, run.ID); err != nil {
+		t.Fatal(err)
+	}
+	// A different executor with an empty registry — the parked session
+	// is gone, so resume opens a second session at the boundary.
+	resumer := executor
+	resumer.Held = &scenarioexec.Held{}
+	if err := resumer.Execute(ctx, run.ID, compiled); err != nil {
+		t.Fatalf("resume execute: %v", err)
+	}
+	sessions, err := store.Sessions(ctx, run.ID)
+	if err != nil || len(sessions) != 2 {
+		t.Fatalf("sessions=%+v err=%v", sessions, err)
+	}
+	steps, err := store.Steps(ctx, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range steps {
+		if step.NodeID == "open_login" && step.Attempt != 1 {
+			t.Fatalf("boundary-before node re-ran: %+v", step)
+		}
+	}
+	persisted, _, _ := store.Get(ctx, run.ID)
 	if persisted.Status != scenariorun.RunCompleted {
 		t.Fatalf("run=%+v", persisted)
 	}

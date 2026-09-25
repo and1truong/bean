@@ -78,3 +78,15 @@ it('drives run controls',async()=>{
   fireEvent.click(await screen.findByTestId('pause-run'))
   await waitFor(()=>expect(fetchMock).toHaveBeenCalledWith(`/api/scenario-runs/${run.ID}/pause`,expect.objectContaining({method:'POST'})))
 })
+
+it('drives manual ops on a paused run',async()=>{
+  const pausedRun={...run,Status:'paused',FinishedAt:'',Error:''}
+  const fetchMock=fetchFor({'/api/scenarios':scenarios,[`/api/scenario-runs/${run.ID}`]:{run:pausedRun,sessions:[],steps:[steps[0]],artifacts:[]},[`/api/scenario-runs/${run.ID}/events`]:{events:[]},[`/api/scenario-runs/${run.ID}/manual`]:{snapshot:'<encoded tree>'}})
+  mount(<ScenarioRunDetail/>,`/studio/runs/${run.ID}`)
+  const takeover=await screen.findByTestId('takeover')
+  expect(takeover).toBeInTheDocument()
+  expect(screen.getByTestId('manual-op')).toHaveValue('snapshot')
+  fireEvent.click(screen.getByTestId('manual-go'))
+  await waitFor(()=>expect(fetchMock).toHaveBeenCalledWith(`/api/scenario-runs/${run.ID}/manual`,expect.objectContaining({method:'POST',body:JSON.stringify({op:'snapshot'})})))
+  expect(await screen.findByTestId('manual-result')).toHaveTextContent('encoded tree')
+})

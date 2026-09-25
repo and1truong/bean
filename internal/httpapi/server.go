@@ -119,6 +119,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/scenario-runs", s.runs)
 	mux.HandleFunc("GET /api/scenario-runs/{id}", s.runDetail)
 	mux.HandleFunc("POST /api/scenario-runs/{id}/{control}", s.runControl)
+	mux.HandleFunc("POST /api/scenario-runs/{id}/manual", s.runManual)
 	mux.HandleFunc("GET /api/scenario-runs/{id}/events", s.runEvents)
 	mux.HandleFunc("GET /api/scenario-runs/{id}/artifacts/{artifact}", s.runArtifact)
 	mux.HandleFunc("/", s.fallback)

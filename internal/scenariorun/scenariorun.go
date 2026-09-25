@@ -90,6 +90,15 @@ const (
 	// EventSecretUsed records that a step resolved a secret by name —
 	// the audit trail for credential use without logging the value.
 	EventSecretUsed = "secret_used"
+	// EventResumePoint records the graph node a paused run resumes from —
+	// the durable boundary making pause → takeover → resume survive a
+	// process restart (the live browser session does not).
+	EventResumePoint = "resume_point"
+	// EventManualAction records a human-driven browser action taken while
+	// a run is paused for takeover. Manual actions are events, never
+	// StepExecution rows; the payload carries the op and outcome but no
+	// resolved secret values.
+	EventManualAction = "manual_action"
 )
 
 // Bounds shared with callers and the HTTP layer.
@@ -112,7 +121,7 @@ var (
 	terminalRun     = map[string]bool{RunCompleted: true, RunFailed: true, RunCancelled: true}
 	terminalStep    = map[string]bool{StepPassed: true, StepFailed: true, StepSkipped: true}
 	terminalSession = map[string]bool{SessionClosed: true, SessionFailed: true}
-	eventKinds      = map[string]bool{EventRunEnqueued: true, EventRunClaimed: true, EventRunPaused: true, EventRunResumed: true, EventRunFinished: true, EventSessionOpened: true, EventSessionUpdated: true, EventSessionClosed: true, EventStepStarted: true, EventStepFinished: true, EventArtifactRecorded: true, EventBrowserSnapshot: true, EventConsole: true, EventNetwork: true, EventAssertion: true, EventPolicyBlocked: true, EventPolicyPause: true, EventSecretUsed: true}
+	eventKinds      = map[string]bool{EventRunEnqueued: true, EventRunClaimed: true, EventRunPaused: true, EventRunResumed: true, EventRunFinished: true, EventSessionOpened: true, EventSessionUpdated: true, EventSessionClosed: true, EventStepStarted: true, EventStepFinished: true, EventArtifactRecorded: true, EventBrowserSnapshot: true, EventConsole: true, EventNetwork: true, EventAssertion: true, EventPolicyBlocked: true, EventPolicyPause: true, EventSecretUsed: true, EventResumePoint: true, EventManualAction: true}
 )
 
 func valid(set map[string]bool, value string) bool { return set[value] }
