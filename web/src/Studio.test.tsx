@@ -170,3 +170,44 @@ it('authors Explore query, display, action, drill, and page-filter semantics vis
   expect(page.sections).toEqual([{panel:'book_panel',width:'contained'},{panel:'book_panel',width:'full'}])
   expect(page.filters.filter_1.targets).toEqual([{block:'book_chart',filter:'title'}])
 })
+
+it('authors a Scenario graph end to end without Advanced JSON',async()=>{
+  const scenarioDefinitions=[...definitions,{apiVersion:'bean/v1alpha1',kind:'Action',metadata:{name:'ship_book'},spec:{entity:'book'}}]
+  vi.spyOn(globalThis,'fetch').mockImplementation(async input=>new Response(JSON.stringify(String(input).endsWith('/definitions')?scenarioDefinitions:[]),{status:200}))
+  render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter><Studio/></MemoryRouter></QueryClientProvider>)
+  fireEvent.change(await screen.findByTestId('definition-kind'),{target:{value:'Scenario'}})
+  fireEvent.click(await screen.findByTestId('scenario-add-node'))
+  fireEvent.change(screen.getByTestId('node-url-0'),{target:{value:'http://app.test/login'}})
+  fireEvent.change(screen.getByTestId('scenario-add-type'),{target:{value:'assert'}})
+  fireEvent.click(screen.getByTestId('scenario-add-node'))
+  fireEvent.change(screen.getByTestId('node-assertion-1'),{target:{value:'text_present'}})
+  fireEvent.change(screen.getByLabelText('Expected text/URL'),{target:{value:'Welcome'}})
+  fireEvent.change(screen.getByTestId('node-id-1'),{target:{value:'check'}})
+  fireEvent.change(document.getElementById('node-next-0') as HTMLElement,{target:{value:'check'}})
+  fireEvent.click(screen.getByRole('checkbox',{name:'Advanced JSON'}))
+  const spec=JSON.parse((screen.getByTestId('definition-spec') as HTMLTextAreaElement).value)
+  expect(spec.start).toBe('navigate_1')
+  expect(spec.nodes).toMatchObject([
+    {id:'navigate_1',type:'navigate',url:'http://app.test/login',next:'check'},
+    {id:'check',type:'assert',assertion:'text_present',text:'Welcome'},
+  ])
+})
+
+it('edits branch edges and cleans references on node removal',async()=>{
+  const scenarioDefinitions=[...definitions,{apiVersion:'bean/v1alpha1',kind:'Scenario',metadata:{name:'smoke'},spec:{start:'open',nodes:[{id:'open',type:'navigate',url:'http://app.test/',next:'gate'},{id:'gate',type:'branch',branches:[{condition:'last_step_passed',next:'open'}]}]}}]
+  vi.spyOn(globalThis,'fetch').mockImplementation(async input=>new Response(JSON.stringify(String(input).endsWith('/definitions')?scenarioDefinitions:[]),{status:200}))
+  render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter><Studio/></MemoryRouter></QueryClientProvider>)
+  fireEvent.click(await screen.findByRole('button',{name:'Scenario: smoke'}))
+  await screen.findByTestId('scenario-node-open')
+  fireEvent.click(screen.getByTestId('branch-add-1'))
+  fireEvent.click(screen.getByRole('checkbox',{name:'Advanced JSON'}))
+  let spec=JSON.parse((screen.getByTestId('definition-spec') as HTMLTextAreaElement).value)
+  expect(spec.nodes[1].branches).toHaveLength(2)
+  fireEvent.click(screen.getByRole('checkbox',{name:'Advanced JSON'}))
+  fireEvent.click(screen.getByTestId('remove-node-open'))
+  fireEvent.click(screen.getByRole('checkbox',{name:'Advanced JSON'}))
+  spec=JSON.parse((screen.getByTestId('definition-spec') as HTMLTextAreaElement).value)
+  expect(spec.start).toBe('')
+  expect(spec.nodes).toHaveLength(1)
+  expect(spec.nodes[0].branches[0].next).toBe('')
+})

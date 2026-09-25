@@ -1,6 +1,7 @@
 import {useState} from 'react'
 import {Link} from 'react-router-dom'
 import {FieldLayoutEditor} from './FieldLayoutEditor'
+import {ScenarioEditor} from './ScenarioEditor'
 import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query'
 import {api} from './api'
 import {useEditor} from './store'
@@ -14,7 +15,7 @@ import {Textarea} from '@/components/ui/textarea'
 
 type Definition={apiVersion:string;kind:string;metadata:{name:string;namespace?:string};spec:Record<string,any>}
 type FieldSpec={name:string;label?:string;type:string;required?:boolean;unique?:boolean;options?:string[];relation?:{entity:string;kind:string;targetField?:string}}
-const coreKinds=['Entity','View','Page','Action','Policy','AdminResource','Menu']
+const coreKinds=['Entity','View','Page','Action','Policy','AdminResource','Menu','Scenario']
 const allKinds=[...coreKinds,'Filter','Webform','Block','Panel','Role','Job']
 
 export function Studio(){
@@ -38,6 +39,7 @@ function VisualEditor({kind,spec,definitions,update}:{kind:string;spec:Record<st
   if(kind==='Action')return <ActionEditor spec={spec} definitions={definitions} update={update}/>
   if(kind==='Policy')return <PolicyEditor spec={spec} update={update}/>
   if(kind==='Menu')return <MenuEditor spec={spec} definitions={definitions} update={update}/>
+  if(kind==='Scenario')return <ScenarioEditor spec={spec} definitions={definitions} update={update}/>
   return <AdminResourceEditor spec={spec} definitions={definitions} update={update}/>
 }
 
