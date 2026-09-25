@@ -676,3 +676,44 @@ func TestAssertionTimeoutRecordsOutcomeNotInfrastructureError(t *testing.T) {
 		t.Fatalf("step error=%q", steps[1].Error)
 	}
 }
+
+func TestBranchRecordsChosenEdgeOnStepOutput(t *testing.T) {
+	_, store, executor, _ := newExecutor(t)
+	server := serve(t, map[string]string{"/": donePage})
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	// The branch chooses "verify" because donePage contains "Welcome"; the
+	// fallback assert never runs, and the chosen edge is recorded on the
+	// branch step so the report can show which path the run took.
+	compiled := appir.Scenario{
+		Name: "branched", Start: "open",
+		Nodes: []appir.ScenarioNode{
+			{ID: "open", Type: "navigate", URL: server.URL + "/", Next: "choose"},
+			{ID: "choose", Type: "branch", Next: "fallback", Branches: []appir.ScenarioBranch{
+				{Condition: "text_present", Text: "Welcome", Next: "verify"},
+			}},
+			{ID: "verify", Type: "assert", Assertion: "text_present", Text: "Welcome"},
+			{ID: "fallback", Type: "assert", Assertion: "text_present", Text: "never present"},
+		},
+	}
+	run := enqueue(t, store, "branched")
+	if err := executor.Execute(ctx, run.ID, compiled); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	persisted, _, _ := store.Get(ctx, run.ID)
+	if persisted.Status != scenariorun.RunCompleted {
+		t.Fatalf("run=%+v", persisted)
+	}
+	steps, _ := store.Steps(ctx, run.ID)
+	byNode := map[string]scenariorun.StepExecution{}
+	for _, step := range steps {
+		byNode[step.NodeID] = step
+	}
+	if !strings.Contains(byNode["choose"].Output, `"target":"verify"`) {
+		t.Fatalf("branch step output=%q", byNode["choose"].Output)
+	}
+	if _, ok := byNode["fallback"]; ok {
+		t.Fatalf("skipped branch executed: %+v", byNode["fallback"])
+	}
+}

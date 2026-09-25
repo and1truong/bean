@@ -112,6 +112,37 @@ it('counts assertions as checks on a completed run',async()=>{
   expect(outcome).not.toHaveTextContent('2/2 checks')
 })
 
+it('counts only executed assertions and labels the skipped branch',async()=>{
+
+  // A completed branched run: the assert on the untaken edge is skipped, not
+  // a third check in the denominator — and the row says why it was skipped.
+  const branched={branchy:{name:'branchy',start:'open',nodes:[
+    {id:'open',type:'navigate',url:'http://app.test/',next:'fill_pw'},
+    {id:'fill_pw',type:'fill',ref:'Password',text:'wrong-password',next:'choose'},
+    {id:'choose',type:'branch',branches:[{condition:'text_present',text:'feedback',next:'verify'},{condition:'text_present',text:'alt',next:'fallback'}],next:'done'},
+    {id:'verify',type:'assert',assertion:'text_present',text:'feedback',next:'done'},
+    {id:'fallback',type:'assert',assertion:'text_present',text:'alt',next:'done'},
+    {id:'done',type:'assert',assertion:'url_contains',text:'/done'},
+  ]}}
+  const doneRun={...run,Scenario:'branchy',Status:'completed',Error:''}
+  const stamp=(n:number)=>`2026-01-01T00:00:0${n}Z`
+  const branchSteps=['open','fill_pw','choose','verify','done'].map((nodeId,index)=>({
+    ID:`s-${index}`,NodeID:nodeId,Attempt:1,Status:'passed',Output:nodeId==='choose'?'{"target":"verify"}':'',Error:'',StartedAt:stamp(index),FinishedAt:stamp(index+1),
+  }))
+  fetchFor({'/api/scenarios':branched,[`/api/scenario-runs/${run.ID}`]:{run:doneRun,sessions:[],steps:branchSteps,artifacts:[]},[`/api/scenario-runs/${run.ID}/events`]:{events:[]}})
+  mount(<ScenarioRunDetail/>,`/studio/runs/${run.ID}`)
+  const outcome=await screen.findByTestId('run-outcome')
+  expect(outcome).toHaveTextContent('2/2 assertions passed')
+  expect(outcome).not.toHaveTextContent('2/3')
+  expect(screen.getByTestId('step-fallback')).toHaveTextContent('skipped — branch choose took verify')
+  expect(screen.getByTestId('step-choose')).toHaveTextContent('→ verify')
+  // A literal fill value never renders in the report; the secret hint stays.
+  expect(screen.getByTestId('step-fill_pw')).toHaveTextContent('Fill Password with a value')
+  expect(screen.getByTestId('step-fill_pw')).not.toHaveTextContent('wrong-password')
+  // Nothing failed — the detail panel leads with Step details, not Diagnostics.
+  expect(screen.getByTestId('step-diagnostics').closest('section')).toHaveTextContent('Step details')
+})
+
 it('hides save-as-test with no steps and retries a failed run',async()=>{
 
   const failedNoSteps={...run,Status:'failed',Error:'browser missing'}

@@ -8,7 +8,7 @@ import {Button} from '@/components/ui/button'
 import {Input} from '@/components/ui/input'
 import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select'
 
-type ScenarioNode={id:string;type:string;label?:string;next?:string;onFail?:string;url?:string;ref?:string;text?:string;value?:string;key?:string;secret?:string;condition?:string;assertion?:string;as?:string;attribute?:string;name?:string;until?:string;body?:string;maxIterations?:number;action?:string}
+type ScenarioNode={id:string;type:string;label?:string;next?:string;onFail?:string;branches?:{condition:string;ref?:string;text?:string;next:string}[];url?:string;ref?:string;text?:string;value?:string;key?:string;secret?:string;condition?:string;assertion?:string;as?:string;attribute?:string;name?:string;until?:string;body?:string;maxIterations?:number;action?:string}
 type Scenario={name:string;title?:string;start:string;nodes:ScenarioNode[]}
 type Run={ID:string;AppID:string;Scenario:string;Trigger:string;Status:string;Error:string;CreatedAt:string;StartedAt:string;FinishedAt:string}
 type Step={ID:string;NodeID:string;Attempt:number;Status:string;Output:string;Error:string;CreatedAt:string;StartedAt:string;FinishedAt:string}
@@ -41,6 +41,52 @@ const waitSentence=(node:ScenarioNode):string=>{
     default:return `Wait (${conditionText(node.condition)||'condition'})`
   }
 }
+// branchDecision reads the outgoing edge the executor recorded on the
+// branch step's output ({"target":"node_id"}); '' when not recorded.
+const branchDecision=(step?:Step):string=>{
+  if(!step?.Output)return ''
+  try{const data=JSON.parse(step.Output)as{target?:string};return data.target||''}catch{return ''}
+}
+// outgoingEdges lists every node a node can lead to — for attributing the
+// nodes a branch or loop left unexecuted.
+const outgoingEdges=(node:ScenarioNode):string[]=>{
+  const edges=[node.next,node.onFail,node.body]
+  node.branches?.forEach(branch=>edges.push(branch.next))
+  return edges.filter((edge):edge is string=>Boolean(edge))
+}
+// skippedReasons maps each node the run never executed to the taken edge of
+// the branch that bypassed it: walking the untaken sibling edges marks every
+// node reachable only through them, minus nodes the taken path also reaches.
+const skippedReasons=(nodes:ScenarioNode[],steps:Step[]):Map<string,string>=>{
+  const byId=new Map(nodes.map(node=>[node.id,node]))
+  const executed=new Set(steps.map(step=>step.NodeID))
+  const reachableFrom=(start:string):Set<string>=>{
+    const seen=new Set<string>()
+    const queue=[start]
+    while(queue.length){
+      const id=queue.pop()||''
+      if(seen.has(id))continue
+      seen.add(id)
+      const node=byId.get(id)
+      if(node)queue.push(...outgoingEdges(node))
+    }
+    return seen
+  }
+  const skipped=new Map<string,string>()
+  for(const step of steps){
+    const node=byId.get(step.NodeID)
+    const taken=branchDecision(step)
+    if(node?.type!=='branch'||!taken)continue
+    const reachableFromTaken=reachableFrom(taken)
+    for(const target of outgoingEdges(node)){
+      if(target===taken)continue
+      for(const id of reachableFrom(target)){
+        if(!reachableFromTaken.has(id)&&!executed.has(id)&&!skipped.has(id))skipped.set(id,`branch ${step.NodeID} took ${taken}`)
+      }
+    }
+  }
+  return skipped
+}
 const assertSentence=(node:ScenarioNode):string=>{
   switch(node.assertion){
     case 'url_equals':return `Page URL is "${node.text||node.url}"`
@@ -58,7 +104,7 @@ const stepSentence=(node:ScenarioNode):string=>{
   switch(node.type){
     case 'navigate':return `Go to ${node.url}`
     case 'click':return `Click ${refLabel(node)}`
-    case 'fill':return node.secret?`Fill ${refLabel(node)} with a secret`:`Fill ${refLabel(node)}${node.text?` with "${node.text}"`:''}`
+    case 'fill':return `Fill ${refLabel(node)}${node.secret?' with a secret':node.text?' with a value':''}`
     case 'select':return `Choose "${node.value}" in ${refLabel(node)}`
     case 'press':return `Press ${node.key}`
     case 'wait':return waitSentence(node)
@@ -270,16 +316,24 @@ export function ScenarioRunDetail(){
   if(detail.error)return <Page><ErrorAlert error={detail.error}/></Page>
   if(!run)return null
   const nodes=scenario?.nodes||[]
+  const skippedBy=skippedReasons(nodes,steps)
+  const skippedLabel=(nodeId:string):string=>{
+    const reason=skippedBy.get(nodeId)
+    if(reason)return `skipped — ${reason}`
+    return run.Status==='completed'?'skipped':'not run'
+  }
   const route=nodes.find(node=>node.type==='navigate'&&node.url)?.url
   const passed=steps.filter(step=>step.Status==='passed').length
   const failedStep=steps.filter(step=>step.Status==='failed').at(-1)
   const isSetup=setupFailure(fmtError(detail.data)||failedStep?.Error||'')
   // Checks are assertions, not step executions — count them separately so a
   // navigate-plus-two-asserts scenario reports 2/2 assertions, not 3/3 steps.
-  const assertNodes=nodes.filter(node=>node.type==='assert')
-  const assertPassed=assertNodes.filter(node=>statusByNode.get(node.id)?.Status==='passed').length
+  // The denominator is assertions that actually ran: assert nodes on a branch
+  // the run skipped are not checks that failed.
+  const assertExecuted=nodes.filter(node=>node.type==='assert'&&statusByNode.has(node.id))
+  const assertPassed=assertExecuted.filter(node=>statusByNode.get(node.id)?.Status==='passed').length
   const outcome=isSetup?'Browser setup failed — the run could not start'
-    :run.Status==='completed'&&assertNodes.length?`${assertPassed}/${assertNodes.length} assertions passed`
+    :run.Status==='completed'&&assertExecuted.length?`${assertPassed}/${assertExecuted.length} assertions passed`
     :run.Status==='completed'?`${passed}/${nodes.length||steps.length} steps completed`
     :run.Status==='failed'&&failedStep?`Check "${failedStep.NodeID}" failed`
     :run.Status==='failed'?'Run failed'
@@ -293,8 +347,8 @@ export function ScenarioRunDetail(){
     {isSetup?<SectionCard title="Environment setup required" className="mb-6"><div className="space-y-2" data-testid="setup-required"><p className="text-sm">The browser executable is missing — the scenario runner needs Playwright's Chromium before any node can execute.</p><p className="text-sm">Install it with <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">cd browser && bunx playwright install chromium</code>, then use <strong>Retry run</strong> above. The original launcher output stays under Technical details.</p></div></SectionCard>:fmtError(detail.data)&&<ErrorAlert error={fmtError(detail.data)}/>}
     {run.Status==='paused'&&<TakeoverCard id={id}/>}
     <div className="grid gap-6 lg:grid-cols-2">
-      <SectionCard title="Check outcome" className="min-w-0"><ol className="space-y-1" data-testid="step-timeline">{nodes.length?nodes.map(node=>{const step=statusByNode.get(node.id);return <li key={node.id}><Button variant="ghost" className={`flex w-full items-center justify-start gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted/70 ${chosen?.ID===step?.ID?'bg-muted':''}`} data-testid={`step-${node.id}`} disabled={!step} onClick={()=>step&&setSelected(step.ID)}><StatusIndicator status={step?statusKind(step.Status):'neutral'} label={step?.Status||'not run'}/><span>{stepSentence(node)}</span>{step&&step.Attempt>1&&<span className="text-xs text-muted-foreground">#{step.Attempt}</span>}<span className="ml-auto text-xs text-muted-foreground">{step?duration(step.StartedAt,step.FinishedAt):''}</span></Button></li>}):steps.map(step=><li key={step.ID}><Button variant="ghost" className={`flex w-full items-center justify-start gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted/70 ${chosen?.ID===step.ID?'bg-muted':''}`} data-testid={`step-${step.NodeID}`} onClick={()=>setSelected(step.ID)}><StatusIndicator status={statusKind(step.Status)} label={step.Status}/><span className="font-mono">{step.NodeID}</span>{step.Attempt>1&&<span className="text-xs text-muted-foreground">#{step.Attempt}</span>}<span className="ml-auto text-xs text-muted-foreground">{duration(step.StartedAt,step.FinishedAt)}</span></Button></li>)}{!steps.length&&!nodes.length&&<EmptyState title="Waiting" description="The run has not claimed its first step yet."/>}</ol><p className="mt-3 font-mono text-xs text-muted-foreground">Run {run.ID} · started {stamp(run.StartedAt)}</p></SectionCard>
-      <SectionCard title={chosen?`Diagnostics: ${chosen.NodeID}`:'Diagnostics'} className="min-w-0"><div data-testid="step-diagnostics">
+      <SectionCard title="Check outcome" className="min-w-0"><ol className="space-y-1" data-testid="step-timeline">{nodes.length?nodes.map(node=>{const step=statusByNode.get(node.id);return <li key={node.id}><Button variant="ghost" className={`flex w-full items-center justify-start gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted/70 ${chosen?.ID===step?.ID?'bg-muted':''}`} data-testid={`step-${node.id}`} disabled={!step} onClick={()=>step&&setSelected(step.ID)}><StatusIndicator status={step?statusKind(step.Status):'neutral'} label={step?step.Status:skippedLabel(node.id)}/><span>{stepSentence(node)}</span>{node.type==='branch'&&step&&branchDecision(step)&&<span className="text-xs text-muted-foreground">→ {branchDecision(step)}</span>}{step&&step.Attempt>1&&<span className="text-xs text-muted-foreground">#{step.Attempt}</span>}<span className="ml-auto text-xs text-muted-foreground">{step?duration(step.StartedAt,step.FinishedAt):''}</span></Button></li>}):steps.map(step=><li key={step.ID}><Button variant="ghost" className={`flex w-full items-center justify-start gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted/70 ${chosen?.ID===step.ID?'bg-muted':''}`} data-testid={`step-${step.NodeID}`} onClick={()=>setSelected(step.ID)}><StatusIndicator status={statusKind(step.Status)} label={step.Status}/><span className="font-mono">{step.NodeID}</span>{step.Attempt>1&&<span className="text-xs text-muted-foreground">#{step.Attempt}</span>}<span className="ml-auto text-xs text-muted-foreground">{duration(step.StartedAt,step.FinishedAt)}</span></Button></li>)}{!steps.length&&!nodes.length&&<EmptyState title="Waiting" description="The run has not claimed its first step yet."/>}</ol><p className="mt-3 font-mono text-xs text-muted-foreground">Run {run.ID} · started {stamp(run.StartedAt)}</p></SectionCard>
+      <SectionCard title={chosen?`${chosen.Status==='failed'?'Diagnostics':'Step details'}: ${chosen.NodeID}`:'Step details'} className="min-w-0"><div data-testid="step-diagnostics">
         {chosen?.Error&&(setupFailure(chosen.Error)?<details className="mb-3" data-testid="step-error-details"><summary className="cursor-pointer text-xs font-semibold uppercase text-muted-foreground">Launcher output</summary><pre className="mt-1 max-h-48 overflow-auto rounded-md bg-destructive/10 p-3 font-mono text-xs text-destructive" data-testid="step-error">{chosen.Error}</pre></details>:<p className="mb-3 rounded-md bg-destructive/10 p-3 font-mono text-xs text-destructive" data-testid="step-error">{chosen.Error}</p>)}
         {chosen?.Output&&chosen.Output!=='{}'&&<p className="mb-3 rounded-md bg-muted p-3 font-mono text-xs" data-testid="step-output">{chosen.Output}</p>}
         {stepArtifacts.map(artifact=>artifact.ContentType.startsWith('image/')?<a key={artifact.ID} href={`/api/scenario-runs/${id}/artifacts/${artifact.ID}`} target="_blank" rel="noreferrer"><img className="mb-3 w-full rounded-md border" src={`/api/scenario-runs/${id}/artifacts/${artifact.ID}`} alt={`${artifact.Kind} for ${chosen?.NodeID}`} data-testid="step-screenshot"/></a>:<p key={artifact.ID} className="mb-1 text-sm"><a className="font-mono text-xs underline" href={`/api/scenario-runs/${id}/artifacts/${artifact.ID}`} target="_blank" rel="noreferrer">{artifact.Kind}: {artifact.Ref}</a></p>)}

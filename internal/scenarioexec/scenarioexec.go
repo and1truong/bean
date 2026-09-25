@@ -509,6 +509,27 @@ func (w *walker) executeNode(ctx context.Context, node appir.ScenarioNode) (stri
 		}
 		return "", fmt.Errorf("step %s failed: %w", node.ID, runErr)
 	}
+	var branchNext string
+	if node.Type == scenario.NodeBranch {
+		// Evaluate the outgoing edge while the step is still open so the
+		// chosen target lands on the step's output — the run report can
+		// then show which edge the branch took, and which sibling paths it
+		// skipped, instead of a bare "passed".
+		var branchErr error
+		branchNext, branchErr = w.branchTarget(ctx, node)
+		if branchErr != nil {
+			w.lastPass = false
+			if err := w.exec.Runs.FinishStep(ctx, step.ID, scenariorun.StepFailed, "", bounded(branchErr.Error(), scenariorun.MaxErrorRunes)); err != nil {
+				return "", err
+			}
+			w.captureArtifact(ctx, step.ID)
+			if node.OnFail != "" {
+				return node.OnFail, nil
+			}
+			return "", fmt.Errorf("step %s failed: %w", node.ID, branchErr)
+		}
+		output = fmt.Sprintf(`{"target":%q}`, branchNext)
+	}
 	if node.Type != scenario.NodeBranch {
 		w.lastPass = true
 	}
@@ -517,7 +538,7 @@ func (w *walker) executeNode(ctx context.Context, node appir.ScenarioNode) (stri
 	}
 	switch node.Type {
 	case scenario.NodeBranch:
-		return w.branchTarget(ctx, node)
+		return branchNext, nil
 	case scenario.NodeLoop:
 		return w.loopTarget(ctx, node)
 	default:
