@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -286,5 +287,36 @@ func TestAllowedDomainsBoundary(t *testing.T) {
 		case <-deadline:
 			t.Fatal("no request_blocked event")
 		}
+	}
+}
+
+func TestNewSessionFromProvisionedDir(t *testing.T) {
+	// Deployment contract: the sidecar module can live outside the working
+	// directory — the server points at it with an absolute provisioned path
+	// (BEAN_BROWSER_SIDECAR_DIR in bootstrap) instead of the "browser" default.
+	abs, err := filepath.Abs("../../browser")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(filepath.Join(abs, "sidecar.mjs")); err != nil {
+		t.Skipf("sidecar source unavailable: %v", err)
+	}
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(old) })
+	if err = os.Chdir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	session, err := (browserplaywright.Adapter{Dir: abs}).NewSession(ctx)
+	if err != nil {
+		t.Skipf("sidecar unavailable: %v", err)
+	}
+	defer session.Close(ctx)
+	if _, err = session.Open(ctx, "data:text/html,<title>ok</title>"); err != nil {
+		t.Fatalf("open from provisioned dir: %v", err)
 	}
 }
