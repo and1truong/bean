@@ -173,6 +173,8 @@ nodes:
     text: Invalid credentials
 ```
 
+Scenarios can also be authored three assisted ways, all returning a draft the user reviews in the Studio graph editor before saving — never a silently persisted definition: `POST /api/scenario-generate` drafts a spec from a natural-language prompt (compile-checked, bounded retries), `POST /api/scenario-runs/{id}/save-as-test` drafts a spec from a run's recorded trace, and `GET /api/scenario-proposals` drafts a spec from the application itself — `internal/scenariopropose` walks the compiled route surface and proposes a `happy_path` check per unprotected page (navigate, assert the route and title render) and an `auth_check` per policy-gated page (navigate unauthenticated, assert the `/login` redirect), skipping parameterized routes and names already taken by saved scenarios.
+
 ## Typed field layout
 
 `AdminResource.form.layout` and a page/block detail Display's `renderer.layout` accept labelled ordered groups, one/two columns, and `single|full` field spans. Form layouts cover the configured editable fields exactly once; detail layouts reference eligible projected base-record fields and replace legacy renderer field roles. Layout is presentation-only: Views remain the read path and Actions the write path. See [typed field layout](field-layout.md) for syntax, bounds, Studio, accessibility, and compatibility.
