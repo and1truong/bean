@@ -28,13 +28,17 @@ const loginPage = `<!doctype html><html><head><title>Sign in</title></head><body
 <button id="submit" type="submit">Continue</button>
 </form></main></body></html>`
 
-const donePage = `<!doctype html><html><head><title>Done</title></head><body><main><h1>Welcome</h1><p id="banner">Login accepted</p></main></body></html>`
+const donePage = `<!doctype html><html><head><title>Done</title></head><body><main><h1>Welcome</h1><p id="banner">Login accepted</p></main><script>console.log("bean done page");fetch("/ping");</script></body></html>`
 
 const failPage = `<!doctype html><html><head><title>Sign in</title></head><body><main><h1>Sign in</h1><p id="error">Invalid credentials</p></main></body></html>`
 
-func newExecutor(t *testing.T) (*httptest.Server, scenariorun.Store, scenarioexec.Executor) {
+func newExecutor(t *testing.T) (*httptest.Server, scenariorun.Store, scenarioexec.Executor, string) {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/ping" {
+			w.WriteHeader(204)
+			return
+		}
 		w.Header().Set("content-type", "text/html")
 		switch r.URL.Path {
 		case "/done":
@@ -58,8 +62,10 @@ func newExecutor(t *testing.T) (*httptest.Server, scenariorun.Store, scenarioexe
 	if _, err = os.Stat("../../browser/sidecar.mjs"); err != nil {
 		t.Skipf("sidecar source unavailable: %v", err)
 	}
+	artifactDir := filepath.Join(t.TempDir(), "artifacts")
 	executor := scenarioexec.Executor{
-		Runs: store,
+		Runs:        store,
+		ArtifactDir: artifactDir,
 		Sessions: func(ctx context.Context) (browserapi.Session, error) {
 			return (browserplaywright.Adapter{Dir: "../../browser"}).NewSession(ctx)
 		},
@@ -70,7 +76,7 @@ func newExecutor(t *testing.T) (*httptest.Server, scenariorun.Store, scenarioexe
 			return "", fmt.Errorf("unknown secret %q", name)
 		},
 	}
-	return server, store, executor
+	return server, store, executor, artifactDir
 }
 
 func enqueue(t *testing.T, store scenariorun.Store, scenario string) scenariorun.Run {
@@ -97,7 +103,7 @@ func loginScenario(url, next string) appir.Scenario {
 }
 
 func TestExecuteCompletesRunThroughRealChromium(t *testing.T) {
-	server, store, executor := newExecutor(t)
+	server, store, executor, _ := newExecutor(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
@@ -131,10 +137,26 @@ func TestExecuteCompletesRunThroughRealChromium(t *testing.T) {
 	if err != nil || len(events) == 0 {
 		t.Fatalf("events=%v", err)
 	}
+	kinds := map[string]int{}
+	for _, event := range events {
+		kinds[event.Kind]++
+		if event.Sequence <= 0 {
+			t.Fatalf("event out of order: %+v", event)
+		}
+	}
+	for _, want := range []string{
+		scenariorun.EventStepStarted, scenariorun.EventStepFinished,
+		scenariorun.EventBrowserSnapshot, scenariorun.EventAssertion,
+		scenariorun.EventConsole, scenariorun.EventNetwork,
+	} {
+		if kinds[want] == 0 {
+			t.Fatalf("no %s events in %v", want, kinds)
+		}
+	}
 }
 
-func TestExecuteFailsRunDeterministicallyAndCapturesScreenshot(t *testing.T) {
-	server, store, executor := newExecutor(t)
+func TestExecuteFailsRunDeterministicallyAndCapturesDiagnosisBundle(t *testing.T) {
+	server, store, executor, artifactDir := newExecutor(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
@@ -158,8 +180,19 @@ func TestExecuteFailsRunDeterministicallyAndCapturesScreenshot(t *testing.T) {
 		t.Fatalf("step=%+v", steps[1])
 	}
 	artifacts, _ := store.Artifacts(ctx, run.ID)
-	if len(artifacts) != 1 || artifacts[0].Kind != scenariorun.ArtifactScreenshot {
-		t.Fatalf("artifacts=%+v", artifacts)
+	byKind := map[string]scenariorun.Artifact{}
+	for _, artifact := range artifacts {
+		byKind[artifact.Kind] = artifact
+	}
+	for _, want := range []string{scenariorun.ArtifactScreenshot, scenariorun.ArtifactDOM, scenariorun.ArtifactTrace} {
+		artifact, ok := byKind[want]
+		if !ok {
+			t.Fatalf("no %s artifact in %+v", want, artifacts)
+		}
+		info, err := os.Stat(filepath.Join(artifactDir, artifact.Ref))
+		if err != nil || info.Size() == 0 || info.Size() != artifact.Size {
+			t.Fatalf("%s artifact file missing: ref=%q size=%d err=%v", want, artifact.Ref, artifact.Size, err)
+		}
 	}
 	sessions, _ := store.Sessions(ctx, run.ID)
 	if sessions[0].Status != scenariorun.SessionClosed && sessions[0].Status != scenariorun.SessionFailed {
@@ -168,7 +201,7 @@ func TestExecuteFailsRunDeterministicallyAndCapturesScreenshot(t *testing.T) {
 }
 
 func TestPauseLeavesRunResumable(t *testing.T) {
-	server, store, executor := newExecutor(t)
+	server, store, executor, _ := newExecutor(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
@@ -203,7 +236,7 @@ func TestPauseLeavesRunResumable(t *testing.T) {
 }
 
 func TestExecuteRejectsUnclaimableRun(t *testing.T) {
-	_, store, executor := newExecutor(t)
+	_, store, executor, _ := newExecutor(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := executor.Execute(ctx, "missing-run", appir.Scenario{}); err == nil {

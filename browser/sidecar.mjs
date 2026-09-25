@@ -4,22 +4,35 @@
 // One process hosts one browser session (context/cookies/tabs persist for
 // the process lifetime). Protocol methods mirror internal/browserapi.
 import { chromium } from "playwright";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 let browser = null;
 let context = null;
 let page = null;
 let generation = "";
 let launchOptions = { headless: true };
+let tracing = false;
 
 const MAX_NODES = 4096;
 const MAX_NAME = 512;
 const MAX_VALUE = 4096;
 const MAX_ATTRS = 16;
 const MAX_EXTRACT = 65536;
+const MAX_EVENT_VALUE = 4096;
 
 function newGeneration() {
   return "snap-" + Math.random().toString(36).slice(2, 12);
 }
+
+// Page observations flow to the host as unsolicited {"event":...} lines;
+// responses always carry the request's `id`, so the reader can demultiplex.
+function pushEvent(kind, data) {
+  write({ event: { kind, time: new Date().toISOString(), data } });
+}
+
+const clip = (value) => String(value ?? "").slice(0, MAX_EVENT_VALUE);
 
 async function ensurePage() {
   if (page && !page.isClosed()) {
@@ -30,6 +43,21 @@ async function ensurePage() {
   }
   if (!context) {
     context = await browser.newContext();
+    context.on("console", (message) =>
+      pushEvent("console", { type: message.type(), text: clip(message.text()) }),
+    );
+    context.on("pageerror", (error) => pushEvent("page_error", { message: clip(error) }));
+    context.on("request", (request) =>
+      pushEvent("request", { method: request.method(), url: clip(request.url()), resource_type: request.resourceType() }),
+    );
+    context.on("response", (response) =>
+      pushEvent("response", { status: response.status(), url: clip(response.url()) }),
+    );
+    context.on("requestfailed", (request) =>
+      pushEvent("request_failed", { method: request.method(), url: clip(request.url()), error: clip(request.failure()?.errorText) }),
+    );
+    await context.tracing.start({ snapshots: true });
+    tracing = true;
   }
   page = await context.newPage();
   page.setDefaultTimeout(30_000);
@@ -277,8 +305,25 @@ const handlers = {
     const bytes = await p.screenshot({ type: "png" });
     return { content_type: "image/png", bytes_base64: bytes.toString("base64") };
   },
+  async trace() {
+    if (!context) {
+      throw invalid("no session");
+    }
+    if (!tracing) {
+      throw invalid("trace already captured");
+    }
+    const dir = mkdtempSync(join(tmpdir(), "bean-trace-"));
+    const path = join(dir, "trace.zip");
+    await context.tracing.stop({ path });
+    tracing = false;
+    return { content_type: "application/zip", bytes_base64: readFileSync(path).toString("base64") };
+  },
   async close() {
     try {
+      if (tracing) {
+        await context?.tracing.stop().catch(() => {});
+        tracing = false;
+      }
       await context?.close();
       await browser?.close();
     } finally {

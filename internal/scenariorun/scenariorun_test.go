@@ -3,6 +3,7 @@ package scenariorun_test
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -235,5 +236,36 @@ func TestEnqueueValidatesAndStepAttemptsSequence(t *testing.T) {
 	}
 	if err = store.FinishStep(ctx, step.ID, scenariorun.StepSkipped, "", ""); err == nil {
 		t.Fatal("finished step re-finished")
+	}
+}
+
+func TestRecordEventAppendsObservableKinds(t *testing.T) {
+	ctx := context.Background()
+	_, store, _ := newStore(t, time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC))
+	run := enqueue(t, store)
+	for _, kind := range []string{scenariorun.EventBrowserSnapshot, scenariorun.EventConsole, scenariorun.EventNetwork, scenariorun.EventAssertion} {
+		if err := store.RecordEvent(ctx, run.ID, "", kind, `{"ok":true}`); err != nil {
+			t.Fatalf("%s: %v", kind, err)
+		}
+	}
+	if err := store.RecordEvent(ctx, run.ID, "", "bogus_kind", "{}"); err == nil {
+		t.Fatal("invalid kind accepted")
+	}
+	if err := store.RecordEvent(ctx, run.ID, "", scenariorun.EventConsole, strings.Repeat("x", scenariorun.MaxPayloadBytes+1)); err == nil {
+		t.Fatal("oversized payload accepted")
+	}
+	events, err := store.Events(ctx, run.ID, 0)
+	if err != nil || len(events) != 5 {
+		t.Fatalf("events=%d", len(events))
+	}
+	for i, event := range events {
+		if event.Sequence != int64(i+1) {
+			t.Fatalf("sequence gap at %+v", event)
+		}
+	}
+	// Resuming after a sequence returns only later events.
+	rest, _ := store.Events(ctx, run.ID, events[2].Sequence)
+	if len(rest) != 2 || rest[0].Kind != scenariorun.EventNetwork {
+		t.Fatalf("resume events=%+v", rest)
 	}
 }

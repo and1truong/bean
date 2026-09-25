@@ -72,6 +72,13 @@ const (
 	EventStepStarted      = "step_started"
 	EventStepFinished     = "step_finished"
 	EventArtifactRecorded = "artifact_recorded"
+	// Browser-level observations piped from the adapter into the run log:
+	// normalized snapshot views, page console/pageerror output, network
+	// request/response activity, and scenario assertion outcomes.
+	EventBrowserSnapshot = "browser_snapshot"
+	EventConsole         = "console_event"
+	EventNetwork         = "network_event"
+	EventAssertion       = "assertion_result"
 )
 
 // Bounds shared with callers and the HTTP layer.
@@ -94,7 +101,7 @@ var (
 	terminalRun     = map[string]bool{RunCompleted: true, RunFailed: true, RunCancelled: true}
 	terminalStep    = map[string]bool{StepPassed: true, StepFailed: true, StepSkipped: true}
 	terminalSession = map[string]bool{SessionClosed: true, SessionFailed: true}
-	eventKinds      = map[string]bool{EventRunEnqueued: true, EventRunClaimed: true, EventRunPaused: true, EventRunResumed: true, EventRunFinished: true, EventSessionOpened: true, EventSessionUpdated: true, EventSessionClosed: true, EventStepStarted: true, EventStepFinished: true, EventArtifactRecorded: true}
+	eventKinds      = map[string]bool{EventRunEnqueued: true, EventRunClaimed: true, EventRunPaused: true, EventRunResumed: true, EventRunFinished: true, EventSessionOpened: true, EventSessionUpdated: true, EventSessionClosed: true, EventStepStarted: true, EventStepFinished: true, EventArtifactRecorded: true, EventBrowserSnapshot: true, EventConsole: true, EventNetwork: true, EventAssertion: true}
 )
 
 func valid(set map[string]bool, value string) bool { return set[value] }
@@ -542,6 +549,15 @@ func (s Store) RecordArtifact(ctx context.Context, artifact Artifact) (Artifact,
 			return err
 		}
 		return s.appendEvent(ctx, tx, artifact.RunID, artifact.StepID, EventArtifactRecorded, fmt.Sprintf(`{"artifact":%q,"kind":%q}`, artifact.ID, artifact.Kind))
+	})
+}
+
+// RecordEvent appends one observation to the run log in its own short
+// transaction; use it for events that are not themselves state mutations
+// (browser snapshots, console/network activity, assertion outcomes).
+func (s Store) RecordEvent(ctx context.Context, runID, stepID, kind, payload string) error {
+	return s.DB.Transaction(ctx, func(tx dbal.Transaction) error {
+		return s.appendEvent(ctx, tx, runID, stepID, kind, payload)
 	})
 }
 

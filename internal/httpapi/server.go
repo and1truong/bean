@@ -112,6 +112,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/admin/system/outbox", s.systemOutbox)
 	mux.HandleFunc("POST /api/admin/system/outbox/{id}/{operation}", s.systemOutboxMutation)
 	mux.HandleFunc("GET /api/admin/system/migrations", s.systemMigrations)
+	mux.HandleFunc("GET /api/scenario-runs/{id}/events", s.runEvents)
 	mux.HandleFunc("/", s.fallback)
 	return s.logging(s.requestID(mux))
 }
@@ -1579,6 +1580,14 @@ type statusWriter struct {
 }
 
 func (w *statusWriter) WriteHeader(code int) { w.status = code; w.ResponseWriter.WriteHeader(code) }
+
+// Flush forwards streaming flushes through the logging wrapper so SSE
+// handlers (run event streams) work under the middleware chain.
+func (w *statusWriter) Flush() {
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
 func decode(w http.ResponseWriter, r *http.Request, out any) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	dec := json.NewDecoder(r.Body)
