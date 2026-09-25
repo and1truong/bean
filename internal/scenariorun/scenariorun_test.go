@@ -269,3 +269,39 @@ func TestRecordEventAppendsObservableKinds(t *testing.T) {
 		t.Fatalf("resume events=%+v", rest)
 	}
 }
+
+func TestCancelStopsUnclaimedRunsOnly(t *testing.T) {
+	ctx := context.Background()
+	_, store, _ := newStore(t, time.Now())
+
+	pending := enqueue(t, store)
+	if err := store.Cancel(ctx, pending.ID); err != nil {
+		t.Fatalf("cancel pending: %v", err)
+	}
+	got, found, err := store.Get(ctx, pending.ID)
+	if err != nil || !found || got.Status != scenariorun.RunCancelled || got.FinishedAt.IsZero() {
+		t.Fatalf("run=%+v found=%v err=%v", got, found, err)
+	}
+	if err = store.Cancel(ctx, pending.ID); err == nil {
+		t.Fatal("expected error cancelling a terminal run")
+	}
+
+	paused := enqueue(t, store)
+	if claimed, err := store.Claim(ctx, paused.ID, "tok-p"); !claimed || err != nil {
+		t.Fatal(err)
+	}
+	if err = store.Pause(ctx, paused.ID, "tok-p"); err != nil {
+		t.Fatal(err)
+	}
+	if err = store.Cancel(ctx, paused.ID); err != nil {
+		t.Fatalf("cancel paused: %v", err)
+	}
+
+	running := enqueue(t, store)
+	if claimed, err := store.Claim(ctx, running.ID, "tok-r"); !claimed || err != nil {
+		t.Fatal(err)
+	}
+	if err = store.Cancel(ctx, running.ID); err == nil {
+		t.Fatal("expected error cancelling a claimed running run")
+	}
+}

@@ -293,6 +293,16 @@ func (s Store) Pause(ctx context.Context, id, token string) error {
 	), map[string]dbal.Value{"status": RunPaused, "claim_token": nil, "claimed_at": nil}, EventRunPaused, "{}")
 }
 
+// Cancel stops a run that has not started (pending) or is parked
+// (paused). Cancelling a claimed running run goes through the runner
+// holding its claim; Cancel only covers unclaimed states.
+func (s Store) Cancel(ctx context.Context, id string) error {
+	return s.transition(ctx, id, dbal.And(
+		dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id},
+		dbal.Predicate{Op: dbal.OpIn, Column: "status", Value: []dbal.Value{RunPending, RunPaused}},
+	), map[string]dbal.Value{"status": RunCancelled, "finished_at": timestamp(s.now())}, EventRunFinished, fmt.Sprintf(`{"status":%q}`, RunCancelled))
+}
+
 // Resume returns a paused run to pending so a runner can claim it again.
 func (s Store) Resume(ctx context.Context, id string) error {
 	return s.transition(ctx, id, dbal.And(

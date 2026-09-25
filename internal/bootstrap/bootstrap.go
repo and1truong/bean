@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/beanruntime/bean/internal/action"
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/auth"
 	"github.com/beanruntime/bean/internal/authmail"
+	"github.com/beanruntime/bean/internal/browserplaywright"
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/dbal/postgres"
@@ -23,6 +25,8 @@ import (
 	"github.com/beanruntime/bean/internal/migration"
 	"github.com/beanruntime/bean/internal/openapi"
 	"github.com/beanruntime/bean/internal/release"
+	"github.com/beanruntime/bean/internal/scenariorun"
+	"github.com/beanruntime/bean/internal/scenariorunner"
 	"github.com/beanruntime/bean/internal/view"
 )
 
@@ -33,6 +37,7 @@ type Runtime struct {
 	HTTP   *httpapi.Server
 	Jobs   job.Runner
 	Outbox event.Runner
+	Runs   *scenariorunner.Runner
 }
 
 type Database interface {
@@ -99,7 +104,31 @@ func OpenURLWithOptions(ctx context.Context, databaseURL string, secure bool, op
 	authService := auth.Service{DB: db, VerificationRequired: func() bool { app, ok := k.Active(); return ok && app.EmailVerificationEnabled() }}
 	actions := action.Service{DB: db, Auth: authService, AuthMail: options.AuthMail}
 	views := view.Service{DB: db}
-	server := &httpapi.Server{Kernel: k, Store: store, Auth: authService, Actions: actions, Views: views, SecureCookies: secure}
+	adapter := browserplaywright.Adapter{}
+	runs := &scenariorunner.Runner{
+		Store:       scenariorun.Store{DB: db},
+		Sessions:    adapter.NewSession,
+		ArtifactDir: filepath.Join(os.TempDir(), "bean-artifacts"),
+		Secrets: func(_ context.Context, name string) (string, error) {
+			value := os.Getenv("BEAN_SECRET_" + strings.ToUpper(name))
+			if value == "" {
+				return "", fmt.Errorf("secret %q is not configured (set BEAN_SECRET_%s)", name, strings.ToUpper(name))
+			}
+			return value, nil
+		},
+		Scenario: func(_ context.Context, run scenariorun.Run) (appir.Scenario, error) {
+			app, ok := k.Active()
+			if !ok {
+				return appir.Scenario{}, fmt.Errorf("no active release")
+			}
+			compiled, ok := app.Scenarios[run.Scenario]
+			if !ok {
+				return appir.Scenario{}, fmt.Errorf("scenario %q is not in the active release", run.Scenario)
+			}
+			return compiled, nil
+		},
+	}
+	server := &httpapi.Server{Kernel: k, Store: store, Auth: authService, Actions: actions, Views: views, Runner: runs, SecureCookies: secure}
 	runner := job.Runner{DB: db, Handle: func(ctx context.Context, name string, payload map[string]any) error {
 		app, ok := k.Active()
 		if !ok {
@@ -129,7 +158,7 @@ func OpenURLWithOptions(ctx context.Context, databaseURL string, secure bool, op
 		slog.InfoContext(ctx, "Bean event delivered", "topic", topic)
 		return nil
 	}}
-	return &Runtime{DB: db, Kernel: k, Store: store, HTTP: server, Jobs: runner, Outbox: outbox}, nil
+	return &Runtime{DB: db, Kernel: k, Store: store, HTTP: server, Jobs: runner, Outbox: outbox, Runs: runs}, nil
 }
 
 // OpenInspection opens an initialized Bean database without running metadata

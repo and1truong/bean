@@ -1,0 +1,216 @@
+package httpapi
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+
+	"github.com/beanruntime/bean/internal/scenarioexec"
+	"github.com/beanruntime/bean/internal/scenariorun"
+)
+
+// scenarios lists the compiled scenarios of the active release — the
+// definition-level authoring surface stays on /api/admin/definitions.
+func (s *Server) scenarios(w http.ResponseWriter, r *http.Request) {
+	if !s.editor(w, r) {
+		return
+	}
+	a, ok := s.Kernel.Active()
+	if !ok {
+		problem(w, 503, "not_ready", "No active release.", requestID(r))
+		return
+	}
+	write(w, 200, a.Scenarios)
+}
+
+// createRun enqueues a run of a compiled scenario and wakes the runner.
+func (s *Server) createRun(w http.ResponseWriter, r *http.Request) {
+	if !s.editorMutation(w, r) {
+		return
+	}
+	if s.Runner == nil {
+		problem(w, 503, "runner_unavailable", "Scenario runner is not configured.", requestID(r))
+		return
+	}
+	var body struct {
+		Scenario string `json:"scenario"`
+		Trigger  string `json:"trigger"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	a, ok := s.Kernel.Active()
+	if !ok {
+		problem(w, 503, "not_ready", "No active release.", requestID(r))
+		return
+	}
+	if _, ok = a.Scenarios[body.Scenario]; !ok {
+		problem(w, 422, "invalid", fmt.Sprintf("scenario %q is not defined in the active release", body.Scenario), requestID(r))
+		return
+	}
+	trigger := body.Trigger
+	if strings.TrimSpace(trigger) == "" {
+		trigger = scenariorun.TriggerAPI
+	}
+	run, err := s.Runner.Store.Enqueue(r.Context(), scenariorun.Run{
+		AppID: a.AppID, ReleaseID: a.ReleaseID, Scenario: body.Scenario, Trigger: trigger,
+	})
+	if err != nil {
+		respondError(w, r, err)
+		return
+	}
+	go func() { _ = s.Runner.RunOnce(context.Background()) }()
+	write(w, 201, run)
+}
+
+// runs lists runs newest first, filtered by scenario/status/app.
+func (s *Server) runs(w http.ResponseWriter, r *http.Request) {
+	if !s.editor(w, r) {
+		return
+	}
+	query := r.URL.Query()
+	filter := scenariorun.RunFilter{
+		AppID:    query.Get("app"),
+		Scenario: query.Get("scenario"),
+		Status:   query.Get("status"),
+	}
+	if limit, err := strconv.Atoi(query.Get("limit")); err == nil && limit > 0 {
+		filter.Limit = limit
+	}
+	list, err := s.runStore().List(r.Context(), filter)
+	if err != nil {
+		respondError(w, r, err)
+		return
+	}
+	write(w, 200, map[string]any{"runs": list})
+}
+
+// runDetail returns a run with its sessions, steps, and artifacts.
+func (s *Server) runDetail(w http.ResponseWriter, r *http.Request) {
+	if !s.editor(w, r) {
+		return
+	}
+	run, ok := s.findRun(w, r)
+	if !ok {
+		return
+	}
+	store := s.runStore()
+	sessions, err := store.Sessions(r.Context(), run.ID)
+	if err != nil {
+		respondError(w, r, err)
+		return
+	}
+	steps, err := store.Steps(r.Context(), run.ID)
+	if err != nil {
+		respondError(w, r, err)
+		return
+	}
+	artifacts, err := store.Artifacts(r.Context(), run.ID)
+	if err != nil {
+		respondError(w, r, err)
+		return
+	}
+	write(w, 200, map[string]any{"run": run, "sessions": sessions, "steps": steps, "artifacts": artifacts})
+}
+
+// runControl drives pause/resume/stop on a run.
+func (s *Server) runControl(w http.ResponseWriter, r *http.Request) {
+	if !s.editorMutation(w, r) {
+		return
+	}
+	if s.Runner == nil {
+		problem(w, 503, "runner_unavailable", "Scenario runner is not configured.", requestID(r))
+		return
+	}
+	runID := r.PathValue("id")
+	var err error
+	switch r.PathValue("control") {
+	case "pause":
+		err = s.Runner.RequestPause(r.Context(), runID)
+	case "resume":
+		err = s.Runner.Resume(r.Context(), runID)
+	case "stop":
+		err = s.Runner.Stop(r.Context(), runID)
+	default:
+		problem(w, 404, "not_found", "Unknown run control.", requestID(r))
+		return
+	}
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			problem(w, 404, "not_found", err.Error(), requestID(r))
+			return
+		}
+		problem(w, 409, "conflict", err.Error(), requestID(r))
+		return
+	}
+	write(w, 200, map[string]string{"run": runID, "control": r.PathValue("control")})
+}
+
+// runArtifact serves a persisted evidence file (screenshot, DOM
+// snapshot, trace) recorded for the run.
+func (s *Server) runArtifact(w http.ResponseWriter, r *http.Request) {
+	if !s.editor(w, r) {
+		return
+	}
+	run, ok := s.findRun(w, r)
+	if !ok {
+		return
+	}
+	artifacts, err := s.runStore().Artifacts(r.Context(), run.ID)
+	if err != nil {
+		respondError(w, r, err)
+		return
+	}
+	var artifact *scenariorun.Artifact
+	for i := range artifacts {
+		if artifacts[i].ID == r.PathValue("artifact") {
+			artifact = &artifacts[i]
+			break
+		}
+	}
+	if artifact == nil {
+		problem(w, 404, "not_found", "Artifact not found.", requestID(r))
+		return
+	}
+	dir := ""
+	if s.Runner != nil {
+		dir = s.Runner.ArtifactDir
+	}
+	root := scenarioexec.Executor{ArtifactDir: dir}.ArtifactRoot()
+	rel := filepath.Clean(filepath.FromSlash(artifact.Ref))
+	if filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		problem(w, 422, "invalid", "Artifact reference is invalid.", requestID(r))
+		return
+	}
+	path := filepath.Join(root, rel)
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		problem(w, 404, "not_found", "Artifact file is missing.", requestID(r))
+		return
+	}
+	if artifact.ContentType != "" {
+		w.Header().Set("Content-Type", artifact.ContentType)
+	}
+	http.ServeFile(w, r, path)
+}
+
+func (s *Server) runStore() scenariorun.Store {
+	return scenariorun.Store{DB: s.Actions.DB}
+}
+
+func (s *Server) findRun(w http.ResponseWriter, r *http.Request) (scenariorun.Run, bool) {
+	run, found, err := s.runStore().Get(r.Context(), r.PathValue("id"))
+	if err != nil {
+		respondError(w, r, err)
+		return scenariorun.Run{}, false
+	}
+	if !found {
+		problem(w, 404, "not_found", "Run not found.", requestID(r))
+		return scenariorun.Run{}, false
+	}
+	return run, true
+}

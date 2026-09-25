@@ -11,7 +11,7 @@ Contract: `GOAL.md`. Status: in progress. Epic: <https://github.com/and1truong/b
 | 3 | Semantic Browser API | #25 | API contract tests | done |
 | 4 | Playwright adapter + session lifecycle | #26 | adapter/e2e tests | done |
 | 5 | Run event stream + artifacts | #27 | stream/persistence tests | done |
-| 6 | Scenario & run HTTP API | #28 | HTTP/contract tests | pending |
+| 6 | Scenario & run HTTP API | #28 | HTTP/contract tests | done |
 | 7 | Browser security boundary | #29 | isolation/egress tests | pending |
 | 8 | Studio live run view | #30 | UI/browser tests | pending |
 | 9 | Studio scenario graph editor | #31 | UI/browser tests | pending |
