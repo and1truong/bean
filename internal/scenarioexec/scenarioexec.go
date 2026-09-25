@@ -209,8 +209,8 @@ func (e Executor) Execute(ctx context.Context, runID string, compiled appir.Scen
 }
 
 // startClaimHeartbeat renews the run's claim every interval until the
-	// returned cancel fires — a healthy long execution keeps claimed_at
-	// fresh so stale recovery only kills genuinely abandoned claims.
+// returned cancel fires — a healthy long execution keeps claimed_at
+// fresh so stale recovery only kills genuinely abandoned claims.
 func startClaimHeartbeat(store scenariorun.Store, runID, token string, interval time.Duration) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
