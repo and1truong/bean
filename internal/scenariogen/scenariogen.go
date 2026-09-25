@@ -37,6 +37,17 @@ const MaxAttempts = 3
 // wraps them for the HTTP layer. On success the spec's description is stamped
 // with the prompt so provenance survives save.
 func Draft(ctx context.Context, gen Generator, active *appir.App, name, prompt string) (map[string]any, error) {
+	spec, err := draftLoop(ctx, gen, active, name, prompt)
+	if err != nil {
+		return nil, err
+	}
+	spec["description"] = provenance(prompt, spec)
+	return spec, nil
+}
+
+// draftLoop runs the generate -> compile -> feedback loop shared by Draft and
+// Repair; it returns a compilable spec or the final diagnostics as DraftError.
+func draftLoop(ctx context.Context, gen Generator, active *appir.App, name, prompt string) (map[string]any, error) {
 	feedback := ""
 	var diagnostics []definition.Diagnostic
 	for attempt := 0; attempt < MaxAttempts; attempt++ {
@@ -46,7 +57,6 @@ func Draft(ctx context.Context, gen Generator, active *appir.App, name, prompt s
 		}
 		compiled := compiler.CompileScenarioCandidate(active, name, spec)
 		if len(compiled.Diagnostics) == 0 {
-			spec["description"] = provenance(prompt, spec)
 			return spec, nil
 		}
 		diagnostics = compiled.Diagnostics

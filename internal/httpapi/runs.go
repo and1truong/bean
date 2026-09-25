@@ -313,6 +313,85 @@ func (s *Server) scenarioProposals(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, map[string]any{"proposals": proposals})
 }
 
+// repairRun drafts a corrected scenario spec for a failed run: the authored
+// spec plus a bounded failure summary (run error, failing steps, recent
+// events) drive scenariogen.Repair — the same compile-checked draft loop as
+// scenario-generate. The response carries a node-level graph diff for review;
+// the saved scenario is replaced only through the normal definition flow.
+func (s *Server) repairRun(w http.ResponseWriter, r *http.Request) {
+	if !s.editorMutation(w, r) {
+		return
+	}
+	run, ok := s.findRun(w, r)
+	if !ok {
+		return
+	}
+	if run.Status != scenariorun.RunFailed {
+		problem(w, 400, "invalid_request", "Repair is only available for failed runs.", requestID(r))
+		return
+	}
+	if s.Generator == nil {
+		problem(w, 503, "not_configured", "Scenario generation is not configured (set BEAN_ANTHROPIC_API_KEY).", requestID(r))
+		return
+	}
+	active, exists := s.Kernel.Active()
+	if !exists {
+		problem(w, 503, "not_ready", "No active release.", requestID(r))
+		return
+	}
+	defs, err := s.Store.Draft(r.Context(), "default")
+	if err != nil {
+		respondError(w, r, err)
+		return
+	}
+	var original map[string]any
+	for _, item := range defs {
+		if item.Kind == "Scenario" && item.Metadata.Name == run.Scenario {
+			original = item.Spec
+		}
+	}
+	if original == nil {
+		problem(w, 404, "not_found", "Scenario definition not found.", requestID(r))
+		return
+	}
+	steps, err := s.runStore().Steps(r.Context(), run.ID)
+	if err != nil {
+		respondError(w, r, err)
+		return
+	}
+	spec, err := scenariogen.Repair(r.Context(), s.Generator, active, run.Scenario, original, failureContext(run, steps))
+	if err != nil {
+		var draftErr *scenariogen.DraftError
+		if errors.As(err, &draftErr) {
+			write(w, 422, map[string]any{"valid": false, "diagnostics": draftErr.Diagnostics})
+			return
+		}
+		problem(w, 502, "generation_failed", err.Error(), requestID(r))
+		return
+	}
+	write(w, 200, map[string]any{"valid": true, "name": run.Scenario, "spec": spec, "diff": scenariogen.DiffSpecs(original, spec)})
+}
+
+// failureContext summarizes a failed run for the repair prompt: the run-level
+// error plus each failed step's node, error, and output.
+func failureContext(run scenariorun.Run, steps []scenariorun.StepExecution) string {
+	var b strings.Builder
+	if run.Error != "" {
+		fmt.Fprintf(&b, "run error: %s\n", run.Error)
+	}
+	for _, step := range steps {
+		if step.Status != scenariorun.StepFailed {
+			continue
+		}
+		fmt.Fprintf(&b, "step %q failed: %s", step.NodeID, step.Error)
+		if step.Output != "" {
+			fmt.Fprintf(&b, " (output: %s)", step.Output)
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
 // saveAsTest converts a run's recorded trace — executed primitive steps
 // plus manual takeover ops — into an editable Scenario spec draft. Like
 // scenario-generate the draft is returned, never saved; the caller reviews
