@@ -238,6 +238,8 @@ type walker struct {
 	paused      map[string]bool
 	resumeNode  string
 	resumeDone  bool
+	opMu        sync.Mutex
+	manualDone  bool
 	secretMu    sync.RWMutex
 	secrets     []string
 }
@@ -253,13 +255,26 @@ type Held struct {
 
 func (h *Held) take(runID string) *walker {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	w := h.walkers[runID]
 	delete(h.walkers, runID)
+	h.mu.Unlock()
+	if w != nil {
+		// Wait out any in-flight manual op, then bar further takeover
+		// ops — the resumed walk now drives the session.
+		w.opMu.Lock()
+		w.manualDone = true
+		w.opMu.Unlock()
+	}
 	return w
 }
 
 func (h *Held) put(runID string, w *walker) {
+	// The walk parked, so the session is idle again — takeover ops may
+	// resume. Runs before the map insert so a resumed run can never
+	// observe manualDone=false while executing.
+	w.opMu.Lock()
+	w.manualDone = false
+	w.opMu.Unlock()
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.walkers == nil {
@@ -271,10 +286,18 @@ func (h *Held) put(runID string, w *walker) {
 // Close drops the run's held walker, closing the browser session and
 // draining its event pump. Used when a parked run is cancelled.
 func (h *Held) Close(runID string) {
-	w := h.take(runID)
+	h.mu.Lock()
+	w := h.walkers[runID]
+	delete(h.walkers, runID)
+	h.mu.Unlock()
 	if w == nil {
 		return
 	}
+	// Let an in-flight manual op finish, then bar new ones before
+	// tearing the session down.
+	w.opMu.Lock()
+	w.manualDone = true
+	w.opMu.Unlock()
 	_ = w.session.Close(context.Background())
 	w.events.Wait()
 	_ = w.exec.Runs.UpdateSession(context.Background(), w.sessionID, scenariorun.SessionClosed, "", "")
@@ -914,6 +937,11 @@ const (
 // are events, never StepExecution rows; a manual op moves the browser,
 // so scenario assertions after resume evaluate the state the human left.
 func (w *walker) Manual(ctx context.Context, op Manual) (string, error) {
+	w.opMu.Lock()
+	defer w.opMu.Unlock()
+	if w.manualDone {
+		return "", fmt.Errorf("scenarioexec: run %s resumed or closed — the session is no longer held", w.runID)
+	}
 	result, err := w.manualOp(ctx, op)
 	outcome := result
 	if err != nil {
