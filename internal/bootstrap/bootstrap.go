@@ -132,14 +132,14 @@ func OpenURLWithOptions(ctx context.Context, databaseURL string, secure bool, op
 			}
 			return value, nil
 		},
-		Scenario: func(_ context.Context, run scenariorun.Run) (appir.Scenario, error) {
-			app, ok := k.Active()
-			if !ok {
-				return appir.Scenario{}, fmt.Errorf("no active release")
+		Scenario: func(ctx context.Context, run scenariorun.Run) (appir.Scenario, error) {
+			app, err := store.AppByRelease(ctx, run.ReleaseID)
+			if err != nil {
+				return appir.Scenario{}, err
 			}
 			compiled, ok := app.Scenarios[run.Scenario]
 			if !ok {
-				return appir.Scenario{}, fmt.Errorf("scenario %q is not in the active release", run.Scenario)
+				return appir.Scenario{}, fmt.Errorf("scenario %q is not in release %s", run.Scenario, run.ReleaseID)
 			}
 			return compiled, nil
 		},
