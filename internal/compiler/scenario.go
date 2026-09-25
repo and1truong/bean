@@ -197,24 +197,30 @@ func validateScenario(app *appir.App, item appir.Scenario) []definition.Diagnost
 	}
 	// A pause node inside a loop body has no resume boundary: the walk
 	// parks at the loop node, re-runs the body on resume, and pauses on
-	// the same node again — a permanently stuck run. Reject it at
-	// compile time instead of letting the run deadlock.
+	// the same node again — a permanently stuck run. Any pause reachable
+	// from the body via next/onFail/branch/body edges deadlocks the same
+	// way, so the check walks the whole body-reachable subgraph.
 	for i, node := range item.Nodes {
 		if node.Type != beanscenario.NodeLoop || node.Body == "" {
 			continue
 		}
 		seen := map[string]bool{}
-		for id := node.Body; id != "" && !seen[id]; {
-			seen[id] = true
+		queue := []string{node.Body}
+		for len(queue) > 0 {
+			id := queue[0]
+			queue = queue[1:]
 			nodeIndex, exists := index[id]
-			if !exists {
-				break
+			if seen[id] || !exists {
+				continue
 			}
+			seen[id] = true
 			body := item.Nodes[nodeIndex]
 			if body.Type == beanscenario.NodePause {
-				out = append(out, scenarioDiagnostic(item.Name, fmt.Sprintf("spec.nodes.%d.body", i), "chains a pause node — pause is not supported inside a loop body"))
+				out = append(out, scenarioDiagnostic(item.Name, fmt.Sprintf("spec.nodes.%d.body", i), "reaches a pause node — pause is not supported inside a loop body"))
 			}
-			id = body.Next
+			for _, target := range scenarioNodeTargets(body) {
+				queue = append(queue, target)
+			}
 		}
 	}
 	for i, node := range item.Nodes {
