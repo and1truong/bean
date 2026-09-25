@@ -113,8 +113,16 @@ func (e Executor) Execute(ctx context.Context, runID string, compiled appir.Scen
 	return errors.New(failure)
 }
 
+// failRun finishes the run failed. The store write runs on a detached
+// context: a cancelled run context (a stop landing mid-setup) must not
+// take the terminal row down with it — and when the context was
+// cancelled, the run reports cancelled rather than failed.
 func (e Executor) failRun(ctx context.Context, runID, token string, cause error) error {
-	if finishErr := e.Runs.Finish(ctx, runID, token, scenariorun.RunFailed, bounded(cause.Error(), scenariorun.MaxErrorRunes)); finishErr != nil {
+	status := scenariorun.RunFailed
+	if ctx.Err() != nil {
+		status = scenariorun.RunCancelled
+	}
+	if finishErr := e.Runs.Finish(context.WithoutCancel(ctx), runID, token, status, bounded(cause.Error(), scenariorun.MaxErrorRunes)); finishErr != nil {
 		return finishErr
 	}
 	return cause
