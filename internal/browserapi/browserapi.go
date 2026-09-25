@@ -322,7 +322,10 @@ const (
 	EventRequest       = "request"
 	EventResponse      = "response"
 	EventRequestFailed = "request_failed"
-	EventPageError     = "page_error"
+	// EventRequestBlocked reports a request aborted by the host egress
+	// boundary (allowed-domains policy) before it left the browser.
+	EventRequestBlocked = "request_blocked"
+	EventPageError      = "page_error"
 )
 
 // Event is one adapter-observed page occurrence during a session: console

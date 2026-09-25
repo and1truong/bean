@@ -249,3 +249,42 @@ func TestSidecarCrashFailsSessionInsteadOfHanging(t *testing.T) {
 		t.Fatal("call on dead session succeeded")
 	}
 }
+
+func TestAllowedDomainsBoundary(t *testing.T) {
+	server := newServer(t)
+	host := "127.0.0.1"
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// Matching allowlist: navigation flows normally.
+	allowed, err := (browserplaywright.Adapter{Dir: "../../browser", AllowedDomains: []string{host}}).NewSession(ctx)
+	if err != nil {
+		t.Skipf("sidecar unavailable: %v", err)
+	}
+	defer allowed.Close(context.Background())
+	if _, err := allowed.Open(ctx, server.URL+"/login"); err != nil {
+		t.Fatalf("allowed navigation blocked: %v", err)
+	}
+
+	// Non-matching allowlist: the request is aborted client-side and the
+	// boundary emits a request_blocked observation.
+	blocked, err := (browserplaywright.Adapter{Dir: "../../browser", AllowedDomains: []string{"other.example"}}).NewSession(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer blocked.Close(context.Background())
+	if _, err := blocked.Open(ctx, server.URL+"/login"); err == nil {
+		t.Fatal("navigation to a non-allowlisted host succeeded")
+	}
+	deadline := time.After(10 * time.Second)
+	for {
+		select {
+		case event := <-blocked.Events():
+			if event.Kind == browserapi.EventRequestBlocked {
+				return
+			}
+		case <-deadline:
+			t.Fatal("no request_blocked event")
+		}
+	}
+}

@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,6 +41,25 @@ type SecretResolver func(ctx context.Context, name string) (string, error)
 // SessionFactory opens one browser session for a run.
 type SessionFactory func(ctx context.Context) (browserapi.Session, error)
 
+// Policy is the host-level security boundary for browser runs. It is
+// deployment configuration, not app metadata: the boundary must hold even
+// for scenarios a buggy or hostile definition produces.
+type Policy struct {
+	// AllowedDomains lists host suffixes ("example.test" covers
+	// "app.example.test") the browser may reach; empty allows any host.
+	// Navigation to another host or scheme fails the step with a
+	// policy_blocked event; the adapter additionally refuses the request.
+	AllowedDomains []string
+	// MaxDuration bounds total run wall time; zero means unbounded. A
+	// run that overruns finishes cancelled, not failed.
+	MaxDuration time.Duration
+	// PauseOn lists node types that pause the run for approval before
+	// they execute — resume is the approval decision. Each gate is
+	// consumed once per run via a policy_pause event so a resumed walk
+	// passes nodes already approved.
+	PauseOn []string
+}
+
 // Executor runs one scenario against the browser and the run store.
 type Executor struct {
 	Runs     scenariorun.Store
@@ -53,6 +73,9 @@ type Executor struct {
 	// PauseRequested, when set, asks the walk to stop cooperatively
 	// before the next node: the run pauses as if a pause node were hit.
 	PauseRequested func(runID string) bool
+	// Policy bounds navigation domains, run duration, and approval
+	// gates for the execution.
+	Policy Policy
 }
 
 const conditionCheckMillis = int64(2000)
@@ -85,10 +108,27 @@ func (e Executor) Execute(ctx context.Context, runID string, compiled appir.Scen
 		nodes[node.ID] = node
 	}
 	executor := &walker{exec: e, runID: runID, sessionID: sessionRow.ID, session: session, scenario: compiled, nodes: nodes}
+	for _, nodeType := range e.Policy.PauseOn {
+		if executor.pauseOn == nil {
+			executor.pauseOn = map[string]bool{}
+		}
+		executor.pauseOn[nodeType] = true
+	}
+	if len(executor.pauseOn) > 0 {
+		executor.loadPausedNodes(ctx)
+	}
+	execCtx := ctx
+	var deadline context.CancelFunc
+	if e.Policy.MaxDuration > 0 {
+		execCtx, deadline = context.WithTimeout(ctx, e.Policy.MaxDuration)
+	}
 	executor.events.Add(1)
 	go executor.pumpEvents()
-	paused, failure := executor.walk(ctx)
-	if failure != "" && ctx.Err() == nil {
+	paused, failure := executor.walk(execCtx)
+	if deadline != nil {
+		deadline()
+	}
+	if failure != "" && execCtx.Err() == nil {
 		executor.captureTrace(context.Background())
 	}
 	// Close before finishing so the event pump drains every late console and
@@ -101,8 +141,12 @@ func (e Executor) Execute(ctx context.Context, runID string, compiled appir.Scen
 		}
 		return ErrPaused
 	}
-	if ctx.Err() != nil {
-		return e.Runs.Finish(context.WithoutCancel(ctx), runID, token, scenariorun.RunCancelled, "cancelled")
+	if execCtx.Err() != nil {
+		cause := "cancelled"
+		if e.Policy.MaxDuration > 0 && errors.Is(execCtx.Err(), context.DeadlineExceeded) {
+			cause = fmt.Sprintf("run exceeded time limit %s", e.Policy.MaxDuration)
+		}
+		return e.Runs.Finish(context.WithoutCancel(ctx), runID, token, scenariorun.RunCancelled, cause)
 	}
 	if failure == "" {
 		return e.Runs.Finish(ctx, runID, token, scenariorun.RunCompleted, "")
@@ -151,6 +195,10 @@ type walker struct {
 	snapshot  *browserapi.Snapshot
 	nodes     map[string]appir.ScenarioNode
 	events    sync.WaitGroup
+	pauseOn   map[string]bool
+	paused    map[string]bool
+	secretMu  sync.RWMutex
+	secrets   []string
 }
 
 // pumpEvents pipes adapter page observations into the run log until the
@@ -160,10 +208,10 @@ func (w *walker) pumpEvents() {
 	defer w.events.Done()
 	for event := range w.session.Events() {
 		kind := scenariorun.EventConsole
-		if event.Kind == browserapi.EventRequest || event.Kind == browserapi.EventResponse || event.Kind == browserapi.EventRequestFailed {
+		if event.Kind == browserapi.EventRequest || event.Kind == browserapi.EventResponse || event.Kind == browserapi.EventRequestFailed || event.Kind == browserapi.EventRequestBlocked {
 			kind = scenariorun.EventNetwork
 		}
-		_ = w.exec.Runs.RecordEvent(context.Background(), w.runID, "", kind, string(event.Data))
+		_ = w.exec.Runs.RecordEvent(context.Background(), w.runID, "", kind, w.scrub(string(event.Data)))
 	}
 }
 
@@ -184,6 +232,10 @@ func (w *walker) walk(ctx context.Context) (bool, string) {
 		node, found := w.nodes[nodeID]
 		if !found {
 			return false, fmt.Sprintf("node %q missing", nodeID)
+		}
+		if w.pauseOn[node.Type] && !w.paused[node.ID] {
+			_ = w.exec.Runs.RecordEvent(ctx, w.runID, "", scenariorun.EventPolicyPause, fmt.Sprintf(`{"node":%q,"type":%q}`, node.ID, node.Type))
+			return true, ""
 		}
 		next, err := w.executeNode(ctx, node)
 		if errors.Is(err, ErrPaused) {
@@ -263,6 +315,10 @@ func (w *walker) executeNode(ctx context.Context, node appir.ScenarioNode) (stri
 func (w *walker) runNode(ctx context.Context, node appir.ScenarioNode) (string, error) {
 	switch node.Type {
 	case scenario.NodeNavigate:
+		if host, allowed := w.hostAllowed(node.URL); !allowed {
+			_ = w.exec.Runs.RecordEvent(ctx, w.runID, "", scenariorun.EventPolicyBlocked, fmt.Sprintf(`{"url":%q,"host":%q}`, node.URL, host))
+			return "", fmt.Errorf("navigation to %q is not in the browser policy allowlist", node.URL)
+		}
 		result, err := w.session.Open(ctx, node.URL)
 		w.snapshot = nil
 		return fmt.Sprintf(`{"url":%q}`, result.URL), err
@@ -289,6 +345,8 @@ func (w *walker) runNode(ctx context.Context, node appir.ScenarioNode) (string, 
 				return "", err
 			}
 			text = resolved
+			w.registerSecret(resolved)
+			_ = w.exec.Runs.RecordEvent(ctx, w.runID, "", scenariorun.EventSecretUsed, fmt.Sprintf(`{"node":%q,"name":%q}`, node.ID, node.Secret))
 		}
 		_, err = w.session.Fill(ctx, ref, text)
 		return "{}", err
@@ -374,8 +432,9 @@ func (w *walker) refreshSnapshot(ctx context.Context) error {
 
 // recordSnapshot logs the normalized page view; the encoded tree rides in
 // the payload while it fits the event bound, else only metadata is kept.
+// Form values rendered into the tree are scrubbed of resolved secrets.
 func (w *walker) recordSnapshot(ctx context.Context) {
-	encoded := w.snapshot.Encode()
+	encoded := w.scrub(w.snapshot.Encode())
 	payload := fmt.Sprintf(`{"snapshot":%q,"nodes":%d,"tree":%s}`, w.snapshot.ID, len(w.snapshot.Nodes), jsonString(encoded))
 	if len(payload) > scenariorun.MaxPayloadBytes {
 		payload = fmt.Sprintf(`{"snapshot":%q,"nodes":%d}`, w.snapshot.ID, len(w.snapshot.Nodes))
@@ -432,7 +491,75 @@ func (w *walker) assert(ctx context.Context, node appir.ScenarioNode) (string, e
 
 func (w *walker) recordAssertion(ctx context.Context, node appir.ScenarioNode, met bool, detail string) {
 	_ = w.exec.Runs.RecordEvent(ctx, w.runID, "", scenariorun.EventAssertion,
-		fmt.Sprintf(`{"node":%q,"assertion":%q,"met":%t,"detail":%s}`, node.ID, node.Assertion, met, detail))
+		fmt.Sprintf(`{"node":%q,"assertion":%q,"met":%t,"detail":%s}`, node.ID, node.Assertion, met, w.scrub(detail)))
+}
+
+// loadPausedNodes marks policy-gated nodes that already paused this run
+// once: a policy_pause event is the durable consent record, so a resumed
+// walk passes a node its approval already covered.
+func (w *walker) loadPausedNodes(ctx context.Context) {
+	w.paused = map[string]bool{}
+	events, err := w.exec.Runs.Events(ctx, w.runID, 0)
+	if err != nil {
+		return
+	}
+	for _, event := range events {
+		if event.Kind != scenariorun.EventPolicyPause {
+			continue
+		}
+		var payload struct {
+			Node string `json:"node"`
+		}
+		if json.Unmarshal([]byte(event.Payload), &payload) == nil {
+			w.paused[payload.Node] = true
+		}
+	}
+}
+
+// hostAllowed applies Policy.AllowedDomains to a navigation target. When
+// no allowlist is configured every URL passes; otherwise only http(s)
+// hosts equal to or beneath a listed domain are allowed — other schemes
+// (file:, javascript:, data:) are refused outright.
+func (w *walker) hostAllowed(raw string) (string, bool) {
+	if len(w.exec.Policy.AllowedDomains) == 0 {
+		return "", true
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "", false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return host, false
+	}
+	for _, domain := range w.exec.Policy.AllowedDomains {
+		if host == domain || strings.HasSuffix(host, "."+domain) {
+			return host, true
+		}
+	}
+	return host, false
+}
+
+// registerSecret adds a resolved secret to the scrub set so later event
+// payloads and artifacts cannot carry it.
+func (w *walker) registerSecret(value string) {
+	w.secretMu.Lock()
+	defer w.secretMu.Unlock()
+	w.secrets = append(w.secrets, value)
+}
+
+// scrub replaces resolved secret values with a mask. Short values are
+// left alone — masking a 3-character string would mangle ordinary text
+// while still leaking nothing of value.
+func (w *walker) scrub(text string) string {
+	w.secretMu.RLock()
+	defer w.secretMu.RUnlock()
+	for _, secret := range w.secrets {
+		if len(secret) >= 4 {
+			text = strings.ReplaceAll(text, secret, "****")
+		}
+	}
+	return text
 }
 
 func (w *walker) extract(ctx context.Context, node appir.ScenarioNode) (string, error) {
@@ -567,7 +694,7 @@ func (w *walker) captureArtifact(ctx context.Context, stepID string) {
 		w.writeArtifact(ctx, stepID, scenariorun.ArtifactScreenshot, capture.ContentType, "png", capture.Bytes)
 	}
 	if snapshot, err := w.session.Snapshot(ctx); err == nil {
-		w.writeArtifact(ctx, stepID, scenariorun.ArtifactDOM, "text/plain", "txt", []byte(snapshot.Encode()))
+		w.writeArtifact(ctx, stepID, scenariorun.ArtifactDOM, "text/plain", "txt", []byte(w.scrub(snapshot.Encode())))
 	}
 }
 

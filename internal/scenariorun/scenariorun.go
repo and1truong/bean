@@ -80,6 +80,16 @@ const (
 	EventConsole         = "console_event"
 	EventNetwork         = "network_event"
 	EventAssertion       = "assertion_result"
+	// EventPolicyBlocked records a navigation or request refused by the
+	// host egress policy, with the refused URL and host in the payload.
+	EventPolicyBlocked = "policy_blocked"
+	// EventPolicyPause records an approval gate: a node type listed in
+	// the execution policy paused the run before executing; resume is
+	// the approval decision and this event makes it durable across walks.
+	EventPolicyPause = "policy_pause"
+	// EventSecretUsed records that a step resolved a secret by name —
+	// the audit trail for credential use without logging the value.
+	EventSecretUsed = "secret_used"
 )
 
 // Bounds shared with callers and the HTTP layer.
@@ -102,7 +112,7 @@ var (
 	terminalRun     = map[string]bool{RunCompleted: true, RunFailed: true, RunCancelled: true}
 	terminalStep    = map[string]bool{StepPassed: true, StepFailed: true, StepSkipped: true}
 	terminalSession = map[string]bool{SessionClosed: true, SessionFailed: true}
-	eventKinds      = map[string]bool{EventRunEnqueued: true, EventRunClaimed: true, EventRunPaused: true, EventRunResumed: true, EventRunFinished: true, EventSessionOpened: true, EventSessionUpdated: true, EventSessionClosed: true, EventStepStarted: true, EventStepFinished: true, EventArtifactRecorded: true, EventBrowserSnapshot: true, EventConsole: true, EventNetwork: true, EventAssertion: true}
+	eventKinds      = map[string]bool{EventRunEnqueued: true, EventRunClaimed: true, EventRunPaused: true, EventRunResumed: true, EventRunFinished: true, EventSessionOpened: true, EventSessionUpdated: true, EventSessionClosed: true, EventStepStarted: true, EventStepFinished: true, EventArtifactRecorded: true, EventBrowserSnapshot: true, EventConsole: true, EventNetwork: true, EventAssertion: true, EventPolicyBlocked: true, EventPolicyPause: true, EventSecretUsed: true}
 )
 
 func valid(set map[string]bool, value string) bool { return set[value] }

@@ -4,7 +4,7 @@
 
 ## Visual agentic browser testing
 
-Status: in progress (slice 6 of 14). Contract: [`GOAL.md`](../GOAL.md). Epic: <https://github.com/and1truong/bean/issues/20> — sub-issues #23–#36 ship as PRs into `epic/browser-testing`, which merges to main as one umbrella PR at the end.
+Status: in progress (slice 7 of 14). Contract: [`GOAL.md`](../GOAL.md). Epic: <https://github.com/and1truong/bean/issues/20> — sub-issues #23–#36 ship as PRs into `epic/browser-testing`, which merges to main as one umbrella PR at the end.
 
 - Slice 1 (ticket #23) added the `Scenario` definition kind: `internal/scenario` publishes the closed node-type, condition, assertion, and bound contract; the compiler validates source shape per node type, required fields, edge integrity (dangling `next`/`onFail`/`body`/`branches[].next` targets and unreachable nodes are `BEAN-E2891` diagnostics, never panics), and `api_call` Action references, then compiles into immutable `App.Scenarios` on AppIR v21 (`ScenarioFormat`).
 - `fill` accepts `text` XOR `secret` (secret resolves at execution time, outside AppIR); `pause` reserves the takeover seam for slice 10.

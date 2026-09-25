@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/beanruntime/bean/internal/action"
 	"github.com/beanruntime/bean/internal/appir"
@@ -25,6 +26,7 @@ import (
 	"github.com/beanruntime/bean/internal/migration"
 	"github.com/beanruntime/bean/internal/openapi"
 	"github.com/beanruntime/bean/internal/release"
+	"github.com/beanruntime/bean/internal/scenarioexec"
 	"github.com/beanruntime/bean/internal/scenariorun"
 	"github.com/beanruntime/bean/internal/scenariorunner"
 	"github.com/beanruntime/bean/internal/view"
@@ -104,11 +106,25 @@ func OpenURLWithOptions(ctx context.Context, databaseURL string, secure bool, op
 	authService := auth.Service{DB: db, VerificationRequired: func() bool { app, ok := k.Active(); return ok && app.EmailVerificationEnabled() }}
 	actions := action.Service{DB: db, Auth: authService, AuthMail: options.AuthMail}
 	views := view.Service{DB: db}
-	adapter := browserplaywright.Adapter{}
+	// Browser-run security boundary from the environment:
+	// BEAN_BROWSER_ALLOWED_DOMAINS (comma-separated host suffixes),
+	// BEAN_BROWSER_MAX_DURATION (Go duration), BEAN_BROWSER_PAUSE_ON
+	// (comma-separated node types gated on approval).
+	policy := scenarioexec.Policy{AllowedDomains: csvEnv("BEAN_BROWSER_ALLOWED_DOMAINS"), PauseOn: csvEnv("BEAN_BROWSER_PAUSE_ON")}
+	if raw := os.Getenv("BEAN_BROWSER_MAX_DURATION"); raw != "" {
+		duration, err := time.ParseDuration(raw)
+		if err != nil {
+			db.Close()
+			return nil, fmt.Errorf("BEAN_BROWSER_MAX_DURATION: %w", err)
+		}
+		policy.MaxDuration = duration
+	}
+	adapter := browserplaywright.Adapter{AllowedDomains: policy.AllowedDomains}
 	runs := &scenariorunner.Runner{
 		Store:       scenariorun.Store{DB: db},
 		Sessions:    adapter.NewSession,
 		ArtifactDir: filepath.Join(os.TempDir(), "bean-artifacts"),
+		Policy:      policy,
 		Secrets: func(_ context.Context, name string) (string, error) {
 			value := os.Getenv("BEAN_SECRET_" + strings.ToUpper(name))
 			if value == "" {
@@ -191,4 +207,14 @@ func OpenInspection(ctx context.Context, databaseURL string) (*Runtime, error) {
 	views := view.Service{DB: db}
 	server := &httpapi.Server{Kernel: kernel, Store: store, Views: views}
 	return &Runtime{DB: db, Kernel: kernel, Store: store, HTTP: server}, nil
+}
+
+func csvEnv(name string) []string {
+	var out []string
+	for _, part := range strings.Split(os.Getenv(name), ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
