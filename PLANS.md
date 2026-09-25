@@ -14,7 +14,7 @@ Contract: `GOAL.md`. Status: in progress. Epic: <https://github.com/and1truong/b
 | 6 | Scenario & run HTTP API | #28 | HTTP/contract tests | done |
 | 7 | Browser security boundary | #29 | isolation/egress tests | done |
 | 8 | Studio live run view | #30 | vitest UI tests | done |
-| 9 | Studio scenario graph editor | #31 | UI/browser tests | pending |
+| 9 | Studio scenario graph editor | #31 | vitest UI tests | done |
 | 10 | Pause / takeover / resume | #32 | run-control tests | pending |
 | 11 | NL → scenario generation | #33 | generation tests | pending |
 | 12 | Exploration → saved test | #34 | capture tests | pending |
