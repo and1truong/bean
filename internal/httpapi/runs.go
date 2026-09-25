@@ -303,13 +303,10 @@ func (s *Server) saveAsTest(w http.ResponseWriter, r *http.Request) {
 	// a later activation must not change which compiled graph the
 	// recorded step NodeIDs map to. Fall back to the active release
 	// (or none) only when the pinned one is gone.
-	var app *appir.App
 	var scenario appir.Scenario
 	if pinned, err := s.Store.AppByRelease(r.Context(), run.ReleaseID); err == nil {
-		app = pinned
 		scenario = pinned.Scenarios[run.Scenario]
 	} else if active, exists := s.Kernel.Active(); exists {
-		app = active
 		scenario = active.Scenarios[run.Scenario]
 	}
 	store := s.runStore()
@@ -334,7 +331,16 @@ func (s *Server) saveAsTest(w http.ResponseWriter, r *http.Request) {
 	}
 	// Compile-check the draft like scenario-generate does — `valid`
 	// reflects whether the spec saves cleanly, while the draft itself
-	// is still returned for the editor to repair.
+	// is still returned for the editor to repair. The draft lands in
+	// current definitions and publishes into the next release, so
+	// validity is checked against the active application, not the
+	// release the run was pinned to.
+	var app *appir.App
+	if active, exists := s.Kernel.Active(); exists {
+		app = active
+	} else if pinned, err := s.Store.AppByRelease(r.Context(), run.ReleaseID); err == nil {
+		app = pinned
+	}
 	result := compiler.CompileScenarioCandidate(app, name, spec)
 	if len(result.Diagnostics) > 0 {
 		write(w, 200, map[string]any{"valid": false, "name": name, "spec": spec, "diagnostics": result.Diagnostics})
