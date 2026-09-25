@@ -572,6 +572,7 @@ func (s *Store) activeApp(ctx context.Context, appID string) (*appir.App, error)
 	}
 	return s.AppByRelease(ctx, fmt.Sprint(rows[0]["release_id"]))
 }
+
 // AppByRelease loads the compiled app pinned to a specific release —
 // scenario runs resolve against the release they were created under
 // so activation moving on does not change what an in-flight run
