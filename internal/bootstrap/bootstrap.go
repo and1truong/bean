@@ -120,7 +120,14 @@ func OpenURLWithOptions(ctx context.Context, databaseURL string, secure bool, op
 		}
 		policy.MaxDuration = duration
 	}
-	adapter := browserplaywright.Adapter{AllowedDomains: policy.AllowedDomains}
+	// BEAN_BROWSER_SIDECAR_DIR / BEAN_BROWSER_COMMAND locate the Playwright
+	// sidecar module and its runtime in deployment — the defaults ("browser"
+	// relative to the working directory, "bun" on PATH) suit a source checkout.
+	adapter := browserplaywright.Adapter{
+		Dir:            os.Getenv("BEAN_BROWSER_SIDECAR_DIR"),
+		Command:        os.Getenv("BEAN_BROWSER_COMMAND"),
+		AllowedDomains: policy.AllowedDomains,
+	}
 	runs := &scenariorunner.Runner{
 		Store:       scenariorun.Store{DB: db},
 		Sessions:    adapter.NewSession,
