@@ -93,8 +93,23 @@ it('classifies a missing browser binary as a setup failure and offers retry',asy
   const banner=await screen.findByTestId('setup-required')
   expect(banner).toHaveTextContent('browser executable is missing')
   expect(banner).toHaveTextContent('cd browser && bunx playwright install chromium')
+  expect(screen.getByTestId('run-outcome')).toHaveTextContent('Browser setup failed — the run could not start')
   expect(screen.getByTestId('step-check')).toHaveTextContent('not run')
   expect(screen.getByTestId('step-error-details')).toBeInTheDocument()
+  expect(screen.getByTestId('retry-run')).toBeInTheDocument()
+  expect(screen.queryByTestId('save-as-test')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('propose-repair')).not.toBeInTheDocument()
+})
+
+it('counts assertions as checks on a completed run',async()=>{
+
+  const done={...run,Status:'completed',Error:''}
+  const doneSteps=[{...steps[0],Status:'passed'},{...steps[1],Status:'passed',Error:''}]
+  fetchFor({'/api/scenarios':scenarios,[`/api/scenario-runs/${run.ID}`]:{run:done,sessions:[],steps:doneSteps,artifacts:[]},[`/api/scenario-runs/${run.ID}/events`]:{events:[]}})
+  mount(<ScenarioRunDetail/>,`/studio/runs/${run.ID}`)
+  const outcome=await screen.findByTestId('run-outcome')
+  expect(outcome).toHaveTextContent('1/1 assertions passed')
+  expect(outcome).not.toHaveTextContent('2/2 checks')
 })
 
 it('hides save-as-test with no steps and retries a failed run',async()=>{
