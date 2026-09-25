@@ -7,6 +7,7 @@ import {api,APIError,FormElement,Manifest,Node,PageFilter,Session,ViewDisplay,Vi
 import {callAction,encodeInput,runActionBatch} from './action-client'
 import {Admin,ResourceListBlock} from './Admin'
 import {Studio} from './Studio'
+import {ScenarioRuns,ScenarioRunDetail} from './ScenarioRuns'
 import {Account} from './Account'
 import {Recovery} from './Recovery'
 import {Explore} from './Explore'
@@ -314,4 +315,4 @@ function Public(){
   return <Shell><Page className="space-y-6"><Renderer node={result.data.tree}/></Page></Shell>
 }
 
-export default function App(){const loc=useLocation();const currentPath=useRef(loc.pathname);currentPath.current=loc.pathname;return <CurrentPath.Provider value={currentPath}><Routes><Route path="/login" element={<AuthenticationPage/>}/><Route path="/explore" element={<Shell><Explore/></Shell>}/><Route path="/studio" element={<Shell><Studio/></Shell>}/><Route path="/admin/system/account" element={<Shell><Account/></Shell>}/><Route path="/admin/*" element={<Shell><Admin/></Shell>}/><Route path="*" element={<Public/>}/></Routes></CurrentPath.Provider>}
+export default function App(){const loc=useLocation();const currentPath=useRef(loc.pathname);currentPath.current=loc.pathname;return <CurrentPath.Provider value={currentPath}><Routes><Route path="/login" element={<AuthenticationPage/>}/><Route path="/explore" element={<Shell><Explore/></Shell>}/><Route path="/studio" element={<Shell><Studio/></Shell>}/><Route path="/studio/runs" element={<Shell><ScenarioRuns/></Shell>}/><Route path="/studio/runs/:id" element={<Shell><ScenarioRunDetail/></Shell>}/><Route path="/admin/system/account" element={<Shell><Account/></Shell>}/><Route path="/admin/*" element={<Shell><Admin/></Shell>}/><Route path="*" element={<Public/>}/></Routes></CurrentPath.Provider>}
