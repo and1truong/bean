@@ -56,6 +56,10 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(trigger) == "" {
 		trigger = scenariorun.TriggerAPI
 	}
+	if !scenariorun.ValidTrigger(trigger) {
+		problem(w, 422, "invalid", fmt.Sprintf("trigger %q is not one of manual, api, generated", trigger), requestID(r))
+		return
+	}
 	run, err := s.Runner.Store.Enqueue(r.Context(), scenariorun.Run{
 		AppID: a.AppID, ReleaseID: a.ReleaseID, Scenario: body.Scenario, Trigger: trigger,
 	})
@@ -73,6 +77,10 @@ func (s *Server) runs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	query := r.URL.Query()
+	if status := query.Get("status"); status != "" && !scenariorun.ValidRunStatus(status) {
+		problem(w, 422, "invalid", fmt.Sprintf("status %q is not a run status", status), requestID(r))
+		return
+	}
 	filter := scenariorun.RunFilter{
 		AppID:    query.Get("app"),
 		Scenario: query.Get("scenario"),
