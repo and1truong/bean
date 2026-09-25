@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/beanruntime/bean/internal/appir"
+	"github.com/beanruntime/bean/internal/compiler"
 	"github.com/beanruntime/bean/internal/scenarioexec"
 	"github.com/beanruntime/bean/internal/scenariogen"
 	"github.com/beanruntime/bean/internal/scenariorun"
@@ -249,7 +250,7 @@ type scenarioGenerateRequest struct {
 // draft is validated against the active release before it is returned — it is
 // never saved; the caller persists it through the normal definition flow.
 func (s *Server) scenarioGenerate(w http.ResponseWriter, r *http.Request) {
-	if !s.adminMutation(w, r) {
+	if !s.editorMutation(w, r) {
 		return
 	}
 	var input scenarioGenerateRequest
@@ -298,8 +299,17 @@ func (s *Server) saveAsTest(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Resolve the scenario from the release the run executed under —
+	// a later activation must not change which compiled graph the
+	// recorded step NodeIDs map to. Fall back to the active release
+	// (or none) only when the pinned one is gone.
+	var app *appir.App
 	var scenario appir.Scenario
-	if active, exists := s.Kernel.Active(); exists {
+	if pinned, err := s.Store.AppByRelease(r.Context(), run.ReleaseID); err == nil {
+		app = pinned
+		scenario = pinned.Scenarios[run.Scenario]
+	} else if active, exists := s.Kernel.Active(); exists {
+		app = active
 		scenario = active.Scenarios[run.Scenario]
 	}
 	store := s.runStore()
@@ -321,6 +331,14 @@ func (s *Server) saveAsTest(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimSpace(r.URL.Query().Get("name"))
 	if name == "" {
 		name = scenariogen.Slug(run.Scenario + " saved run")
+	}
+	// Compile-check the draft like scenario-generate does — `valid`
+	// reflects whether the spec saves cleanly, while the draft itself
+	// is still returned for the editor to repair.
+	result := compiler.CompileScenarioCandidate(app, name, spec)
+	if len(result.Diagnostics) > 0 {
+		write(w, 200, map[string]any{"valid": false, "name": name, "spec": spec, "diagnostics": result.Diagnostics})
+		return
 	}
 	write(w, 200, map[string]any{"valid": true, "name": name, "spec": spec})
 }
