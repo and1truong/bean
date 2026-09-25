@@ -38,6 +38,7 @@ import (
 	"github.com/beanruntime/bean/internal/policy"
 	"github.com/beanruntime/bean/internal/release"
 	"github.com/beanruntime/bean/internal/render"
+	"github.com/beanruntime/bean/internal/scenariogen"
 	"github.com/beanruntime/bean/internal/scenariorunner"
 	"github.com/beanruntime/bean/internal/sequence"
 	"github.com/beanruntime/bean/internal/uiassets"
@@ -53,6 +54,7 @@ type Server struct {
 	Actions                    action.Service
 	Views                      view.Service
 	Runner                     *scenariorunner.Runner
+	Generator                  scenariogen.Generator
 	SecureCookies              bool
 	TrustedProxies             []netip.Prefix
 	Logger                     *slog.Logger
@@ -115,6 +117,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/admin/system/outbox/{id}/{operation}", s.systemOutboxMutation)
 	mux.HandleFunc("GET /api/admin/system/migrations", s.systemMigrations)
 	mux.HandleFunc("GET /api/scenarios", s.scenarios)
+	mux.HandleFunc("POST /api/scenario-generate", s.scenarioGenerate)
 	mux.HandleFunc("POST /api/scenario-runs", s.createRun)
 	mux.HandleFunc("GET /api/scenario-runs", s.runs)
 	mux.HandleFunc("GET /api/scenario-runs/{id}", s.runDetail)

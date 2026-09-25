@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/beanruntime/bean/internal/scenarioexec"
+	"github.com/beanruntime/bean/internal/scenariogen"
 	"github.com/beanruntime/bean/internal/scenariorun"
 )
 
@@ -226,6 +228,52 @@ func (s *Server) runArtifact(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", artifact.ContentType)
 	}
 	http.ServeFile(w, r, path)
+}
+
+type scenarioGenerateRequest struct {
+	Name   string `json:"name"`
+	Prompt string `json:"prompt"`
+}
+
+// scenarioGenerate drafts a Scenario spec from a natural-language prompt. The
+// draft is validated against the active release before it is returned — it is
+// never saved; the caller persists it through the normal definition flow.
+func (s *Server) scenarioGenerate(w http.ResponseWriter, r *http.Request) {
+	if !s.adminMutation(w, r) {
+		return
+	}
+	var input scenarioGenerateRequest
+	if !decode(w, r, &input) {
+		return
+	}
+	if strings.TrimSpace(input.Prompt) == "" {
+		problem(w, 400, "invalid_request", "prompt is required", requestID(r))
+		return
+	}
+	if s.Generator == nil {
+		problem(w, 503, "not_configured", "Scenario generation is not configured (set BEAN_ANTHROPIC_API_KEY).", requestID(r))
+		return
+	}
+	active, ok := s.Kernel.Active()
+	if !ok {
+		problem(w, 503, "not_ready", "No active release.", requestID(r))
+		return
+	}
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		name = scenariogen.Slug(input.Prompt)
+	}
+	spec, err := scenariogen.Draft(r.Context(), s.Generator, active, name, input.Prompt)
+	if err != nil {
+		var draftErr *scenariogen.DraftError
+		if errors.As(err, &draftErr) {
+			write(w, 422, map[string]any{"valid": false, "diagnostics": draftErr.Diagnostics})
+			return
+		}
+		problem(w, 502, "generation_failed", err.Error(), requestID(r))
+		return
+	}
+	write(w, 200, map[string]any{"valid": true, "name": name, "spec": spec})
 }
 
 func (s *Server) runStore() scenariorun.Store {
