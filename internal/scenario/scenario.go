@@ -190,6 +190,12 @@ var nodeRequired = map[string][]string{
 	NodeAPICall:  {"action"},
 }
 
+// Fields returns the node-type-specific fields accepted on the given node
+// type (excluding common fields), in declaration order.
+func Fields(nodeType string) []string {
+	return append([]string{}, nodeFields[nodeType]...)
+}
+
 // AllowedFields reports whether field is accepted on the given node type.
 func AllowedFields(nodeType, field string) bool {
 	if FieldInSet(commonFields, field) {

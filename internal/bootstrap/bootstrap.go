@@ -27,6 +27,7 @@ import (
 	"github.com/beanruntime/bean/internal/openapi"
 	"github.com/beanruntime/bean/internal/release"
 	"github.com/beanruntime/bean/internal/scenarioexec"
+	"github.com/beanruntime/bean/internal/scenariogen"
 	"github.com/beanruntime/bean/internal/scenariorun"
 	"github.com/beanruntime/bean/internal/scenariorunner"
 	"github.com/beanruntime/bean/internal/view"
@@ -144,7 +145,9 @@ func OpenURLWithOptions(ctx context.Context, databaseURL string, secure bool, op
 			return compiled, nil
 		},
 	}
-	server := &httpapi.Server{Kernel: k, Store: store, Auth: authService, Actions: actions, Views: views, Runner: runs, SecureCookies: secure}
+	// NL -> Scenario generation is wired only when a provider key exists:
+	// BEAN_ANTHROPIC_API_KEY, optional BEAN_ANTHROPIC_MODEL/BEAN_ANTHROPIC_ENDPOINT.
+	server := &httpapi.Server{Kernel: k, Store: store, Auth: authService, Actions: actions, Views: views, Runner: runs, Generator: scenariogen.AnthropicFromEnv(), SecureCookies: secure}
 	runner := job.Runner{DB: db, Handle: func(ctx context.Context, name string, payload map[string]any) error {
 		app, ok := k.Active()
 		if !ok {

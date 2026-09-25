@@ -211,3 +211,23 @@ it('edits branch edges and cleans references on node removal',async()=>{
   expect(spec.nodes).toHaveLength(1)
   expect(spec.nodes[0].branches[0].next).toBe('')
 })
+
+it('fills the editor from a generated scenario draft',async()=>{
+  vi.spyOn(globalThis,'fetch').mockImplementation(async(input,init)=>{
+    const path=String(input)
+    if(path.endsWith('/api/scenario-generate')){
+      expect(JSON.parse(String(init?.body)).prompt).toBe('Test login with an invalid password')
+      return new Response(JSON.stringify({valid:true,name:'login_failure',spec:{title:'Invalid login',description:'Agent-generated from prompt "Test login with an invalid password".',start:'nav',nodes:[{id:'nav',type:'navigate',url:'http://app.test/login',next:'check'},{id:'check',type:'assert',assertion:'text_present',text:'Invalid password'}]}}),{status:200})
+    }
+    return new Response(JSON.stringify(path.endsWith('/definitions')?definitions:[]),{status:200})
+  })
+  render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter><Studio/></MemoryRouter></QueryClientProvider>)
+  fireEvent.change(await screen.findByTestId('definition-kind'),{target:{value:'Scenario'}})
+  fireEvent.change(screen.getByTestId('scenario-generate-prompt'),{target:{value:'Test login with an invalid password'}})
+  fireEvent.click(screen.getByTestId('scenario-generate'))
+  await screen.findByDisplayValue('login_failure')
+  fireEvent.click(screen.getByRole('checkbox',{name:'Advanced JSON'}))
+  const spec=JSON.parse((screen.getByTestId('definition-spec') as HTMLTextAreaElement).value)
+  expect(spec.start).toBe('nav')
+  expect(spec.nodes).toMatchObject([{id:'nav',type:'navigate'},{id:'check',type:'assert',assertion:'text_present'}])
+})
