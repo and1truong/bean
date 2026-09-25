@@ -10,9 +10,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/scenarioexec"
 	"github.com/beanruntime/bean/internal/scenariogen"
 	"github.com/beanruntime/bean/internal/scenariorun"
+	"github.com/beanruntime/bean/internal/scenariotrace"
 )
 
 // scenarios lists the compiled scenarios of the active release — the
@@ -280,6 +282,45 @@ func (s *Server) scenarioGenerate(w http.ResponseWriter, r *http.Request) {
 		}
 		problem(w, 502, "generation_failed", err.Error(), requestID(r))
 		return
+	}
+	write(w, 200, map[string]any{"valid": true, "name": name, "spec": spec})
+}
+
+// saveAsTest converts a run's recorded trace — executed primitive steps
+// plus manual takeover ops — into an editable Scenario spec draft. Like
+// scenario-generate the draft is returned, never saved; the caller reviews
+// it in the graph editor and persists through the normal definition flow.
+func (s *Server) saveAsTest(w http.ResponseWriter, r *http.Request) {
+	if !s.editorMutation(w, r) {
+		return
+	}
+	run, ok := s.findRun(w, r)
+	if !ok {
+		return
+	}
+	var scenario appir.Scenario
+	if active, exists := s.Kernel.Active(); exists {
+		scenario = active.Scenarios[run.Scenario]
+	}
+	store := s.runStore()
+	steps, err := store.Steps(r.Context(), run.ID)
+	if err != nil {
+		respondError(w, r, err)
+		return
+	}
+	events, err := store.Events(r.Context(), run.ID, 0)
+	if err != nil {
+		respondError(w, r, err)
+		return
+	}
+	spec, err := scenariotrace.Spec(run, scenario, steps, events)
+	if err != nil {
+		respondError(w, r, err)
+		return
+	}
+	name := strings.TrimSpace(r.URL.Query().Get("name"))
+	if name == "" {
+		name = scenariogen.Slug(run.Scenario + " saved run")
 	}
 	write(w, 200, map[string]any{"valid": true, "name": name, "spec": spec})
 }

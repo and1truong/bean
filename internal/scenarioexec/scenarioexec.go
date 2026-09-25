@@ -946,109 +946,135 @@ func (w *walker) Manual(ctx context.Context, op Manual) (string, error) {
 	if w.manualDone {
 		return "", fmt.Errorf("scenarioexec: run %s resumed or closed — the session is no longer held", w.runID)
 	}
-	result, err := w.manualOp(ctx, op)
+	result, name, err := w.manualOp(ctx, op)
 	outcome := result
 	if err != nil {
 		outcome = err.Error()
 	}
-	payload := fmt.Sprintf(`{"op":%q,"ref":%q,"ok":%t,"result":%s}`, op.Op, op.Ref, err == nil, jsonString(bounded(w.scrub(outcome), scenariorun.MaxPayloadBytes)))
+	payload := fmt.Sprintf(`{"op":%q,"ref":%q,"name":%q,"url":%q,"text":%q,"secret":%q,"value":%q,"key":%q,"condition":%q,"as":%q,"attribute":%q,"ok":%t,"result":%s}`, op.Op, op.Ref, name, op.URL, op.Text, op.Secret, op.Value, op.Key, op.Condition, op.As, op.Attribute, err == nil, jsonString(bounded(w.scrub(outcome), scenariorun.MaxPayloadBytes)))
 	_ = w.exec.Runs.RecordEvent(context.Background(), w.runID, "", scenariorun.EventManualAction, payload)
 	return result, err
 }
 
-// manualOp dispatches the takeover primitive. The same policy boundary
-// applies as for scenario nodes: navigations check the allowlist, and a
-// secret fill resolves through the configured resolver (audit event
-// recorded, value scrubbed from logs).
-func (w *walker) manualOp(ctx context.Context, op Manual) (string, error) {
+// elementName maps a resolved snapshot ref back to the element's semantic
+// name — the stable identifier a saved scenario replays by, since raw
+// snapshot refs go stale between sessions.
+func (w *walker) elementName(ref browserapi.Ref) string {
+	if w.snapshot == nil {
+		return ""
+	}
+	for _, node := range w.snapshot.Nodes {
+		if node.Ref == ref.ID {
+			return node.Name
+		}
+	}
+	return ""
+}
+
+// manualOp dispatches the takeover primitive, returning the JSON result and
+// the semantic name of the element touched (for the run log). The same
+// policy boundary applies as for scenario nodes: navigations check the
+// allowlist, and a secret fill resolves through the configured resolver
+// (audit event recorded, value scrubbed from logs).
+func (w *walker) manualOp(ctx context.Context, op Manual) (string, string, error) {
 	switch op.Op {
 	case ManualNavigate:
 		host, allowed := w.hostAllowed(op.URL)
 		if !allowed {
 			_ = w.exec.Runs.RecordEvent(ctx, w.runID, "", scenariorun.EventPolicyBlocked, fmt.Sprintf(`{"url":%q,"host":%q}`, op.URL, host))
-			return "", fmt.Errorf("navigation to %q is not in the browser policy allowlist", op.URL)
+			return "", "", fmt.Errorf("navigation to %q is not in the browser policy allowlist", op.URL)
 		}
 		result, err := w.session.Open(ctx, op.URL)
 		w.snapshot = nil
-		return fmt.Sprintf(`{"url":%q}`, result.URL), err
+		return fmt.Sprintf(`{"url":%q}`, result.URL), "", err
 	case ManualClick:
 		ref, err := w.resolveRef(ctx, op.Ref)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
+		name := w.elementName(ref)
 		_, err = w.session.Click(ctx, ref)
 		w.snapshot = nil
-		return "{}", err
+		return "{}", name, err
 	case ManualFill:
 		ref, err := w.resolveRef(ctx, op.Ref)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
+		name := w.elementName(ref)
 		text := op.Text
 		if op.Secret != "" {
 			if w.exec.Secrets == nil {
-				return "", fmt.Errorf("manual fill with secret %q requires a secret resolver", op.Secret)
+				return "", "", fmt.Errorf("manual fill with secret %q requires a secret resolver", op.Secret)
 			}
 			resolved, err := w.exec.Secrets(ctx, op.Secret)
 			if err != nil {
-				return "", err
+				return "", "", err
 			}
 			text = resolved
 			w.registerSecret(resolved)
 			_ = w.exec.Runs.RecordEvent(ctx, w.runID, "", scenariorun.EventSecretUsed, fmt.Sprintf(`{"name":%q,"manual":true}`, op.Secret))
 		}
 		_, err = w.session.Fill(ctx, ref, text)
-		return "{}", err
+		return "{}", name, err
 	case ManualSelect:
 		ref, err := w.resolveRef(ctx, op.Ref)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
+		name := w.elementName(ref)
 		_, err = w.session.Select(ctx, ref, op.Value)
-		return "{}", err
+		return "{}", name, err
 	case ManualPress:
 		_, err := w.session.Press(ctx, op.Key)
 		w.snapshot = nil
-		return "{}", err
+		return "{}", "", err
 	case ManualWait:
+		name := ""
+		if op.Ref != "" {
+			if ref, rerr := w.resolveRef(ctx, op.Ref); rerr == nil {
+				name = w.elementName(ref)
+			}
+		}
 		condition, err := w.condition(ctx, op.Condition, op.Ref, op.Text, w.timeout(appir.ScenarioNode{TimeoutSeconds: op.TimeoutSeconds}))
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		result, err := w.session.Wait(ctx, condition)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
-		return fmt.Sprintf(`{"met":%t,"url":%q}`, result.Met, result.URL), nil
+		return fmt.Sprintf(`{"met":%t,"url":%q}`, result.Met, result.URL), name, nil
 	case ManualSnapshot:
 		snapshot, err := w.session.Snapshot(ctx)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		w.snapshot = &snapshot
 		w.recordSnapshot(ctx)
-		return fmt.Sprintf(`{"snapshot":%s}`, jsonString(w.scrub(snapshot.Encode()))), nil
+		return fmt.Sprintf(`{"snapshot":%s}`, jsonString(w.scrub(snapshot.Encode()))), "", nil
 	case ManualScreenshot:
 		capture, err := w.session.Screenshot(ctx)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
-		return fmt.Sprintf(`{"content_type":%q,"png":%q}`, capture.ContentType, base64.StdEncoding.EncodeToString(capture.Bytes)), nil
+		return fmt.Sprintf(`{"content_type":%q,"png":%q}`, capture.ContentType, base64.StdEncoding.EncodeToString(capture.Bytes)), "", nil
 	case ManualExtract:
 		ref, err := w.resolveRef(ctx, op.Ref)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
+		name := w.elementName(ref)
 		kind := op.As
 		if kind == "" {
 			kind = browserapi.ExtractText
 		}
 		extracted, err := w.session.Extract(ctx, ref, kind, op.Attribute)
 		if err != nil {
-			return "", err
+			return "", name, err
 		}
-		return fmt.Sprintf(`{"as":%q,"value":%q}`, kind, w.scrub(extracted.Value)), nil
+		return fmt.Sprintf(`{"as":%q,"value":%q}`, kind, w.scrub(extracted.Value)), name, nil
 	default:
-		return "", fmt.Errorf("unsupported manual op %q", op.Op)
+		return "", "", fmt.Errorf("unsupported manual op %q", op.Op)
 	}
 }

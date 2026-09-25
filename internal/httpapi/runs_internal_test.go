@@ -325,6 +325,10 @@ func TestScenarioRunHTTPManualTakeover(t *testing.T) {
 	if missing.Code != http.StatusNotFound {
 		t.Fatalf("manual missing run=%d %s", missing.Code, missing.Body.String())
 	}
+	nav := serve(t, handler, http.MethodPost, "/api/scenario-runs/"+id+"/manual", map[string]any{"op": "navigate", "url": "http://app.test/other"}, cookie, csrf)
+	if nav.Code != http.StatusOK {
+		t.Fatalf("manual navigate=%d %s", nav.Code, nav.Body.String())
+	}
 
 	resume := serve(t, handler, http.MethodPost, fmt.Sprintf("/api/scenario-runs/%s/resume", id), map[string]any{}, cookie, csrf)
 	if resume.Code != http.StatusOK {
@@ -342,7 +346,41 @@ func TestScenarioRunHTTPManualTakeover(t *testing.T) {
 			manual++
 		}
 	}
-	if manual != 2 {
+	if manual != 3 {
 		t.Fatalf("manual_action events=%d", manual)
+	}
+
+	// Save-as-test compiles the recorded trace into a scenario draft that
+	// replays the same workflow: engine steps plus mutating manual ops,
+	// in chronology (nav ran pre-pause, the manual navigate during
+	// takeover, wait after resume). Observational ops (snapshot) drop out.
+	saved := serve(t, handler, http.MethodPost, "/api/scenario-runs/"+id+"/save-as-test", map[string]any{}, cookie, csrf)
+	if saved.Code != http.StatusOK {
+		t.Fatalf("save-as-test=%d %s", saved.Code, saved.Body.String())
+	}
+	var draft struct {
+		Name string
+		Spec struct {
+			Start string           `json:"start"`
+			Nodes []map[string]any `json:"nodes"`
+		}
+	}
+	decodeResponse(t, saved, &draft)
+	if len(draft.Spec.Nodes) != 3 {
+		t.Fatalf("nodes=%v", draft.Spec.Nodes)
+	}
+	if draft.Spec.Nodes[0]["type"] != "navigate" || draft.Spec.Nodes[1]["type"] != "navigate" || draft.Spec.Nodes[1]["url"] != "http://app.test/other" || draft.Spec.Nodes[1]["label"] != "manual navigate" || draft.Spec.Nodes[2]["type"] != "wait" {
+		t.Fatalf("nodes=%v", draft.Spec.Nodes)
+	}
+	if draft.Spec.Start != "step_1" || draft.Spec.Nodes[0]["next"] != "step_2" || draft.Spec.Nodes[1]["next"] != "step_3" {
+		t.Fatalf("spec=%v", draft.Spec)
+	}
+	if draft.Name == "" {
+		t.Fatalf("draft name empty")
+	}
+
+	forbidden := serve(t, handler, http.MethodPost, "/api/scenario-runs/"+id+"/save-as-test", map[string]any{}, nil, "")
+	if forbidden.Code != http.StatusForbidden && forbidden.Code != http.StatusUnauthorized {
+		t.Fatalf("save-as-test unauthenticated=%d", forbidden.Code)
 	}
 }
