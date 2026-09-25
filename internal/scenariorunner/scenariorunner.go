@@ -11,12 +11,24 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/scenarioexec"
 	"github.com/beanruntime/bean/internal/scenariorun"
 	"github.com/beanruntime/bean/internal/uid"
 )
+
+// DefaultMaxConcurrent bounds simultaneous executions when
+// Runner.MaxConcurrent is unset — each run owns a Chromium sidecar
+// (hundreds of MB), so pending runs queue across ticks rather than
+// bursting.
+const DefaultMaxConcurrent = 4
+
+// DefaultStaleClaimLease bounds how long a run may hold its claim when
+// no Policy.MaxDuration is configured — claims are never renewed, so a
+// crashed runner's runs recover once the lease lapses.
+const DefaultStaleClaimLease = 2 * time.Hour
 
 // Runner claims pending runs and executes them against the compiled
 // scenario resolved by Scenario.
@@ -30,6 +42,13 @@ type Runner struct {
 	Policy scenarioexec.Policy
 	// Scenario resolves the compiled graph a pending run executes.
 	Scenario func(ctx context.Context, run scenariorun.Run) (appir.Scenario, error)
+	// MaxConcurrent caps in-flight executions; pending runs beyond the
+	// cap wait for later ticks. Zero applies DefaultMaxConcurrent.
+	MaxConcurrent int
+	// StaleClaimLease bounds claim age before a running run is recovered
+	// failed; zero applies twice Policy.MaxDuration, or
+	// DefaultStaleClaimLease when no max duration is configured.
+	StaleClaimLease time.Duration
 
 	mu      sync.Mutex
 	handles map[string]*handle
@@ -74,6 +93,9 @@ func (r *Runner) PauseRequested(id string) bool {
 // (the serve loop ticks it alongside the job runner) and after enqueue
 // or resume for prompt pickup.
 func (r *Runner) RunOnce(ctx context.Context) error {
+	// Recover runs a crashed runner abandoned — a claim that outlived
+	// its lease is failed rather than parked forever.
+	_, _ = r.Store.RecoverStale(ctx, r.staleClaimLease())
 	runs, err := r.Store.List(ctx, scenariorun.RunFilter{Status: scenariorun.RunPending})
 	if err != nil {
 		return err
@@ -84,12 +106,33 @@ func (r *Runner) RunOnce(ctx context.Context) error {
 	return nil
 }
 
+func (r *Runner) staleClaimLease() time.Duration {
+	if r.StaleClaimLease > 0 {
+		return r.StaleClaimLease
+	}
+	if r.Policy.MaxDuration > 0 {
+		return 2 * r.Policy.MaxDuration
+	}
+	return DefaultStaleClaimLease
+}
+
+func (r *Runner) maxConcurrent() int {
+	if r.MaxConcurrent > 0 {
+		return r.MaxConcurrent
+	}
+	return DefaultMaxConcurrent
+}
+
 func (r *Runner) launch(ctx context.Context, run scenariorun.Run) {
 	r.mu.Lock()
 	if r.handles == nil {
 		r.handles = map[string]*handle{}
 	}
 	if _, exists := r.handles[run.ID]; exists {
+		r.mu.Unlock()
+		return
+	}
+	if len(r.handles) >= r.maxConcurrent() {
 		r.mu.Unlock()
 		return
 	}

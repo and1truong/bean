@@ -5,7 +5,7 @@ import {QueryClient,QueryClientProvider} from '@tanstack/react-query'
 import {ScenarioRuns,ScenarioRunDetail} from './ScenarioRuns'
 import {useEditor} from './store'
 
-const scenarios={smoke:{Name:'smoke',Start:'open',Nodes:[{ID:'open',Type:'navigate',URL:'http://app.test/',Next:'check'},{ID:'check',Type:'assert',Assertion:'text_present',Text:'ok'}]}}
+const scenarios={smoke:{name:'smoke',start:'open',nodes:[{id:'open',type:'navigate',url:'http://app.test/',next:'check'},{id:'check',type:'assert',assertion:'text_present',text:'ok'}]}}
 const run={ID:'run-1',AppID:'demo',Scenario:'smoke',Trigger:'api',Status:'failed',Error:'step check failed',CreatedAt:'2026-01-01T00:00:00Z',StartedAt:'2026-01-01T00:00:01Z',FinishedAt:'2026-01-01T00:00:03Z'}
 const steps=[
   {ID:'step-1',NodeID:'open',Attempt:1,Status:'passed',Output:'{"url":"http://app.test/"}',Error:'',StartedAt:'2026-01-01T00:00:01Z',FinishedAt:'2026-01-01T00:00:02Z'},

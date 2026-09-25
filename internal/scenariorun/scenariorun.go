@@ -124,6 +124,12 @@ var (
 	eventKinds      = map[string]bool{EventRunEnqueued: true, EventRunClaimed: true, EventRunPaused: true, EventRunResumed: true, EventRunFinished: true, EventSessionOpened: true, EventSessionUpdated: true, EventSessionClosed: true, EventStepStarted: true, EventStepFinished: true, EventArtifactRecorded: true, EventBrowserSnapshot: true, EventConsole: true, EventNetwork: true, EventAssertion: true, EventPolicyBlocked: true, EventPolicyPause: true, EventSecretUsed: true, EventResumePoint: true, EventManualAction: true}
 )
 
+// ValidTrigger reports whether value is a known run trigger kind.
+func ValidTrigger(value string) bool { return valid(triggers, value) }
+
+// ValidRunStatus reports whether value is a known run status.
+func ValidRunStatus(value string) bool { return valid(runStatuses, value) }
+
 func valid(set map[string]bool, value string) bool { return set[value] }
 
 func blank(value string) bool { return strings.TrimSpace(value) == "" }
