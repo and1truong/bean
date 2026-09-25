@@ -2,6 +2,7 @@ import {useEffect,useState} from 'react'
 import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query'
 import {Link,useNavigate,useParams} from 'react-router-dom'
 import {api} from './api'
+import {useEditor} from './store'
 import {EmptyState,ErrorAlert,Field,LoadingState,Page,PageHeader,SectionCard,StatusIndicator} from '@/components/bean'
 import {Button} from '@/components/ui/button'
 import {Input} from '@/components/ui/input'
@@ -36,8 +37,9 @@ export function ScenarioRuns(){
 }
 
 export function ScenarioRunDetail(){
-  const {id=''}=useParams();const qc=useQueryClient()
+  const {id=''}=useParams();const qc=useQueryClient();const nav=useNavigate()
   const detail=useQuery({queryKey:['scenario-run',id],queryFn:()=>api<RunDetail>(`/api/scenario-runs/${id}`)})
+  const saveAsTest=useMutation({mutationFn:()=>api<{name:string;spec:Record<string,any>}>(`/api/scenario-runs/${id}/save-as-test`,{method:'POST',body:'{}'}),onSuccess:result=>{useEditor.getState().set({kind:'Scenario',name:result.name,spec:JSON.stringify(result.spec,null,2)});nav('/studio')}})
   const events=useQuery({queryKey:['scenario-run-events',id],queryFn:()=>api<{events:RunEvent[]}>(`/api/scenario-runs/${id}/events`)})
   const scenarios=useQuery({queryKey:['scenarios'],queryFn:()=>api<Record<string,Scenario>>('/api/scenarios')})
   const[selected,setSelected]=useState('')
@@ -63,8 +65,9 @@ export function ScenarioRunDetail(){
   if(detail.isPending)return <Page><LoadingState label="Loading run…"/></Page>
   if(detail.error)return <Page><ErrorAlert error={detail.error}/></Page>
   if(!run)return null
-  return <Page><PageHeader title={`Run ${run.Scenario}`} description={<span className="font-mono text-xs">{run.ID}</span>} context={<Link className="text-sm text-muted-foreground underline" to="/studio/runs">All runs</Link>} action={<div className="flex items-center gap-2"><StatusIndicator status={statusKind(run.Status)} label={run.Status}/>{run.Status==='running'&&<Button variant="outline" data-testid="pause-run" disabled={control.isPending} onClick={()=>control.mutate('pause')}>Pause</Button>}{run.Status==='paused'&&<Button data-testid="resume-run" disabled={control.isPending} onClick={()=>control.mutate('resume')}>Resume</Button>}{live(run.Status)&&<Button variant="destructive" data-testid="stop-run" disabled={control.isPending} onClick={()=>control.mutate('stop')}>Stop</Button>}</div>}/>
+  return <Page><PageHeader title={`Run ${run.Scenario}`} description={<span className="font-mono text-xs">{run.ID}</span>} context={<Link className="text-sm text-muted-foreground underline" to="/studio/runs">All runs</Link>} action={<div className="flex items-center gap-2"><StatusIndicator status={statusKind(run.Status)} label={run.Status}/>{run.Status==='running'&&<Button variant="outline" data-testid="pause-run" disabled={control.isPending} onClick={()=>control.mutate('pause')}>Pause</Button>}{run.Status==='paused'&&<Button data-testid="resume-run" disabled={control.isPending} onClick={()=>control.mutate('resume')}>Resume</Button>}{live(run.Status)&&<Button variant="destructive" data-testid="stop-run" disabled={control.isPending} onClick={()=>control.mutate('stop')}>Stop</Button>}<Button variant="outline" data-testid="save-as-test" disabled={saveAsTest.isPending} onClick={()=>saveAsTest.mutate()}>Save as test</Button></div>}/>
     {control.isError&&<ErrorAlert error={control.error}/>}
+    {saveAsTest.isError&&<ErrorAlert error={saveAsTest.error}/>}
     {fmtError(detail.data)&&<ErrorAlert error={fmtError(detail.data)}/>}
     {run.Status==='paused'&&<TakeoverCard id={id}/>}
     <div className="grid gap-6 lg:grid-cols-[240px_1fr_1fr]">

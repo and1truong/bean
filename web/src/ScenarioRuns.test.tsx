@@ -3,6 +3,7 @@ import {afterEach,expect,it,vi} from 'vitest'
 import {MemoryRouter,Route,Routes} from 'react-router-dom'
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query'
 import {ScenarioRuns,ScenarioRunDetail} from './ScenarioRuns'
+import {useEditor} from './store'
 
 const scenarios={smoke:{Name:'smoke',Start:'open',Nodes:[{ID:'open',Type:'navigate',URL:'http://app.test/',Next:'check'},{ID:'check',Type:'assert',Assertion:'text_present',Text:'ok'}]}}
 const run={ID:'run-1',AppID:'demo',Scenario:'smoke',Trigger:'api',Status:'failed',Error:'step check failed',CreatedAt:'2026-01-01T00:00:00Z',StartedAt:'2026-01-01T00:00:01Z',FinishedAt:'2026-01-01T00:00:03Z'}
@@ -25,7 +26,7 @@ const closed:string[]=[]
 
 vi.stubGlobal('EventSource',EventSourceStub)
 
-afterEach(()=>{vi.restoreAllMocks();vi.stubGlobal('EventSource',EventSourceStub);instances.length=0;closed.length=0})
+afterEach(()=>{vi.restoreAllMocks();vi.stubGlobal('EventSource',EventSourceStub);instances.length=0;closed.length=0;useEditor.getState().set({kind:'',name:'',spec:''})})
 
 function respond(body:unknown,status=200){return new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json'}})}
 
@@ -77,6 +78,16 @@ it('drives run controls',async()=>{
   mount(<ScenarioRunDetail/>,`/studio/runs/${run.ID}`)
   fireEvent.click(await screen.findByTestId('pause-run'))
   await waitFor(()=>expect(fetchMock).toHaveBeenCalledWith(`/api/scenario-runs/${run.ID}/pause`,expect.objectContaining({method:'POST'})))
+})
+
+it('saves the run trace as an editable scenario draft',async()=>{
+  const fetchMock=fetchFor({'/api/scenarios':scenarios,[`/api/scenario-runs/${run.ID}`]:{run,sessions:[],steps,artifacts:[]},[`/api/scenario-runs/${run.ID}/events`]:{events:[]},[`/api/scenario-runs/${run.ID}/save-as-test`]:{name:'smoke_saved_run',spec:{title:'Smoke (saved run)',start:'step_1',nodes:[{id:'step_1',type:'navigate',url:'http://app.test/'}]}}})
+  mount(<ScenarioRunDetail/>,`/studio/runs/${run.ID}`)
+  fireEvent.click(await screen.findByTestId('save-as-test'))
+  await waitFor(()=>expect(fetchMock).toHaveBeenCalledWith(`/api/scenario-runs/${run.ID}/save-as-test`,expect.objectContaining({method:'POST'})))
+  await waitFor(()=>expect(useEditor.getState().name).toBe('smoke_saved_run'))
+  expect(useEditor.getState().kind).toBe('Scenario')
+  expect(useEditor.getState().spec).toContain('saved run')
 })
 
 it('drives manual ops on a paused run',async()=>{
