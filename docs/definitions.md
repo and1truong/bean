@@ -156,7 +156,7 @@ start: open_login
 nodes:
   - id: open_login
     type: navigate
-    url: /login
+    url: https://app.example.test/login
     next: fill_email
   - id: fill_email
     type: fill
