@@ -118,6 +118,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/admin/system/migrations", s.systemMigrations)
 	mux.HandleFunc("GET /api/scenarios", s.scenarios)
 	mux.HandleFunc("POST /api/scenario-generate", s.scenarioGenerate)
+	mux.HandleFunc("GET /api/scenario-proposals", s.scenarioProposals)
 	mux.HandleFunc("POST /api/scenario-runs", s.createRun)
 	mux.HandleFunc("GET /api/scenario-runs", s.runs)
 	mux.HandleFunc("GET /api/scenario-runs/{id}", s.runDetail)

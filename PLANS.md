@@ -19,7 +19,7 @@ Contract: `GOAL.md`. Status: in progress. Epic: <https://github.com/and1truong/b
 | 11 | NL → scenario generation | #33 | generation tests | done |
 | 12 | Exploration → saved test | #34 | capture tests | done |
 | 13 | Failure diagnosis + agent repair | #35 | diagnosis tests | done |
-| 14 | App-driven test generation | #36 | generation tests | pending |
+| 14 | App-driven test generation | #36 | generation tests | done |
 
 # Extended semantic content and composition
 

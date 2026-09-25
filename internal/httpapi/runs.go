@@ -14,6 +14,7 @@ import (
 	"github.com/beanruntime/bean/internal/compiler"
 	"github.com/beanruntime/bean/internal/scenarioexec"
 	"github.com/beanruntime/bean/internal/scenariogen"
+	"github.com/beanruntime/bean/internal/scenariopropose"
 	"github.com/beanruntime/bean/internal/scenariorun"
 	"github.com/beanruntime/bean/internal/scenariotrace"
 )
@@ -285,6 +286,31 @@ func (s *Server) scenarioGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	write(w, 200, map[string]any{"valid": true, "name": name, "spec": spec})
+}
+
+// scenarioProposals drafts scenario graphs from the application itself —
+// internal/scenariopropose walks the route surface and emits happy-path and
+// authorization checks, each compile-checked against the active application
+// like scenario-generate. Drafts are returned for review, never saved.
+func (s *Server) scenarioProposals(w http.ResponseWriter, r *http.Request) {
+	if !s.editor(w, r) {
+		return
+	}
+	active, ok := s.Kernel.Active()
+	if !ok {
+		problem(w, 503, "not_ready", "No active release.", requestID(r))
+		return
+	}
+	proposals := []map[string]any{}
+	for _, p := range scenariopropose.Proposals(active) {
+		result := compiler.CompileScenarioCandidate(active, p.Name, p.Spec)
+		entry := map[string]any{"name": p.Name, "kind": p.Kind, "title": p.Title, "summary": p.Summary, "spec": p.Spec, "valid": len(result.Diagnostics) == 0}
+		if len(result.Diagnostics) > 0 {
+			entry["diagnostics"] = result.Diagnostics
+		}
+		proposals = append(proposals, entry)
+	}
+	write(w, 200, map[string]any{"proposals": proposals})
 }
 
 // repairRun drafts a corrected scenario spec for a failed run: the authored
