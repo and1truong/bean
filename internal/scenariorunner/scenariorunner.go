@@ -164,6 +164,9 @@ func (r *Runner) execute(ctx context.Context, run scenariorun.Run, h *handle) {
 		PauseRequested: r.PauseRequested,
 		Policy:         r.Policy,
 		Held:           r.heldSessions(),
+		// Heartbeat comfortably inside the stale-claim lease so a
+		// healthy long run is never recovered as abandoned.
+		ClaimHeartbeat: r.staleClaimLease() / 4,
 	}
 	if err := executor.Execute(ctx, run.ID, compiled); err != nil && !errors.Is(err, scenarioexec.ErrPaused) {
 		r.fail(run.ID, err)

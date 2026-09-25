@@ -91,7 +91,14 @@ function NodeFields({node,index,others,actions,patch,branch,setBranch}:{node:Nod
         {assertionNeedsText(assertion)&&field('text','Expected text/URL',node.text)}
       </div>
     }
-    case 'extract':return <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{field('ref','Element ref',node.ref)}{field('as','Bind as',node.as)}<Field id={'node-attribute-'+index} label="Attribute"><NativeSelect id={'node-attribute-'+index} value={String(node.attribute||'text')} onChange={event=>patch({attribute:event.target.value})}>{extractAttributes.map(value=><NativeSelectOption key={value}>{value}</NativeSelectOption>)}</NativeSelect></Field></div>
+    case 'extract':{
+      const attribute=String(node.attribute||'text')
+      return <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {field('ref','Element ref',node.ref)}{field('as','Bind as',node.as)}
+        <Field id={'node-attribute-'+index} label="Attribute"><NativeSelect id={'node-attribute-'+index} value={attribute} onChange={event=>patch({attribute:event.target.value})}>{extractAttributes.map(value=><NativeSelectOption key={value}>{value}</NativeSelectOption>)}</NativeSelect></Field>
+        {attribute==='attribute'&&field('name','Attribute name',node.name)}
+      </div>
+    }
     case 'branch':{
       const branches=(node.branches||[])as Branch[]
       return <div className="space-y-3">

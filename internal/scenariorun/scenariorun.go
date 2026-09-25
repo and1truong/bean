@@ -309,6 +309,22 @@ func (s Store) Claim(ctx context.Context, id, token string) (bool, error) {
 	return claimed, err
 }
 
+// TouchClaim renews a live run's claim timestamp — the heartbeat that
+// distinguishes a healthy long execution from a crashed runner's
+// abandoned claim (see RecoverStale). The claim token and running
+// status must still match, so a finished/paused run cannot be
+// renewed by accident.
+func (s Store) TouchClaim(ctx context.Context, id, token string) error {
+	return s.write(ctx, func(tx dbal.Transaction) error {
+		_, err := tx.Update(ctx, dbal.Update{Table: "bean_run", Values: map[string]dbal.Value{"claimed_at": timestamp(s.now())}, Where: dbal.And(
+			dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: id},
+			dbal.Predicate{Op: dbal.OpEQ, Column: "claim_token", Value: token},
+			dbal.Predicate{Op: dbal.OpEQ, Column: "status", Value: RunRunning},
+		)})
+		return err
+	})
+}
+
 // Pause moves a running run to paused, preserving it for a later resume.
 func (s Store) Pause(ctx context.Context, id, token string) error {
 	return s.transition(ctx, id, dbal.And(

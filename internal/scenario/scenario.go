@@ -166,7 +166,7 @@ var nodeFields = map[string][]string{
 	NodePress:    {"ref", "key"},
 	NodeWait:     {"condition", "ref", "text", "timeoutSeconds"},
 	NodeAssert:   {"assertion", "ref", "text"},
-	NodeExtract:  {"ref", "as", "attribute"},
+	NodeExtract:  {"ref", "as", "attribute", "name"},
 	NodeBranch:   {"branches"},
 	NodeLoop:     {"until", "ref", "text", "body", "maxIterations"},
 	NodeScript:   {"script", "as"},

@@ -46,6 +46,7 @@ type ScenarioNode struct {
 	// extract / script / api_call bind their result under As.
 	As        string `json:"as,omitempty"`
 	Attribute string `json:"attribute,omitempty"`
+	Name      string `json:"name,omitempty"`
 
 	// loop
 	Until         string `json:"until,omitempty"`

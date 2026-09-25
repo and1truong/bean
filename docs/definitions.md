@@ -144,7 +144,7 @@ Node types:
 - `navigate` (`url`), `click` (`ref`), `fill` (`ref` plus `text` or `secret`), `select` (`ref`, `value`), `press` (`key`), `script` (`script`, optional `as`), `pause`.
 - `wait` (`condition`: `navigation`, `network_idle`, `ref_visible`, `ref_hidden`, `text_present`; optional `ref`, `text`, `timeoutSeconds`).
 - `assert` (`assertion`: `ref_visible`, `ref_hidden`, `ref_text`, `url_equals`, `url_contains`, `text_present`; optional `ref`, `text`).
-- `extract` (`ref`, `as`, optional `attribute`: `text`, `value`, `attribute`).
+- `extract` (`ref`, `as`, optional `attribute`: `text`, `value`, `attribute`; required `name` — the HTML attribute read — when `attribute` is `attribute`).
 - `branch` (`branches`: `condition` from the wait vocabulary plus `last_step_passed`/`last_step_failed`, `next`).
 - `loop` (`body`, optional `until`, `maxIterations`).
 - `api_call` (`action`, optional `input`, `as`) — delegates to an Action; missing Actions are reference diagnostics.

@@ -82,6 +82,11 @@ type Executor struct {
 	// continue on the same page state. Nil disables takeover: pause
 	// closes the session and resume re-opens a fresh one.
 	Held *Held
+	// ClaimHeartbeat renews the run's claim timestamp at this interval
+	// while executing — claims are never otherwise renewed, so a
+	// healthy long run must beat inside the runner's stale-claim lease
+	// or RecoverStale can kill a live run. Zero disables renewal.
+	ClaimHeartbeat time.Duration
 }
 
 const conditionCheckMillis = int64(2000)
@@ -100,6 +105,10 @@ func (e Executor) Execute(ctx context.Context, runID string, compiled appir.Scen
 	}
 	if !claimed {
 		return fmt.Errorf("scenarioexec: run %s not claimable", runID)
+	}
+	if e.ClaimHeartbeat > 0 {
+		stopHeartbeat := startClaimHeartbeat(e.Runs, runID, token, e.ClaimHeartbeat)
+		defer stopHeartbeat()
 	}
 	var executor *walker
 	if e.Held != nil {
@@ -197,6 +206,26 @@ func (e Executor) Execute(ctx context.Context, runID string, compiled appir.Scen
 		return err
 	}
 	return errors.New(failure)
+}
+
+// startClaimHeartbeat renews the run's claim every interval until the
+	// returned cancel fires — a healthy long execution keeps claimed_at
+	// fresh so stale recovery only kills genuinely abandoned claims.
+func startClaimHeartbeat(store scenariorun.Store, runID, token string, interval time.Duration) context.CancelFunc {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				_ = store.TouchClaim(ctx, runID, token)
+			}
+		}
+	}()
+	return cancel
 }
 
 // failRun finishes the run failed. The store write runs on a detached
@@ -750,16 +779,17 @@ func (w *walker) extract(ctx context.Context, node appir.ScenarioNode) (string, 
 	if err != nil {
 		return "", err
 	}
-	// `attribute` selects the extraction kind (text/value/attribute);
-	// `as` is the result binding name — when the kind is `attribute`
-	// it also names the HTML attribute read (href, src, ...).
+	// `attribute` selects the extraction kind (text/value/attribute),
+	// `name` is the HTML attribute read for the attribute kind
+	// (data-testid, aria-label, ...), and `as` is purely the result
+	// binding name.
 	kind := node.Attribute
 	if kind == "" {
 		kind = browserapi.ExtractText
 	}
 	attribute := ""
 	if kind == browserapi.ExtractAttribute {
-		attribute = node.As
+		attribute = node.Name
 	}
 	extracted, err := w.session.Extract(ctx, ref, kind, attribute)
 	if err != nil {
@@ -951,7 +981,17 @@ func (w *walker) Manual(ctx context.Context, op Manual) (string, error) {
 	if err != nil {
 		outcome = err.Error()
 	}
-	payload := fmt.Sprintf(`{"op":%q,"ref":%q,"name":%q,"url":%q,"text":%q,"secret":%q,"value":%q,"key":%q,"condition":%q,"as":%q,"attribute":%q,"ok":%t,"result":%s}`, op.Op, op.Ref, name, op.URL, op.Text, op.Secret, op.Value, op.Key, op.Condition, op.As, op.Attribute, err == nil, jsonString(bounded(w.scrub(outcome), scenariorun.MaxPayloadBytes)))
+	// Bound the result so the assembled payload always fits
+	// MaxPayloadBytes — a full-size snapshot result would otherwise
+	// push the event past the store limit and drop the audit record
+	// entirely. Escaping inflates the encoded result, so cap the raw
+	// outcome well below the limit and fall back to a stub if the
+	// assembled payload is still oversized.
+	encoded := jsonString(bounded(w.scrub(outcome), scenariorun.MaxPayloadBytes/8))
+	payload := fmt.Sprintf(`{"op":%q,"ref":%q,"name":%q,"url":%q,"text":%q,"secret":%q,"value":%q,"key":%q,"condition":%q,"as":%q,"attribute":%q,"ok":%t,"result":%s}`, op.Op, op.Ref, name, op.URL, op.Text, op.Secret, op.Value, op.Key, op.Condition, op.As, op.Attribute, err == nil, encoded)
+	if len(payload) > scenariorun.MaxPayloadBytes {
+		payload = fmt.Sprintf(`{"op":%q,"ref":%q,"name":%q,"ok":%t,"result":"truncated"}`, op.Op, op.Ref, name, err == nil)
+	}
 	_ = w.exec.Runs.RecordEvent(context.Background(), w.runID, "", scenariorun.EventManualAction, payload)
 	return result, err
 }

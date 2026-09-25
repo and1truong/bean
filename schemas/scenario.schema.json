@@ -61,6 +61,9 @@
         "maxIterations": {
           "type": "integer"
         },
+        "name": {
+          "type": "string"
+        },
         "next": {
           "type": "string"
         },
