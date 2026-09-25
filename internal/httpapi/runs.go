@@ -150,6 +150,36 @@ func (s *Server) runControl(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, map[string]string{"run": runID, "control": r.PathValue("control")})
 }
 
+// runManual drives one human browser op on a paused run's held session —
+// the takeover surface. The op lands in the run log as a manual_action
+// event; the response carries the op's JSON result (e.g. an encoded
+// snapshot for "snapshot", a base64 png for "screenshot").
+func (s *Server) runManual(w http.ResponseWriter, r *http.Request) {
+	if !s.editorMutation(w, r) {
+		return
+	}
+	if s.Runner == nil {
+		problem(w, 503, "runner_unavailable", "Scenario runner is not configured.", requestID(r))
+		return
+	}
+	var body scenarioexec.Manual
+	if !decode(w, r, &body) {
+		return
+	}
+	result, err := s.Runner.Manual(r.Context(), r.PathValue("id"), body)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			problem(w, 404, "not_found", err.Error(), requestID(r))
+			return
+		}
+		problem(w, 409, "conflict", err.Error(), requestID(r))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, _ = w.Write([]byte(result))
+}
+
 // runArtifact serves a persisted evidence file (screenshot, DOM
 // snapshot, trace) recorded for the run.
 func (s *Server) runArtifact(w http.ResponseWriter, r *http.Request) {

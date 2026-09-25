@@ -13,6 +13,7 @@ package scenarioexec
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -76,12 +77,21 @@ type Executor struct {
 	// Policy bounds navigation domains, run duration, and approval
 	// gates for the execution.
 	Policy Policy
+	// Held, when set, keeps paused runs' live walkers so a human can
+	// drive the open browser session during takeover and resume can
+	// continue on the same page state. Nil disables takeover: pause
+	// closes the session and resume re-opens a fresh one.
+	Held *Held
 }
 
 const conditionCheckMillis = int64(2000)
 
-// Execute claims the run, opens a session, walks the scenario graph, and
-// finishes the run. The caller decides what to do with ErrPaused.
+// Execute claims the run, walks the scenario graph, and finishes the
+// run. Pausing parks the walk instead of finishing: with Held set the
+// live walker (open session, event pump, resolved secrets, page state)
+// is retained so takeover can drive the browser and the next Execute
+// continues from the recorded resume point on the same session. The
+// caller decides what to do with ErrPaused.
 func (e Executor) Execute(ctx context.Context, runID string, compiled appir.Scenario) error {
 	token := uid.New()
 	claimed, err := e.Runs.Claim(ctx, runID, token)
@@ -91,23 +101,37 @@ func (e Executor) Execute(ctx context.Context, runID string, compiled appir.Scen
 	if !claimed {
 		return fmt.Errorf("scenarioexec: run %s not claimable", runID)
 	}
-	sessionRow, err := e.Runs.OpenSession(ctx, scenariorun.Session{RunID: runID, Adapter: "playwright"})
-	if err != nil {
-		return e.failRun(ctx, runID, token, err)
+	var executor *walker
+	if e.Held != nil {
+		executor = e.Held.take(runID)
 	}
-	session, err := e.Sessions(ctx)
-	if err != nil {
-		_ = e.Runs.UpdateSession(ctx, sessionRow.ID, scenariorun.SessionFailed, "", err.Error())
-		return e.failRun(ctx, runID, token, err)
+	if executor == nil {
+		sessionRow, err := e.Runs.OpenSession(ctx, scenariorun.Session{RunID: runID, Adapter: "playwright"})
+		if err != nil {
+			return e.failRun(ctx, runID, token, err)
+		}
+		session, err := e.Sessions(ctx)
+		if err != nil {
+			_ = e.Runs.UpdateSession(ctx, sessionRow.ID, scenariorun.SessionFailed, "", err.Error())
+			return e.failRun(ctx, runID, token, err)
+		}
+		if err = e.Runs.UpdateSession(ctx, sessionRow.ID, scenariorun.SessionActive, "", ""); err != nil {
+			return e.failRun(ctx, runID, token, err)
+		}
+		nodes := make(map[string]appir.ScenarioNode, len(compiled.Nodes))
+		for _, node := range compiled.Nodes {
+			nodes[node.ID] = node
+		}
+		executor = &walker{exec: e, runID: runID, sessionID: sessionRow.ID, session: session, scenario: compiled, nodes: nodes}
+		// A resume without a held session (process restart, or no Held
+		// configured) still honours the recorded resume point: the walk
+		// continues at the boundary node on a fresh browser session —
+		// page state is lost but steps do not re-run.
+		executor.loadResumePoint(ctx)
+	} else {
+		executor.exec = e
+		executor.scenario = compiled
 	}
-	if err = e.Runs.UpdateSession(ctx, sessionRow.ID, scenariorun.SessionActive, "", ""); err != nil {
-		return e.failRun(ctx, runID, token, err)
-	}
-	nodes := make(map[string]appir.ScenarioNode, len(compiled.Nodes))
-	for _, node := range compiled.Nodes {
-		nodes[node.ID] = node
-	}
-	executor := &walker{exec: e, runID: runID, sessionID: sessionRow.ID, session: session, scenario: compiled, nodes: nodes}
 	for _, nodeType := range e.Policy.PauseOn {
 		if executor.pauseOn == nil {
 			executor.pauseOn = map[string]bool{}
@@ -122,8 +146,11 @@ func (e Executor) Execute(ctx context.Context, runID string, compiled appir.Scen
 	if e.Policy.MaxDuration > 0 {
 		execCtx, deadline = context.WithTimeout(ctx, e.Policy.MaxDuration)
 	}
-	executor.events.Add(1)
-	go executor.pumpEvents()
+	if !executor.pumpStarted {
+		executor.events.Add(1)
+		executor.pumpStarted = true
+		go executor.pumpEvents()
+	}
 	paused, failure := executor.walk(execCtx)
 	if deadline != nil {
 		deadline()
@@ -131,16 +158,27 @@ func (e Executor) Execute(ctx context.Context, runID string, compiled appir.Scen
 	if failure != "" && execCtx.Err() == nil {
 		executor.captureTrace(context.Background())
 	}
-	// Close before finishing so the event pump drains every late console and
-	// network observation into the log ahead of the terminal event.
-	_ = session.Close(context.Background())
-	executor.events.Wait()
 	if paused {
+		if e.Held != nil {
+			e.Held.put(runID, executor)
+		}
 		if pauseErr := e.Runs.Pause(ctx, runID, token); pauseErr != nil {
+			// Pause could not be recorded: the run cannot stay parked on
+			// a live session, so close it and finish failed.
+			_ = executor.session.Close(context.Background())
+			executor.events.Wait()
 			return e.failRun(ctx, runID, token, pauseErr)
+		}
+		if e.Held == nil {
+			_ = executor.session.Close(context.Background())
+			executor.events.Wait()
 		}
 		return ErrPaused
 	}
+	// Close before finishing so the event pump drains every late console and
+	// network observation into the log ahead of the terminal event.
+	_ = executor.session.Close(context.Background())
+	executor.events.Wait()
 	if execCtx.Err() != nil {
 		cause := "cancelled"
 		if e.Policy.MaxDuration > 0 && errors.Is(execCtx.Err(), context.DeadlineExceeded) {
@@ -186,19 +224,71 @@ func bounded(value string, max int) string {
 }
 
 type walker struct {
-	exec      Executor
-	runID     string
-	sessionID string
-	session   browserapi.Session
-	scenario  appir.Scenario
-	lastPass  bool
-	snapshot  *browserapi.Snapshot
-	nodes     map[string]appir.ScenarioNode
-	events    sync.WaitGroup
-	pauseOn   map[string]bool
-	paused    map[string]bool
-	secretMu  sync.RWMutex
-	secrets   []string
+	exec        Executor
+	runID       string
+	sessionID   string
+	session     browserapi.Session
+	scenario    appir.Scenario
+	lastPass    bool
+	snapshot    *browserapi.Snapshot
+	nodes       map[string]appir.ScenarioNode
+	events      sync.WaitGroup
+	pumpStarted bool
+	pauseOn     map[string]bool
+	paused      map[string]bool
+	resumeNode  string
+	secretMu    sync.RWMutex
+	secrets     []string
+}
+
+// Held retains paused runs' walkers while a human takes over the
+// browser. It is process-local: the live session cannot outlive the
+// runner process, while the durable resume_point event still lets a
+// restarted runner continue the walk logically on a fresh session.
+type Held struct {
+	mu      sync.Mutex
+	walkers map[string]*walker
+}
+
+func (h *Held) take(runID string) *walker {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	w := h.walkers[runID]
+	delete(h.walkers, runID)
+	return w
+}
+
+func (h *Held) put(runID string, w *walker) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.walkers == nil {
+		h.walkers = map[string]*walker{}
+	}
+	h.walkers[runID] = w
+}
+
+// Close drops the run's held walker, closing the browser session and
+// draining its event pump. Used when a parked run is cancelled.
+func (h *Held) Close(runID string) {
+	w := h.take(runID)
+	if w == nil {
+		return
+	}
+	_ = w.session.Close(context.Background())
+	w.events.Wait()
+	_ = w.exec.Runs.UpdateSession(context.Background(), w.sessionID, scenariorun.SessionClosed, "", "")
+}
+
+// Manual executes one human-driven browser op on a held (paused) run's
+// live session and records it as a manual_action event.
+func (h *Held) Manual(ctx context.Context, runID string, op Manual) (string, error) {
+	h.mu.Lock()
+	w := h.walkers[runID]
+	h.mu.Unlock()
+	if w == nil {
+		return "", fmt.Errorf("scenarioexec: run %s has no live browser session (restart while paused?)", runID)
+	}
+	return w.Manual(ctx, op)
 }
 
 // pumpEvents pipes adapter page observations into the run log until the
@@ -215,16 +305,21 @@ func (w *walker) pumpEvents() {
 	}
 }
 
-// walk executes the scenario graph from the start node until it reaches a
-// dead end (completed), a failure, or a pause. It reports (true, "") on a
-// pause node, (false, "") on completion, or (false, message) on failure.
+// walk executes the scenario graph until it reaches a dead end
+// (completed), a failure, or a pause. A resumed walk starts at the
+// recorded resume point — the node the pause parked on — rather than
+// the scenario start. It reports (true, "") on a pause, (false, "") on
+// completion, or (false, message) on failure.
 func (w *walker) walk(ctx context.Context) (bool, string) {
-	nodeID := w.scenario.Start
+	nodeID := w.resumeNode
+	if nodeID == "" {
+		nodeID = w.scenario.Start
+	}
 	visited := 0
 	for nodeID != "" {
 		visited++
 		if w.exec.PauseRequested != nil && w.exec.PauseRequested(w.runID) {
-			return true, ""
+			return w.pauseAt(ctx, nodeID), ""
 		}
 		if visited > scenariorun.MaxStepsPerRun {
 			return false, fmt.Sprintf("step bound %d exceeded", scenariorun.MaxStepsPerRun)
@@ -235,11 +330,16 @@ func (w *walker) walk(ctx context.Context) (bool, string) {
 		}
 		if w.pauseOn[node.Type] && !w.paused[node.ID] {
 			_ = w.exec.Runs.RecordEvent(ctx, w.runID, "", scenariorun.EventPolicyPause, fmt.Sprintf(`{"node":%q,"type":%q}`, node.ID, node.Type))
-			return true, ""
+			return w.pauseAt(ctx, nodeID), ""
 		}
 		next, err := w.executeNode(ctx, node)
 		if errors.Is(err, ErrPaused) {
-			return true, ""
+			// A pause node completes its step at the boundary; resume
+			// continues at its outgoing edge.
+			if node.Type == scenario.NodePause {
+				return w.pauseAt(ctx, node.Next), ""
+			}
+			return w.pauseAt(ctx, nodeID), ""
 		}
 		if err != nil {
 			return false, err.Error()
@@ -247,6 +347,37 @@ func (w *walker) walk(ctx context.Context) (bool, string) {
 		nodeID = next
 	}
 	return false, ""
+}
+
+// pauseAt parks the walk on nodeID: the node is the resume point — what
+// executes next after resume — recorded durably so a restarted process
+// can still continue the walk logically.
+func (w *walker) pauseAt(ctx context.Context, nodeID string) bool {
+	w.resumeNode = nodeID
+	_ = w.exec.Runs.RecordEvent(ctx, w.runID, "", scenariorun.EventResumePoint, fmt.Sprintf(`{"resume_node":%q}`, nodeID))
+	return true
+}
+
+// loadResumePoint restores the boundary a previous walk paused on.
+// Only a fresh walker calls it; a held walker already carries its
+// in-memory resume point.
+func (w *walker) loadResumePoint(ctx context.Context) {
+	events, err := w.exec.Runs.Events(ctx, w.runID, 0)
+	if err != nil {
+		return
+	}
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Kind != scenariorun.EventResumePoint {
+			continue
+		}
+		var payload struct {
+			ResumeNode string `json:"resume_node"`
+		}
+		if json.Unmarshal([]byte(events[i].Payload), &payload) == nil {
+			w.resumeNode = payload.ResumeNode
+		}
+		return
+	}
 }
 
 func (w *walker) timeout(node appir.ScenarioNode) time.Duration {
@@ -703,5 +834,147 @@ func (w *walker) captureTrace(ctx context.Context) {
 	capture, err := w.session.Trace(ctx)
 	if err == nil {
 		w.writeArtifact(ctx, "", scenariorun.ArtifactTrace, capture.ContentType, "zip", capture.Bytes)
+	}
+}
+
+// Manual op names a human may drive on a held (paused) run's browser
+// session during takeover. The set mirrors the primitive node types —
+// control-flow node types (branch/loop/pause) have no manual form.
+type Manual struct {
+	Op             string `json:"op"`
+	Ref            string `json:"ref,omitempty"`
+	URL            string `json:"url,omitempty"`
+	Text           string `json:"text,omitempty"`
+	Secret         string `json:"secret,omitempty"`
+	Key            string `json:"key,omitempty"`
+	Value          string `json:"value,omitempty"`
+	Condition      string `json:"condition,omitempty"`
+	Attribute      string `json:"attribute,omitempty"`
+	As             string `json:"as,omitempty"`
+	TimeoutSeconds int    `json:"timeoutSeconds,omitempty"`
+}
+
+const (
+	ManualNavigate   = "navigate"
+	ManualClick      = "click"
+	ManualFill       = "fill"
+	ManualSelect     = "select"
+	ManualPress      = "press"
+	ManualWait       = "wait"
+	ManualSnapshot   = "snapshot"
+	ManualScreenshot = "screenshot"
+	ManualExtract    = "extract"
+)
+
+// Manual executes one human-driven op on the held session and records it
+// as a manual_action event in the run log — the takeover audit trail and
+// the input #34 (exploration → saved test) later replays. Manual actions
+// are events, never StepExecution rows; a manual op moves the browser,
+// so scenario assertions after resume evaluate the state the human left.
+func (w *walker) Manual(ctx context.Context, op Manual) (string, error) {
+	result, err := w.manualOp(ctx, op)
+	outcome := result
+	if err != nil {
+		outcome = err.Error()
+	}
+	payload := fmt.Sprintf(`{"op":%q,"ref":%q,"ok":%t,"result":%s}`, op.Op, op.Ref, err == nil, jsonString(w.scrub(outcome)))
+	_ = w.exec.Runs.RecordEvent(context.Background(), w.runID, "", scenariorun.EventManualAction, payload)
+	return result, err
+}
+
+// manualOp dispatches the takeover primitive. The same policy boundary
+// applies as for scenario nodes: navigations check the allowlist, and a
+// secret fill resolves through the configured resolver (audit event
+// recorded, value scrubbed from logs).
+func (w *walker) manualOp(ctx context.Context, op Manual) (string, error) {
+	switch op.Op {
+	case ManualNavigate:
+		host, allowed := w.hostAllowed(op.URL)
+		if !allowed {
+			_ = w.exec.Runs.RecordEvent(ctx, w.runID, "", scenariorun.EventPolicyBlocked, fmt.Sprintf(`{"url":%q,"host":%q}`, op.URL, host))
+			return "", fmt.Errorf("navigation to %q is not in the browser policy allowlist", op.URL)
+		}
+		result, err := w.session.Open(ctx, op.URL)
+		w.snapshot = nil
+		return fmt.Sprintf(`{"url":%q}`, result.URL), err
+	case ManualClick:
+		ref, err := w.resolveRef(ctx, op.Ref)
+		if err != nil {
+			return "", err
+		}
+		_, err = w.session.Click(ctx, ref)
+		w.snapshot = nil
+		return "{}", err
+	case ManualFill:
+		ref, err := w.resolveRef(ctx, op.Ref)
+		if err != nil {
+			return "", err
+		}
+		text := op.Text
+		if op.Secret != "" {
+			if w.exec.Secrets == nil {
+				return "", fmt.Errorf("manual fill with secret %q requires a secret resolver", op.Secret)
+			}
+			resolved, err := w.exec.Secrets(ctx, op.Secret)
+			if err != nil {
+				return "", err
+			}
+			text = resolved
+			w.registerSecret(resolved)
+			_ = w.exec.Runs.RecordEvent(ctx, w.runID, "", scenariorun.EventSecretUsed, fmt.Sprintf(`{"name":%q,"manual":true}`, op.Secret))
+		}
+		_, err = w.session.Fill(ctx, ref, text)
+		return "{}", err
+	case ManualSelect:
+		ref, err := w.resolveRef(ctx, op.Ref)
+		if err != nil {
+			return "", err
+		}
+		_, err = w.session.Select(ctx, ref, op.Value)
+		return "{}", err
+	case ManualPress:
+		_, err := w.session.Press(ctx, op.Key)
+		w.snapshot = nil
+		return "{}", err
+	case ManualWait:
+		condition, err := w.condition(ctx, op.Condition, op.Ref, op.Text, w.timeout(appir.ScenarioNode{TimeoutSeconds: op.TimeoutSeconds}))
+		if err != nil {
+			return "", err
+		}
+		result, err := w.session.Wait(ctx, condition)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf(`{"met":%t,"url":%q}`, result.Met, result.URL), nil
+	case ManualSnapshot:
+		snapshot, err := w.session.Snapshot(ctx)
+		if err != nil {
+			return "", err
+		}
+		w.snapshot = &snapshot
+		w.recordSnapshot(ctx)
+		return fmt.Sprintf(`{"snapshot":%s}`, jsonString(w.scrub(snapshot.Encode()))), nil
+	case ManualScreenshot:
+		capture, err := w.session.Screenshot(ctx)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf(`{"content_type":%q,"png":%q}`, capture.ContentType, base64.StdEncoding.EncodeToString(capture.Bytes)), nil
+	case ManualExtract:
+		ref, err := w.resolveRef(ctx, op.Ref)
+		if err != nil {
+			return "", err
+		}
+		kind := op.As
+		if kind == "" {
+			kind = browserapi.ExtractText
+		}
+		extracted, err := w.session.Extract(ctx, ref, kind, op.Attribute)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf(`{"as":%q,"value":%q}`, kind, w.scrub(extracted.Value)), nil
+	default:
+		return "", fmt.Errorf("unsupported manual op %q", op.Op)
 	}
 }

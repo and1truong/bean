@@ -281,3 +281,68 @@ func TestScenarioRunArtifactDownload(t *testing.T) {
 		t.Fatalf("escape=%d", escape.Code)
 	}
 }
+
+// TestScenarioRunHTTPManualTakeover exercises POST /manual: on a paused
+// run a human op drives the parked browser session and lands in the
+// event log as manual_action; the op's JSON result comes straight back.
+func TestScenarioRunHTTPManualTakeover(t *testing.T) {
+	gate := make(chan struct{})
+	runtime, handler, cookie, csrf := runFixture(t, func(index int) chan struct{} {
+		if index == 0 {
+			return gate
+		}
+		return nil
+	})
+	created := serve(t, handler, http.MethodPost, "/api/scenario-runs", map[string]any{"scenario": "smoke"}, cookie, csrf)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create=%d %s", created.Code, created.Body.String())
+	}
+	id := runIDOf(t, created)
+	waitHTTPRunStatus(t, runtime, id, scenariorun.RunRunning)
+
+	// Manual ops on a running (unpaused) run are rejected.
+	running := serve(t, handler, http.MethodPost, "/api/scenario-runs/"+id+"/manual", map[string]any{"op": "snapshot"}, cookie, csrf)
+	if running.Code != http.StatusConflict {
+		t.Fatalf("manual on running=%d %s", running.Code, running.Body.String())
+	}
+
+	pause := serve(t, handler, http.MethodPost, fmt.Sprintf("/api/scenario-runs/%s/pause", id), map[string]any{}, cookie, csrf)
+	if pause.Code != http.StatusOK {
+		t.Fatalf("pause=%d %s", pause.Code, pause.Body.String())
+	}
+	close(gate)
+	waitHTTPRunStatus(t, runtime, id, scenariorun.RunPaused)
+
+	snapshot := serve(t, handler, http.MethodPost, "/api/scenario-runs/"+id+"/manual", map[string]any{"op": "snapshot"}, cookie, csrf)
+	if snapshot.Code != http.StatusOK || !strings.Contains(snapshot.Body.String(), "snapshot") {
+		t.Fatalf("manual snapshot=%d %s", snapshot.Code, snapshot.Body.String())
+	}
+	bogus := serve(t, handler, http.MethodPost, "/api/scenario-runs/"+id+"/manual", map[string]any{"op": "bogus"}, cookie, csrf)
+	if bogus.Code != http.StatusConflict {
+		t.Fatalf("manual bogus=%d %s", bogus.Code, bogus.Body.String())
+	}
+	missing := serve(t, handler, http.MethodPost, "/api/scenario-runs/missing-run/manual", map[string]any{"op": "snapshot"}, cookie, csrf)
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("manual missing run=%d %s", missing.Code, missing.Body.String())
+	}
+
+	resume := serve(t, handler, http.MethodPost, fmt.Sprintf("/api/scenario-runs/%s/resume", id), map[string]any{}, cookie, csrf)
+	if resume.Code != http.StatusOK {
+		t.Fatalf("resume=%d %s", resume.Code, resume.Body.String())
+	}
+	waitHTTPRunStatus(t, runtime, id, scenariorun.RunCompleted)
+
+	events, err := runtime.Runs.Store.Events(context.Background(), id, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manual := 0
+	for _, event := range events {
+		if event.Kind == scenariorun.EventManualAction {
+			manual++
+		}
+	}
+	if manual != 2 {
+		t.Fatalf("manual_action events=%d", manual)
+	}
+}

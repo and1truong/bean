@@ -12,6 +12,7 @@ import (
 	"github.com/beanruntime/bean/internal/dbal/sqlite"
 	"github.com/beanruntime/bean/internal/migration"
 	"github.com/beanruntime/bean/internal/scenario"
+	"github.com/beanruntime/bean/internal/scenarioexec"
 	"github.com/beanruntime/bean/internal/scenariorun"
 )
 
@@ -213,4 +214,80 @@ func TestStopInFlightRun(t *testing.T) {
 	}
 	waitRunStatus(t, store, run.ID, scenariorun.RunCancelled)
 	close(gate)
+}
+
+// TestManualTakeoverAndResumeReusesSession drives the full control loop:
+// pause mid-run, a human op on the parked browser, resume on the same
+// session — and a stop on a parked run closes its held session.
+func TestManualTakeoverAndResumeReusesSession(t *testing.T) {
+	gate := make(chan struct{})
+	store, runner := newRunner(t, func(int) chan struct{} { return gate })
+	run := enqueue(t, store)
+	if err := runner.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	waitRunStatus(t, store, run.ID, scenariorun.RunRunning)
+	if err := runner.RequestPause(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	close(gate)
+	waitRunStatus(t, store, run.ID, scenariorun.RunPaused)
+
+	result, err := runner.Manual(context.Background(), run.ID, scenarioexec.Manual{Op: scenarioexec.ManualSnapshot})
+	if err != nil || result == "" {
+		t.Fatalf("manual snapshot=%q err=%v", result, err)
+	}
+	if _, err = runner.Manual(context.Background(), run.ID, scenarioexec.Manual{Op: "bogus"}); err == nil {
+		t.Fatal("expected unsupported manual op to error")
+	}
+
+	if err := runner.Resume(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitRunStatus(t, store, run.ID, scenariorun.RunCompleted)
+
+	sessions, err := store.Sessions(context.Background(), run.ID)
+	if err != nil || len(sessions) != 1 {
+		t.Fatalf("sessions=%+v err=%v", sessions, err)
+	}
+	events, err := store.Events(context.Background(), run.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manual, resumePoint := 0, false
+	for _, event := range events {
+		if event.Kind == scenariorun.EventManualAction {
+			manual++
+		}
+		if event.Kind == scenariorun.EventResumePoint && event.Payload == `{"resume_node":"wait"}` {
+			resumePoint = true
+		}
+	}
+	if manual != 2 || !resumePoint {
+		t.Fatalf("manual=%d resumePoint=%v", manual, resumePoint)
+	}
+}
+
+// TestStopClosesHeldSession: stopping a parked run cancels it and drops
+// the held browser session — manual ops then find nothing.
+func TestStopClosesHeldSession(t *testing.T) {
+	gate := make(chan struct{})
+	store, runner := newRunner(t, func(int) chan struct{} { return gate })
+	run := enqueue(t, store)
+	if err := runner.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	waitRunStatus(t, store, run.ID, scenariorun.RunRunning)
+	if err := runner.RequestPause(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	close(gate)
+	waitRunStatus(t, store, run.ID, scenariorun.RunPaused)
+	if err := runner.Stop(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitRunStatus(t, store, run.ID, scenariorun.RunCancelled)
+	if _, err := runner.Manual(context.Background(), run.ID, scenarioexec.Manual{Op: scenarioexec.ManualSnapshot}); err == nil {
+		t.Fatal("manual op succeeded after stop")
+	}
 }
