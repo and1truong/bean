@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/beanruntime/bean/internal/appir"
 	beanscenario "github.com/beanruntime/bean/internal/scenario"
@@ -101,6 +102,7 @@ func cloneNode(node appir.ScenarioNode) map[string]any {
 	put("assertion", node.Assertion)
 	put("as", node.As)
 	put("attribute", node.Attribute)
+	put("name", node.Name)
 	put("script", node.Script)
 	put("action", node.Action)
 	if len(node.Input) > 0 {
@@ -172,13 +174,37 @@ func manualNode(event scenariorun.Event) map[string]any {
 	case "extract":
 		node["type"] = beanscenario.NodeExtract
 		put("ref", ref)
-		put("as", payload.As)
-		put("attribute", payload.Attribute)
+		// Manual extract records `as` as the extraction kind and
+		// `attribute` as the HTML attribute name — the node contract
+		// maps them the other way: attribute=kind, name=attr, and `as`
+		// is a generated result binding.
+		put("attribute", payload.As)
+		put("name", payload.Attribute)
+		node["as"] = extractBinding(ref)
 	default:
 		return nil
 	}
 	node["label"] = "manual " + payload.Op
 	return node
+}
+
+// extractBinding derives a result-binding name for a saved extract
+// node from the element name, falling back to `extracted` — bindings
+// must match ^[a-z][a-z0-9_]*$.
+func extractBinding(element string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(element) {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		} else if b.Len() > 0 {
+			b.WriteRune('_')
+		}
+	}
+	name := strings.Trim(b.String(), "_")
+	if name == "" || name[0] < 'a' || name[0] > 'z' {
+		return "extracted"
+	}
+	return name
 }
 
 // dedup collapses consecutive identical nodes — the recorded trace often
