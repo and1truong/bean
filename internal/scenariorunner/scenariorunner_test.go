@@ -125,6 +125,27 @@ func enqueue(t *testing.T, store scenariorun.Store) scenariorun.Run {
 	return run
 }
 
+// waitStepInFlight blocks until a StepExecution row for nodeID exists —
+// proof the walk is inside that node's browser op, so a pause request
+// lands on the following boundary deterministically.
+func waitStepInFlight(t *testing.T, store scenariorun.Store, runID, nodeID string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		steps, err := store.Steps(context.Background(), runID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, step := range steps {
+			if step.NodeID == nodeID {
+				return
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("no step for node %q", nodeID)
+}
+
 func waitRunStatus(t *testing.T, store scenariorun.Store, id, want string) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -227,6 +248,9 @@ func TestManualTakeoverAndResumeReusesSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitRunStatus(t, store, run.ID, scenariorun.RunRunning)
+	// Pause while the gated nav step is in flight — requesting earlier
+	// races the walk's first boundary check and parks on nav instead.
+	waitStepInFlight(t, store, run.ID, "nav")
 	if err := runner.RequestPause(context.Background(), run.ID); err != nil {
 		t.Fatal(err)
 	}
