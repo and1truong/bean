@@ -17,6 +17,7 @@ import (
 	beanmenu "github.com/beanruntime/bean/internal/menu"
 	beanpage "github.com/beanruntime/bean/internal/page"
 	"github.com/beanruntime/bean/internal/rule"
+	beanscenario "github.com/beanruntime/bean/internal/scenario"
 	beansequence "github.com/beanruntime/bean/internal/sequence"
 	"github.com/beanruntime/bean/internal/testsuite"
 )
@@ -118,6 +119,18 @@ type Capabilities struct {
 	MaxTestCases               int      `json:"maxTestCases"`
 	MaxTestFixtures            int      `json:"maxTestFixtures"`
 	MaxTestSuiteBytes          int      `json:"maxTestSuiteBytes"`
+	ScenarioNodeTypes          []string `json:"scenarioNodeTypes"`
+	ScenarioWaitConditions     []string `json:"scenarioWaitConditions"`
+	ScenarioAssertions         []string `json:"scenarioAssertions"`
+	ScenarioBranchConditions   []string `json:"scenarioBranchConditions"`
+	ScenarioLoopConditions     []string `json:"scenarioLoopConditions"`
+	ScenarioExtractAttributes  []string `json:"scenarioExtractAttributes"`
+	MaxScenarios               int      `json:"maxScenarios"`
+	MaxScenarioNodes           int      `json:"maxScenarioNodes"`
+	MaxScenarioBranches        int      `json:"maxScenarioBranches"`
+	MaxScenarioIterations      int      `json:"maxScenarioIterations"`
+	MaxScenarioBytes           int      `json:"maxScenarioBytes"`
+	MaxScenarioTimeout         int      `json:"maxScenarioTimeoutSeconds"`
 	ExtensionTransports        []string `json:"extensionTransports"`
 	ExtensionPermissions       []string `json:"extensionPermissions"`
 	ExtensionSideEffects       []string `json:"extensionSideEffects"`
@@ -231,6 +244,18 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 		MaxTestCases:               testsuite.MaxCases,
 		MaxTestFixtures:            testsuite.MaxFixtures,
 		MaxTestSuiteBytes:          testsuite.MaxEncodedSize,
+		ScenarioNodeTypes:          beanscenario.NodeTypes(),
+		ScenarioWaitConditions:     beanscenario.WaitConditions(),
+		ScenarioAssertions:         beanscenario.Assertions(),
+		ScenarioBranchConditions:   beanscenario.BranchConditions(),
+		ScenarioLoopConditions:     beanscenario.LoopConditions(),
+		ScenarioExtractAttributes:  beanscenario.ExtractAttributes(),
+		MaxScenarios:               beanscenario.MaxScenarios,
+		MaxScenarioNodes:           beanscenario.MaxNodes,
+		MaxScenarioBranches:        beanscenario.MaxBranches,
+		MaxScenarioIterations:      beanscenario.MaxIterations,
+		MaxScenarioBytes:           beanscenario.MaxEncodedSize,
+		MaxScenarioTimeout:         beanscenario.MaxTimeoutSeconds,
 		ExtensionTransports:        beanextension.Transports(),
 		ExtensionPermissions:       beanextension.Permissions(),
 		ExtensionSideEffects:       beanextension.SideEffects(),

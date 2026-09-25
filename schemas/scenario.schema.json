@@ -1,0 +1,140 @@
+{
+  "$defs": {
+    "github_com_beanruntime_bean_internal_appir_ScenarioBranch": {
+      "additionalProperties": false,
+      "properties": {
+        "condition": {
+          "type": "string"
+        },
+        "next": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github_com_beanruntime_bean_internal_appir_ScenarioNode": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "as": {
+          "type": "string"
+        },
+        "assertion": {
+          "type": "string"
+        },
+        "attribute": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "branches": {
+          "items": {
+            "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ScenarioBranch"
+          },
+          "type": "array"
+        },
+        "condition": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "input": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "key": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "maxIterations": {
+          "type": "integer"
+        },
+        "next": {
+          "type": "string"
+        },
+        "onFail": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "script": {
+          "type": "string"
+        },
+        "secret": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "timeoutSeconds": {
+          "type": "integer"
+        },
+        "type": {
+          "type": "string"
+        },
+        "until": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$id": "https://bean.build/schemas/scenario.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "bean/v1alpha1"
+    },
+    "description": {
+      "type": "string"
+    },
+    "kind": {
+      "const": "Scenario"
+    },
+    "name": {
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "nodes": {
+      "items": {
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ScenarioNode"
+      },
+      "type": "array"
+    },
+    "start": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "name"
+  ],
+  "title": "Bean Scenario definition",
+  "type": "object"
+}
