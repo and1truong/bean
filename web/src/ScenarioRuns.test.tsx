@@ -57,18 +57,55 @@ it('lists runs, filters by status, and starts a run',async()=>{
   await waitFor(()=>expect(fetchMock).toHaveBeenCalledWith('/api/scenario-runs',expect.objectContaining({method:'POST',body:JSON.stringify({scenario:'smoke'})})))
 })
 
-it('renders run detail with graph, timeline, and diagnostics',async()=>{
+it('renders the run as a readable test report',async()=>{
 
   fetchFor({'/api/scenarios':scenarios,[`/api/scenario-runs/${run.ID}`]:{run,sessions:[],steps,artifacts},[`/api/scenario-runs/${run.ID}/events`]:{events}})
   mount(<ScenarioRunDetail/>,`/studio/runs/${run.ID}`)
-  await screen.findByTestId('graph-node-open')
-  expect(screen.getByTestId('graph-node-open')).toBeInTheDocument()
-  expect(screen.getByTestId('graph-node-check')).toBeInTheDocument()
-  expect(screen.getByTestId('step-check')).toBeInTheDocument()
+  await screen.findByTestId('step-open')
+  expect(screen.getByTestId('run-outcome')).toHaveTextContent('Check "check" failed')
+  expect(screen.getByTestId('run-outcome')).toHaveTextContent('http://app.test/')
+  expect(screen.getByTestId('step-open')).toHaveTextContent('Go to http://app.test/')
+  expect(screen.getByTestId('step-check')).toHaveTextContent('"ok" appears on the page')
   expect(screen.getByTestId('step-error')).toHaveTextContent('text_present not met')
   expect(screen.getByTestId('step-screenshot')).toHaveAttribute('src',`/api/scenario-runs/${run.ID}/artifacts/art-1`)
+  expect(screen.getByTestId('run-event-log-details')).not.toHaveAttribute('open')
   expect(screen.getByTestId('run-event-log')).toHaveTextContent('assertion_result')
   expect(instances.map(i=>i.url)).toContain(`/api/scenario-runs/${run.ID}/events`)
+})
+
+it('shows a positive elapsed duration for a step still running',async()=>{
+
+  const running={...run,Status:'running',FinishedAt:'0001-01-01T00:00:00Z',Error:''}
+  const runningStep={ID:'step-9',NodeID:'open',Attempt:1,Status:'running',Output:'',Error:'',StartedAt:new Date(Date.now()-1500).toISOString(),FinishedAt:'0001-01-01T00:00:00Z'}
+  fetchFor({'/api/scenarios':scenarios,[`/api/scenario-runs/${running.ID}`]:{run:running,sessions:[],steps:[runningStep],artifacts:[]},[`/api/scenario-runs/${running.ID}/events`]:{events:[]}})
+  mount(<ScenarioRunDetail/>,`/studio/runs/${running.ID}`)
+  const row=await screen.findByTestId('step-open')
+  expect(row.textContent).toMatch(/\d+(\.\d+)? (ms|s)$/)
+  expect(row.textContent).not.toContain('-')
+})
+
+it('classifies a missing browser binary as a setup failure and offers retry',async()=>{
+
+  const setupRun={...run,Status:'failed',Error:"playwright: Executable doesn't exist at /home/u/.cache/ms-playwright/chromium_headless_shell-1187/chrome-linux/headless_shell"}
+  const setupStep={ID:'step-9',NodeID:'open',Attempt:1,Status:'failed',Output:'',Error:"playwright: Executable doesn't exist at /home/u/.cache/ms-playwright/chromium_headless_shell-1187/chrome-linux/headless_shell\n╔ Playwright installation ╗",StartedAt:'2026-01-01T00:00:01Z',FinishedAt:'2026-01-01T00:00:02Z'}
+  fetchFor({'/api/scenarios':scenarios,[`/api/scenario-runs/${run.ID}`]:{run:setupRun,sessions:[],steps:[setupStep],artifacts:[]},[`/api/scenario-runs/${run.ID}/events`]:{events:[]}})
+  mount(<ScenarioRunDetail/>,`/studio/runs/${run.ID}`)
+  const banner=await screen.findByTestId('setup-required')
+  expect(banner).toHaveTextContent('browser executable is missing')
+  expect(banner).toHaveTextContent('cd browser && bunx playwright install chromium')
+  expect(screen.getByTestId('step-check')).toHaveTextContent('not run')
+  expect(screen.getByTestId('step-error-details')).toBeInTheDocument()
+})
+
+it('hides save-as-test with no steps and retries a failed run',async()=>{
+
+  const failedNoSteps={...run,Status:'failed',Error:'browser missing'}
+  const fetchMock=fetchFor({'/api/scenarios':scenarios,[`/api/scenario-runs/${run.ID}`]:{run:failedNoSteps,sessions:[],steps:[],artifacts:[]},[`/api/scenario-runs/${run.ID}/events`]:{events:[]},'/api/scenario-runs':{...run,ID:'run-2',Status:'pending',Error:''}})
+  mount(<ScenarioRunDetail/>,`/studio/runs/${run.ID}`)
+  await screen.findByTestId('retry-run')
+  expect(screen.queryByTestId('save-as-test')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByTestId('retry-run'))
+  await waitFor(()=>expect(fetchMock).toHaveBeenCalledWith('/api/scenario-runs',expect.objectContaining({method:'POST',body:JSON.stringify({scenario:'smoke'})})))
 })
 
 it('drives run controls',async()=>{
