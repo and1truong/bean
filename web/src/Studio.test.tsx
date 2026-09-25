@@ -231,3 +231,28 @@ it('fills the editor from a generated scenario draft',async()=>{
   expect(spec.start).toBe('nav')
   expect(spec.nodes).toMatchObject([{id:'nav',type:'navigate'},{id:'check',type:'assert',assertion:'text_present'}])
 })
+
+it('reviews app-driven scenario proposals',async()=>{
+  const proposals={proposals:[
+    {name:'happy_path_home',kind:'happy_path',title:'Happy path: /',summary:'Navigates to / and checks it renders.',spec:{title:'Happy path: Home',start:'step_1',nodes:[{id:'step_1',type:'navigate',url:'/',next:'step_2'},{id:'step_2',type:'assert',assertion:'text_present',text:'Home'}]},valid:true},
+    {name:'auth_check_members',kind:'auth_check',title:'Authorization check: /members',summary:'Navigates to /members without a session and checks the redirect to /login.',spec:{title:'Authorization check: /members',start:'step_1',nodes:[{id:'step_1',type:'navigate',url:'/members',next:'step_2'},{id:'step_2',type:'assert',assertion:'url_contains',text:'/login'}]},valid:true},
+  ]}
+  vi.spyOn(globalThis,'fetch').mockImplementation(async input=>{
+    const path=String(input)
+    if(path.endsWith('/api/scenario-proposals'))return new Response(JSON.stringify(proposals),{status:200})
+    return new Response(JSON.stringify(path.endsWith('/definitions')?definitions:[]),{status:200})
+  })
+  render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter><Studio/></MemoryRouter></QueryClientProvider>)
+  fireEvent.change(await screen.findByTestId('definition-kind'),{target:{value:'Scenario'}})
+  await screen.findByTestId('proposal-happy_path_home')
+  fireEvent.click(screen.getByTestId('proposal-use-happy_path_home'))
+  await screen.findByDisplayValue('happy_path_home')
+  fireEvent.click(screen.getByRole('checkbox',{name:'Advanced JSON'}))
+  const spec=JSON.parse((screen.getByTestId('definition-spec') as HTMLTextAreaElement).value)
+  expect(spec.start).toBe('step_1')
+  expect(spec.nodes).toHaveLength(2)
+  expect(spec.nodes[0]).toMatchObject({id:'step_1',type:'navigate',url:'/'})
+  fireEvent.click(screen.getByRole('checkbox',{name:'Advanced JSON'}))
+  fireEvent.click(screen.getByTestId('proposal-dismiss-auth_check_members'))
+  expect(screen.queryByTestId('proposal-auth_check_members')).not.toBeInTheDocument()
+})
