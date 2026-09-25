@@ -15,6 +15,10 @@ import (
 var scenarioNodeID = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 var scenarioBinding = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
+// scenarioAttrName matches HTML attribute names (data-testid,
+// aria-label, http-equiv, ...) — broader than the binding charset.
+var scenarioAttrName = regexp.MustCompile(`^[a-zA-Z_:][a-zA-Z0-9_:.\-]*$`)
+
 func scenarioDiagnostic(name, path, message string) definition.Diagnostic {
 	return definition.NewDiagnostic(definition.RuleScenario, "Scenario", name, path, message)
 }
@@ -191,6 +195,28 @@ func validateScenario(app *appir.App, item appir.Scenario) []definition.Diagnost
 	} else if !ids[item.Start] {
 		out = append(out, scenarioDiagnostic(item.Name, "spec.start", "references missing node "+item.Start))
 	}
+	// A pause node inside a loop body has no resume boundary: the walk
+	// parks at the loop node, re-runs the body on resume, and pauses on
+	// the same node again — a permanently stuck run. Reject it at
+	// compile time instead of letting the run deadlock.
+	for i, node := range item.Nodes {
+		if node.Type != beanscenario.NodeLoop || node.Body == "" {
+			continue
+		}
+		seen := map[string]bool{}
+		for id := node.Body; id != "" && !seen[id]; {
+			seen[id] = true
+			nodeIndex, exists := index[id]
+			if !exists {
+				break
+			}
+			body := item.Nodes[nodeIndex]
+			if body.Type == beanscenario.NodePause {
+				out = append(out, scenarioDiagnostic(item.Name, fmt.Sprintf("spec.nodes.%d.body", i), "chains a pause node — pause is not supported inside a loop body"))
+			}
+			id = body.Next
+		}
+	}
 	for i, node := range item.Nodes {
 		path := fmt.Sprintf("spec.nodes.%d", i)
 		for field, target := range scenarioNodeTargets(node) {
@@ -289,6 +315,16 @@ func validateScenarioNode(app *appir.App, name string, node appir.ScenarioNode, 
 		}
 		if node.As != "" && !scenarioBinding.MatchString(node.As) {
 			out = append(out, scenarioDiagnostic(name, path+".as", "must match ^[a-z][a-z0-9_]*$"))
+		}
+		// `name` is the HTML attribute read when the kind is
+		// `attribute` — real attribute names (data-testid,
+		// aria-label) do not fit the binding charset, so `as`
+		// stays purely the result binding.
+		if node.Attribute == "attribute" && node.Name == "" {
+			out = append(out, requiredDiagnostic("Scenario", name, path+".name", "is required when attribute is attribute"))
+		}
+		if node.Name != "" && !scenarioAttrName.MatchString(node.Name) {
+			out = append(out, scenarioDiagnostic(name, path+".name", "must match ^[a-zA-Z_:][a-zA-Z0-9_:.\\-]*$"))
 		}
 	case beanscenario.NodeBranch:
 		if len(node.Branches) > beanscenario.MaxBranches {
