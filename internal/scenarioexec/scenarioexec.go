@@ -601,9 +601,9 @@ func (w *walker) assert(ctx context.Context, node appir.ScenarioNode) (string, e
 		met := strings.Contains(extracted.Value, node.Text)
 		w.recordAssertion(ctx, node, met, fmt.Sprintf(`{"actual":%q}`, extracted.Value))
 		if !met {
-			return "", fmt.Errorf("ref %s text %q does not contain %q", node.Ref, extracted.Value, node.Text)
+			return "", fmt.Errorf("ref %s text %q does not contain %q", node.Ref, w.scrub(extracted.Value), node.Text)
 		}
-		return fmt.Sprintf(`{"actual":%q}`, extracted.Value), nil
+		return fmt.Sprintf(`{"actual":%q}`, w.scrub(extracted.Value)), nil
 	}
 	condition, err := w.condition(ctx, node.Assertion, node.Ref, node.Text, w.timeout(node))
 	if err != nil {
@@ -647,14 +647,11 @@ func (w *walker) loadPausedNodes(ctx context.Context) {
 	}
 }
 
-// hostAllowed applies Policy.AllowedDomains to a navigation target. When
-// no allowlist is configured every URL passes; otherwise only http(s)
-// hosts equal to or beneath a listed domain are allowed — other schemes
-// (file:, javascript:, data:) are refused outright.
+// hostAllowed applies Policy.AllowedDomains to a navigation target.
+// Only http(s) URLs ever pass — file:, javascript:, and data: schemes
+// are refused outright — and with an allowlist configured the host
+// must equal or sit beneath a listed domain.
 func (w *walker) hostAllowed(raw string) (string, bool) {
-	if len(w.exec.Policy.AllowedDomains) == 0 {
-		return "", true
-	}
 	parsed, err := url.Parse(raw)
 	if err != nil {
 		return "", false
@@ -662,6 +659,9 @@ func (w *walker) hostAllowed(raw string) (string, bool) {
 	host := strings.ToLower(parsed.Hostname())
 	if host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return host, false
+	}
+	if len(w.exec.Policy.AllowedDomains) == 0 {
+		return host, true
 	}
 	for _, domain := range w.exec.Policy.AllowedDomains {
 		if host == domain || strings.HasSuffix(host, "."+domain) {
@@ -698,15 +698,22 @@ func (w *walker) extract(ctx context.Context, node appir.ScenarioNode) (string, 
 	if err != nil {
 		return "", err
 	}
-	kind := node.As
+	// `attribute` selects the extraction kind (text/value/attribute);
+	// `as` is the result binding name — when the kind is `attribute`
+	// it also names the HTML attribute read (href, src, ...).
+	kind := node.Attribute
 	if kind == "" {
 		kind = browserapi.ExtractText
 	}
-	extracted, err := w.session.Extract(ctx, ref, kind, node.Attribute)
+	attribute := ""
+	if kind == browserapi.ExtractAttribute {
+		attribute = node.As
+	}
+	extracted, err := w.session.Extract(ctx, ref, kind, attribute)
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf(`{"as":%q,"value":%q}`, kind, extracted.Value), nil
+	return fmt.Sprintf(`{"as":%q,"value":%q}`, node.As, w.scrub(extracted.Value)), nil
 }
 
 // branchTarget evaluates the node's branch edges in order; the first true
