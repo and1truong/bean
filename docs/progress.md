@@ -4,12 +4,13 @@
 
 ## Visual agentic browser testing
 
-Status: in progress (slice 1 of 14). Contract: [`GOAL.md`](../GOAL.md). Epic: <https://github.com/and1truong/bean/issues/20> — sub-issues #23–#36 ship as PRs into `epic/browser-testing`, which merges to main as one umbrella PR at the end.
+Status: in progress (slice 2 of 14). Contract: [`GOAL.md`](../GOAL.md). Epic: <https://github.com/and1truong/bean/issues/20> — sub-issues #23–#36 ship as PRs into `epic/browser-testing`, which merges to main as one umbrella PR at the end.
 
 - Slice 1 (ticket #23) added the `Scenario` definition kind: `internal/scenario` publishes the closed node-type, condition, assertion, and bound contract; the compiler validates source shape per node type, required fields, edge integrity (dangling `next`/`onFail`/`body`/`branches[].next` targets and unreachable nodes are `BEAN-E2891` diagnostics, never panics), and `api_call` Action references, then compiles into immutable `App.Scenarios` on AppIR v21 (`ScenarioFormat`).
 - `fill` accepts `text` XOR `secret` (secret resolves at execution time, outside AppIR); `pause` reserves the takeover seam for slice 10.
 - Generated `schemas/scenario.schema.json` via `go run ./cmd/bean schema --output schemas --json`; capabilities publish node types, conditions, assertions, and bounds. Format gate: scenarios require v21 exactly; pre-v21 snapshots reject them.
 - Verification: `go test ./internal/compiler ./internal/appir ./cmd/bean` passes, including the v21 format compatibility matrix and canonical-schema drift checks.
+- Slice 2 (ticket #24) added the durable run model in `internal/scenariorun`: `Run → Session → StepExecution → Artifact/Event` rows on five `bean_run*` metadata tables, lifecycle `pending → running → paused → completed|failed|cancelled`, token claims with lease-based `RecoverStale` that deterministically fails expired claims (browser sessions cannot survive restart) while paused/pending runs stay resumable, step retries as `UNIQUE(run_id, node_id, attempt)` rows, and append-only events with per-run monotonic sequences — no transaction spans a run.
 
 ## Extended semantic content and composition
 
