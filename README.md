@@ -18,16 +18,25 @@ Extension -> Action transaction -> durable intent -> bounded after-commit HTTP
 
 ## Prerequisites and build
 
-Go 1.25 and Bun 1.4 are required at build time. Chromium is required only for browser tests.
+Go 1.25 and Bun 1.4 are required at build time. Playwright's Chromium is required at run time — the scenario executor drives it via `browser/sidecar.mjs` — and for browser e2e tests; `make bootstrap` installs it.
 
 ```bash
 make bootstrap
-bunx --cwd e2e playwright install chromium
 make check
 make build
 ```
 
-Runtime needs only `bin/bean` and one database:
+If a Scenario run fails with `Executable doesn't exist … chromium_headless_shell`, install the browser explicitly with `cd browser && bunx playwright install chromium` (and `cd e2e && bunx playwright install chromium` for the journey tests).
+
+Runtime needs `bin/bean` and one database for the application itself. Scenario runs (the browser-testing feature) additionally require the Playwright sidecar module: the `browser/` directory with its Bun dependencies installed, Bun on `PATH`, and Chromium (`bunx playwright install chromium` inside that directory). From a source checkout the defaults just work — the server spawns `bun browser/sidecar.mjs` relative to its working directory. To deploy the binary standalone, provision the sidecar module at an absolute path and point the server at it:
+
+```bash
+export BEAN_BROWSER_SIDECAR_DIR=/opt/bean/browser   # directory containing sidecar.mjs + node_modules
+export BEAN_BROWSER_COMMAND=/opt/bean/bin/bun        # optional; defaults to "bun" on PATH
+./bin/bean serve --db ./bean.db --addr 127.0.0.1:8080
+```
+
+The core run loop:
 
 ```bash
 ./bin/bean init --db ./bean.db --admin-email admin@example.test --admin-password test-password

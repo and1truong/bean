@@ -166,6 +166,9 @@ func serve(db, addr string, secure bool, trustedProxy string) error {
 			case <-ticker.C:
 				_ = r.Jobs.RunOnce(ctx)
 				_ = r.Outbox.RunOnce(ctx)
+				if r.Runs != nil {
+					_ = r.Runs.RunOnce(ctx)
+				}
 			}
 		}
 	}()

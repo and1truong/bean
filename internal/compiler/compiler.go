@@ -102,6 +102,37 @@ func CompileViewCandidate(active *appir.App, name string, spec map[string]any) R
 	return Result{App: app, Diagnostics: diagnostics}
 }
 
+// CompileScenarioCandidate compiles one unsaved Scenario against an immutable
+// active application. Scenario generation and editor previews use this seam so
+// generated and persisted scenarios share decoding, normalization, validation,
+// and AppIR semantics.
+func CompileScenarioCandidate(active *appir.App, name string, spec map[string]any) Result {
+	if active == nil {
+		return Result{Diagnostics: []definition.Diagnostic{definition.NewDiagnostic(definition.RuleGeneral, "Scenario", name, "spec", "requires an active application")}}
+	}
+	app, err := active.Clone()
+	if err != nil {
+		return Result{Diagnostics: []definition.Diagnostic{definition.NewDiagnostic(definition.RuleGeneral, "Scenario", name, "spec", "cannot clone the active application")}}
+	}
+	app.FormatVersion = appir.CurrentFormat
+	source := definition.Definition{APIVersion: definition.APIVersion, Kind: "Scenario", Metadata: definition.Metadata{Namespace: "default", Name: name}, Spec: spec}
+	diagnostics := definition.ValidateEnvelope(source)
+	registered, _ := definitionKindRegistry().Lookup("Scenario")
+	if len(diagnostics) == 0 {
+		diagnostics = append(diagnostics, registered.Compile(app, source)...)
+		registered.Normalize(app)
+		state := &validationState{routes: map[string]string{}}
+		for _, diagnostic := range registered.Validate(app, state) {
+			if diagnostic.Name == name {
+				diagnostics = append(diagnostics, diagnostic)
+			}
+		}
+	}
+	enrichDiagnosticCandidates(app, diagnostics)
+	definition.ClassifyDiagnostics(diagnostics)
+	return Result{App: app, Diagnostics: diagnostics}
+}
+
 func compile(appID string, version int, defs []definition.Definition, validateGraph bool) (r Result) {
 	defer func() {
 		enrichDiagnosticCandidates(r.App, r.Diagnostics)
@@ -503,6 +534,8 @@ func diagnosticRule(kind, path string) definition.DiagnosticRule {
 		return definition.RuleFixture
 	case kind == "TestSuite":
 		return definition.RuleTestSuite
+	case kind == "Scenario":
+		return definition.RuleScenario
 	case kind == "Extension":
 		return definition.RuleExtension
 	case strings.Contains(strings.ToLower(path), "field"):
@@ -601,7 +634,7 @@ func routesOverlap(left, right string) bool {
 func validate(a *appir.App) []definition.Diagnostic {
 	state := &validationState{routes: map[string]string{}}
 	out := []definition.Diagnostic{}
-	for _, kind := range []string{"Theme", "DemoSeed", "Filter", "Page", "View", "Sequence", "Entity", "Lifecycle", "Rule", "Extension", "Action", "TestSuite", "Webform", "Policy", "Block", "LocalRegistration", "Authentication", "Panel", "Job", "Menu", "AdminResource", "Role"} {
+	for _, kind := range []string{"Theme", "DemoSeed", "Filter", "Page", "View", "Sequence", "Entity", "Lifecycle", "Rule", "Extension", "Action", "TestSuite", "Scenario", "Webform", "Policy", "Block", "LocalRegistration", "Authentication", "Panel", "Job", "Menu", "AdminResource", "Role"} {
 		registered, _ := definitionKindRegistry().Lookup(kind)
 		out = append(out, registered.Validate(a, state)...)
 	}

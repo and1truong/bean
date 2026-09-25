@@ -257,6 +257,7 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 	admin.References = adminResourceReferences
 	admin.FieldEntity = func(app *appir.App, name string) string { return app.AdminResources[name].Entity }
 	localRegistration := localRegistrationDefinitionKind()
+	scenarioKind := scenarioDefinitionKind()
 	theme := themeDefinitionKind()
 	demoSeed := demoSeedDefinitionKind()
 
@@ -309,6 +310,7 @@ func newDefinitionKinds() registry.Registry[definitionKind] {
 		registry.Entry[definitionKind]{Name: "Policy", Value: policy},
 		registry.Entry[definitionKind]{Name: "Role", Value: role},
 		registry.Entry[definitionKind]{Name: "Rule", Value: ruleKind},
+		registry.Entry[definitionKind]{Name: "Scenario", Value: scenarioKind},
 		registry.Entry[definitionKind]{Name: "Sequence", Value: sequenceKind},
 		registry.Entry[definitionKind]{Name: "TestSuite", Value: testSuite},
 		registry.Entry[definitionKind]{Name: "Theme", Value: theme},

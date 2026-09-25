@@ -570,12 +570,20 @@ func (s *Store) activeApp(ctx context.Context, appID string) (*appir.App, error)
 	if e != nil || len(rows) == 0 {
 		return nil, e
 	}
-	rr, e := s.DB.Select(ctx, dbal.Select{Table: "bean_release", Columns: []string{"app_ir"}, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: rows[0]["release_id"]}, Limit: 1})
+	return s.AppByRelease(ctx, fmt.Sprint(rows[0]["release_id"]))
+}
+
+// AppByRelease loads the compiled app pinned to a specific release —
+// scenario runs resolve against the release they were created under
+// so activation moving on does not change what an in-flight run
+// executes.
+func (s *Store) AppByRelease(ctx context.Context, releaseID string) (*appir.App, error) {
+	rr, e := s.DB.Select(ctx, dbal.Select{Table: "bean_release", Columns: []string{"app_ir"}, Where: &dbal.Predicate{Op: dbal.OpEQ, Column: "id", Value: releaseID}, Limit: 1})
 	if e != nil {
 		return nil, e
 	}
 	if len(rr) == 0 {
-		return nil, fmt.Errorf("active release pointer references missing release %v", rows[0]["release_id"])
+		return nil, fmt.Errorf("release %q not found", releaseID)
 	}
 	a, e := appir.Decode([]byte(fmt.Sprint(rr[0]["app_ir"])))
 	if e == nil {

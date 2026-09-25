@@ -38,6 +38,8 @@ import (
 	"github.com/beanruntime/bean/internal/policy"
 	"github.com/beanruntime/bean/internal/release"
 	"github.com/beanruntime/bean/internal/render"
+	"github.com/beanruntime/bean/internal/scenariogen"
+	"github.com/beanruntime/bean/internal/scenariorunner"
 	"github.com/beanruntime/bean/internal/sequence"
 	"github.com/beanruntime/bean/internal/uiassets"
 	"github.com/beanruntime/bean/internal/uid"
@@ -51,6 +53,8 @@ type Server struct {
 	Auth                       auth.Service
 	Actions                    action.Service
 	Views                      view.Service
+	Runner                     *scenariorunner.Runner
+	Generator                  scenariogen.Generator
 	SecureCookies              bool
 	TrustedProxies             []netip.Prefix
 	Logger                     *slog.Logger
@@ -112,6 +116,18 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/admin/system/outbox", s.systemOutbox)
 	mux.HandleFunc("POST /api/admin/system/outbox/{id}/{operation}", s.systemOutboxMutation)
 	mux.HandleFunc("GET /api/admin/system/migrations", s.systemMigrations)
+	mux.HandleFunc("GET /api/scenarios", s.scenarios)
+	mux.HandleFunc("POST /api/scenario-generate", s.scenarioGenerate)
+	mux.HandleFunc("GET /api/scenario-proposals", s.scenarioProposals)
+	mux.HandleFunc("POST /api/scenario-runs", s.createRun)
+	mux.HandleFunc("GET /api/scenario-runs", s.runs)
+	mux.HandleFunc("GET /api/scenario-runs/{id}", s.runDetail)
+	mux.HandleFunc("POST /api/scenario-runs/{id}/{control}", s.runControl)
+	mux.HandleFunc("POST /api/scenario-runs/{id}/manual", s.runManual)
+	mux.HandleFunc("POST /api/scenario-runs/{id}/save-as-test", s.saveAsTest)
+	mux.HandleFunc("POST /api/scenario-runs/{id}/repair", s.repairRun)
+	mux.HandleFunc("GET /api/scenario-runs/{id}/events", s.runEvents)
+	mux.HandleFunc("GET /api/scenario-runs/{id}/artifacts/{artifact}", s.runArtifact)
 	mux.HandleFunc("/", s.fallback)
 	return s.logging(s.requestID(mux))
 }
@@ -1521,6 +1537,15 @@ func (s *Server) adminMutation(w http.ResponseWriter, r *http.Request) bool {
 	if !s.admin(w, r) {
 		return false
 	}
+	return s.csrfCheck(w, r)
+}
+func (s *Server) editorMutation(w http.ResponseWriter, r *http.Request) bool {
+	if !s.editor(w, r) {
+		return false
+	}
+	return s.csrfCheck(w, r)
+}
+func (s *Server) csrfCheck(w http.ResponseWriter, r *http.Request) bool {
 	_, session, _ := s.requestContext(r)
 	if !csrf(r, session.CSRF) {
 		problem(w, 403, "csrf", "CSRF validation failed.", requestID(r))
@@ -1579,6 +1604,14 @@ type statusWriter struct {
 }
 
 func (w *statusWriter) WriteHeader(code int) { w.status = code; w.ResponseWriter.WriteHeader(code) }
+
+// Flush forwards streaming flushes through the logging wrapper so SSE
+// handlers (run event streams) work under the middleware chain.
+func (w *statusWriter) Flush() {
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
 func decode(w http.ResponseWriter, r *http.Request, out any) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	dec := json.NewDecoder(r.Body)

@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/beanruntime/bean/internal/action"
 	"github.com/beanruntime/bean/internal/appir"
 	"github.com/beanruntime/bean/internal/auth"
 	"github.com/beanruntime/bean/internal/authmail"
+	"github.com/beanruntime/bean/internal/browserplaywright"
 	beanctx "github.com/beanruntime/bean/internal/context"
 	"github.com/beanruntime/bean/internal/dbal"
 	"github.com/beanruntime/bean/internal/dbal/postgres"
@@ -23,6 +26,10 @@ import (
 	"github.com/beanruntime/bean/internal/migration"
 	"github.com/beanruntime/bean/internal/openapi"
 	"github.com/beanruntime/bean/internal/release"
+	"github.com/beanruntime/bean/internal/scenarioexec"
+	"github.com/beanruntime/bean/internal/scenariogen"
+	"github.com/beanruntime/bean/internal/scenariorun"
+	"github.com/beanruntime/bean/internal/scenariorunner"
 	"github.com/beanruntime/bean/internal/view"
 )
 
@@ -33,6 +40,7 @@ type Runtime struct {
 	HTTP   *httpapi.Server
 	Jobs   job.Runner
 	Outbox event.Runner
+	Runs   *scenariorunner.Runner
 }
 
 type Database interface {
@@ -99,7 +107,54 @@ func OpenURLWithOptions(ctx context.Context, databaseURL string, secure bool, op
 	authService := auth.Service{DB: db, VerificationRequired: func() bool { app, ok := k.Active(); return ok && app.EmailVerificationEnabled() }}
 	actions := action.Service{DB: db, Auth: authService, AuthMail: options.AuthMail}
 	views := view.Service{DB: db}
-	server := &httpapi.Server{Kernel: k, Store: store, Auth: authService, Actions: actions, Views: views, SecureCookies: secure}
+	// Browser-run security boundary from the environment:
+	// BEAN_BROWSER_ALLOWED_DOMAINS (comma-separated host suffixes),
+	// BEAN_BROWSER_MAX_DURATION (Go duration), BEAN_BROWSER_PAUSE_ON
+	// (comma-separated node types gated on approval).
+	policy := scenarioexec.Policy{AllowedDomains: csvEnv("BEAN_BROWSER_ALLOWED_DOMAINS"), PauseOn: csvEnv("BEAN_BROWSER_PAUSE_ON")}
+	if raw := os.Getenv("BEAN_BROWSER_MAX_DURATION"); raw != "" {
+		duration, err := time.ParseDuration(raw)
+		if err != nil {
+			db.Close()
+			return nil, fmt.Errorf("BEAN_BROWSER_MAX_DURATION: %w", err)
+		}
+		policy.MaxDuration = duration
+	}
+	// BEAN_BROWSER_SIDECAR_DIR / BEAN_BROWSER_COMMAND locate the Playwright
+	// sidecar module and its runtime in deployment — the defaults ("browser"
+	// relative to the working directory, "bun" on PATH) suit a source checkout.
+	adapter := browserplaywright.Adapter{
+		Dir:            os.Getenv("BEAN_BROWSER_SIDECAR_DIR"),
+		Command:        os.Getenv("BEAN_BROWSER_COMMAND"),
+		AllowedDomains: policy.AllowedDomains,
+	}
+	runs := &scenariorunner.Runner{
+		Store:       scenariorun.Store{DB: db},
+		Sessions:    adapter.NewSession,
+		ArtifactDir: filepath.Join(os.TempDir(), "bean-artifacts"),
+		Policy:      policy,
+		Secrets: func(_ context.Context, name string) (string, error) {
+			value := os.Getenv("BEAN_SECRET_" + strings.ToUpper(name))
+			if value == "" {
+				return "", fmt.Errorf("secret %q is not configured (set BEAN_SECRET_%s)", name, strings.ToUpper(name))
+			}
+			return value, nil
+		},
+		Scenario: func(ctx context.Context, run scenariorun.Run) (appir.Scenario, error) {
+			app, err := store.AppByRelease(ctx, run.ReleaseID)
+			if err != nil {
+				return appir.Scenario{}, err
+			}
+			compiled, ok := app.Scenarios[run.Scenario]
+			if !ok {
+				return appir.Scenario{}, fmt.Errorf("scenario %q is not in release %s", run.Scenario, run.ReleaseID)
+			}
+			return compiled, nil
+		},
+	}
+	// NL -> Scenario generation is wired only when a provider key exists:
+	// BEAN_ANTHROPIC_API_KEY, optional BEAN_ANTHROPIC_MODEL/BEAN_ANTHROPIC_ENDPOINT.
+	server := &httpapi.Server{Kernel: k, Store: store, Auth: authService, Actions: actions, Views: views, Runner: runs, Generator: scenariogen.AnthropicFromEnv(), SecureCookies: secure}
 	runner := job.Runner{DB: db, Handle: func(ctx context.Context, name string, payload map[string]any) error {
 		app, ok := k.Active()
 		if !ok {
@@ -129,7 +184,7 @@ func OpenURLWithOptions(ctx context.Context, databaseURL string, secure bool, op
 		slog.InfoContext(ctx, "Bean event delivered", "topic", topic)
 		return nil
 	}}
-	return &Runtime{DB: db, Kernel: k, Store: store, HTTP: server, Jobs: runner, Outbox: outbox}, nil
+	return &Runtime{DB: db, Kernel: k, Store: store, HTTP: server, Jobs: runner, Outbox: outbox, Runs: runs}, nil
 }
 
 // OpenInspection opens an initialized Bean database without running metadata
@@ -162,4 +217,14 @@ func OpenInspection(ctx context.Context, databaseURL string) (*Runtime, error) {
 	views := view.Service{DB: db}
 	server := &httpapi.Server{Kernel: kernel, Store: store, Views: views}
 	return &Runtime{DB: db, Kernel: kernel, Store: store, HTTP: server}, nil
+}
+
+func csvEnv(name string) []string {
+	var out []string
+	for _, part := range strings.Split(os.Getenv(name), ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }

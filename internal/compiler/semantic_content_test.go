@@ -312,7 +312,7 @@ func TestExtendedContentAppIRRoundTripAndFormatGate(t *testing.T) {
 	if clone.ValidateFormat() == nil {
 		t.Fatal("v19 accepted extended semantic content")
 	}
-	clone.FormatVersion = "bean/appir/v21"
+	clone.FormatVersion = "bean/appir/v22"
 	if clone.ValidateFormat() == nil {
 		t.Fatal("future format accepted")
 	}

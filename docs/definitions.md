@@ -1,6 +1,6 @@
 # Definitions
 
-An application source starts with an `app.yaml` manifest containing `apiVersion: bean/v1alpha1`, the application name, and optional explicit local `resources`. Definition documents follow the manifest after `---`, or live in the listed resource files. Each definition has a top-level `kind`, machine `name`, optional `namespace`, and its kind-specific fields. Supported kinds include Entity, View, Action, Lifecycle, Rule, Extension, TestSuite, Webform, Policy, Filter, Block, Panel, Page, Sequence, Role, Menu, Job, AdminResource, Authentication, LocalRegistration, and DemoSeed.
+An application source starts with an `app.yaml` manifest containing `apiVersion: bean/v1alpha1`, the application name, and optional explicit local `resources`. Definition documents follow the manifest after `---`, or live in the listed resource files. Each definition has a top-level `kind`, machine `name`, optional `namespace`, and its kind-specific fields. Supported kinds include Entity, View, Action, Lifecycle, Rule, Extension, TestSuite, Webform, Policy, Filter, Block, Panel, Page, Sequence, Scenario, Role, Menu, Job, AdminResource, Authentication, LocalRegistration, and DemoSeed.
 
 Compilation validates envelopes, names, fields, references, relation kinds, limits, Action steps, Panel regions, and route uniqueness. Diagnostics identify the source file, line, column, kind, name, field path, and a corrective message. Generated CRUD is emitted as Views and Actions inside AppIR.
 
@@ -132,6 +132,48 @@ The first tab starts active. Native tab buttons implement automatic orientation-
 Frame layouts are closed and compiler-checked against their Panel: `title`, `section`, `statement`, `bullets`, `quote`, `closing`, `two-column`, `comparison`, `image-focus`, `chart-focus`, `table`, `timeline`, `process`, and `architecture`. See [Content Blocks](content-blocks.md) for the element vocabulary, defaults, bounds, safe URLs, media, and quiz behavior. `bean capabilities --json` reports the exact contract. Current Sequence limits include 1–50 frames, 1–12 rendered Blocks (including inline items) per frame, 80-code-point titles, 4,000-byte notes, and unchanged deterministic layout budgets.
 
 Density counts the complete payload, including inactive tabs: ordered-list item text plus 20 per item; link label plus 20; divider 20; table caption/header/cells plus 20 per column and row; media title/transcript plus 180; quiz question/options/explanation plus 20 per choice; and Tabs Block/tab labels, every tab content weight, plus 20 per tab. IDs and the quiz answer do not add weight. Static table data remains literal; data-backed tables continue through View/Display.
+
+## Scenarios
+
+A `Scenario` is a declarative browser-test graph compiled into `App.Scenarios` (AppIR v21). It is an orchestration boundary, not a mutation boundary: browser steps navigate and interact with rendered pages, and `api_call` nodes delegate every domain write to an existing Action. Scenario authoring produces no execution engine, browser adapter, or Studio surface on its own.
+
+Each node has a stable `id` (`[a-z][a-z0-9_]*`), a `type`, and ID-keyed edges. `next` names the following node, `onFail` names the failure path, `body` names a loop body, and `branches[].next` names branch targets. `start` names the entry node and defaults to the first declared node. Every node must be reachable from `start`; dangling edges and duplicate IDs are compile-time diagnostics.
+
+Node types:
+
+- `navigate` (`url`), `click` (`ref`), `fill` (`ref` plus `text` or `secret`), `select` (`ref`, `value`), `press` (`key`), `script` (`script`, optional `as`), `pause`.
+- `wait` (`condition`: `navigation`, `network_idle`, `ref_visible`, `ref_hidden`, `text_present`; optional `ref`, `text`, `timeoutSeconds`).
+- `assert` (`assertion`: `ref_visible`, `ref_hidden`, `ref_text`, `url_equals`, `url_contains`, `text_present`; optional `ref`, `text`).
+- `extract` (`ref`, `as`, optional `attribute`: `text`, `value`, `attribute`; required `name` — the HTML attribute read — when `attribute` is `attribute`).
+- `branch` (`branches`: `condition` from the wait vocabulary plus `last_step_passed`/`last_step_failed`, `next`).
+- `loop` (`body`, optional `until`, `maxIterations`).
+- `api_call` (`action`, optional `input`, `as`) — delegates to an Action; missing Actions are reference diagnostics.
+
+```yaml
+kind: Scenario
+name: login_invalid_password
+start: open_login
+nodes:
+  - id: open_login
+    type: navigate
+    url: https://app.example.test/login
+    next: fill_email
+  - id: fill_email
+    type: fill
+    ref: e1
+    text: user@example.test
+    next: submit
+  - id: submit
+    type: click
+    ref: e3
+    next: check_error
+  - id: check_error
+    type: assert
+    assertion: text_present
+    text: Invalid credentials
+```
+
+Scenarios can also be authored four assisted ways, all returning a draft the user reviews in the Studio graph editor before saving — never a silently persisted definition: `POST /api/scenario-generate` drafts a spec from a natural-language prompt (compile-checked, bounded retries), `POST /api/scenario-runs/{id}/save-as-test` drafts a spec from a run's recorded trace, `POST /api/scenario-runs/{id}/repair` drafts a corrected spec for a failed run and returns a node-level graph diff for review, and `GET /api/scenario-proposals` drafts a spec from the application itself — `internal/scenariopropose` walks the compiled route surface and proposes a `happy_path` check per unprotected page (navigate, assert the route and title render) and an `auth_check` per policy-gated page (navigate unauthenticated, assert the `/login` redirect), skipping parameterized routes and names already taken by saved scenarios.
 
 ## Typed field layout
 
