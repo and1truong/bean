@@ -8,6 +8,8 @@ bootstrap:
 	cd web && bun install --frozen-lockfile
 	cd e2e && bun install --frozen-lockfile
 	cd browser && bun install --frozen-lockfile
+	cd browser && bunx playwright install chromium
+	cd e2e && bunx playwright install chromium
 
 fmt:
 	gofmt -w cmd examples internal

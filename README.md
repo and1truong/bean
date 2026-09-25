@@ -18,14 +18,15 @@ Extension -> Action transaction -> durable intent -> bounded after-commit HTTP
 
 ## Prerequisites and build
 
-Go 1.25 and Bun 1.4 are required at build time. Chromium is required only for browser tests.
+Go 1.25 and Bun 1.4 are required at build time. Playwright's Chromium is required at run time — the scenario executor drives it via `browser/sidecar.mjs` — and for browser e2e tests; `make bootstrap` installs it.
 
 ```bash
 make bootstrap
-bunx --cwd e2e playwright install chromium
 make check
 make build
 ```
+
+If a Scenario run fails with `Executable doesn't exist … chromium_headless_shell`, install the browser explicitly with `cd browser && bunx playwright install chromium` (and `cd e2e && bunx playwright install chromium` for the journey tests).
 
 Runtime needs only `bin/bean` and one database:
 
