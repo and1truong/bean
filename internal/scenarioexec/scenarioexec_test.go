@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -248,5 +249,145 @@ func TestExecuteRejectsUnclaimableRun(t *testing.T) {
 	}
 	if err := executor.Execute(ctx, run.ID, appir.Scenario{}); err == nil {
 		t.Fatal("claimed an already-claimed run")
+	}
+}
+
+func TestPolicyBlocksDisallowedNavigation(t *testing.T) {
+	server, store, executor, _ := newExecutor(t)
+	executor.Policy = scenarioexec.Policy{AllowedDomains: []string{"allowed.example"}}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	run := enqueue(t, store, "blocked")
+	err := executor.Execute(ctx, run.ID, appir.Scenario{
+		Name: "blocked", Start: "open",
+		Nodes: []appir.ScenarioNode{{ID: "open", Type: "navigate", URL: server.URL + "/login"}},
+	})
+	if err == nil {
+		t.Fatal("run to a disallowed host succeeded")
+	}
+	persisted, _, _ := store.Get(ctx, run.ID)
+	if persisted.Status != scenariorun.RunFailed {
+		t.Fatalf("run=%+v", persisted)
+	}
+	events, _ := store.Events(ctx, run.ID, 0)
+	blocked := false
+	for _, event := range events {
+		if event.Kind == scenariorun.EventPolicyBlocked && strings.Contains(event.Payload, "127.0.0.1") {
+			blocked = true
+		}
+	}
+	if !blocked {
+		t.Fatalf("no policy_blocked event in %+v", events)
+	}
+}
+
+func TestSecretFillNeverLeaksIntoLogsOrArtifacts(t *testing.T) {
+	server, store, executor, artifactDir := newExecutor(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	compiled := appir.Scenario{
+		Name: "login", Start: "open_login",
+		Nodes: []appir.ScenarioNode{
+			{ID: "open_login", Type: "navigate", URL: server.URL + "/login", Next: "fill_password"},
+			{ID: "fill_password", Type: "fill", Ref: "Password", Secret: "PASSWORD", Next: "check"},
+			{ID: "check", Type: "assert", Assertion: "ref_text", Ref: "Password", Text: "never"},
+		},
+	}
+	run := enqueue(t, store, "login")
+	if err := executor.Execute(ctx, run.ID, compiled); err == nil {
+		t.Fatal("assert should have failed")
+	}
+	persisted, _, _ := store.Get(ctx, run.ID)
+	if persisted.Status != scenariorun.RunFailed {
+		t.Fatalf("run=%+v", persisted)
+	}
+	events, _ := store.Events(ctx, run.ID, 0)
+	secretUsed := false
+	for _, event := range events {
+		if strings.Contains(event.Payload, "s3cret") {
+			t.Fatalf("secret leaked into %s event: %s", event.Kind, event.Payload)
+		}
+		if event.Kind == scenariorun.EventSecretUsed {
+			secretUsed = true
+		}
+	}
+	if !secretUsed {
+		t.Fatal("no secret_used audit event")
+	}
+	artifacts, _ := store.Artifacts(ctx, run.ID)
+	if len(artifacts) == 0 {
+		t.Fatal("no diagnosis artifacts")
+	}
+	for _, artifact := range artifacts {
+		content, err := os.ReadFile(filepath.Join(artifactDir, artifact.Ref))
+		if err != nil {
+			continue
+		}
+		if strings.Contains(string(content), "s3cret") {
+			t.Fatalf("secret leaked into %s artifact %s", artifact.Kind, artifact.Ref)
+		}
+	}
+}
+
+func TestPolicyPauseGateRequiresResume(t *testing.T) {
+	server, store, executor, _ := newExecutor(t)
+	executor.Policy = scenarioexec.Policy{PauseOn: []string{"wait"}}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	compiled := appir.Scenario{
+		Name: "gated", Start: "open",
+		Nodes: []appir.ScenarioNode{
+			{ID: "open", Type: "navigate", URL: server.URL + "/login", Next: "hold"},
+			{ID: "hold", Type: "wait", Condition: "navigation"},
+		},
+	}
+	run := enqueue(t, store, "gated")
+	if err := executor.Execute(ctx, run.ID, compiled); !errors.Is(err, scenarioexec.ErrPaused) {
+		t.Fatalf("expected ErrPaused, got %v", err)
+	}
+	persisted, _, _ := store.Get(ctx, run.ID)
+	if persisted.Status != scenariorun.RunPaused {
+		t.Fatalf("run=%+v", persisted)
+	}
+	// Resuming walks again; the consumed gate lets the wait node execute.
+	if err := store.Resume(ctx, run.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := executor.Execute(ctx, run.ID, compiled); err != nil {
+		t.Fatalf("resume execute: %v", err)
+	}
+	persisted, _, _ = store.Get(ctx, run.ID)
+	if persisted.Status != scenariorun.RunCompleted {
+		t.Fatalf("run=%+v", persisted)
+	}
+	events, _ := store.Events(ctx, run.ID, 0)
+	pauses := 0
+	for _, event := range events {
+		if event.Kind == scenariorun.EventPolicyPause {
+			pauses++
+		}
+	}
+	if pauses != 1 {
+		t.Fatalf("policy_pause events=%d", pauses)
+	}
+}
+
+func TestPolicyMaxDurationCancelsRun(t *testing.T) {
+	_, store, executor, _ := newExecutor(t)
+	executor.Policy = scenarioexec.Policy{MaxDuration: time.Nanosecond}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	run := enqueue(t, store, "bounded")
+	_ = executor.Execute(ctx, run.ID, appir.Scenario{
+		Name: "bounded", Start: "open",
+		Nodes: []appir.ScenarioNode{{ID: "open", Type: "navigate", URL: "http://example.test/"}},
+	})
+	persisted, _, _ := store.Get(ctx, run.ID)
+	if persisted.Status != scenariorun.RunCancelled && persisted.Status != scenariorun.RunFailed {
+		t.Fatalf("run=%+v", persisted)
 	}
 }

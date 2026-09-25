@@ -14,6 +14,10 @@ let page = null;
 let generation = "";
 let launchOptions = { headless: true };
 let tracing = false;
+// Host-configured egress boundary: non-empty = only requests whose host is
+// an allowed domain or a subdomain of one are routed; everything else is
+// aborted client-side and reported as a request_blocked event.
+let allowedDomains = [];
 
 const MAX_NODES = 4096;
 const MAX_NAME = 512;
@@ -43,6 +47,17 @@ async function ensurePage() {
   }
   if (!context) {
     context = await browser.newContext();
+    if (allowedDomains.length) {
+      await context.route("**/*", (route) => {
+        const host = new URL(route.request().url()).hostname.toLowerCase();
+        if (allowedDomains.some((domain) => host === domain || host.endsWith("." + domain))) {
+          route.continue();
+          return;
+        }
+        pushEvent("request_blocked", { url: clip(route.request().url()), host });
+        route.abort("blockedbyclient");
+      });
+    }
     context.on("console", (message) =>
       pushEvent("console", { type: message.type(), text: clip(message.text()) }),
     );
@@ -159,6 +174,15 @@ const SNAPSHOT_SCRIPT = `(() => {
 
 const handlers = {
   async ping() {
+    return { ok: true };
+  },
+  async configure(params) {
+    allowedDomains = (params.allowed_domains || [])
+      .map((domain) => String(domain).trim().toLowerCase())
+      .filter(Boolean);
+    if (context) {
+      throw invalid("configure must precede the first page");
+    }
     return { ok: true };
   },
   async open(params) {

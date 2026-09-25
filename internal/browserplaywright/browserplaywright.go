@@ -38,6 +38,10 @@ type Adapter struct {
 	Command string
 	// Env overlays the spawned process environment.
 	Env []string
+	// AllowedDomains, when non-empty, installs the egress boundary on
+	// the browser context: only requests to these hosts or their
+	// subdomains are routed; the rest abort with a request_blocked event.
+	AllowedDomains []string
 }
 
 // NewSession spawns a sidecar, health-checks it, and returns the session.
@@ -86,6 +90,14 @@ func (a Adapter) NewSession(ctx context.Context) (browserapi.Session, error) {
 	}{}); err != nil {
 		session.Close(context.Background())
 		return nil, fmt.Errorf("browserplaywright: health check: %w", err)
+	}
+	if len(a.AllowedDomains) > 0 {
+		if err = session.call(ctx, "configure", map[string]any{"allowed_domains": a.AllowedDomains}, &struct {
+			OK bool `json:"ok"`
+		}{}); err != nil {
+			session.Close(context.Background())
+			return nil, fmt.Errorf("browserplaywright: configure: %w", err)
+		}
 	}
 	return session, nil
 }

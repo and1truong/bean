@@ -25,6 +25,9 @@ type Runner struct {
 	Sessions    scenarioexec.SessionFactory
 	Secrets     scenarioexec.SecretResolver
 	ArtifactDir string
+	// Policy is the host-level security boundary applied to every run
+	// the runner executes.
+	Policy scenarioexec.Policy
 	// Scenario resolves the compiled graph a pending run executes.
 	Scenario func(ctx context.Context, run scenariorun.Run) (appir.Scenario, error)
 
@@ -104,6 +107,7 @@ func (r *Runner) execute(ctx context.Context, run scenariorun.Run, h *handle) {
 		Secrets:        r.Secrets,
 		ArtifactDir:    r.ArtifactDir,
 		PauseRequested: r.PauseRequested,
+		Policy:         r.Policy,
 	}
 	if err := executor.Execute(ctx, run.ID, compiled); err != nil && !errors.Is(err, scenarioexec.ErrPaused) {
 		r.fail(run.ID, err)
