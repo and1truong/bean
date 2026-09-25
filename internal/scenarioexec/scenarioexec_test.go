@@ -546,3 +546,133 @@ func TestPolicyMaxDurationCancelsRun(t *testing.T) {
 		t.Fatalf("run=%+v", persisted)
 	}
 }
+
+const conflictPage = `<!doctype html><html><head><title>Sign in</title></head><body>
+<main><h1>Sign in</h1>
+<form id="login" action="/done" method="get">
+<button id="submit" type="submit">Sign in</button>
+</form></main></body></html>`
+
+const ambiguousPage = `<!doctype html><html><head><title>Duplicate</title></head><body>
+<main><button id="a">Sign in</button><button id="b">Sign in</button></main></body></html>`
+
+func serve(t *testing.T, pages map[string]string) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page, ok := pages[r.URL.Path]
+		if !ok {
+			page = pages["/"]
+		}
+		w.Header().Set("content-type", "text/html")
+		fmt.Fprint(w, page)
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+func TestClickRefResolvesToTheActionableElement(t *testing.T) {
+	_, store, executor, _ := newExecutor(t)
+	// A heading and a submit button share the accessible name "Sign in" —
+	// the click must land on the button, not the non-interactive ancestor.
+	server := serve(t, map[string]string{"/": conflictPage, "/done": donePage})
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	compiled := appir.Scenario{
+		Name: "conflict", Start: "open",
+		Nodes: []appir.ScenarioNode{
+			{ID: "open", Type: "navigate", URL: server.URL + "/", Next: "submit"},
+			{ID: "submit", Type: "click", Ref: "Sign in", Next: "check_done"},
+			{ID: "check_done", Type: "assert", Assertion: "url_contains", Text: "/done"},
+		},
+	}
+	run := enqueue(t, store, "conflict")
+	if err := executor.Execute(ctx, run.ID, compiled); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	persisted, _, _ := store.Get(ctx, run.ID)
+	if persisted.Status != scenariorun.RunCompleted {
+		t.Fatalf("run=%+v", persisted)
+	}
+}
+
+func TestClickRefRejectsNonActionableMatch(t *testing.T) {
+	server, store, executor, _ := newExecutor(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	// loginPage's only "Sign in" is a heading — clicking it must fail loudly
+	// instead of silently hitting a non-interactive element.
+	compiled := appir.Scenario{
+		Name: "heading_click", Start: "open",
+		Nodes: []appir.ScenarioNode{
+			{ID: "open", Type: "navigate", URL: server.URL + "/login", Next: "submit"},
+			{ID: "submit", Type: "click", Ref: "Sign in"},
+		},
+	}
+	run := enqueue(t, store, "heading_click")
+	if err := executor.Execute(ctx, run.ID, compiled); err == nil {
+		t.Fatal("click on a heading succeeded")
+	}
+	steps, _ := store.Steps(ctx, run.ID)
+	if steps[1].Status != scenariorun.StepFailed || !strings.Contains(steps[1].Error, "not a clickable element") {
+		t.Fatalf("step=%+v", steps[1])
+	}
+}
+
+func TestClickRefRejectsAmbiguousMatch(t *testing.T) {
+	_, store, executor, _ := newExecutor(t)
+	server := serve(t, map[string]string{"/": ambiguousPage})
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	compiled := appir.Scenario{
+		Name: "ambiguous", Start: "open",
+		Nodes: []appir.ScenarioNode{
+			{ID: "open", Type: "navigate", URL: server.URL + "/", Next: "submit"},
+			{ID: "submit", Type: "click", Ref: "Sign in"},
+		},
+	}
+	run := enqueue(t, store, "ambiguous")
+	if err := executor.Execute(ctx, run.ID, compiled); err == nil {
+		t.Fatal("ambiguous click succeeded")
+	}
+	steps, _ := store.Steps(ctx, run.ID)
+	if steps[1].Status != scenariorun.StepFailed || !strings.Contains(steps[1].Error, "ambiguous") {
+		t.Fatalf("step=%+v", steps[1])
+	}
+}
+
+func TestAssertionTimeoutRecordsOutcomeNotInfrastructureError(t *testing.T) {
+	server, store, executor, _ := newExecutor(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	compiled := appir.Scenario{
+		Name: "missing_text", Start: "open",
+		Nodes: []appir.ScenarioNode{
+			{ID: "open", Type: "navigate", URL: server.URL + "/login", Next: "check_missing"},
+			{ID: "check_missing", Type: "assert", Assertion: "text_present", Text: "This sentence intentionally does not exist", TimeoutSeconds: 1},
+		},
+	}
+	run := enqueue(t, store, "missing_text")
+	if err := executor.Execute(ctx, run.ID, compiled); err == nil {
+		t.Fatal("unmet assertion succeeded")
+	}
+	// The failed check lands in the event stream as a failed assertion —
+	// expected text and observation included — never as bare infrastructure noise.
+	events, _ := store.Events(ctx, run.ID, 0)
+	var assertion string
+	for _, event := range events {
+		if event.Kind == scenariorun.EventAssertion {
+			assertion = event.Payload
+		}
+	}
+	if !strings.Contains(assertion, `"met":false`) || !strings.Contains(assertion, "This sentence intentionally does not exist") || !strings.Contains(assertion, "expected") {
+		t.Fatalf("assertion event=%s", assertion)
+	}
+	steps, _ := store.Steps(ctx, run.ID)
+	if steps[1].Status != scenariorun.StepFailed || !strings.Contains(steps[1].Error, "This sentence intentionally does not exist") || !strings.Contains(steps[1].Error, "within 1s") {
+		t.Fatalf("step error=%q", steps[1].Error)
+	}
+}

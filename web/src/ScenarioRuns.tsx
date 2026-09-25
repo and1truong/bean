@@ -100,23 +100,31 @@ const eventRow=(event:RunEvent,step:string,t0:number,nodes:Map<string,ScenarioNo
     case 'assertion_result':{
       row.category='assertion';row.severity=data.met?'success':'danger';row.statusLabel=data.met?'passed':'failed'
       row.label=node?assertSentence(node):`Check "${data.assertion||'assertion'}"`
-      const detail=typeof data.detail==='string'&&data.detail&&data.detail!=='{}'?data.detail:''
+      // detail arrives as embedded JSON ({expected,error} or {actual}) —
+      // render its fields, never the raw object literal.
+      const detail=data.detail&&typeof data.detail==='object'?Object.entries(data.detail).map(([key,value])=>`${key}: ${value}`).join(' · '):typeof data.detail==='string'&&data.detail!=='{}'?data.detail:''
       row.value=detail
       row.step=String(data.node||'')||step
       return row
     }
     case 'console_event':{
+      // Page console output is observation, not outcome — a 401 logged by the
+      // app under test is expected evidence, so only uncaught page errors
+      // (the pageerror frame, data.message) read as failures.
       row.category='console'
       if(data.message){row.label='Page error';row.value=String(data.message);row.severity='danger'}
-      else{row.label=`console.${data.type||'log'}`;row.value=String(data.text||'');row.severity=data.type==='error'?'danger':data.type==='warning'?'warning':'neutral'}
+      else{row.label=`console.${data.type||'log'}`;row.value=String(data.text||'');row.severity='neutral'}
       row.statusLabel=severityLabel(row.severity);return row
     }
     case 'network_event':{
+      // A response status (even 401/500) is neutral network evidence — it is
+      // the behavior under test, not a verdict. Only transport-level failures
+      // (no response at all) and policy blocks signal a problem.
       row.category='network'
       if(data.error!==undefined){row.severity='danger';row.label=`${data.method||'GET'} ${shortUrl(data.url)}`;row.value=`failed — ${data.error||'request failed'}`}
-      else if(data.status!==undefined){row.severity=data.status>=400?'danger':'success';row.label=shortUrl(data.url);row.value=`· ${data.status}`}
+      else if(data.status!==undefined){row.severity='neutral';row.label=shortUrl(data.url);row.value=`· ${data.status}`}
       else if(data.host!==undefined&&!data.method){row.severity='warning';row.label=shortUrl(data.url);row.value=`blocked by policy (${data.host})`}
-      else{row.severity='success';row.label=`${data.method||'GET'} ${shortUrl(data.url)}`;row.asset=assetTypes.includes(String(data.resource_type||''))}
+      else{row.severity='neutral';row.label=`${data.method||'GET'} ${shortUrl(data.url)}`;row.asset=assetTypes.includes(String(data.resource_type||''))}
       row.statusLabel=severityLabel(row.severity);return row
     }
     case 'policy_blocked':row.category='policy';row.severity='warning';row.label='Blocked by egress policy';row.value=String(data.host||shortUrl(data.url));row.statusLabel='warn';return row
@@ -145,7 +153,7 @@ const buildEventRows=(events:RunEvent[],nodes:Map<string,ScenarioNode>):EventRow
     if(event.Kind==='step_finished'){step='';continue}
     if(event.Kind==='network_event'&&data.status!==undefined){
       const request=openRequest.get(String(data.url))
-      if(request){request.value=`· ${data.status}`;request.severity=Number(data.status)>=400?'danger':'success';request.statusLabel=severityLabel(request.severity);request.payload+=`\n${event.Payload}`;openRequest.delete(String(data.url));continue}
+      if(request){request.value=`· ${data.status}`;request.payload+=`\n${event.Payload}`;openRequest.delete(String(data.url));continue}
     }
     const row=eventRow(event,step,t0,nodes)
     if(event.Kind==='network_event'&&data.method&&data.resource_type!==undefined)openRequest.set(String(data.url),row)
@@ -204,7 +212,7 @@ function EventExplorer({events,steps,nodes}:{events:RunEvent[];steps:Step[];node
       default:return true
     }
   }
-  const groups=groupEventRows(rows.filter(matches),nodes).map(group=>({...group,main:group.rows.filter(row=>!row.asset||row.severity!=='success'||!!search),assets:group.rows.filter(row=>row.asset&&row.severity==='success'&&!search)})).filter(group=>group.main.length+group.assets.length>0)
+  const groups=groupEventRows(rows.filter(matches),nodes).map(group=>({...group,main:group.rows.filter(row=>!row.asset||row.severity!=='neutral'||!!search),assets:group.rows.filter(row=>row.asset&&row.severity==='neutral'&&!search)})).filter(group=>group.main.length+group.assets.length>0)
   const renderRows=(list:EventRow[])=><ul className="space-y-0.5">{list.map(row=><EventRowItem key={row.seq} row={row}/>)}</ul>
   return <div data-testid="event-explorer">
     <p className="text-sm text-muted-foreground" data-testid="event-summary">{steps.length} steps · {assertions} assertions · {network} network requests · {consoleErrors} console errors</p>

@@ -178,21 +178,28 @@ it('explores the event stream with counts, filters, and grouping',async()=>{
     {ID:'e6',StepID:'',Sequence:6,Kind:'network_event',Payload:'{"method":"GET","url":"http://app.test/app.css","resource_type":"stylesheet"}'},
     {ID:'e7',StepID:'',Sequence:7,Kind:'network_event',Payload:'{"status":200,"url":"http://app.test/app.css"}'},
     {ID:'e8',StepID:'',Sequence:8,Kind:'network_event',Payload:'{"method":"GET","url":"http://app.test/api","error":"net::ERR_FAILED"}'},
-    {ID:'e9',StepID:'step-1',Sequence:9,Kind:'step_finished',Payload:'{"status":"passed"}'},
-    {ID:'e10',StepID:'step-2',Sequence:10,Kind:'step_started',Payload:'{"node":"check","attempt":1}'},
-    {ID:'e11',StepID:'',Sequence:11,Kind:'assertion_result',Payload:'{"node":"check","assertion":"text_present","met":false,"detail":"{}"}'},
-    {ID:'e12',StepID:'',Sequence:12,Kind:'console_event',Payload:'{"type":"error","text":"boom"}'},
+    {ID:'e9',StepID:'',Sequence:9,Kind:'network_event',Payload:'{"method":"POST","url":"http://app.test/api/auth/login","resource_type":"fetch"}'},
+    {ID:'e10',StepID:'',Sequence:10,Kind:'network_event',Payload:'{"status":401,"url":"http://app.test/api/auth/login"}'},
+    {ID:'e11',StepID:'step-1',Sequence:11,Kind:'step_finished',Payload:'{"status":"passed"}'},
+    {ID:'e12',StepID:'step-2',Sequence:12,Kind:'step_started',Payload:'{"node":"check","attempt":1}'},
+    {ID:'e13',StepID:'',Sequence:13,Kind:'assertion_result',Payload:'{"node":"check","assertion":"text_present","met":false,"detail":{"expected":"text_present \\"ok\\"","error":"Timeout 30000ms exceeded"}}'},
+    {ID:'e14',StepID:'',Sequence:14,Kind:'console_event',Payload:'{"type":"error","text":"Failed to load resource: 401"}'},
+    {ID:'e15',StepID:'',Sequence:15,Kind:'console_event',Payload:'{"message":"boom"}'},
   ]
   fetchFor({'/api/scenarios':scenarios,[`/api/scenario-runs/${run.ID}`]:{run,sessions:[],steps,artifacts},[`/api/scenario-runs/${run.ID}/events`]:{events:richEvents}})
   mount(<ScenarioRunDetail/>,`/studio/runs/${run.ID}`)
   await screen.findByTestId('event-explorer')
-  expect(screen.getByTestId('event-summary')).toHaveTextContent('2 steps · 1 assertions · 3 network requests · 1 console errors')
-  // Default "Failures and checks": failed assertion, failed request, console error.
-  expect(screen.getByTestId('event-row-11')).toHaveTextContent('"ok" appears on the page')
-  expect(screen.getByTestId('event-row-11')).toHaveTextContent('failed')
+  expect(screen.getByTestId('event-summary')).toHaveTextContent('2 steps · 1 assertions · 4 network requests · 1 console errors')
+  // Default "Failures and checks": failed assertion, failed request, page error.
+  expect(screen.getByTestId('event-row-13')).toHaveTextContent('"ok" appears on the page')
+  expect(screen.getByTestId('event-row-13')).toHaveTextContent('failed')
+  expect(screen.getByTestId('event-row-13')).toHaveTextContent('expected: text_present "ok"')
   expect(screen.getByTestId('event-row-8')).toHaveTextContent('GET /api')
-  expect(screen.getByTestId('event-row-12')).toHaveTextContent('boom')
+  expect(screen.getByTestId('event-row-15')).toHaveTextContent('boom')
+  // Observation, not outcome: the expected 401 and the app's console.error stay out of the checks view.
   expect(screen.queryByTestId('event-row-4')).toBeNull()
+  expect(screen.queryByTestId('event-row-9')).toBeNull()
+  expect(screen.queryByTestId('event-row-14')).toBeNull()
   // Groups form under each step; lifecycle is a separate collapsed group.
   expect(screen.getByTestId('event-group-open')).toBeInTheDocument()
   expect(screen.getByTestId('event-group-check')).toBeInTheDocument()
@@ -200,10 +207,12 @@ it('explores the event stream with counts, filters, and grouping',async()=>{
   fireEvent.change(screen.getByTestId('event-filter'),{target:{value:'all'}})
   expect(screen.getByTestId('event-group-lifecycle')).not.toHaveAttribute('open')
   expect(screen.getByTestId('event-row-4')).toHaveTextContent('GET / · 200')
+  expect(screen.getByTestId('event-row-9')).toHaveTextContent('POST /api/auth/login · 401')
+  expect(screen.getByTestId('event-row-9')).toHaveTextContent('info')
   expect(screen.getByTestId('network-assets-open')).not.toHaveAttribute('open')
   expect(screen.getByTestId('network-assets-open')).toHaveTextContent('Network (1)')
   // Search narrows to the matching row.
   fireEvent.change(screen.getByTestId('event-search'),{target:{value:'boom'}})
-  expect(screen.getByTestId('event-row-12')).toBeInTheDocument()
+  expect(screen.getByTestId('event-row-15')).toBeInTheDocument()
   expect(screen.queryByTestId('event-row-8')).toBeNull()
 })

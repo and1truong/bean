@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -535,7 +536,7 @@ func (w *walker) runNode(ctx context.Context, node appir.ScenarioNode) (string, 
 		w.snapshot = nil
 		return fmt.Sprintf(`{"url":%q}`, result.URL), err
 	case scenario.NodeClick:
-		ref, err := w.resolveRef(ctx, node.Ref)
+		ref, err := w.resolveRefFor(ctx, node.Ref, clickRoles, "clickable")
 		if err != nil {
 			return "", err
 		}
@@ -543,7 +544,7 @@ func (w *walker) runNode(ctx context.Context, node appir.ScenarioNode) (string, 
 		w.snapshot = nil
 		return "{}", err
 	case scenario.NodeFill:
-		ref, err := w.resolveRef(ctx, node.Ref)
+		ref, err := w.resolveRefFor(ctx, node.Ref, fillRoles, "fillable")
 		if err != nil {
 			return "", err
 		}
@@ -563,7 +564,7 @@ func (w *walker) runNode(ctx context.Context, node appir.ScenarioNode) (string, 
 		_, err = w.session.Fill(ctx, ref, text)
 		return "{}", err
 	case scenario.NodeSelect:
-		ref, err := w.resolveRef(ctx, node.Ref)
+		ref, err := w.resolveRefFor(ctx, node.Ref, selectRoles, "selectable")
 		if err != nil {
 			return "", err
 		}
@@ -574,13 +575,14 @@ func (w *walker) runNode(ctx context.Context, node appir.ScenarioNode) (string, 
 		w.snapshot = nil
 		return "{}", err
 	case scenario.NodeWait:
-		condition, err := w.condition(ctx, node.Condition, node.Ref, node.Text, w.timeout(node))
+		timeout := w.timeout(node)
+		condition, err := w.condition(ctx, node.Condition, node.Ref, node.Text, timeout)
 		if err != nil {
 			return "", err
 		}
 		result, err := w.session.Wait(ctx, condition)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("wait for %s %q was not satisfied within %s (%w)", node.Condition, node.Text, timeout, err)
 		}
 		if !result.Met {
 			return "", fmt.Errorf("condition %q not met", node.Condition)
@@ -603,30 +605,92 @@ func (w *walker) runNode(ctx context.Context, node appir.ScenarioNode) (string, 
 	}
 }
 
+// actionableRoles bounds the snapshot roles an interaction ref may land on:
+// a name like "Sign in" can match a heading or landmark above the actual
+// control, and clicking the wrong ancestor passes the step without doing
+// anything — refs for click/fill/select resolve only against compatible
+// actionable roles, never against headings, landmarks, or images.
+var (
+	clickRoles  = []string{"button", "link", "checkbox", "radio", "option", "menuitem", "menuitemcheckbox", "menuitemradio", "tab", "switch", "treeitem", "gridcell", "textbox", "searchbox", "combobox", "listbox", "slider", "spinbutton"}
+	fillRoles   = []string{"textbox", "searchbox", "spinbutton", "combobox"}
+	selectRoles = []string{"combobox", "listbox"}
+)
+
 // resolveRef maps a scenario `ref` (semantic element name or raw ref id) onto
 // a live browserapi.Ref from the current snapshot.
 func (w *walker) resolveRef(ctx context.Context, target string) (browserapi.Ref, error) {
+	return w.resolveRefFor(ctx, target, nil, "usable")
+}
+
+// resolveRefFor resolves target like resolveRef but, when roles is non-empty,
+// restricts matches to actionable snapshot nodes of those roles and rejects
+// ambiguous or disabled targets. verb names the interaction for errors.
+func (w *walker) resolveRefFor(ctx context.Context, target string, roles []string, verb string) (browserapi.Ref, error) {
 	if err := w.refreshSnapshot(ctx); err != nil {
 		return browserapi.Ref{}, err
+	}
+	compatible := func(node browserapi.Node) bool {
+		if roles == nil {
+			return true
+		}
+		if node.Disabled {
+			return false
+		}
+		for _, role := range roles {
+			if node.Role == role {
+				return true
+			}
+		}
+		return false
 	}
 	nodes := w.snapshot.Nodes
 	// Raw ref id (e.g. "e12") resolves positionally.
 	if len(target) > 1 && target[0] == 'e' {
 		if ref, err := w.snapshot.Resolve(target); err == nil {
+			index, _ := strconv.Atoi(strings.TrimPrefix(target, "e"))
+			if resolved := nodes[index-1]; !compatible(resolved) {
+				if resolved.Disabled {
+					return browserapi.Ref{}, fmt.Errorf("ref %s (%s %q) is disabled", target, resolved.Role, resolved.Name)
+				}
+				return browserapi.Ref{}, fmt.Errorf("ref %s resolves to %s %q — not a %s element", target, resolved.Role, resolved.Name, verb)
+			}
 			return ref, nil
 		}
 	}
+	var exact, partial, wrongRole []browserapi.Node
 	for _, node := range nodes {
 		if strings.EqualFold(node.Name, target) {
-			return w.snapshot.Resolve(node.Ref)
+			if compatible(node) {
+				exact = append(exact, node)
+			} else {
+				wrongRole = append(wrongRole, node)
+			}
+			continue
+		}
+		if strings.Contains(strings.ToLower(node.Name), strings.ToLower(target)) && compatible(node) {
+			partial = append(partial, node)
 		}
 	}
-	for _, node := range nodes {
-		if strings.Contains(strings.ToLower(node.Name), strings.ToLower(target)) {
-			return w.snapshot.Resolve(node.Ref)
-		}
+	matches := exact
+	if len(matches) == 0 {
+		matches = partial
 	}
-	return browserapi.Ref{}, fmt.Errorf("no element matches ref %q", target)
+	switch len(matches) {
+	case 1:
+		return w.snapshot.Resolve(matches[0].Ref)
+	case 0:
+		if len(wrongRole) > 0 {
+			first := wrongRole[0]
+			return browserapi.Ref{}, fmt.Errorf("ref %q matched %s %q — not a %s element", target, first.Role, first.Name, verb)
+		}
+		return browserapi.Ref{}, fmt.Errorf("no element matches ref %q", target)
+	default:
+		candidates := make([]string, 0, len(matches))
+		for _, node := range matches {
+			candidates = append(candidates, fmt.Sprintf("%s %s %q", node.Ref, node.Role, node.Name))
+		}
+		return browserapi.Ref{}, fmt.Errorf("ref %q is ambiguous between %s", target, strings.Join(candidates, ", "))
+	}
 }
 
 func (w *walker) refreshSnapshot(ctx context.Context) error {
@@ -686,13 +750,21 @@ func (w *walker) assert(ctx context.Context, node appir.ScenarioNode) (string, e
 		}
 		return fmt.Sprintf(`{"actual":%q}`, w.scrub(extracted.Value)), nil
 	}
-	condition, err := w.condition(ctx, node.Assertion, node.Ref, node.Text, w.timeout(node))
+	timeout := w.timeout(node)
+	condition, err := w.condition(ctx, node.Assertion, node.Ref, node.Text, timeout)
 	if err != nil {
 		return "", err
 	}
 	result, err := w.session.Wait(ctx, condition)
 	if err != nil {
-		return "", err
+		// A failed check is an outcome, not an infrastructure error: record the
+		// assertion with what was expected and what the wait observed so the
+		// run report and event explorer carry it — never just "context
+		// deadline exceeded". The write detaches from the expired wait
+		// context so the event survives the timeout that produced it.
+		expected := fmt.Sprintf("%s %q", node.Assertion, node.Text)
+		w.recordAssertion(context.WithoutCancel(ctx), node, false, fmt.Sprintf(`{"expected":%q,"error":%q}`, expected, err.Error()))
+		return "", fmt.Errorf("assertion not met: %s was not satisfied within %s (%w)", expected, timeout, err)
 	}
 	w.recordAssertion(ctx, node, result.Met, "{}")
 	if !result.Met {

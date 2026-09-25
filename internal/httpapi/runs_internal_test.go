@@ -141,6 +141,28 @@ func waitHTTPRunStatus(t *testing.T, runtime *bootstrap.Runtime, id, want string
 	t.Fatalf("run did not reach %s: %+v", want, run)
 }
 
+// waitHTTPRunningStep waits until one StepExecution is in flight — pausing
+// before any step started makes the resumed run replay the whole scenario
+// after the manual ops, scrambling the trace chronology the test asserts.
+func waitHTTPRunningStep(t *testing.T, runtime *bootstrap.Runtime, id string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		steps, err := runtime.Runs.Store.Steps(context.Background(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, step := range steps {
+			if step.Status == scenariorun.StepRunning {
+				return
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	steps, _ := runtime.Runs.Store.Steps(context.Background(), id)
+	t.Fatalf("no running step for %s: %+v", id, steps)
+}
+
 func runIDOf(t *testing.T, response *httptest.ResponseRecorder) string {
 	t.Helper()
 	var created map[string]any
@@ -299,6 +321,7 @@ func TestScenarioRunHTTPManualTakeover(t *testing.T) {
 	}
 	id := runIDOf(t, created)
 	waitHTTPRunStatus(t, runtime, id, scenariorun.RunRunning)
+	waitHTTPRunningStep(t, runtime, id)
 
 	// Manual ops on a running (unpaused) run are rejected.
 	running := serve(t, handler, http.MethodPost, "/api/scenario-runs/"+id+"/manual", map[string]any{"op": "snapshot"}, cookie, csrf)
