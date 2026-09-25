@@ -237,6 +237,7 @@ type walker struct {
 	pauseOn     map[string]bool
 	paused      map[string]bool
 	resumeNode  string
+	resumeDone  bool
 	secretMu    sync.RWMutex
 	secrets     []string
 }
@@ -311,6 +312,11 @@ func (w *walker) pumpEvents() {
 // the scenario start. It reports (true, "") on a pause, (false, "") on
 // completion, or (false, message) on failure.
 func (w *walker) walk(ctx context.Context) (bool, string) {
+	// A pause that parked past the last node resumes to completion —
+	// every step already ran.
+	if w.resumeDone {
+		return false, ""
+	}
 	nodeID := w.resumeNode
 	if nodeID == "" {
 		nodeID = w.scenario.Start
@@ -354,6 +360,7 @@ func (w *walker) walk(ctx context.Context) (bool, string) {
 // can still continue the walk logically.
 func (w *walker) pauseAt(ctx context.Context, nodeID string) bool {
 	w.resumeNode = nodeID
+	w.resumeDone = nodeID == ""
 	_ = w.exec.Runs.RecordEvent(ctx, w.runID, "", scenariorun.EventResumePoint, fmt.Sprintf(`{"resume_node":%q}`, nodeID))
 	return true
 }
@@ -375,8 +382,26 @@ func (w *walker) loadResumePoint(ctx context.Context) {
 		}
 		if json.Unmarshal([]byte(events[i].Payload), &payload) == nil {
 			w.resumeNode = payload.ResumeNode
+			w.resumeDone = payload.ResumeNode == ""
 		}
+		break
+	}
+	// Rehydrate the last-step outcome so the first branch evaluated
+	// after resume sees the status of the step that actually ran last,
+	// not the fresh walker's default.
+	steps, err := w.exec.Runs.Steps(ctx, w.runID)
+	if err != nil {
 		return
+	}
+	for i := len(steps) - 1; i >= 0; i-- {
+		switch steps[i].Status {
+		case scenariorun.StepPassed:
+			w.lastPass = true
+			return
+		case scenariorun.StepFailed:
+			w.lastPass = false
+			return
+		}
 	}
 }
 
@@ -751,6 +776,16 @@ func (w *walker) loopTarget(ctx context.Context, node appir.ScenarioNode) (strin
 			body, found := w.nodes[next]
 			if !found {
 				return "", fmt.Errorf("loop %s body node %q missing", node.ID, next)
+			}
+			// Body nodes honour the same boundaries as the outer walk:
+			// pause requests and PauseOn-gated types park the run at the
+			// loop node — resume then re-runs the loop from its start.
+			if w.exec.PauseRequested != nil && w.exec.PauseRequested(w.runID) {
+				return "", ErrPaused
+			}
+			if w.pauseOn[body.Type] && !w.paused[body.ID] {
+				_ = w.exec.Runs.RecordEvent(ctx, w.runID, "", scenariorun.EventPolicyPause, fmt.Sprintf(`{"node":%q,"type":%q}`, body.ID, body.Type))
+				return "", ErrPaused
 			}
 			next, err = w.executeNode(ctx, body)
 			if err != nil {
