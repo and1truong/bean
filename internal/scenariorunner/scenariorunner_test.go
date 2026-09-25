@@ -125,27 +125,6 @@ func enqueue(t *testing.T, store scenariorun.Store) scenariorun.Run {
 	return run
 }
 
-// waitStepInFlight blocks until a StepExecution row for nodeID exists —
-// proof the walk is inside that node's browser op, so a pause request
-// lands on the following boundary deterministically.
-func waitStepInFlight(t *testing.T, store scenariorun.Store, runID, nodeID string) {
-	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		steps, err := store.Steps(context.Background(), runID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, step := range steps {
-			if step.NodeID == nodeID {
-				return
-			}
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatalf("no step for node %q", nodeID)
-}
-
 func waitRunStatus(t *testing.T, store scenariorun.Store, id, want string) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -161,6 +140,27 @@ func waitRunStatus(t *testing.T, store scenariorun.Store, id, want string) {
 	}
 	run, _, _ := store.Get(context.Background(), id)
 	t.Fatalf("run did not reach %s: %+v", want, run)
+}
+
+// waitStepInFlight blocks until the walk has started a step for
+// nodeID — RequestPause then deterministically parks at the NEXT
+// boundary rather than racing the walk's first check.
+func waitStepInFlight(t *testing.T, store scenariorun.Store, runID, nodeID string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		steps, err := store.Steps(context.Background(), runID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, step := range steps {
+			if step.NodeID == nodeID {
+				return
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("run %s never started a step for node %s", runID, nodeID)
 }
 
 func TestRunOnceExecutesPendingRun(t *testing.T) {
@@ -248,8 +248,8 @@ func TestManualTakeoverAndResumeReusesSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitRunStatus(t, store, run.ID, scenariorun.RunRunning)
-	// Pause while the gated nav step is in flight — requesting earlier
-	// races the walk's first boundary check and parks on nav instead.
+	// Pause only after 'nav' is in flight so the walk parks at the
+	// next boundary ('wait'), not at the scenario start.
 	waitStepInFlight(t, store, run.ID, "nav")
 	if err := runner.RequestPause(context.Background(), run.ID); err != nil {
 		t.Fatal(err)

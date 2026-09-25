@@ -7,8 +7,8 @@ import {Button} from '@/components/ui/button'
 import {Input} from '@/components/ui/input'
 import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select'
 
-type ScenarioNode={ID:string;Type:string;Next:string;OnFail?:string}
-type Scenario={Name:string;Start:string;Nodes:ScenarioNode[]}
+type ScenarioNode={id:string;type:string;next:string;onFail?:string}
+type Scenario={name:string;start:string;nodes:ScenarioNode[]}
 type Run={ID:string;AppID:string;Scenario:string;Trigger:string;Status:string;Error:string;CreatedAt:string;StartedAt:string;FinishedAt:string}
 type Step={ID:string;NodeID:string;Attempt:number;Status:string;Output:string;Error:string;CreatedAt:string;StartedAt:string;FinishedAt:string}
 type Artifact={ID:string;StepID:string;Kind:string;ContentType:string;Size:number;Ref:string}
@@ -68,7 +68,7 @@ export function ScenarioRunDetail(){
     {fmtError(detail.data)&&<ErrorAlert error={fmtError(detail.data)}/>}
     {run.Status==='paused'&&<TakeoverCard id={id}/>}
     <div className="grid gap-6 lg:grid-cols-[240px_1fr_1fr]">
-      {scenario&&<SectionCard title="Graph"><ol className="space-y-1" data-testid="run-graph">{scenario.Nodes.map(node=>{const step=statusByNode.get(node.ID);return <li key={node.ID} className={`flex items-center gap-2 rounded px-2 py-1 text-sm ${node.ID===active?'bg-accent font-semibold text-accent-foreground':''}`} data-testid={`graph-node-${node.ID}`}><StatusIndicator status={step?statusKind(step.Status):'neutral'} label={step?.Status||'pending'}/><span className="font-mono">{node.ID}</span><span className="ml-auto text-xs text-muted-foreground">{node.Type}</span></li>})}</ol></SectionCard>}
+      {scenario&&<SectionCard title="Graph"><ol className="space-y-1" data-testid="run-graph">{scenario.nodes.map(node=>{const step=statusByNode.get(node.id);return <li key={node.id} className={`flex items-center gap-2 rounded px-2 py-1 text-sm ${node.id===active?'bg-accent font-semibold text-accent-foreground':''}`} data-testid={`graph-node-${node.id}`}><StatusIndicator status={step?statusKind(step.Status):'neutral'} label={step?.Status||'pending'}/><span className="font-mono">{node.id}</span><span className="ml-auto text-xs text-muted-foreground">{node.type}</span></li>})}</ol></SectionCard>}
       <SectionCard title="Timeline" className="min-w-0"><ol className="space-y-1" data-testid="step-timeline">{steps.map(step=><li key={step.ID}><Button variant="ghost" className={`flex w-full items-center justify-start gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted/70 ${chosen?.ID===step.ID?'bg-muted':''}`} data-testid={`step-${step.NodeID}`} onClick={()=>setSelected(step.ID)}><StatusIndicator status={statusKind(step.Status)} label={step.Status}/><span className="font-mono">{step.NodeID}</span>{step.Attempt>1&&<span className="text-xs text-muted-foreground">#{step.Attempt}</span>}<span className="ml-auto text-xs text-muted-foreground">{duration(step.StartedAt,step.FinishedAt)}</span></Button></li>)}{!steps.length&&<EmptyState title="Waiting" description="The run has not claimed its first step yet."/>}</ol></SectionCard>
       <SectionCard title={chosen?`Diagnostics: ${chosen.NodeID}`:'Diagnostics'} className="min-w-0"><div data-testid="step-diagnostics">
         {chosen?.Error&&<p className="mb-3 rounded-md bg-destructive/10 p-3 font-mono text-xs text-destructive" data-testid="step-error">{chosen.Error}</p>}

@@ -164,7 +164,11 @@ func (e Executor) Execute(ctx context.Context, runID string, compiled appir.Scen
 		}
 		if pauseErr := e.Runs.Pause(ctx, runID, token); pauseErr != nil {
 			// Pause could not be recorded: the run cannot stay parked on
-			// a live session, so close it and finish failed.
+			// a live session, so take the walker back out of Held and
+			// close it before finishing failed.
+			if e.Held != nil {
+				e.Held.take(runID)
+			}
 			_ = executor.session.Close(context.Background())
 			executor.events.Wait()
 			return e.failRun(ctx, runID, token, pauseErr)
@@ -237,6 +241,9 @@ type walker struct {
 	pauseOn     map[string]bool
 	paused      map[string]bool
 	resumeNode  string
+	resumeDone  bool
+	opMu        sync.Mutex
+	manualDone  bool
 	secretMu    sync.RWMutex
 	secrets     []string
 }
@@ -252,13 +259,26 @@ type Held struct {
 
 func (h *Held) take(runID string) *walker {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	w := h.walkers[runID]
 	delete(h.walkers, runID)
+	h.mu.Unlock()
+	if w != nil {
+		// Wait out any in-flight manual op, then bar further takeover
+		// ops — the resumed walk now drives the session.
+		w.opMu.Lock()
+		w.manualDone = true
+		w.opMu.Unlock()
+	}
 	return w
 }
 
 func (h *Held) put(runID string, w *walker) {
+	// The walk parked, so the session is idle again — takeover ops may
+	// resume. Runs before the map insert so a resumed run can never
+	// observe manualDone=false while executing.
+	w.opMu.Lock()
+	w.manualDone = false
+	w.opMu.Unlock()
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.walkers == nil {
@@ -270,10 +290,18 @@ func (h *Held) put(runID string, w *walker) {
 // Close drops the run's held walker, closing the browser session and
 // draining its event pump. Used when a parked run is cancelled.
 func (h *Held) Close(runID string) {
-	w := h.take(runID)
+	h.mu.Lock()
+	w := h.walkers[runID]
+	delete(h.walkers, runID)
+	h.mu.Unlock()
 	if w == nil {
 		return
 	}
+	// Let an in-flight manual op finish, then bar new ones before
+	// tearing the session down.
+	w.opMu.Lock()
+	w.manualDone = true
+	w.opMu.Unlock()
 	_ = w.session.Close(context.Background())
 	w.events.Wait()
 	_ = w.exec.Runs.UpdateSession(context.Background(), w.sessionID, scenariorun.SessionClosed, "", "")
@@ -311,6 +339,11 @@ func (w *walker) pumpEvents() {
 // the scenario start. It reports (true, "") on a pause, (false, "") on
 // completion, or (false, message) on failure.
 func (w *walker) walk(ctx context.Context) (bool, string) {
+	// A pause that parked past the last node resumes to completion —
+	// every step already ran.
+	if w.resumeDone {
+		return false, ""
+	}
 	nodeID := w.resumeNode
 	if nodeID == "" {
 		nodeID = w.scenario.Start
@@ -354,6 +387,7 @@ func (w *walker) walk(ctx context.Context) (bool, string) {
 // can still continue the walk logically.
 func (w *walker) pauseAt(ctx context.Context, nodeID string) bool {
 	w.resumeNode = nodeID
+	w.resumeDone = nodeID == ""
 	_ = w.exec.Runs.RecordEvent(ctx, w.runID, "", scenariorun.EventResumePoint, fmt.Sprintf(`{"resume_node":%q}`, nodeID))
 	return true
 }
@@ -375,8 +409,26 @@ func (w *walker) loadResumePoint(ctx context.Context) {
 		}
 		if json.Unmarshal([]byte(events[i].Payload), &payload) == nil {
 			w.resumeNode = payload.ResumeNode
+			w.resumeDone = payload.ResumeNode == ""
 		}
+		break
+	}
+	// Rehydrate the last-step outcome so the first branch evaluated
+	// after resume sees the status of the step that actually ran last,
+	// not the fresh walker's default.
+	steps, err := w.exec.Runs.Steps(ctx, w.runID)
+	if err != nil {
 		return
+	}
+	for i := len(steps) - 1; i >= 0; i-- {
+		switch steps[i].Status {
+		case scenariorun.StepPassed:
+			w.lastPass = true
+			return
+		case scenariorun.StepFailed:
+			w.lastPass = false
+			return
+		}
 	}
 }
 
@@ -601,9 +653,9 @@ func (w *walker) assert(ctx context.Context, node appir.ScenarioNode) (string, e
 		met := strings.Contains(extracted.Value, node.Text)
 		w.recordAssertion(ctx, node, met, fmt.Sprintf(`{"actual":%q}`, extracted.Value))
 		if !met {
-			return "", fmt.Errorf("ref %s text %q does not contain %q", node.Ref, extracted.Value, node.Text)
+			return "", fmt.Errorf("ref %s text %q does not contain %q", node.Ref, w.scrub(extracted.Value), node.Text)
 		}
-		return fmt.Sprintf(`{"actual":%q}`, extracted.Value), nil
+		return fmt.Sprintf(`{"actual":%q}`, w.scrub(extracted.Value)), nil
 	}
 	condition, err := w.condition(ctx, node.Assertion, node.Ref, node.Text, w.timeout(node))
 	if err != nil {
@@ -647,14 +699,11 @@ func (w *walker) loadPausedNodes(ctx context.Context) {
 	}
 }
 
-// hostAllowed applies Policy.AllowedDomains to a navigation target. When
-// no allowlist is configured every URL passes; otherwise only http(s)
-// hosts equal to or beneath a listed domain are allowed — other schemes
-// (file:, javascript:, data:) are refused outright.
+// hostAllowed applies Policy.AllowedDomains to a navigation target.
+// Only http(s) URLs ever pass — file:, javascript:, and data: schemes
+// are refused outright — and with an allowlist configured the host
+// must equal or sit beneath a listed domain.
 func (w *walker) hostAllowed(raw string) (string, bool) {
-	if len(w.exec.Policy.AllowedDomains) == 0 {
-		return "", true
-	}
 	parsed, err := url.Parse(raw)
 	if err != nil {
 		return "", false
@@ -662,6 +711,9 @@ func (w *walker) hostAllowed(raw string) (string, bool) {
 	host := strings.ToLower(parsed.Hostname())
 	if host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return host, false
+	}
+	if len(w.exec.Policy.AllowedDomains) == 0 {
+		return host, true
 	}
 	for _, domain := range w.exec.Policy.AllowedDomains {
 		if host == domain || strings.HasSuffix(host, "."+domain) {
@@ -698,15 +750,22 @@ func (w *walker) extract(ctx context.Context, node appir.ScenarioNode) (string, 
 	if err != nil {
 		return "", err
 	}
-	kind := node.As
+	// `attribute` selects the extraction kind (text/value/attribute);
+	// `as` is the result binding name — when the kind is `attribute`
+	// it also names the HTML attribute read (href, src, ...).
+	kind := node.Attribute
 	if kind == "" {
 		kind = browserapi.ExtractText
 	}
-	extracted, err := w.session.Extract(ctx, ref, kind, node.Attribute)
+	attribute := ""
+	if kind == browserapi.ExtractAttribute {
+		attribute = node.As
+	}
+	extracted, err := w.session.Extract(ctx, ref, kind, attribute)
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf(`{"as":%q,"value":%q}`, kind, extracted.Value), nil
+	return fmt.Sprintf(`{"as":%q,"value":%q}`, node.As, w.scrub(extracted.Value)), nil
 }
 
 // branchTarget evaluates the node's branch edges in order; the first true
@@ -744,6 +803,16 @@ func (w *walker) loopTarget(ctx context.Context, node appir.ScenarioNode) (strin
 			body, found := w.nodes[next]
 			if !found {
 				return "", fmt.Errorf("loop %s body node %q missing", node.ID, next)
+			}
+			// Body nodes honour the same boundaries as the outer walk:
+			// pause requests and PauseOn-gated types park the run at the
+			// loop node — resume then re-runs the loop from its start.
+			if w.exec.PauseRequested != nil && w.exec.PauseRequested(w.runID) {
+				return "", ErrPaused
+			}
+			if w.pauseOn[body.Type] && !w.paused[body.ID] {
+				_ = w.exec.Runs.RecordEvent(ctx, w.runID, "", scenariorun.EventPolicyPause, fmt.Sprintf(`{"node":%q,"type":%q}`, body.ID, body.Type))
+				return "", ErrPaused
 			}
 			next, err = w.executeNode(ctx, body)
 			if err != nil {
@@ -872,12 +941,17 @@ const (
 // are events, never StepExecution rows; a manual op moves the browser,
 // so scenario assertions after resume evaluate the state the human left.
 func (w *walker) Manual(ctx context.Context, op Manual) (string, error) {
+	w.opMu.Lock()
+	defer w.opMu.Unlock()
+	if w.manualDone {
+		return "", fmt.Errorf("scenarioexec: run %s resumed or closed — the session is no longer held", w.runID)
+	}
 	result, err := w.manualOp(ctx, op)
 	outcome := result
 	if err != nil {
 		outcome = err.Error()
 	}
-	payload := fmt.Sprintf(`{"op":%q,"ref":%q,"ok":%t,"result":%s}`, op.Op, op.Ref, err == nil, jsonString(w.scrub(outcome)))
+	payload := fmt.Sprintf(`{"op":%q,"ref":%q,"ok":%t,"result":%s}`, op.Op, op.Ref, err == nil, jsonString(bounded(w.scrub(outcome), scenariorun.MaxPayloadBytes)))
 	_ = w.exec.Runs.RecordEvent(context.Background(), w.runID, "", scenariorun.EventManualAction, payload)
 	return result, err
 }
