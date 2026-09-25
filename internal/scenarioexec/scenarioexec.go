@@ -164,7 +164,11 @@ func (e Executor) Execute(ctx context.Context, runID string, compiled appir.Scen
 		}
 		if pauseErr := e.Runs.Pause(ctx, runID, token); pauseErr != nil {
 			// Pause could not be recorded: the run cannot stay parked on
-			// a live session, so close it and finish failed.
+			// a live session, so take the walker back out of Held and
+			// close it before finishing failed.
+			if e.Held != nil {
+				e.Held.take(runID)
+			}
 			_ = executor.session.Close(context.Background())
 			executor.events.Wait()
 			return e.failRun(ctx, runID, token, pauseErr)
@@ -947,7 +951,7 @@ func (w *walker) Manual(ctx context.Context, op Manual) (string, error) {
 	if err != nil {
 		outcome = err.Error()
 	}
-	payload := fmt.Sprintf(`{"op":%q,"ref":%q,"ok":%t,"result":%s}`, op.Op, op.Ref, err == nil, jsonString(w.scrub(outcome)))
+	payload := fmt.Sprintf(`{"op":%q,"ref":%q,"ok":%t,"result":%s}`, op.Op, op.Ref, err == nil, jsonString(bounded(w.scrub(outcome), scenariorun.MaxPayloadBytes)))
 	_ = w.exec.Runs.RecordEvent(context.Background(), w.runID, "", scenariorun.EventManualAction, payload)
 	return result, err
 }
