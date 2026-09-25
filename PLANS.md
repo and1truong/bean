@@ -9,7 +9,7 @@ Contract: `GOAL.md`. Status: in progress. Epic: <https://github.com/and1truong/b
 | 1 | Scenario definition kind + compiler → `App.Scenarios` (AppIR v21) | #23 | compiler/schema/AppIR tests | done |
 | 2 | Durable run model (Run → Session → StepExecution → Artifact/Event) | #24 | migration/runtime tests | done |
 | 3 | Semantic Browser API | #25 | API contract tests | done |
-| 4 | Playwright adapter + session lifecycle | #26 | adapter/e2e tests | pending |
+| 4 | Playwright adapter + session lifecycle | #26 | adapter/e2e tests | done |
 | 5 | Run event stream + artifacts | #27 | stream/persistence tests | pending |
 | 6 | Scenario & run HTTP API | #28 | HTTP/contract tests | pending |
 | 7 | Browser security boundary | #29 | isolation/egress tests | pending |
