@@ -2,6 +2,18 @@
 
 > Completed work and its verification evidence are indexed in [`docs/plans/completed.md`](plans/completed.md) and stored under [`docs/plans/archive/`](plans/archive/). This file tracks only active, proposed, or deferred work.
 
+## Browser WASM playground
+
+Status: in progress (slices 1–4 done, slice 5 verification in progress). Contract: [`GOAL.md`](../GOAL.md). Ticket: <https://github.com/and1truong/bean/issues/66>.
+
+- `internal/playground` implements the bridge: `fileMap` (an `fs.FS` over the request's bounded file set — 64 files / 256 KiB each / 1 MiB total / `.yaml|yml|json` only / no traversal), `Session.Handle` dispatching `compile` and `render` on protocol `v:1`, and `render` rewrites backend-dependent blocks (View/Entity/ResourceList reads, Webform/Action writes, owner-scoped Menu) to `UnsupportedBlock` `{name,component,reason}` nodes with per-component counts. Diagnostics keep native `BEAN-*` codes and source locations; bridge failures use `BEAN-P4100`–`P4206`. The session swaps in a compiled app only when diagnostics are empty, so a broken edit preserves the last preview.
+- `cmd/beanwasm` is the `js/wasm` entry: one global `beanPlayground(requestJSON) → responseJSON`; a native stub keeps `go build ./...` clean. `GOOS=js GOARCH=wasm go build` works with zero changes to the compile/composition path — `bean.wasm` is ~10 MB with release flags.
+- `web/src/registry.tsx` now owns the renderer contract (`Renderers` map, `Renderer`, `renderNodes`, `PageNode`, `StructuralNode`, menu chrome) behind `RenderersProvider`; `App.tsx` keeps its concrete map and 147 web tests pass unchanged.
+- `web/public-playground/worker.js` is a classic worker: it loads the matching `wasm_exec.js`, instantiates `bean.wasm`, and answers `{id,request}` with `{type:'result',id,response}` — per-request try/catch plus a `fatal` signal on load failure. `web/src/playground/bridge.ts` adds 60 s timeouts and stale-response rejection.
+- The playground UI (`web/src/playground/`) provides file tabs + a manifest, the 12 checked-in examples bundled as JSON, zip/JSON import (STORE+DEFLATE read via `DecompressionStream`, STORE write — no new dependency) and export, diagnostics with stable codes + file jump, route select with hash routing (deep links, refresh, back/forward), and backend-dependent component chips. Draft state is memory-only and says so in the UI.
+- `make playground` emits `dist/playground/` (`index.html` + hashed assets + `worker.js` + `bean.wasm` + `wasm_exec.js` + `examples/*.json`), subdirectory-safe via `base: './'`; the deferred mermaid chunk stays one lazy file. The bundle is gitignored (reproducible via the target), documented in [`docs/playground.md`](playground.md).
+- Verification so far: `go test ./internal/playground` (including render-tree and diagnostics parity vs native composition), zip round-trip vitest, and `e2e/playground.spec.ts` — six real-Chromium journeys over the static dist covering zero-`/api` compilation, example load + unsupported marking, broken-edit diagnostics + preview retention, hash back/forward, zip download, and a 390 px viewport. `test-e2e` now depends on the `playground` target so `make check` covers it.
+
 ## Visual agentic browser testing
 
 Status: in progress (slice 9 of 14). Contract: [`GOAL.md`](../GOAL.md). Epic: <https://github.com/and1truong/bean/issues/20> — sub-issues #23–#36 ship as PRs into `epic/browser-testing`, which merges to main as one umbrella PR at the end.

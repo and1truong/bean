@@ -2,7 +2,7 @@ SHELL := /bin/bash
 GOCACHE := $(CURDIR)/.cache/go-build
 export GOCACHE
 
-.PHONY: bootstrap fmt fmt-check lint test test-integration test-contract test-fuzz-smoke test-compatibility test-blackbox test-crash qualify-durability test-blog test-postgres test-e2e check build run clean
+.PHONY: bootstrap fmt fmt-check lint test test-integration test-contract test-fuzz-smoke test-compatibility test-blackbox test-crash qualify-durability test-blog test-postgres test-e2e check build playground run clean
 bootstrap:
 	go mod download
 	cd web && bun install --frozen-lockfile
@@ -60,7 +60,7 @@ test-postgres: build
 	BEAN_TEST_POSTGRES_URL=postgres://postgres:bean@127.0.0.1:55432/bean?sslmode=disable BEAN_TEST_BLOG_POSTGRES_URL=postgres://postgres:bean@127.0.0.1:55432/bean_blog?sslmode=disable BEAN_TEST_AGENT_POSTGRES_URL=postgres://postgres:bean@127.0.0.1:55432/bean_agent?sslmode=disable go test ./internal/dbal/postgres ./internal/httpapi ./internal/agentprotocol -count=1; \
 	cd e2e && BEAN_E2E_DATABASE_URL=postgres://postgres:bean@127.0.0.1:55432/bean_blog_e2e?sslmode=disable bunx playwright test blog.spec.ts
 
-test-e2e: build
+test-e2e: build playground
 	cd e2e && bunx playwright test
 
 test-blog: build
@@ -74,6 +74,16 @@ build:
 	cd web && bun run build
 	mkdir -p bin
 	go build -trimpath -ldflags "-s -w" -o bin/bean ./cmd/bean
+
+# Reproducible static playground bundle: HTML/JS/CSS + bean.wasm + the matching
+# wasm_exec.js + worker.js + examples/*.json under dist/playground/. Serve that
+# directory with any static file server — no Bean backend required.
+playground:
+	cd web && bunx vite build --config vite.playground.config.ts
+	mv dist/playground/playground.html dist/playground/index.html
+	GOOS=js GOARCH=wasm go build -trimpath -ldflags "-s -w" -o dist/playground/bean.wasm ./cmd/beanwasm
+	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" dist/playground/wasm_exec.js
+	bun web/scripts/bundle-examples.mjs
 
 run: build
 	./bin/bean serve --db ./bean.db --addr 127.0.0.1:8080

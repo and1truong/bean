@@ -69,7 +69,7 @@ Build a populated local demo from typed metadata, or inspect an ordinary-definit
 ./bin/bean demo --app presentation --db ./tmp/presentation.db --addr 127.0.0.1:8080
 ```
 
-See [docs/agent-cli.md](docs/agent-cli.md) for the versioned envelope, diagnostic codes, exit statuses, inspection, semantic diff, and compatibility rules. Application authors can start with [Creating an application](docs/creating-an-app.md), use [Definitions](docs/definitions.md) as the reference, and consult [Content Blocks](docs/content-blocks.md) for static content, safe links/media, literal tables, tabs, and choices.
+See [docs/agent-cli.md](docs/agent-cli.md) for the versioned envelope, diagnostic codes, exit statuses, inspection, semantic diff, and compatibility rules. Application authors can start with [Creating an application](docs/creating-an-app.md), use [Definitions](docs/definitions.md) as the reference, and consult [Content Blocks](docs/content-blocks.md) for static content, safe links/media, literal tables, tabs, and choices. To try Bean without a server, `make playground` builds a static browser playground where the same Go compiler runs as WebAssembly — see [docs/playground.md](docs/playground.md).
 
 The provider-neutral protocol can also be called one-to-one or served to a local MCP host:
 
