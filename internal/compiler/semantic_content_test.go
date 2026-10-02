@@ -694,3 +694,109 @@ func TestExtendedSemanticCapabilitiesUseCompilerBounds(t *testing.T) {
 		t.Fatalf("semantic capability bounds=%+v", capabilities)
 	}
 }
+
+func flashcardCard(id, prompt, answer string) map[string]any {
+	return map[string]any{"id": id, "prompt": prompt, "answer": answer}
+}
+
+func flashcardSpec(cards []any) map[string]any {
+	return map[string]any{"type": "flashcard", "title": "Deck", "cards": cards}
+}
+
+func TestFlashcardBlockCompilesAndNormalizesAcrossSeams(t *testing.T) {
+	definitions := []definition.Definition{
+		semanticDefinition("Block", "deck", flashcardSpec([]any{
+			flashcardCard("card_b", "What is a Block?", "A named region of metadata-rendered content."),
+			flashcardCard("card_a", "What is a Panel?", "A layout region that hosts Blocks."),
+			flashcardCard("card_c", "What is AppIR?", "The immutable compiled application."),
+		})),
+		semanticDefinition("Panel", "panel", map[string]any{"layout": "single-column", "regions": []any{map[string]any{"name": "main", "blocks": []any{"deck"}}}}),
+		semanticDefinition("Sequence", "sequence", map[string]any{"route": "/sequence", "title": "Sequence", "profile": "presentation", "aspectRatio": "wide", "frames": []any{map[string]any{"name": "frame", "title": "Frame", "layout": "bullets", "panel": "panel"}}}),
+	}
+	result := compiler.Compile("flashcard", 1, definitions)
+	if len(result.Diagnostics) != 0 {
+		t.Fatal(result.Diagnostics)
+	}
+	deck := result.App.Blocks["deck"]
+	if deck.Title != "Deck" || len(deck.Cards) != 3 {
+		t.Fatalf("deck=%+v", deck)
+	}
+	if deck.Cards[0].ID != "card_b" || deck.Cards[0].Prompt != "What is a Block?" || deck.Cards[0].Answer != "A named region of metadata-rendered content." {
+		t.Fatalf("source order or literal text lost: %+v", deck.Cards[0])
+	}
+}
+
+func TestFlashcardRejectsInvalidContracts(t *testing.T) {
+	valid := []any{flashcardCard("one", "Prompt?", "Answer."), flashcardCard("two", "Prompt?", "Answer.")}
+	tests := []struct {
+		name, path string
+		spec       map[string]any
+	}{
+		{"missing title", "spec.title", map[string]any{"type": "flashcard", "cards": valid}},
+		{"blank title", "spec.title", map[string]any{"type": "flashcard", "title": " ", "cards": valid}},
+		{"title not string", "spec.title", map[string]any{"type": "flashcard", "title": 1, "cards": valid}},
+		{"missing cards", "spec.cards", map[string]any{"type": "flashcard", "title": "Deck"}},
+		{"cards not list", "spec.cards", map[string]any{"type": "flashcard", "title": "Deck", "cards": "cards"}},
+		{"empty cards", "spec.cards", map[string]any{"type": "flashcard", "title": "Deck", "cards": []any{}}},
+		{"single card", "spec.cards", flashcardSpec([]any{flashcardCard("one", "Prompt?", "Answer.")})},
+		{"twenty five cards", "spec.cards", flashcardSpec(func() []any {
+			cards := make([]any, 25)
+			for index := range cards {
+				cards[index] = flashcardCard(fmt.Sprintf("card_%d", index), "Prompt?", "Answer.")
+			}
+			return cards
+		}())},
+		{"card not object", "spec.cards.0", flashcardSpec([]any{"card", flashcardCard("two", "Prompt?", "Answer.")})},
+		{"foreign spec field", "spec.weight", map[string]any{"type": "flashcard", "title": "Deck", "cards": valid, "weight": "1"}},
+		{"foreign card field", "spec.cards.0.back", flashcardSpec([]any{map[string]any{"id": "one", "prompt": "Prompt?", "answer": "Answer.", "back": "Answer."}, flashcardCard("two", "Prompt?", "Answer.")})},
+		{"missing card id", "spec.cards.0.id", flashcardSpec([]any{map[string]any{"prompt": "Prompt?", "answer": "Answer."}, flashcardCard("two", "Prompt?", "Answer.")})},
+		{"missing prompt", "spec.cards.0.prompt", flashcardSpec([]any{map[string]any{"id": "one", "answer": "Answer."}, flashcardCard("two", "Prompt?", "Answer.")})},
+		{"missing answer", "spec.cards.0.answer", flashcardSpec([]any{map[string]any{"id": "one", "prompt": "Prompt?"}, flashcardCard("two", "Prompt?", "Answer.")})},
+		{"bad card id", "spec.cards.0.id", flashcardSpec([]any{flashcardCard("Bad id", "Prompt?", "Answer."), flashcardCard("two", "Prompt?", "Answer.")})},
+		{"duplicate card id", "spec.cards.1.id", flashcardSpec([]any{flashcardCard("one", "Prompt?", "Answer."), flashcardCard("one", "Prompt?", "Answer.")})},
+		{"non-string prompt", "spec.cards.0.prompt", flashcardSpec([]any{map[string]any{"id": "one", "prompt": 1, "answer": "Answer."}, flashcardCard("two", "Prompt?", "Answer.")})},
+		{"non-string answer", "spec.cards.0.answer", flashcardSpec([]any{map[string]any{"id": "one", "prompt": "Prompt?", "answer": 1}, flashcardCard("two", "Prompt?", "Answer.")})},
+		{"blank prompt", "spec.cards.0.prompt", flashcardSpec([]any{flashcardCard("one", " ", "Answer."), flashcardCard("two", "Prompt?", "Answer.")})},
+		{"blank answer", "spec.cards.0.answer", flashcardSpec([]any{flashcardCard("one", "Prompt?", "  "), flashcardCard("two", "Prompt?", "Answer.")})},
+		{"long prompt", "spec.cards.0.prompt", flashcardSpec([]any{flashcardCard("one", strings.Repeat("界", 241), "Answer."), flashcardCard("two", "Prompt?", "Answer.")})},
+		{"long answer", "spec.cards.0.answer", flashcardSpec([]any{flashcardCard("one", "Prompt?", strings.Repeat("界", 481)), flashcardCard("two", "Prompt?", "Answer.")})},
+		{"cards on timeline", "spec.cards", func() map[string]any {
+			spec := timelineSpec([]any{timelineEntry("one", "1440", "T", "")})
+			spec["cards"] = valid
+			return spec
+		}()},
+		{"cards on mindmap", "spec.cards", func() map[string]any {
+			spec := mindmapSpec(mindmapNode("topic", "Topic", "", []any{mindmapNode("a", "Alpha", "", nil), mindmapNode("b", "Beta", "", nil)}))
+			spec["cards"] = valid
+			return spec
+		}()},
+		{"title on tabs", "spec.title", map[string]any{"type": "tabs", "label": "Tabs", "title": "Deck", "tabs": []any{
+			map[string]any{"id": "one", "label": "One", "content": []any{map[string]any{"type": "paragraph", "text": "One"}}},
+			map[string]any{"id": "two", "label": "Two", "content": []any{map[string]any{"type": "paragraph", "text": "Two"}}},
+		}}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := compiler.Compile("invalid", 1, []definition.Definition{semanticDefinition("Block", "invalid", test.spec)})
+			if !hasSequenceDiagnostic(result.Diagnostics, "Block", "invalid", test.path, "BEAN-E2881") {
+				t.Fatalf("missing %s in %v", test.path, result.Diagnostics)
+			}
+		})
+	}
+}
+
+func TestSequenceDensityCountsFlashcardContent(t *testing.T) {
+	long := strings.Repeat("x", 240)
+	definitions := []definition.Definition{
+		semanticDefinition("Block", "deck", flashcardSpec([]any{
+			flashcardCard("one", long, long),
+			flashcardCard("two", long, long),
+		})),
+		semanticDefinition("Panel", "panel", map[string]any{"layout": "single-column", "regions": []any{map[string]any{"name": "main", "blocks": []any{"deck"}}}}),
+		semanticDefinition("Sequence", "sequence", map[string]any{"route": "/sequence", "title": "Sequence", "profile": "presentation", "aspectRatio": "wide", "frames": []any{map[string]any{"name": "frame", "title": "Frame", "layout": "bullets", "panel": "panel"}}}),
+	}
+	result := compiler.Compile("density", 1, definitions)
+	if !hasSequenceDiagnostic(result.Diagnostics, "Sequence", "sequence", "spec.frames.0", "BEAN-E2881") {
+		t.Fatalf("flashcard content was excluded from density: %v", result.Diagnostics)
+	}
+}

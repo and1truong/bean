@@ -181,6 +181,12 @@ layout: single-column
 regions:
   - {name: main, blocks: [bean_mindmap]}
 ---
+kind: Panel
+name: frame_flashcard
+layout: single-column
+regions:
+  - {name: main, blocks: [bean_flashcards]}
+---
 kind: Sequence
 name: bean_introduction
 route: /presentations/bean
@@ -208,4 +214,5 @@ frames:
   - {name: blackboard, title: "The blackboard lesson", direction: down, layout: bullets, panel: frame_blackboard, notes: "A bounded lesson renders ordered sections, a typed formula, and an illustration."}
   - {name: timeline, title: A literal timeline, direction: down, layout: bullets, panel: frame_timeline, notes: "Ordered milestones keep authored labels verbatim in source order."}
   - {name: mindmap, title: A literal mind map, direction: down, layout: bullets, panel: frame_mindmap, notes: "Branches nest topics in authored order; the DOM hierarchy carries the relationships."}
+  - {name: flashcards, title: A literal flashcard deck, direction: down, layout: bullets, panel: frame_flashcard, notes: "A bounded deck renders verbatim prompt and answer cards in source order."}
   - {name: start, title: Start with one useful workflow, direction: next, layout: closing, panel: frame_close, notes: "Close with the shortest runnable path."}

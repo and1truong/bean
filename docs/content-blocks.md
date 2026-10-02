@@ -206,6 +206,28 @@ Bounds: the root must have at least 2 branches, every node at most 8 `children`,
 
 The block renders a semantic `<article>` two ways from the same validated tree: on wide screens a decorative Mermaid SVG figure (Bean-owned serializer in `web/src/Mindmap.tsx` — authors never write Mermaid; node IDs become mermaid node keys so duplicate labels stay distinct, labels are quoted and entity-escaped, `securityLevel: 'strict'`, and the engine lazy-loads as one deferred chunk via the `web/src/mermaid.ts` adapter seam future diagram types can share), and always a nested `<ol>` tree with the root card — the DOM hierarchy carries the relationships for assistive technology, print, and narrow screens (below 40rem the SVG is hidden and the list is the layout) without relying on connector lines or color. Use a `mindmap` Block for authored literal hierarchies (a concept map, a syllabus outline); the `diagram` *element* is for short ordered flows (2–8 string steps), not nested trees.
 
+## Flashcards
+
+A `flashcard` Block renders a literal study deck: a required `title` plus an ordered `cards` list where every card is `{id, prompt, answer}`. Card `id` values are unique machine IDs within the deck, `prompt` (the front) and `answer` (the back) are literal text kept verbatim — never markup — and source order is the deck order; the runtime never shuffles.
+
+```yaml
+kind: Block
+name: bean_flashcards
+type: flashcard
+title: Bean vocabulary deck
+cards:
+  - id: block
+    prompt: "What is a Block?"
+    answer: "A named region of metadata-rendered content inside a Panel."
+  - id: panel
+    prompt: "What is a Panel?"
+    answer: "A layout region that hosts Blocks and inline content."
+```
+
+Bounds: 2–24 cards per deck, `title` at most 120 code points, `prompt` at most 240 and `answer` at most 480; card IDs are unique machine IDs. `cards` is rejected on every other Block type, and other Block payload fields are rejected on `flashcard`. Card counts, text bounds, and unique-ID rules are compiler-enforced; the published `block.schema.json` carries the field shapes.
+
+The block renders a semantic `<article>` whose ordered `<ol>` lists one disclosure button per card: the button shows the card position and prompt and expands to reveal the answer (`aria-expanded`), so every card is reachable by keyboard and touch; an optional deck-wide control hides all revealed answers at once. Reveal state lives in the component instance only — it resets when the enclosing Sequence frame or tab leaves (the same visibility-reset convention as quiz and media content) and when the card payload changes; no study progress persists. Use a `flashcard` Block for authored literal prompt/answer pairs; it is not a spaced-repetition or scoring engine.
+
 ## Exact versioned reference
 
 Run these commands against the Bean binary you deploy:

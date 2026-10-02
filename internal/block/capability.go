@@ -41,6 +41,7 @@ var capabilities = registry.Must(
 	entry("action", Specification{Component: "ActionBlock"}, actionProperties),
 	entry("content", Specification{Component: "ContentBlock", RequiresContent: true}, contentProperties),
 	entry("entity", Specification{Component: "EntityBlock"}, entityProperties),
+	entry("flashcard", Specification{Component: "FlashcardBlock"}, flashcardProperties),
 	entry("lesson", Specification{Component: "LessonBlock"}, lessonProperties),
 	entry("menu", Specification{Component: "MenuBlock"}, menuProperties),
 	entry("mindmap", Specification{Component: "MindmapBlock"}, mindmapProperties),
@@ -97,6 +98,12 @@ func timelineProperties(_ *appir.App, block appir.Block, _ beanctx.Request, prop
 
 func mindmapProperties(_ *appir.App, block appir.Block, _ beanctx.Request, props map[string]any) error {
 	props["root"] = block.Root
+	return nil
+}
+
+func flashcardProperties(_ *appir.App, block appir.Block, _ beanctx.Request, props map[string]any) error {
+	props["title"] = block.Title
+	props["cards"] = block.Cards
 	return nil
 }
 
