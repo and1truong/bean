@@ -2247,6 +2247,9 @@ func validateBlocks(a *appir.App, _ *validationState) []definition.Diagnostic {
 		if block.Type == "tabs" {
 			out = append(out, validateTabsBlock(name, block)...)
 		}
+		if block.Type == "lesson" {
+			out = append(out, validateLessonBlock(name, block)...)
+		}
 		if blockSpecification.RequiresEditorReadPolicy && (block.Policy == "" || !editorOnlyReadPolicy(a.Policies[block.Policy])) {
 			out = append(out, diagnostic("Block", name, "spec.policy", "resource-list Block must be restricted to editor and administrator roles"))
 		}
@@ -2484,6 +2487,8 @@ func validateContentElements(kind, name, contentPath string, elements []appir.Co
 			}
 		case "choices":
 			out = append(out, validateChoices(kind, name, path, element)...)
+		case "formula":
+			out = append(out, validateFormula(kind, name, path, element)...)
 		}
 		if element.Type == "callout" && !tones[element.Tone] {
 			out = append(out, sequenceDiagnostic(kind, name, path+".tone", "has no supported callout tone"))
@@ -2568,6 +2573,114 @@ func validateChoices(kind, name, path string, element appir.ContentElement) []de
 	}
 	if utf8.RuneCountInString(element.Explanation) > beancontent.MaxExplanationRunes {
 		out = append(out, sequenceDiagnostic(kind, name, path+".explanation", fmt.Sprintf("exceeds the maximum of %d code points", beancontent.MaxExplanationRunes)))
+	}
+	return out
+}
+
+func validateFormula(kind, name, path string, element appir.ContentElement) []definition.Diagnostic {
+	out := boundedTextDiagnostics(kind, name, path+".text", element.Text, beancontent.MaxFormulaAltRunes)
+	if element.Expr == nil {
+		return append(out, sequenceDiagnostic(kind, name, path+".expr", "is required"))
+	}
+	nodes, diagnostics := validateFormulaNode(kind, name, path+".expr", element.Expr, 1)
+	out = append(out, diagnostics...)
+	if nodes > beancontent.MaxFormulaNodes {
+		out = append(out, sequenceDiagnostic(kind, name, path+".expr", fmt.Sprintf("exceeds the maximum of %d formula nodes", beancontent.MaxFormulaNodes)))
+	}
+	return out
+}
+
+func validateFormulaNode(kind, name, path string, node *appir.FormulaNode, depth int) (int, []definition.Diagnostic) {
+	out := []definition.Diagnostic{}
+	if depth > beancontent.MaxFormulaDepth {
+		return 1, []definition.Diagnostic{sequenceDiagnostic(kind, name, path, fmt.Sprintf("exceeds the maximum formula nesting depth of %d", beancontent.MaxFormulaDepth))}
+	}
+	kinds, functions, parenStyles := nameSet(beancontent.FormulaKinds()), nameSet(beancontent.FormulaFunctions()), nameSet(beancontent.FormulaParenStyles())
+	if !kinds[node.Kind] {
+		return 1, []definition.Diagnostic{sequenceDiagnostic(kind, name, path+".kind", "has no supported formula node kind")}
+	}
+	total := 1
+	child := func(field string, node *appir.FormulaNode, required bool) {
+		if node == nil {
+			if required {
+				out = append(out, sequenceDiagnostic(kind, name, path+"."+field, "is required"))
+			}
+			return
+		}
+		nodes, diagnostics := validateFormulaNode(kind, name, path+"."+field, node, depth+1)
+		total += nodes
+		out = append(out, diagnostics...)
+	}
+	switch node.Kind {
+	case "literal":
+		if strings.TrimSpace(node.Text) == "" {
+			out = append(out, sequenceDiagnostic(kind, name, path+".text", "is required"))
+		} else if utf8.RuneCountInString(node.Text) > beancontent.MaxFormulaLiteralRunes {
+			out = append(out, sequenceDiagnostic(kind, name, path+".text", fmt.Sprintf("exceeds the maximum of %d code points", beancontent.MaxFormulaLiteralRunes)))
+		}
+	case "group":
+		if len(node.Parts) == 0 || len(node.Parts) > beancontent.MaxFormulaGroupParts {
+			out = append(out, sequenceDiagnostic(kind, name, path+".parts", fmt.Sprintf("must contain between 1 and %d formula nodes", beancontent.MaxFormulaGroupParts)))
+		}
+		for index := range node.Parts {
+			nodes, diagnostics := validateFormulaNode(kind, name, fmt.Sprintf("%s.parts.%d", path, index), &node.Parts[index], depth+1)
+			total += nodes
+			out = append(out, diagnostics...)
+		}
+	case "paren":
+		if !parenStyles[node.Style] {
+			out = append(out, sequenceDiagnostic(kind, name, path+".style", "must be round, square, brace, or abs"))
+		}
+		child("inner", node.Inner, true)
+	case "frac":
+		child("numerator", node.Numerator, true)
+		child("denominator", node.Denominator, true)
+	case "sqrt":
+		child("inner", node.Inner, true)
+	case "root":
+		child("inner", node.Inner, true)
+		child("index", node.Index, true)
+	case "sup":
+		child("base", node.Base, true)
+		child("exponent", node.Exponent, true)
+	case "sub":
+		child("base", node.Base, true)
+		child("subscript", node.Subscript, true)
+	case "func":
+		if !functions[node.Name] {
+			out = append(out, sequenceDiagnostic(kind, name, path+".name", "has no supported function name"))
+		}
+		child("argument", node.Argument, false)
+	case "sum":
+		child("lower", node.Lower, true)
+		child("upper", node.Upper, true)
+		child("body", node.Body, true)
+	}
+	return total, out
+}
+
+func validateLessonBlock(name string, block appir.Block) []definition.Diagnostic {
+	out := boundedTextDiagnostics("Block", name, "spec.title", block.Title, beancontent.MaxLabelRunes)
+	if len(block.Sections) < beancontent.MinLessonSections || len(block.Sections) > beancontent.MaxLessonSections {
+		out = append(out, sequenceDiagnostic("Block", name, "spec.sections", fmt.Sprintf("must contain between %d and %d sections", beancontent.MinLessonSections, beancontent.MaxLessonSections)))
+	}
+	seen, total := map[string]bool{}, 0
+	for index, section := range block.Sections {
+		path := fmt.Sprintf("spec.sections.%d", index)
+		if !beancontent.ValidMachineID(section.ID) {
+			out = append(out, sequenceDiagnostic("Block", name, path+".id", "must be a 1-64 character machine ID"))
+		} else if seen[section.ID] {
+			out = append(out, sequenceDiagnostic("Block", name, path+".id", "duplicates another section id"))
+		}
+		seen[section.ID] = true
+		if utf8.RuneCountInString(section.Heading) > beancontent.MaxLabelRunes {
+			out = append(out, sequenceDiagnostic("Block", name, path+".heading", fmt.Sprintf("exceeds the maximum of %d code points", beancontent.MaxLabelRunes)))
+		}
+		out = append(out, validateContentElements("Block", name, path+".content", section.Content)...)
+		total += len(section.Content)
+	}
+	if total > beancontent.MaxLessonElements {
+		out = append(out, sequenceDiagnostic("Block", name, "spec.sections", fmt.Sprintf("contains more than %d content elements across sections", beancontent.MaxLessonElements)))
 	}
 	return out
 }
@@ -3002,6 +3115,14 @@ func sequenceFrameWeight(a *appir.App, blocks []appir.Block) (int, map[string]bo
 			for _, tab := range block.Tabs {
 				weight += utf8.RuneCountInString(tab.Label) + beancontent.Weight(tab.Content)
 				for _, element := range tab.Content {
+					features[element.Type] = true
+				}
+			}
+		case "lesson":
+			weight += utf8.RuneCountInString(block.Title) + len(block.Sections)*20
+			for _, section := range block.Sections {
+				weight += utf8.RuneCountInString(section.Heading) + beancontent.Weight(section.Content)
+				for _, element := range section.Content {
 					features[element.Type] = true
 				}
 			}
@@ -4123,6 +4244,12 @@ func normalizeBlocks(a *appir.App) {
 			}
 			for index := range block.Tabs {
 				beancontent.Normalize(block.Tabs[index].Content)
+			}
+			a.Blocks[name] = block
+		}
+		if block.Type == "lesson" {
+			for index := range block.Sections {
+				beancontent.Normalize(block.Sections[index].Content)
 			}
 			a.Blocks[name] = block
 		}

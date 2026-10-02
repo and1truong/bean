@@ -2,6 +2,7 @@ import {useEffect,useId,useState} from 'react'
 import {Link} from 'react-router-dom'
 import {ContentElement} from './api'
 import {Choices} from './Choices'
+import {Formula} from './Formula'
 import {AudioContent,YouTubeContent} from './Media'
 import {Table,TableBody,TableCaption,TableCell,TableHead,TableHeader,TableRow} from '@/components/ui/table'
 
@@ -26,6 +27,7 @@ function ContentItem({element}:{element:ContentElement}){
   if(element.Type==='youtube')return <YouTubeContent kind="video" id={element.VideoID} title={element.Title} transcript={element.Transcript}/>
   if(element.Type==='youtube_playlist')return <YouTubeContent kind="playlist" id={element.PlaylistID} title={element.Title} transcript={element.Transcript}/>
   if(element.Type==='choices')return <Choices question={element.Question} choices={element.Choices} answer={element.Answer} explanation={element.Explanation}/>
+  if(element.Type==='formula')return <Formula expr={element.Expr} text={element.Text}/>
   return null
 }
 

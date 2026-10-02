@@ -47,6 +47,7 @@ Required means present, non-null, and of the declared type. Defaults apply only 
 | `youtube` | required `videoId`, `title`, `transcript` | Explicit privacy-enhanced embed loading from a validated ID. |
 | `youtube_playlist` | required `playlistId`, `title`, `transcript` | Explicit privacy-enhanced playlist loading from a validated ID. |
 | `choices` | required `question`, `choices`, `answer`; optional `explanation` | Browser-local single-choice quiz; see [Choices](#choices). |
+| `formula` | required `expr`, `text` | Bounded mathematical expression rendered as MathML with an always-visible text fallback; see [Formulas](#formulas). |
 
 ## Safe links and image sources
 
@@ -111,6 +112,60 @@ The question is non-blank and at most 240 code points. There are 2–6 `{id,text
 
 Choices use native radios in `fieldset`/`legend`. Selection does not grade until **Check answer**. Checking locks the radios, emits text feedback through a polite atomic live region, and shows non-empty explanation; **Try again** resets and focuses the first radio. State is isolated per mounted instance, has no fetch/storage/cookie/URL/backend path, and resets after leaving its frame/tab or replacing quiz content. The correct answer is intentionally present in the client payload.
 
+## Formulas
+
+```yaml
+- type: formula
+  text: "x equals (−b ± √(b² − 4ac)) / 2a"
+  expr:
+    kind: frac
+    numerator:
+      kind: group
+      parts:
+        - {kind: literal, text: "−b"}
+        - {kind: literal, text: "±"}
+        - kind: sqrt
+          inner:
+            kind: group
+            parts:
+              - {kind: sup, base: {kind: literal, text: "b"}, exponent: {kind: literal, text: "2"}}
+              - {kind: literal, text: "−4ac"}
+    denominator: {kind: literal, text: "2a"}
+```
+
+`expr` is a bounded, typed node tree — not TeX, markup, or a command language. `kind` selects the closed node vocabulary and its allowed fields; unknown kinds, foreign fields, and missing required children are rejected at compile time:
+
+| Kind | Required fields | Optional fields | Renders |
+| --- | --- | --- | --- |
+| `literal` | `text` | — | One number, operator, or identifier token (`mn`, `mo`, `mi`). |
+| `group` | `parts` | — | An `mrow` sequence of 1–24 nodes. |
+| `paren` | `inner` | `style` | Stretchy delimiters: `round` `()`, `square` `[]`, `brace` `{}`, `abs` `\|\|` (default `round`). |
+| `frac` | `numerator`, `denominator` | — | A fraction bar. |
+| `sqrt` | `inner` | — | Radical. |
+| `root` | `inner`, `index` | — | Indexed radical. |
+| `sup` | `base`, `exponent` | — | Superscript. |
+| `sub` | `base`, `subscript` | — | Subscript. |
+| `func` | `name` | `argument` | A closed function set (`sin`–`tan`, `ln`, `log`, `exp`, `lim`, `min`, `max`, and related) rendered upright, optionally followed by an argument node. |
+| `sum` | `lower`, `upper`, `body` | — | Summation with `∑` under/over scripts. |
+
+An expression holds at most 48 nodes nested at most 8 deep, a `literal` is at most 40 code points, and `text` is a non-blank readable fallback of at most 400 code points. The fallback is always rendered visibly as the formula caption — it is the accessible name, the print representation, and the rendering on clients without MathML. The visual `<math>` tree is `aria-hidden`; node text is literal element content, so markup inside a literal stays text. Keep the fallback equivalent to the expression; the compiler cannot verify prose accuracy.
+
+## Lessons
+
+A `lesson` Block renders a worked example or guided explanation: a title plus 1–8 ordered `sections`, each a `{id, heading?, content}` step of the same closed element contract (including `formula`, `image`, `diagram`, `table`, and `choices`). All section content lists together hold at most 48 elements, and section IDs are unique machine IDs. `sections` and `title` are rejected on every other Block type, and other Block payload fields are rejected on `lesson`.
+
+```yaml
+kind: Block
+name: blackboard_lesson
+type: lesson
+title: "Worked example: the quadratic formula"
+sections:
+  - {id: idea, heading: The idea, content: [{type: paragraph, text: "A quadratic has at most two roots."}]}
+  - {id: formula, heading: The formula, content: [{type: formula, text: "x equals …", expr: {kind: literal, text: "x"}}]}
+```
+
+The block renders a blackboard-styled surface: dark board, chalk-colored ink, numbered sections in reading order, and content reusing the standard element renderers — so literal-text escaping, image fallback, table keyboard scrolling, and quiz behavior keep their existing contracts. The lesson inherits the enclosing Policy boundary and counts toward Sequence frame density like any other Block.
+
 ## Exact versioned reference
 
 Run these commands against the Bean binary you deploy:
@@ -122,4 +177,4 @@ bean schema Panel --json
 bean app validate --file ./app.yaml
 ```
 
-The compiler enforces duplicate IDs, answer references, row widths, and the 24-element total across a Tabs Block because standard JSON Schema cannot express those relationships directly. See [Definitions](definitions.md#sequences-and-semantic-content) for Tabs and Sequence composition and [the presentation example](../examples/presentation/) for executable metadata.
+The compiler enforces duplicate IDs, answer references, row widths, the 24-element total across a Tabs Block, section ID uniqueness, the 48-element total across a lesson, and formula node bounds because standard JSON Schema cannot express those relationships directly. See [Definitions](definitions.md#sequences-and-semantic-content) for Tabs and Sequence composition and [the presentation example](../examples/presentation/) for executable metadata, including a blackboard lesson frame.

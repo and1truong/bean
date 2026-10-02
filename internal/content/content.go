@@ -12,28 +12,36 @@ import (
 )
 
 const (
-	MaxElements         = 12
-	MaxBulletItems      = 6
-	MaxDiagramItems     = 8
-	MaxCodeLines        = 120
-	MaxOrderedItems     = 6
-	MaxItemRunes        = 240
-	MaxLabelRunes       = 120
-	MaxTargetRunes      = 2048
-	MaxColumns          = 6
-	MaxRows             = 12
-	MaxColumnLabelRunes = 80
-	MaxMediaTitleRunes  = 120
-	MaxTranscriptRunes  = 4000
-	MinChoices          = 2
-	MaxChoices          = 6
-	MaxQuestionRunes    = 240
-	MaxChoiceTextRunes  = 120
-	MaxExplanationRunes = 400
-	MaxMachineIDRunes   = 64
-	MinTabs             = 2
-	MaxTabs             = 6
-	MaxTabElements      = 24
+	MaxElements            = 12
+	MaxBulletItems         = 6
+	MaxDiagramItems        = 8
+	MaxCodeLines           = 120
+	MaxOrderedItems        = 6
+	MaxItemRunes           = 240
+	MaxLabelRunes          = 120
+	MaxTargetRunes         = 2048
+	MaxColumns             = 6
+	MaxRows                = 12
+	MaxColumnLabelRunes    = 80
+	MaxMediaTitleRunes     = 120
+	MaxTranscriptRunes     = 4000
+	MinChoices             = 2
+	MaxChoices             = 6
+	MaxQuestionRunes       = 240
+	MaxChoiceTextRunes     = 120
+	MaxExplanationRunes    = 400
+	MaxMachineIDRunes      = 64
+	MinTabs                = 2
+	MaxTabs                = 6
+	MaxTabElements         = 24
+	MaxFormulaAltRunes     = 400
+	MaxFormulaLiteralRunes = 40
+	MaxFormulaGroupParts   = 24
+	MaxFormulaNodes        = 48
+	MaxFormulaDepth        = 8
+	MinLessonSections      = 1
+	MaxLessonSections      = 8
+	MaxLessonElements      = 48
 )
 
 var machineID = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
@@ -41,7 +49,7 @@ var videoID = regexp.MustCompile(`^[A-Za-z0-9_-]{11}$`)
 var playlistID = regexp.MustCompile(`^[A-Za-z0-9_-]{10,80}$`)
 
 func Types() []string {
-	return []string{"audio", "bullets", "callout", "choices", "code", "diagram", "divider", "heading", "image", "link", "ordered_list", "paragraph", "quote", "table", "youtube", "youtube_playlist"}
+	return []string{"audio", "bullets", "callout", "choices", "code", "diagram", "divider", "formula", "heading", "image", "link", "ordered_list", "paragraph", "quote", "table", "youtube", "youtube_playlist"}
 }
 
 func Tones() []string { return []string{"info", "success", "warning"} }
@@ -57,6 +65,16 @@ func RowHeaderModes() []string { return []string{"first", "none"} }
 func TabOrientations() []string { return []string{"horizontal", "vertical"} }
 
 func TabVariants() []string { return []string{"pills", "underline"} }
+
+func FormulaKinds() []string {
+	return []string{"frac", "func", "group", "literal", "paren", "root", "sqrt", "sub", "sum", "sup"}
+}
+
+func FormulaFunctions() []string {
+	return []string{"arg", "cos", "cosh", "cot", "csc", "deg", "det", "exp", "gcd", "inf", "lim", "ln", "log", "max", "min", "sec", "sin", "sinh", "sup", "tan", "tanh"}
+}
+
+func FormulaParenStyles() []string { return []string{"abs", "brace", "round", "square"} }
 
 func ValidMachineID(value string) bool {
 	return utf8.RuneCountInString(value) <= MaxMachineIDRunes && machineID.MatchString(value)
@@ -86,6 +104,24 @@ func Normalize(elements []appir.ContentElement) {
 		if elements[index].Type == "choices" && strings.TrimSpace(elements[index].Explanation) == "" {
 			elements[index].Explanation = ""
 		}
+		if elements[index].Type == "formula" {
+			normalizeFormula(elements[index].Expr)
+		}
+	}
+}
+
+func normalizeFormula(node *appir.FormulaNode) {
+	if node == nil {
+		return
+	}
+	if node.Kind == "paren" && node.Style == "" {
+		node.Style = "round"
+	}
+	for index := range node.Parts {
+		normalizeFormula(&node.Parts[index])
+	}
+	for _, child := range []*appir.FormulaNode{node.Inner, node.Numerator, node.Denominator, node.Index, node.Base, node.Exponent, node.Subscript, node.Argument, node.Lower, node.Upper, node.Body} {
+		normalizeFormula(child)
 	}
 }
 
@@ -128,7 +164,23 @@ func Weight(elements []appir.ContentElement) int {
 			for _, choice := range element.Choices {
 				total += utf8.RuneCountInString(choice.Text)
 			}
+		case "formula":
+			total += 40 + formulaWeight(element.Expr)
 		}
+	}
+	return total
+}
+
+func formulaWeight(node *appir.FormulaNode) int {
+	if node == nil {
+		return 0
+	}
+	total := 12 + utf8.RuneCountInString(node.Text) + utf8.RuneCountInString(node.Name)
+	for index := range node.Parts {
+		total += formulaWeight(&node.Parts[index])
+	}
+	for _, child := range []*appir.FormulaNode{node.Inner, node.Numerator, node.Denominator, node.Index, node.Base, node.Exponent, node.Subscript, node.Argument, node.Lower, node.Upper, node.Body} {
+		total += formulaWeight(child)
 	}
 	return total
 }

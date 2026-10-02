@@ -80,3 +80,46 @@ tabs:
   - {id: definition, label: Definition, content: [{type: paragraph, text: "Authors declare typed metadata."}]}
   - {id: compiler, label: Compiler, content: [{type: paragraph, text: "Validation and normalization produce immutable AppIR."}]}
   - {id: activation, label: Activation, content: [{type: paragraph, text: "A valid release activates atomically."}]}
+---
+# The lesson Block renders bounded worked-example content: ordered sections of
+# the same closed semantic vocabulary plus typed formula trees. It is the
+# checked-in lesson required by the blackboard output contract.
+kind: Block
+name: blackboard_lesson
+type: lesson
+title: "Worked example: the quadratic formula"
+sections:
+  - id: idea
+    heading: The idea
+    content:
+      - {type: paragraph, text: "The discriminant of ax²+bx+c=0 decides how many real roots exist."}
+      - {type: callout, tone: warning, text: "b² − 4ac < 0 means no real roots."}
+  - id: formula
+    heading: The formula
+    content:
+      - type: formula
+        text: "x equals (−b ± √(b² − 4ac)) / 2a"
+        expr:
+          kind: group
+          parts:
+            - {kind: literal, text: "x"}
+            - {kind: literal, text: "="}
+            - kind: frac
+              numerator:
+                kind: group
+                parts:
+                  - {kind: literal, text: "−b"}
+                  - {kind: literal, text: "±"}
+                  - kind: sqrt
+                    inner:
+                      kind: group
+                      parts:
+                        - kind: sup
+                          base: {kind: literal, text: "b"}
+                          exponent: {kind: literal, text: "2"}
+                        - {kind: literal, text: "−4ac"}
+              denominator: {kind: literal, text: "2a"}
+  - id: picture
+    heading: From form to roots
+    content:
+      - {type: diagram, direction: horizontal, items: ["ax²+bx+c=0", "b²−4ac", "(−b±√Δ)/2a"]}

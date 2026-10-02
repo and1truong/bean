@@ -39,6 +39,16 @@ Status: complete. Contract: [`GOAL.md`](../GOAL.md).
 - Focused verification passes: semantic compiler/content/block/release/AppIR Go tests; 70 semantic/App Vitest tests; and both presentation Playwright journeys. Generated schemas were refreshed with `go run ./cmd/bean schema --output schemas --json`.
 - Final qualification passes: `make check` (all Go/unit/integration/contracts/fuzz-smoke/compatibility/black-box/race checks, 117 Vitest tests, and 28 Playwright journeys) and `make build`.
 
+## Blackboard lessons
+
+Status: complete. Contract: [issue #61](https://github.com/and1truong/bean/issues/61).
+
+- Added the `formula` content element: a closed typed node tree (`literal`, `group`, `paren`, `frac`, `sqrt`, `root`, `sup`, `sub`, `func`, `sum`) validated through source-shape and compiler checks with per-kind field sets, function/paren-style enums, and node/depth/parts bounds — never TeX, markup, or a command language. A bounded `text` fallback renders visibly as the caption, carries the accessible name, and works without MathML.
+- Added `Block type: lesson`: a `title` plus 1–8 uniquely identified `sections` of the shared closed element contract (48 elements total). Other Block fields are rejected on `lesson`, and `title`/`sections` are rejected elsewhere, mirroring the Tabs contract.
+- Web renders `LessonBlock` as a blackboard surface — dark board, chalk ink, numbered sections in reading order — reusing `ContentBlock`, image fallback, tables, and quizzes inside sections; `Formula` renders MathML (`mfrac`, `msqrt`, `msup`, `munderover`, …) with literal node text escaped.
+- Added a checked-in worked lesson (`blackboard_lesson`, quadratic formula) and an eighteenth presentation frame, and documented the contract, node kinds, bounds, and fallback in [Content Blocks](content-blocks.md). Generated schemas and capabilities publish the new enums and bounds; AppIR v19 rejects formula/lesson payloads on both decoded and encoded paths.
+- Focused verification passes: compiler/content/block/AppIR Go tests and 13 semantic Vitest tests. Final qualification: `make check` and `make build`.
+
 ## Content Block authoring guide
 
 Status: complete. Contract: [`GOAL.md`](../GOAL.md).

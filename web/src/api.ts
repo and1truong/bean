@@ -21,6 +21,7 @@ export type PageFilter={Label?:string;Type?:string;Widget?:string;Default?:any;O
 type ContentBase={Type:string}
 export type TableColumn={id:string;Label:string}
 export type ContentChoice={id:string;Text:string}
+export type FormulaNode={Kind:string;Text?:string;Name?:string;Style?:string;Parts?:FormulaNode[];Inner?:FormulaNode;Numerator?:FormulaNode;Denominator?:FormulaNode;Index?:FormulaNode;Base?:FormulaNode;Exponent?:FormulaNode;Subscript?:FormulaNode;Argument?:FormulaNode;Lower?:FormulaNode;Upper?:FormulaNode;Body?:FormulaNode}
 export type ContentElement=
   | ContentBase&{Type:'heading';Text:string;Level?:2|3|4}
   | ContentBase&{Type:'paragraph';Text:string}
@@ -38,7 +39,9 @@ export type ContentElement=
   | ContentBase&{Type:'youtube';VideoID:string;Title:string;Transcript:string}
   | ContentBase&{Type:'youtube_playlist';PlaylistID:string;Title:string;Transcript:string}
   | ContentBase&{Type:'choices';Question:string;Choices:ContentChoice[];Answer:string;Explanation?:string}
+  | ContentBase&{Type:'formula';Expr:FormulaNode;Text:string}
 export type ContentTab={id:string;Label:string;Content:ContentElement[]}
+export type LessonSection={id:string;Heading?:string;Content:ContentElement[]}
 export type ViewPresentation={Mode?:string;TitleField?:string;BodyField?:string;LinkRoute?:string;LinkField?:string;EmptyState?:string;MetaFields?:string[];RichTextFields?:string[];GroupField?:string;OrderField?:string;ParentField?:string;MoveAction?:string;Columns?:string[];MetricField?:string;MetricLabel?:string;TimeField?:string;EndField?:string;SearchFields?:string[]}
 export type Node={component:string;props?:Record<string,any>;children?:Node[]}
 export class APIError extends Error{fields?:Record<string,string>;status?:number;constructor(message:string,fields?:Record<string,string>,status?:number){super(message);this.fields=fields;this.status=status}}
