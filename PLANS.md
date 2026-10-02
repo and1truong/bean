@@ -46,6 +46,17 @@ Contract: [issue #61](https://github.com/and1truong/bean/issues/61). Status: com
 | 4 | Checked-in worked lesson plus presentation frame | app validate, Playwright journey | done |
 | 5 | Docs, compatibility gates, qualification | AppIR format tests, `make check`, `make build` | done |
 
+# Literal timelines
+
+Contract: [issue #60](https://github.com/and1truong/bean/issues/60). Status: in progress.
+
+| Slice | Deliverable | Verification | Status |
+| --- | --- | --- | --- |
+| 1 | `Block type: timeline` with ordered verbatim-labeled entries | compiler/schema/source tests | done |
+| 2 | Shared React rendering: TimelineEntries rail, TimelineBlock | Vitest tests | done |
+| 3 | Checked-in timeline plus presentation frame | app validate, Playwright journey | done |
+| 4 | Docs, compatibility gates, qualification | AppIR format tests, `make check`, `make build` | in progress |
+
 # Content Block authoring guide
 
 Contract: `GOAL.md`. Status: complete.

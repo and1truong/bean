@@ -166,6 +166,22 @@ sections:
 
 The block renders a blackboard-styled surface: dark board, chalk-colored ink, numbered sections in reading order, and content reusing the standard element renderers — so literal-text escaping, image fallback, table keyboard scrolling, and quiz behavior keep their existing contracts. The lesson inherits the enclosing Policy boundary and counts toward Sequence frame density like any other Block.
 
+## Timelines
+
+A `timeline` Block renders an ordered set of literal milestones: a required `title` plus 1–16 `entries`, each `{id, label, title, description?}`. The entry `id` is a unique machine ID; `label` is a display label kept verbatim — a year, an era name, or a relative marker such as "Day 1" — and is never date-parsed or reformatted; `title` names the milestone and `description` is an optional explanation. Source order is the chronology: the compiler preserves it and the renderer never re-sorts from the label text.
+
+```yaml
+kind: Block
+name: history_timeline
+type: timeline
+title: "From writing to declarative apps"
+entries:
+  - {id: printing, label: "1440", title: "Movable type", description: "Text becomes reproducible at scale."}
+  - {id: agents, label: "Day 1", title: "Your first Bean definition", description: "Metadata becomes running software."}
+```
+
+Bounds: `title` and entry `title` at most 120 code points, `label` at most 80, `description` at most 400; entry IDs are unique machine IDs. `entries` is rejected on every other Block type, other Block payload fields are rejected on `timeline`, and `title` is only valid on `lesson` and `timeline` Blocks. The block renders a semantic `<article>` with an ordered `<ol>` rail — the same rail markup the record-backed View timeline uses — so it stays readable on narrow screens and announces its ordering. Use a `timeline` Block for authored literal content (a syllabus, a history, a roadmap); use a View `timeline` display when the entries live in stored records, since that path queries and formats `TimeField` values.
+
 ## Exact versioned reference
 
 Run these commands against the Bean binary you deploy:
@@ -177,4 +193,4 @@ bean schema Panel --json
 bean app validate --file ./app.yaml
 ```
 
-The compiler enforces duplicate IDs, answer references, row widths, the 24-element total across a Tabs Block, section ID uniqueness, the 48-element total across a lesson, and formula node bounds because standard JSON Schema cannot express those relationships directly. See [Definitions](definitions.md#sequences-and-semantic-content) for Tabs and Sequence composition and [the presentation example](../examples/presentation/) for executable metadata, including a blackboard lesson frame.
+The compiler enforces duplicate IDs, answer references, row widths, the 24-element total across a Tabs Block, section ID uniqueness, the 48-element total across a lesson, timeline entry ID uniqueness and entry bounds, and formula node bounds because standard JSON Schema cannot express those relationships directly. See [Definitions](definitions.md#sequences-and-semantic-content) for Tabs and Sequence composition and [the presentation example](../examples/presentation/) for executable metadata, including a blackboard lesson frame.

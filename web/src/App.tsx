@@ -15,6 +15,7 @@ import {SequenceView} from './Sequence'
 import {ContentBlock} from './Content'
 import {LessonBlock} from './Lesson'
 import {TabsBlock} from './Tabs'
+import {TimelineBlock,TimelineEntries} from './Timeline'
 import {ActiveFilters,DataTable,EmptyState,ErrorAlert,Field,FilterBar,LoadingState,Page,PageHeader,SectionCard,StatusAlert} from '@/components/bean'
 import {AlertDialog,AlertDialogAction,AlertDialogCancel,AlertDialogContent,AlertDialogDescription,AlertDialogFooter,AlertDialogHeader,AlertDialogTitle} from '@/components/ui/alert-dialog'
 import {Button} from '@/components/ui/button'
@@ -104,6 +105,7 @@ type RenderProps={
   ContentBlock:{content?:import('./api').ContentElement[]}
   TabsBlock:{label?:string;orientation?:'horizontal'|'vertical';variant?:'underline'|'pills';tabs?:import('./api').ContentTab[]}
   LessonBlock:{title?:string;sections?:import('./api').LessonSection[]}
+  TimelineBlock:{title?:string;entries?:import('./api').TimelineEntry[]}
   Sequence:{title?:string;description?:string;profile?:string;aspectRatio?:string;protected?:boolean}
   ViewBlock:{name?:string;view?:string;display?:ViewDisplay;displayName?:string;displays?:Record<string,ViewDisplay>;filters?:Record<string,ViewFilter>;pageFilters?:Record<string,string>;fieldTypes?:Record<string,string>;presentation?:ViewPresentation;searchFields?:string[];formattedFields?:string[];fileFields?:string[];maxRows?:number}
   EntityBlock:{name?:string;entity?:string;presentation?:ViewPresentation;formattedFields?:string[];fileFields?:string[]}
@@ -122,6 +124,7 @@ const nodeRenderers:{[K in RenderComponent]:NodeRenderer<K>}={
   ContentBlock:props=><ContentBlock content={props.content||[]}/>,
   TabsBlock:props=><TabsBlock label={props.label||''} orientation={props.orientation} variant={props.variant} tabs={props.tabs||[]}/>,
   LessonBlock:props=><LessonBlock title={props.title||''} sections={props.sections||[]}/>,
+  TimelineBlock:props=><TimelineBlock title={props.title||''} entries={props.entries||[]}/>,
   Sequence:(props,children)=><SequenceView {...props} children={children} renderNode={node=><Renderer node={node}/>}/>,
   ViewBlock:props=><ViewBlock name={props.view||''} block={props.name||''} display={props.display} displayName={props.displayName} displays={props.displays} filters={props.filters||{}} pageFilters={props.pageFilters||noPageFilters} fieldTypes={props.fieldTypes||{}} presentation={props.presentation||{}} searchFields={props.searchFields||[]} formattedFields={props.formattedFields||[]} fileFields={props.fileFields||[]} maxRows={props.maxRows}/>,
   EntityBlock:props=><ViewBlock name={(props.entity||'')+'_list'} block={props.name||''} presentation={props.presentation||{}} formattedFields={props.formattedFields||[]} fileFields={props.fileFields||[]}/>,
@@ -213,7 +216,7 @@ function ChartView({rows,presentation,drill,filters}:{rows:Row[];presentation:Vi
   })}</CardContent></Card>
 }
 function CalendarView({rows,presentation}:{rows:Row[];presentation:ViewPresentation}){return <ol className="grid gap-3 sm:grid-cols-2" data-testid="calendar-view">{[...rows].sort((a,b)=>String(a[presentation.TimeField||'']).localeCompare(String(b[presentation.TimeField||'']))).map(row=>{const start=formatDemoDate(row[presentation.TimeField||'']);const end=presentation.EndField?formatDemoDate(row[presentation.EndField]):'';return <li key={String(row.id)}><Card><CardHeader><CardTitle>{row[presentation.TitleField||'title']||row.id}</CardTitle><CardDescription>{start}{end?' – '+end:''}</CardDescription></CardHeader></Card></li>})}</ol>}
-function TimelineView({rows,presentation}:{rows:Row[];presentation:ViewPresentation}){return <ol className="relative space-y-6 border-l pl-6" data-testid="timeline-view">{rows.map(row=><li key={String(row.id)+JSON.stringify(row)}><span className="absolute -ml-[1.85rem] mt-1.5 size-3 rounded-full bg-primary"/><time className="text-sm text-muted-foreground">{formatDemoDate(row[presentation.TimeField||''])}</time><h3 className="font-semibold">{presentation.LinkRoute?<Link className="hover:underline" to={viewLink(presentation.LinkRoute,row)}>{row[presentation.TitleField||'title']}</Link>:row[presentation.TitleField||'title']}</h3>{presentation.BodyField?<p>{String(row[presentation.BodyField]??'')}</p>:null}{presentation.MetaFields?.length?<p className="text-sm text-muted-foreground">{presentation.MetaFields.map(field=>String(row[field]??'')).filter(Boolean).join(' · ')}</p>:null}</li>)}</ol>}
+function TimelineView({rows,presentation}:{rows:Row[];presentation:ViewPresentation}){return <TimelineEntries testid="timeline-view" items={rows.map(row=>({key:String(row.id)+JSON.stringify(row),label:<time className="text-sm text-muted-foreground">{formatDemoDate(row[presentation.TimeField||''])}</time>,title:<h3 className="font-semibold">{presentation.LinkRoute?<Link className="hover:underline" to={viewLink(presentation.LinkRoute,row)}>{row[presentation.TitleField||'title']}</Link>:row[presentation.TitleField||'title']}</h3>,body:presentation.BodyField?<p>{String(row[presentation.BodyField]??'')}</p>:undefined,meta:presentation.MetaFields?.length?<p className="text-sm text-muted-foreground">{presentation.MetaFields.map(field=>String(row[field]??'')).filter(Boolean).join(' · ')}</p>:undefined}))}/>}
 function formatDemoDate(value:any){const date=new Date(String(value));return Number.isNaN(date.valueOf())?String(value??''):new Intl.DateTimeFormat('en-US',{year:'numeric',month:'short',day:'numeric',timeZone:'UTC'}).format(date)}
 
 function mergeDetail(rows:Row[],meta:string[]){const result={...rows[0]};for(const field of meta){const values=[...new Set(rows.map(row=>row[field]).filter(value=>value!==null&&value!==undefined&&value!==''))];result[field]=values.join(', ')}return result}

@@ -427,11 +427,19 @@ func validateBlockContentSource(source definition.Definition) []definition.Diagn
 			}
 		}
 	}
+	if typeName != "lesson" && typeName != "timeline" {
+		if _, present := source.Spec["title"]; present {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec.title", "is only supported by a lesson or timeline Block"))
+		}
+	}
 	if typeName != "lesson" {
-		for _, field := range []string{"title", "sections"} {
-			if _, present := source.Spec[field]; present {
-				out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec."+field, "is only supported by a lesson Block"))
-			}
+		if _, present := source.Spec["sections"]; present {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec.sections", "is only supported by a lesson Block"))
+		}
+	}
+	if typeName != "timeline" {
+		if _, present := source.Spec["entries"]; present {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec.entries", "is only supported by a timeline Block"))
 		}
 	}
 	if typeName == "tabs" {
@@ -439,6 +447,62 @@ func validateBlockContentSource(source definition.Definition) []definition.Diagn
 	}
 	if typeName == "lesson" {
 		out = append(out, validateLessonBlockSource(source)...)
+	}
+	if typeName == "timeline" {
+		out = append(out, validateTimelineBlockSource(source)...)
+	}
+	return out
+}
+
+func validateTimelineBlockSource(source definition.Definition) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
+	allowed := map[string]bool{"type": true, "policy": true, "title": true, "entries": true}
+	for _, field := range keys(source.Spec) {
+		if !allowed[field] {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec."+field, "is not supported by a timeline Block"))
+		}
+	}
+	for _, field := range []string{"title", "entries"} {
+		if value, present := source.Spec[field]; !present || value == nil {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec."+field, "is required"))
+		}
+	}
+	if value, present := source.Spec["title"]; present && value != nil {
+		if _, ok := value.(string); !ok {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec.title", "must be a string"))
+		}
+	}
+	rawEntries, ok := source.Spec["entries"].([]any)
+	if !ok {
+		if _, present := source.Spec["entries"]; present && source.Spec["entries"] != nil {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec.entries", "must be a list of timeline entries"))
+		}
+		return out
+	}
+	for index, rawEntry := range rawEntries {
+		path := fmt.Sprintf("spec.entries.%d", index)
+		entry, ok := rawEntry.(map[string]any)
+		if !ok {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path, "must be an object"))
+			continue
+		}
+		for _, field := range keys(entry) {
+			if field != "id" && field != "label" && field != "title" && field != "description" {
+				out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path+"."+field, "is not supported by a timeline entry"))
+			}
+		}
+		for _, field := range []string{"id", "label", "title"} {
+			if value, present := entry[field]; !present || value == nil {
+				out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path+"."+field, "is required"))
+			}
+		}
+		for _, field := range []string{"id", "label", "title", "description"} {
+			if value, present := entry[field]; present && value != nil {
+				if _, ok := value.(string); !ok {
+					out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path+"."+field, "must be a string"))
+				}
+			}
+		}
 	}
 	return out
 }

@@ -344,6 +344,7 @@ type Block struct {
 	Tabs                                                                             []ContentTab    `json:",omitempty"`
 	Title                                                                            string          `json:",omitempty"`
 	Sections                                                                         []LessonSection `json:",omitempty"`
+	Entries                                                                          []TimelineEntry `json:",omitempty"`
 }
 type ContentElement struct {
 	Type, Text, Attribution, Source, Alt, Language, Tone, Direction string
@@ -433,6 +434,16 @@ type LessonSection struct {
 	ID      string `json:"id"`
 	Heading string `json:",omitempty"`
 	Content []ContentElement
+}
+
+// TimelineEntry is one ordered literal milestone: a stable machine ID, a
+// display label kept verbatim (a year, a period name, or a relative marker),
+// a title, and an optional explanation. Source order is the chronology.
+type TimelineEntry struct {
+	ID          string `json:"id"`
+	Label       string
+	Title       string
+	Description string `json:",omitempty"`
 }
 type ViewPresentation struct {
 	Mode, TitleField, BodyField, LinkRoute, LinkField, EmptyState string
@@ -691,7 +702,7 @@ func extendedSemanticContent(a *App) bool {
 		return false
 	}
 	for _, block := range a.Blocks {
-		if block.Type == "tabs" || block.Type == "lesson" || block.Label != "" || block.Orientation != "" || block.Variant != "" || block.Tabs != nil || block.Title != "" || block.Sections != nil || extended(block.Content) {
+		if block.Type == "tabs" || block.Type == "lesson" || block.Type == "timeline" || block.Label != "" || block.Orientation != "" || block.Variant != "" || block.Tabs != nil || block.Title != "" || block.Sections != nil || block.Entries != nil || extended(block.Content) {
 			return true
 		}
 		for _, tab := range block.Tabs {
@@ -919,7 +930,7 @@ func encodedExtendedSemanticFields(encoded []byte) bool {
 	blocks, _ := objectField(root, "Blocks").(map[string]any)
 	for _, rawBlock := range blocks {
 		block, _ := rawBlock.(map[string]any)
-		if hasObjectField(block, "Label", "Orientation", "Variant", "Tabs", "Title", "Sections") || encodedExtendedElements(objectField(block, "Content")) {
+		if hasObjectField(block, "Label", "Orientation", "Variant", "Tabs", "Title", "Sections", "Entries") || encodedExtendedElements(objectField(block, "Content")) {
 			return true
 		}
 	}

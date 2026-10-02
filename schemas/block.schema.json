@@ -843,6 +843,38 @@
       ],
       "type": "object"
     },
+    "github_com_beanruntime_bean_internal_appir_TimelineEntry": {
+      "additionalProperties": false,
+      "description": "Entry IDs are unique within the Block; the label is a literal display label preserved verbatim (no date parsing).",
+      "properties": {
+        "description": {
+          "maxLength": 400,
+          "pattern": "\\S",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 80,
+          "pattern": "\\S",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 120,
+          "pattern": "\\S",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "title"
+      ],
+      "type": "object"
+    },
     "github_com_beanruntime_bean_internal_appir_ViewPresentation": {
       "additionalProperties": false,
       "properties": {
@@ -1002,6 +1034,11 @@
             "required": [
               "sections"
             ]
+          },
+          {
+            "required": [
+              "entries"
+            ]
           }
         ]
       },
@@ -1108,6 +1145,11 @@
             "required": [
               "tabs"
             ]
+          },
+          {
+            "required": [
+              "entries"
+            ]
           }
         ]
       },
@@ -1120,6 +1162,117 @@
         "type",
         "title",
         "sections"
+      ]
+    },
+    {
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "view"
+            ]
+          },
+          {
+            "required": [
+              "display"
+            ]
+          },
+          {
+            "required": [
+              "entity"
+            ]
+          },
+          {
+            "required": [
+              "webform"
+            ]
+          },
+          {
+            "required": [
+              "action"
+            ]
+          },
+          {
+            "required": [
+              "menu"
+            ]
+          },
+          {
+            "required": [
+              "text"
+            ]
+          },
+          {
+            "required": [
+              "resource"
+            ]
+          },
+          {
+            "required": [
+              "inputs"
+            ]
+          },
+          {
+            "required": [
+              "bindings"
+            ]
+          },
+          {
+            "required": [
+              "filters"
+            ]
+          },
+          {
+            "required": [
+              "defaultFilters"
+            ]
+          },
+          {
+            "required": [
+              "presentation"
+            ]
+          },
+          {
+            "required": [
+              "content"
+            ]
+          },
+          {
+            "required": [
+              "label"
+            ]
+          },
+          {
+            "required": [
+              "orientation"
+            ]
+          },
+          {
+            "required": [
+              "variant"
+            ]
+          },
+          {
+            "required": [
+              "tabs"
+            ]
+          },
+          {
+            "required": [
+              "sections"
+            ]
+          }
+        ]
+      },
+      "properties": {
+        "type": {
+          "const": "timeline"
+        }
+      },
+      "required": [
+        "type",
+        "title",
+        "entries"
       ]
     },
     {
@@ -1153,6 +1306,11 @@
           {
             "required": [
               "sections"
+            ]
+          },
+          {
+            "required": [
+              "entries"
             ]
           }
         ]
@@ -1206,6 +1364,14 @@
     },
     "entity": {
       "type": "string"
+    },
+    "entries": {
+      "items": {
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_TimelineEntry"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "type": "array"
     },
     "filters": {
       "items": {
@@ -1288,6 +1454,7 @@
         "resource-list",
         "tabs",
         "text",
+        "timeline",
         "view",
         "webform"
       ],

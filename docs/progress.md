@@ -49,6 +49,15 @@ Status: complete. Contract: [issue #61](https://github.com/and1truong/bean/issue
 - Added a checked-in worked lesson (`blackboard_lesson`, quadratic formula) and an eighteenth presentation frame, and documented the contract, node kinds, bounds, and fallback in [Content Blocks](content-blocks.md). Generated schemas and capabilities publish the new enums and bounds; AppIR v19 rejects formula/lesson payloads on both decoded and encoded paths.
 - Focused verification passes: compiler/content/block/AppIR Go tests and 13 semantic Vitest tests. Final qualification: `make check` and `make build`.
 
+## Literal timelines
+
+Status: in progress. Contract: [issue #60](https://github.com/and1truong/bean/issues/60).
+
+- Added `Block type: timeline`: a `title` plus 1–16 ordered `entries` of `{id, label, title, description?}` with unique machine IDs. `label` is authored text kept verbatim (years, era names, relative markers like "Day 1") and never date-parsed; source order is the chronology. `entries` is rejected on other Block types, mirroring the Tabs/Lesson contract.
+- Extracted the shared `TimelineEntries` rail (ordered `<ol>` with rail dots) so `TimelineBlock` and the record-backed `TimelineView` share identical structure while the View query path is untouched. All text stays literal and escaped.
+- Added a checked-in `history_timeline` demo and a nineteenth presentation frame; capabilities and generated schemas publish the new type and bounds; AppIR v19 rejects timeline payloads on both decoded and encoded paths.
+- Focused verification passes: compiler/AppIR/block Go tests and semantic Vitest tests. Pending: `make check`, `make build`.
+
 ## Content Block authoring guide
 
 Status: complete. Contract: [`GOAL.md`](../GOAL.md).

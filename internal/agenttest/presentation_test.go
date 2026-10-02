@@ -25,7 +25,7 @@ func TestPresentationPromptRubricUsesOrdinaryDeterministicDefinitions(t *testing
 	}
 
 	sequence := first.App.Sequences["bean_introduction"]
-	if sequence.Route != "/presentations/bean" || sequence.Profile != "presentation" || len(sequence.Frames) != 18 {
+	if sequence.Route != "/presentations/bean" || sequence.Profile != "presentation" || len(sequence.Frames) != 19 {
 		t.Fatalf("sequence=%+v", sequence)
 	}
 	directions := map[string]int{}
@@ -36,7 +36,7 @@ func TestPresentationPromptRubricUsesOrdinaryDeterministicDefinitions(t *testing
 			t.Fatalf("frame %s does not compose an inspectable Panel", frame.Name)
 		}
 	}
-	if directions["next"] != 8 || directions["down"] != 10 {
+	if directions["next"] != 8 || directions["down"] != 11 {
 		t.Fatalf("directions=%v", directions)
 	}
 	view := first.App.Views["capabilities_by_area"]

@@ -417,6 +417,12 @@
     content: counter(beanLessonSection); border-color: #8fb8a0; color: #a7d5b9; }
   .bean-lesson-section-heading { @apply m-0 mb-3 font-heading text-lg font-semibold sm:text-xl; color: #cde3d3; }
 
+  .bean-timeline { @apply rounded-xl border p-5 shadow-sm sm:p-8; }
+  .bean-timeline-title { @apply m-0 mb-6 border-b pb-3 font-heading text-2xl font-semibold tracking-tight sm:text-3xl; }
+  .bean-timeline-label { @apply m-0 text-sm text-muted-foreground; }
+  .bean-timeline-entry-title { @apply m-0 font-semibold; }
+  .bean-timeline-description { @apply m-0; }
+
   .bean-formula { @apply max-w-full overflow-x-auto rounded-lg border border-dashed p-4 text-center; border-color: var(--border-strong); }
   .bean-formula:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
   .bean-formula math { @apply mx-auto; font-size: 1.35em; }

@@ -381,6 +381,92 @@ func TestSequenceDensityCountsLessonContent(t *testing.T) {
 	}
 }
 
+func TestTimelineBlockCompilesAndNormalizesAcrossSeams(t *testing.T) {
+	definitions := []definition.Definition{
+		semanticDefinition("Block", "timeline", timelineSpec([]any{
+			timelineEntry("second", "Day 1", "Second milestone", ""),
+			timelineEntry("first", "5th century BCE", "First milestone", "An era label stays literal."),
+		})),
+		semanticDefinition("Panel", "panel", map[string]any{"layout": "single-column", "regions": []any{map[string]any{"name": "main", "blocks": []any{"timeline"}}}}),
+		semanticDefinition("Sequence", "sequence", map[string]any{"route": "/sequence", "title": "Sequence", "profile": "presentation", "aspectRatio": "wide", "frames": []any{map[string]any{"name": "frame", "title": "Frame", "layout": "bullets", "panel": "panel"}}}),
+	}
+	result := compiler.Compile("timeline", 1, definitions)
+	if len(result.Diagnostics) != 0 {
+		t.Fatal(result.Diagnostics)
+	}
+	block := result.App.Blocks["timeline"]
+	if block.Title != "Timeline" || len(block.Entries) != 2 {
+		t.Fatalf("timeline=%+v", block)
+	}
+	if block.Entries[0].ID != "second" || block.Entries[0].Label != "Day 1" || block.Entries[0].Title != "Second milestone" || block.Entries[0].Description != "" {
+		t.Fatalf("source order or literal label lost: %+v", block.Entries[0])
+	}
+	if block.Entries[1].Label != "5th century BCE" || block.Entries[1].Description != "An era label stays literal." {
+		t.Fatalf("entry=%+v", block.Entries[1])
+	}
+}
+
+func TestTimelineRejectsInvalidContracts(t *testing.T) {
+	entry := timelineEntry("one", "1440", "Movable type", "")
+	tests := []struct {
+		name, path string
+		spec       map[string]any
+	}{
+		{"missing title", "spec.title", map[string]any{"type": "timeline", "entries": []any{entry}}},
+		{"long title", "spec.title", map[string]any{"type": "timeline", "title": strings.Repeat("界", 121), "entries": []any{entry}}},
+		{"missing entries", "spec.entries", map[string]any{"type": "timeline", "title": "Timeline"}},
+		{"empty entries", "spec.entries", timelineSpec([]any{})},
+		{"entries not a list", "spec.entries", map[string]any{"type": "timeline", "title": "Timeline", "entries": "entries"}},
+		{"foreign sections", "spec.sections", map[string]any{"type": "timeline", "title": "Timeline", "entries": []any{entry}, "sections": []any{}}},
+		{"foreign content", "spec.content", map[string]any{"type": "timeline", "title": "Timeline", "entries": []any{entry}, "content": []any{}}},
+		{"entries on lesson", "spec.entries", map[string]any{"type": "lesson", "title": "Lesson", "sections": []any{lessonSection("one", []any{map[string]any{"type": "divider"}})}, "entries": []any{entry}}},
+		{"bad entry id", "spec.entries.0.id", timelineSpec([]any{timelineEntry("Bad id", "1440", "T", "")})},
+		{"duplicate entry id", "spec.entries.1.id", timelineSpec([]any{entry, entry})},
+		{"missing entry id", "spec.entries.0.id", timelineSpec([]any{map[string]any{"label": "1440", "title": "T"}})},
+		{"missing entry label", "spec.entries.0.label", timelineSpec([]any{map[string]any{"id": "one", "title": "T"}})},
+		{"missing entry title", "spec.entries.0.title", timelineSpec([]any{map[string]any{"id": "one", "label": "1440"}})},
+		{"foreign entry field", "spec.entries.0.date", timelineSpec([]any{map[string]any{"id": "one", "label": "1440", "title": "T", "date": "1440"}})},
+		{"entry not object", "spec.entries.0", timelineSpec([]any{"entry"})},
+		{"blank label", "spec.entries.0.label", timelineSpec([]any{timelineEntry("one", " ", "T", "")})},
+		{"long label", "spec.entries.0.label", timelineSpec([]any{timelineEntry("one", strings.Repeat("界", 81), "T", "")})},
+		{"long entry title", "spec.entries.0.title", timelineSpec([]any{timelineEntry("one", "1440", strings.Repeat("界", 121), "")})},
+		{"long description", "spec.entries.0.description", timelineSpec([]any{timelineEntry("one", "1440", "T", strings.Repeat("界", 401))})},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := compiler.Compile("invalid", 1, []definition.Definition{semanticDefinition("Block", "invalid", test.spec)})
+			if !hasSequenceDiagnostic(result.Diagnostics, "Block", "invalid", test.path, "BEAN-E2881") {
+				t.Fatalf("missing %s in %v", test.path, result.Diagnostics)
+			}
+		})
+	}
+
+	seventeen := make([]any, 17)
+	for index := range seventeen {
+		seventeen[index] = timelineEntry(fmt.Sprintf("entry_%d", index), "1440", "T", "")
+	}
+	result := compiler.Compile("invalid", 1, []definition.Definition{semanticDefinition("Block", "invalid", timelineSpec(seventeen))})
+	if !hasSequenceDiagnostic(result.Diagnostics, "Block", "invalid", "spec.entries", "BEAN-E2881") {
+		t.Fatalf("17 entries accepted: %v", result.Diagnostics)
+	}
+}
+
+func TestSequenceDensityCountsTimelineContent(t *testing.T) {
+	long := strings.Repeat("x", 400)
+	definitions := []definition.Definition{
+		semanticDefinition("Block", "timeline", timelineSpec([]any{
+			timelineEntry("one", "1440", "First", long),
+			timelineEntry("two", "1945", "Second", long),
+		})),
+		semanticDefinition("Panel", "panel", map[string]any{"layout": "single-column", "regions": []any{map[string]any{"name": "main", "blocks": []any{"timeline"}}}}),
+		semanticDefinition("Sequence", "sequence", map[string]any{"route": "/sequence", "title": "Sequence", "profile": "presentation", "aspectRatio": "wide", "frames": []any{map[string]any{"name": "frame", "title": "Frame", "layout": "bullets", "panel": "panel"}}}),
+	}
+	result := compiler.Compile("density", 1, definitions)
+	if !hasSequenceDiagnostic(result.Diagnostics, "Sequence", "sequence", "spec.frames.0", "BEAN-E2881") {
+		t.Fatalf("timeline content was excluded from density: %v", result.Diagnostics)
+	}
+}
+
 func TestSequenceDensityCountsAllTabContent(t *testing.T) {
 	long := strings.Repeat("x", 400)
 	definitions := []definition.Definition{
@@ -426,6 +512,18 @@ func lessonSection(id string, content []any) map[string]any {
 
 func lessonSpec(sections []any) map[string]any {
 	return map[string]any{"type": "lesson", "title": "Lesson", "sections": sections}
+}
+
+func timelineEntry(id, label, title, description string) map[string]any {
+	entry := map[string]any{"id": id, "label": label, "title": title}
+	if description != "" {
+		entry["description"] = description
+	}
+	return entry
+}
+
+func timelineSpec(entries []any) map[string]any {
+	return map[string]any{"type": "timeline", "title": "Timeline", "entries": entries}
 }
 
 func tableElement(columns, rows []any, rowHeader string) map[string]any {
