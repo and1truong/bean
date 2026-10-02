@@ -59,14 +59,15 @@ Contract: [issue #60](https://github.com/and1truong/bean/issues/60). Status: com
 
 # Literal mind maps
 
-Contract: [issue #59](https://github.com/and1truong/bean/issues/59). Status: complete.
+Contract: [issue #59](https://github.com/and1truong/bean/issues/59). Status: in progress — renderer direction under review on [PR #64](https://github.com/and1truong/bean/pull/64). Evaluated nested-`<ol>` vs mermaid.js adapter vs Bean-owned radial SVG; recommendation: Bean-owned radial behind a reusable `layout → svg` adapter seam, accessible `<ol>` tree preserved (mermaid.js deferred: ~455KB gzip dep, weak SVG a11y, no mobile reflow).
 
 | Slice | Deliverable | Verification | Status |
 | --- | --- | --- | --- |
 | 1 | `Block type: mindmap` with a recursive `root` node tree (unique IDs, ordered branches) | compiler/schema/source tests | done |
-| 2 | Shared React rendering: MindmapBlock nested ordered lists | Vitest tests | done |
-| 3 | Checked-in mind map plus presentation frame | app validate, Playwright journey | done |
-| 4 | Docs, compatibility gates, qualification | AppIR format tests, `make check`, `make build` | done |
+| 2 | Shared React rendering: MindmapBlock nested ordered lists (accessible/print/narrow layer) | Vitest tests | done |
+| 3 | Visual layer per accepted direction (recommended: Bean-owned radial SVG) | coordinate/layout tests, e2e bilateral + narrow fallback | pending |
+| 4 | Checked-in mind map plus presentation frame | app validate, Playwright journey | done |
+| 5 | Docs, compatibility gates, qualification | AppIR format tests, `make check`, `make build` | pending |
 
 # Content Block authoring guide
 
