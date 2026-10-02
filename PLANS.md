@@ -48,14 +48,14 @@ Contract: [issue #61](https://github.com/and1truong/bean/issues/61). Status: com
 
 # Literal timelines
 
-Contract: [issue #60](https://github.com/and1truong/bean/issues/60). Status: in progress.
+Contract: [issue #60](https://github.com/and1truong/bean/issues/60). Status: complete.
 
 | Slice | Deliverable | Verification | Status |
 | --- | --- | --- | --- |
 | 1 | `Block type: timeline` with ordered verbatim-labeled entries | compiler/schema/source tests | done |
 | 2 | Shared React rendering: TimelineEntries rail, TimelineBlock | Vitest tests | done |
 | 3 | Checked-in timeline plus presentation frame | app validate, Playwright journey | done |
-| 4 | Docs, compatibility gates, qualification | AppIR format tests, `make check`, `make build` | in progress |
+| 4 | Docs, compatibility gates, qualification | AppIR format tests, `make check`, `make build` | done |
 
 # Content Block authoring guide
 
