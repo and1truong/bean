@@ -345,6 +345,7 @@ type Block struct {
 	Title                                                                            string          `json:",omitempty"`
 	Sections                                                                         []LessonSection `json:",omitempty"`
 	Entries                                                                          []TimelineEntry `json:",omitempty"`
+	Root                                                                             *MindMapNode    `json:",omitempty"`
 }
 type ContentElement struct {
 	Type, Text, Attribution, Source, Alt, Language, Tone, Direction string
@@ -444,6 +445,16 @@ type TimelineEntry struct {
 	Label       string
 	Title       string
 	Description string `json:",omitempty"`
+}
+
+// MindMapNode is one topic in a literal mind map: a stable machine ID, a
+// verbatim label, an optional explanation, and ordered child topics. Source
+// order is the branch order; the tree never sorts or re-layouts by text.
+type MindMapNode struct {
+	ID          string `json:"id"`
+	Label       string
+	Description string        `json:",omitempty"`
+	Children    []MindMapNode `json:",omitempty"`
 }
 type ViewPresentation struct {
 	Mode, TitleField, BodyField, LinkRoute, LinkField, EmptyState string
@@ -702,7 +713,7 @@ func extendedSemanticContent(a *App) bool {
 		return false
 	}
 	for _, block := range a.Blocks {
-		if block.Type == "tabs" || block.Type == "lesson" || block.Type == "timeline" || block.Label != "" || block.Orientation != "" || block.Variant != "" || block.Tabs != nil || block.Title != "" || block.Sections != nil || block.Entries != nil || extended(block.Content) {
+		if block.Type == "tabs" || block.Type == "lesson" || block.Type == "timeline" || block.Type == "mindmap" || block.Label != "" || block.Orientation != "" || block.Variant != "" || block.Tabs != nil || block.Title != "" || block.Sections != nil || block.Entries != nil || block.Root != nil || extended(block.Content) {
 			return true
 		}
 		for _, tab := range block.Tabs {
@@ -930,7 +941,7 @@ func encodedExtendedSemanticFields(encoded []byte) bool {
 	blocks, _ := objectField(root, "Blocks").(map[string]any)
 	for _, rawBlock := range blocks {
 		block, _ := rawBlock.(map[string]any)
-		if hasObjectField(block, "Label", "Orientation", "Variant", "Tabs", "Title", "Sections", "Entries") || encodedExtendedElements(objectField(block, "Content")) {
+		if hasObjectField(block, "Label", "Orientation", "Variant", "Tabs", "Title", "Sections", "Entries", "Root") || encodedExtendedElements(objectField(block, "Content")) {
 			return true
 		}
 	}

@@ -327,6 +327,13 @@
   .bean-sequence-toolbar { @apply flex flex-col gap-3 border-b bg-background px-4 py-3 lg:flex-row lg:items-center lg:justify-between; }
   .bean-sequence-stage { @apply flex flex-1 items-center justify-center p-3 sm:p-6; }
   .bean-sequence-frame { @apply relative hidden w-full max-w-7xl flex-col overflow-auto rounded-lg border bg-card p-6 text-card-foreground shadow-xl sm:p-10 lg:p-14; }
+  @media screen and (min-width: 40rem) {
+    .bean-sequence[data-aspect-ratio="wide"] .bean-sequence-frame { aspect-ratio: 16 / 9; }
+    .bean-sequence[data-aspect-ratio="standard"] .bean-sequence-frame { aspect-ratio: 4 / 3; }
+  }
+  @media screen and (max-width: 39.99rem) {
+    .bean-sequence-frame[data-active="true"] { flex: 1; }
+  }
   .bean-sequence-frame[data-active="true"] { @apply flex; }
   .bean-sequence-frame > h1 { @apply mb-6 font-heading text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl; }
   .bean-sequence-frame[data-layout="title"], .bean-sequence-frame[data-layout="section"], .bean-sequence-frame[data-layout="statement"], .bean-sequence-frame[data-layout="closing"] { @apply justify-center; }
@@ -422,6 +429,42 @@
   .bean-timeline-label { @apply m-0 text-sm text-muted-foreground; }
   .bean-timeline-entry-title { @apply m-0 font-semibold; }
   .bean-timeline-description { @apply m-0; }
+
+  .bean-mindmap { @apply relative rounded-xl border p-5 shadow-sm sm:p-8; overflow-wrap: anywhere; }
+  .bean-mindmap-figure { display: none; }
+  @media screen and (min-width: 40rem) {
+    .bean-mindmap-figure { display: flex; justify-content: center; height: min(26rem, 58vh); }
+    .bean-mindmap-figure svg { width: 100%; height: 100%; max-width: none !important; }
+    /* Restyle mermaid output to the Bean card language: outlined white nodes,
+       a dark root hub, light connector strokes. */
+    .bean-mindmap-figure .node rect, .bean-mindmap-figure .node circle, .bean-mindmap-figure .node ellipse, .bean-mindmap-figure .node polygon { fill: var(--card) !important; stroke: var(--border-strong) !important; stroke-width: 1.5px; }
+    .bean-mindmap-figure .section-root rect, .bean-mindmap-figure .section-root circle, .bean-mindmap-figure .section-root ellipse, .bean-mindmap-figure .section-root polygon { fill: var(--primary) !important; stroke: var(--primary) !important; }
+    .bean-mindmap-figure .section-root .nodeLabel { color: var(--primary-foreground) !important; }
+    .bean-mindmap-figure .nodeLabel { color: var(--foreground) !important; }
+    .bean-mindmap-figure .edgePaths path { stroke: var(--border-strong) !important; stroke-width: 3px !important; fill: none !important; }
+    .bean-mindmap-visual .bean-mindmap-dom { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); border: 0; white-space: nowrap; }
+  }
+  .bean-mindmap-dom { padding-bottom: 1.5rem; }
+  .bean-mindmap-root { @apply relative mx-auto mb-6 w-fit max-w-full rounded-xl border-2 px-6 py-4 text-center shadow-md; border-color: transparent; background: var(--primary); color: var(--primary-foreground); }
+  .bean-mindmap-root .bean-mindmap-root-description { color: inherit; opacity: 0.8; }
+  .bean-mindmap-root:has(+ .bean-mindmap-branches:not(:empty))::after { content: ""; position: absolute; left: calc(50% - 1px); top: 100%; height: calc(0.75rem + 3px); border-left: 2px solid var(--border-strong); }
+  .bean-mindmap-root-label { @apply m-0 font-heading text-xl font-semibold tracking-tight sm:text-2xl; }
+  .bean-mindmap-root-description { @apply m-0 mt-1 text-sm text-muted-foreground; }
+  .bean-mindmap-branches { margin: 0; padding: 0 0 0 1rem; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 0.75rem; position: relative; }
+  .bean-mindmap-branches::before { content: ""; position: absolute; left: 0; top: -0.75rem; width: 50%; border-top: 2px solid var(--border-strong); }
+  .bean-mindmap-branches > .bean-mindmap-branch::before { content: ""; position: absolute; left: -1rem; top: calc(-0.75rem - 1px); bottom: -0.75rem; border-left: 2px solid var(--border-strong); }
+  .bean-mindmap-branches > .bean-mindmap-branch:last-child::before { bottom: auto; height: calc(1.75rem + 1px); }
+  .bean-mindmap-branches > .bean-mindmap-branch::after { content: ""; position: absolute; left: -1rem; top: 1rem; width: calc(1rem + 1px); border-top: 2px solid var(--border-strong); }
+  .bean-mindmap-branch { min-width: 0; position: relative; }
+  .bean-mindmap-node { @apply rounded-lg border px-3 py-2; border-color: var(--border-strong); }
+  .bean-mindmap-node[data-depth='1'] { @apply border-2; }
+  .bean-mindmap-label { @apply m-0 font-semibold; }
+  .bean-mindmap-node[data-depth='1'] .bean-mindmap-label { @apply font-heading text-lg; }
+  .bean-mindmap-description { @apply m-0 mt-1 text-sm text-muted-foreground; }
+  .bean-mindmap-children { margin: 0.5rem 0 0; padding: 0 0 0 1rem; list-style: none; @apply space-y-2; }
+  .bean-mindmap-children > .bean-mindmap-branch::before { content: ""; position: absolute; left: -1rem; top: calc(-0.5rem - 2px); bottom: -0.5rem; border-left: 2px solid var(--border-strong); }
+  .bean-mindmap-children > .bean-mindmap-branch:last-child::before { bottom: auto; height: calc(1.5rem + 2px); }
+  .bean-mindmap-children > .bean-mindmap-branch::after { content: ""; position: absolute; left: -1rem; top: 1rem; width: calc(1rem + 1px); border-top: 2px solid var(--border-strong); }
 
   .bean-formula { @apply max-w-full overflow-x-auto rounded-lg border border-dashed p-4 text-center; border-color: var(--border-strong); }
   .bean-formula:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }

@@ -117,6 +117,12 @@ type Capabilities struct {
 	MaxTimelineEntries         int      `json:"maxTimelineEntries"`
 	MaxTimelineLabelRunes      int      `json:"maxTimelineLabelRunes"`
 	MaxTimelineDetailRunes     int      `json:"maxTimelineDetailRunes"`
+	MinMindMapChildren         int      `json:"minMindMapChildren"`
+	MaxMindMapChildren         int      `json:"maxMindMapChildren"`
+	MaxMindMapNodes            int      `json:"maxMindMapNodes"`
+	MaxMindMapDepth            int      `json:"maxMindMapDepth"`
+	MaxMindMapLabelRunes       int      `json:"maxMindMapLabelRunes"`
+	MaxMindMapDetailRunes      int      `json:"maxMindMapDetailRunes"`
 	DatabaseBackends           []string `json:"databaseBackends"`
 	MaxViewLimit               int      `json:"maxViewLimit"`
 	MaxFileBytes               int      `json:"maxFileBytes"`
@@ -257,6 +263,12 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 		MaxTimelineEntries:         beancontent.MaxTimelineEntries,
 		MaxTimelineLabelRunes:      beancontent.MaxTimelineLabelRunes,
 		MaxTimelineDetailRunes:     beancontent.MaxTimelineDetailRunes,
+		MinMindMapChildren:         beancontent.MinMindMapChildren,
+		MaxMindMapChildren:         beancontent.MaxMindMapChildren,
+		MaxMindMapNodes:            beancontent.MaxMindMapNodes,
+		MaxMindMapDepth:            beancontent.MaxMindMapDepth,
+		MaxMindMapLabelRunes:       beancontent.MaxMindMapLabelRunes,
+		MaxMindMapDetailRunes:      beancontent.MaxMindMapDetailRunes,
 		DatabaseBackends:           []string{"postgresql", "sqlite"},
 		MaxViewLimit:               200,
 		MaxFileBytes:               field.MaxFileBytes,
@@ -494,14 +506,15 @@ func definitionSchema(kind string, specification reflect.Type) map[string]any {
 			tabsOnly = append(tabsOnly, map[string]any{"required": []string{field}})
 		}
 		markers := []any{}
-		for _, field := range []string{"title", "sections", "entries"} {
+		for _, field := range []string{"title", "sections", "entries", "root"} {
 			markers = append(markers, map[string]any{"required": []string{field}})
 		}
 		document["oneOf"] = []any{
 			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "tabs"}}, "required": []string{"type", "label", "tabs"}, "not": map[string]any{"anyOf": append(append([]any{}, forbidden...), markers...)}},
-			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "lesson"}}, "required": []string{"type", "title", "sections"}, "not": map[string]any{"anyOf": append(append(append([]any{}, forbidden...), tabsOnly...), markers[2:3]...)}},
-			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "timeline"}}, "required": []string{"type", "title", "entries"}, "not": map[string]any{"anyOf": append(append(append([]any{}, forbidden...), tabsOnly...), markers[1:2]...)}},
-			map[string]any{"properties": map[string]any{"type": map[string]any{"enum": without(block.Names(), "tabs", "lesson", "timeline")}}, "required": []string{"type"}, "not": map[string]any{"anyOf": append(append([]any{}, tabsOnly...), markers...)}},
+			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "lesson"}}, "required": []string{"type", "title", "sections"}, "not": map[string]any{"anyOf": append(append(append([]any{}, forbidden...), tabsOnly...), markers[2:4]...)}},
+			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "timeline"}}, "required": []string{"type", "title", "entries"}, "not": map[string]any{"anyOf": append(append(append(append([]any{}, forbidden...), tabsOnly...), markers[1:2]...), markers[3:4]...)}},
+			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "mindmap"}}, "required": []string{"type", "root"}, "not": map[string]any{"anyOf": append(append(append([]any{}, forbidden...), tabsOnly...), markers[:3]...)}},
+			map[string]any{"properties": map[string]any{"type": map[string]any{"enum": without(block.Names(), "tabs", "lesson", "timeline", "mindmap")}}, "required": []string{"type"}, "not": map[string]any{"anyOf": append(append([]any{}, tabsOnly...), markers...)}},
 		}
 	}
 	if kind == "Rule" {
@@ -617,6 +630,15 @@ func semanticContentSchemaDefinitions(definitions map[string]any) {
 			properties["label"] = boundedString(beancontent.MaxTimelineLabelRunes)
 			properties["title"] = boundedString(beancontent.MaxLabelRunes)
 			properties["description"] = boundedString(beancontent.MaxTimelineDetailRunes)
+		case strings.HasSuffix(name, "internal_appir_MindMapNode"):
+			schema["required"] = []string{"id", "label"}
+			schema["description"] = "Node IDs are unique across the mind map; labels are literal text kept verbatim."
+			properties := schema["properties"].(map[string]any)
+			delete(properties, "iD")
+			properties["id"] = machineIDSchema()
+			properties["label"] = boundedString(beancontent.MaxMindMapLabelRunes)
+			properties["description"] = boundedString(beancontent.MaxMindMapDetailRunes)
+			properties["children"].(map[string]any)["maxItems"] = beancontent.MaxMindMapChildren
 		case strings.HasSuffix(name, "internal_appir_FormulaNode"):
 			definitions[name] = formulaNodeSchema(name)
 		}

@@ -469,6 +469,115 @@ func TestSequenceDensityCountsTimelineContent(t *testing.T) {
 	}
 }
 
+func TestMindMapBlockCompilesAndNormalizesAcrossSeams(t *testing.T) {
+	definitions := []definition.Definition{
+		semanticDefinition("Block", "mindmap", mindmapSpec(mindmapNode("topic", "Bean", "Declarative apps", []any{
+			mindmapNode("branch_b", "Definitions", "", []any{
+				mindmapNode("entities", "Entities", "Fields and storage", nil),
+				mindmapNode("views", "Views", "", nil),
+			}),
+			mindmapNode("branch_a", "Runtime", "", nil),
+		}))),
+		semanticDefinition("Panel", "panel", map[string]any{"layout": "single-column", "regions": []any{map[string]any{"name": "main", "blocks": []any{"mindmap"}}}}),
+		semanticDefinition("Sequence", "sequence", map[string]any{"route": "/sequence", "title": "Sequence", "profile": "presentation", "aspectRatio": "wide", "frames": []any{map[string]any{"name": "frame", "title": "Frame", "layout": "bullets", "panel": "panel"}}}),
+	}
+	result := compiler.Compile("mindmap", 1, definitions)
+	if len(result.Diagnostics) != 0 {
+		t.Fatal(result.Diagnostics)
+	}
+	root := result.App.Blocks["mindmap"].Root
+	if root == nil || root.Label != "Bean" || len(root.Children) != 2 {
+		t.Fatalf("root=%+v", root)
+	}
+	if root.Children[0].ID != "branch_b" || root.Children[0].Children[0].ID != "entities" {
+		t.Fatalf("source order lost: %+v", root.Children[0])
+	}
+	if root.Children[0].Children[0].Description != "Fields and storage" {
+		t.Fatalf("node=%+v", root.Children[0].Children[0])
+	}
+}
+
+func TestMindMapRejectsInvalidContracts(t *testing.T) {
+	twoBranches := func() map[string]any {
+		return mindmapNode("topic", "Topic", "", []any{mindmapNode("a", "Alpha", "", nil), mindmapNode("b", "Beta", "", nil)})
+	}
+	tests := []struct {
+		name, path string
+		spec       map[string]any
+	}{
+		{"missing root", "spec.root", map[string]any{"type": "mindmap"}},
+		{"root not object", "spec.root", map[string]any{"type": "mindmap", "root": "topic"}},
+		{"single root branch", "spec.root.children", mindmapSpec(mindmapNode("topic", "Topic", "", []any{mindmapNode("a", "Alpha", "", nil)}))},
+		{"empty root children", "spec.root.children", mindmapSpec(mindmapNode("topic", "Topic", "", []any{}))},
+		{"foreign spec field", "spec.title", map[string]any{"type": "mindmap", "title": "T", "root": twoBranches()}},
+		{"foreign node field", "spec.root.children.0.weight", mindmapSpec(mindmapNode("topic", "Topic", "", []any{
+			map[string]any{"id": "a", "label": "Alpha", "weight": "1"}, mindmapNode("b", "Beta", "", nil)}))},
+		{"missing node id", "spec.root.children.0.id", mindmapSpec(mindmapNode("topic", "Topic", "", []any{
+			map[string]any{"label": "Alpha"}, mindmapNode("b", "Beta", "", nil)}))},
+		{"missing node label", "spec.root.label", mindmapSpec(map[string]any{"id": "topic", "children": []any{mindmapNode("a", "Alpha", "", nil), mindmapNode("b", "Beta", "", nil)}})},
+		{"bad node id", "spec.root.children.0.id", mindmapSpec(mindmapNode("topic", "Topic", "", []any{mindmapNode("Bad id", "Alpha", "", nil), mindmapNode("b", "Beta", "", nil)}))},
+		{"duplicate id across tree", "spec.root.children.1.children.0.id", mindmapSpec(mindmapNode("topic", "Topic", "", []any{
+			mindmapNode("a", "Alpha", "", nil),
+			mindmapNode("b", "Beta", "", []any{mindmapNode("a", "Nested", "", nil)})}))},
+		{"long label", "spec.root.children.0.label", mindmapSpec(mindmapNode("topic", "Topic", "", []any{mindmapNode("a", strings.Repeat("界", 81), "", nil), mindmapNode("b", "Beta", "", nil)}))},
+		{"blank description", "spec.root.children.0.description", mindmapSpec(mindmapNode("topic", "Topic", "", []any{mindmapNode("a", "Alpha", "  ", nil), mindmapNode("b", "Beta", "", nil)}))},
+		{"long description", "spec.root.children.0.description", mindmapSpec(mindmapNode("topic", "Topic", "", []any{mindmapNode("a", "Alpha", strings.Repeat("界", 241), nil), mindmapNode("b", "Beta", "", nil)}))},
+		{"children not list", "spec.root.children", mindmapSpec(map[string]any{"id": "topic", "label": "Topic", "children": "branches"})},
+		{"child not object", "spec.root.children.0", mindmapSpec(map[string]any{"id": "topic", "label": "Topic", "children": []any{"a", map[string]any{"id": "b", "label": "Beta"}}})},
+		{"nine children", "spec.root.children", mindmapSpec(func() map[string]any {
+			kids := make([]any, 9)
+			for index := range kids {
+				kids[index] = mindmapNode(fmt.Sprintf("kid_%d", index), "Topic", "", nil)
+			}
+			return mindmapNode("topic", "Topic", "", kids)
+		}())},
+		{"depth exceeded", "spec.root.children.0.children.0.children.0.children", mindmapSpec(mindmapNode("topic", "Topic", "", []any{
+			mindmapNode("a", "Alpha", "", []any{mindmapNode("b", "Beta", "", []any{mindmapNode("c", "Gamma", "", []any{mindmapNode("d", "Delta", "", nil)})})}),
+			mindmapNode("other", "Other", "", nil)}))},
+		{"entries on mindmap", "spec.entries", map[string]any{"type": "mindmap", "root": twoBranches(), "entries": []any{}}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := compiler.Compile("invalid", 1, []definition.Definition{semanticDefinition("Block", "invalid", test.spec)})
+			if !hasSequenceDiagnostic(result.Diagnostics, "Block", "invalid", test.path, "BEAN-E2881") {
+				t.Fatalf("missing %s in %v", test.path, result.Diagnostics)
+			}
+		})
+	}
+
+	// 33 nodes: root + 8 branches + 4 leaves each on 6 branches = 41 attempts.
+	large := make([]any, 8)
+	for index := range large {
+		leaves := []any{}
+		if index < 6 {
+			for leaf := 0; leaf < 4; leaf++ {
+				leaves = append(leaves, mindmapNode(fmt.Sprintf("leaf_%d_%d", index, leaf), "Leaf", "", nil))
+			}
+		}
+		large[index] = mindmapNode(fmt.Sprintf("branch_%d", index), "Branch", "", leaves)
+	}
+	result := compiler.Compile("invalid", 1, []definition.Definition{semanticDefinition("Block", "invalid", mindmapSpec(mindmapNode("topic", "Topic", "", large)))})
+	if !hasSequenceDiagnostic(result.Diagnostics, "Block", "invalid", "spec.root", "BEAN-E2881") {
+		t.Fatalf("33 nodes accepted: %v", result.Diagnostics)
+	}
+}
+
+func TestSequenceDensityCountsMindMapContent(t *testing.T) {
+	long := strings.Repeat("x", 240)
+	definitions := []definition.Definition{
+		semanticDefinition("Block", "mindmap", mindmapSpec(mindmapNode("topic", "Topic", long, []any{
+			mindmapNode("a", "Alpha", long, []any{mindmapNode("b", "Beta", long, nil)}),
+			mindmapNode("c", "Gamma", long, nil),
+		}))),
+		semanticDefinition("Panel", "panel", map[string]any{"layout": "single-column", "regions": []any{map[string]any{"name": "main", "blocks": []any{"mindmap"}}}}),
+		semanticDefinition("Sequence", "sequence", map[string]any{"route": "/sequence", "title": "Sequence", "profile": "presentation", "aspectRatio": "wide", "frames": []any{map[string]any{"name": "frame", "title": "Frame", "layout": "bullets", "panel": "panel"}}}),
+	}
+	result := compiler.Compile("density", 1, definitions)
+	if !hasSequenceDiagnostic(result.Diagnostics, "Sequence", "sequence", "spec.frames.0", "BEAN-E2881") {
+		t.Fatalf("mindmap content was excluded from density: %v", result.Diagnostics)
+	}
+}
+
 func TestSequenceDensityCountsAllTabContent(t *testing.T) {
 	long := strings.Repeat("x", 400)
 	definitions := []definition.Definition{
@@ -526,6 +635,21 @@ func timelineEntry(id, label, title, description string) map[string]any {
 
 func timelineSpec(entries []any) map[string]any {
 	return map[string]any{"type": "timeline", "title": "Timeline", "entries": entries}
+}
+
+func mindmapNode(id, label, description string, children []any) map[string]any {
+	node := map[string]any{"id": id, "label": label}
+	if description != "" {
+		node["description"] = description
+	}
+	if children != nil {
+		node["children"] = children
+	}
+	return node
+}
+
+func mindmapSpec(root map[string]any) map[string]any {
+	return map[string]any{"type": "mindmap", "root": root}
 }
 
 func tableElement(columns, rows []any, rowHeader string) map[string]any {

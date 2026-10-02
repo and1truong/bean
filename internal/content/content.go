@@ -46,6 +46,12 @@ const (
 	MaxTimelineEntries     = 16
 	MaxTimelineLabelRunes  = 80
 	MaxTimelineDetailRunes = 400
+	MinMindMapChildren     = 2
+	MaxMindMapChildren     = 8
+	MaxMindMapNodes        = 32
+	MaxMindMapDepth        = 4
+	MaxMindMapLabelRunes   = 80
+	MaxMindMapDetailRunes  = 240
 )
 
 var machineID = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)

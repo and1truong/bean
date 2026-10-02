@@ -182,6 +182,30 @@ entries:
 
 Bounds: `title` and entry `title` at most 120 code points, `label` at most 80, `description` at most 400 and non-blank when present; entry IDs are unique machine IDs. `entries` is rejected on every other Block type, other Block payload fields are rejected on `timeline`, and `title` is only valid on `lesson` and `timeline` Blocks. The block renders a semantic `<article>` with an ordered `<ol>` rail — the same rail markup the record-backed View timeline uses — so it stays readable on narrow screens and announces its ordering. Use a `timeline` Block for authored literal content (a syllabus, a history, a roadmap); use a View `timeline` display when the entries live in stored records, since that path queries and formats `TimeField` values.
 
+## Mind maps
+
+A `mindmap` Block renders a central topic with ordered branches and nested subtopics: a required `root` node `{id, label, description?, children?}` where every `children` entry is the same node shape recursively. Node `id` values are unique machine IDs across the whole tree, `label` is literal text kept verbatim, and `description` is an optional short explanation. Source order is the branch order — the compiler preserves it and the renderer never re-sorts or re-layouts from the text.
+
+```yaml
+kind: Block
+name: bean_mindmap
+type: mindmap
+root:
+  id: bean
+  label: "Bean"
+  description: "Declarative semantics to running software"
+  children:
+    - id: definitions
+      label: "Definitions"
+      children:
+        - {id: entities, label: "Entities"}
+        - {id: views, label: "Views"}
+```
+
+Bounds: the root must have at least 2 branches, every node at most 8 `children`, at most 32 nodes total, and at most depth 4 (the root is depth 1); `label` at most 80 code points, `description` at most 240 and non-blank when present; node IDs are unique machine IDs. `root` is rejected on every other Block type, and other Block payload fields are rejected on `mindmap`. Per-node, total-node, and depth limits are compiler-enforced; the published `block.schema.json` carries the field shapes.
+
+The block renders a semantic `<article>` two ways from the same validated tree: on wide screens a decorative Mermaid SVG figure (Bean-owned serializer in `web/src/Mindmap.tsx` — authors never write Mermaid; node IDs become mermaid node keys so duplicate labels stay distinct, labels are quoted and entity-escaped, `securityLevel: 'strict'`, and the engine lazy-loads as one deferred chunk via the `web/src/mermaid.ts` adapter seam future diagram types can share), and always a nested `<ol>` tree with the root card — the DOM hierarchy carries the relationships for assistive technology, print, and narrow screens (below 40rem the SVG is hidden and the list is the layout) without relying on connector lines or color. Use a `mindmap` Block for authored literal hierarchies (a concept map, a syllabus outline); the `diagram` *element* is for short ordered flows (2–8 string steps), not nested trees.
+
 ## Exact versioned reference
 
 Run these commands against the Bean binary you deploy:
