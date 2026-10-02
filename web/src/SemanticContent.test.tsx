@@ -1,12 +1,12 @@
 import {fireEvent,render,screen,within} from '@testing-library/react'
 import {MemoryRouter} from 'react-router-dom'
-import {describe,expect,it} from 'vitest'
+import {describe,expect,it,vi} from 'vitest'
 import {ContentBlock} from './Content'
 import {ContentVisibility} from './ContentVisibility'
 import {LessonBlock} from './Lesson'
 import {TabsBlock} from './Tabs'
 import {TimelineBlock} from './Timeline'
-import {MindmapBlock} from './Mindmap'
+import {MindmapBlock,mindmapSyntax} from './Mindmap'
 import type {ContentElement,ContentTab,FormulaNode} from './api'
 
 function content(elements:ContentElement[]){return render(<MemoryRouter><ContentBlock content={elements}/></MemoryRouter>)}
@@ -165,14 +165,30 @@ describe('Timeline Block',()=>{
   })
 })
 
+vi.mock('./mermaid',async(importOriginal)=>{
+  const actual=await importOriginal<typeof import('./mermaid')>()
+  return {...actual,renderDiagram:(source:string)=>Promise.resolve('<svg data-engine="mermaid"><text>'+source.length+'</text></svg>')}
+})
+
 describe('Mindmap Block',()=>{
   const tree={id:'topic',Label:'Bean',Description:'Declarative apps',Children:[
     {id:'definitions',Label:'Definitions',Children:[{id:'entities',Label:'<i>Entities</i>'},{id:'views',Label:'Views'}]},
     {id:'runtime',Label:'Runtime',Description:'Atomic activation'},
   ]}
 
-  it('renders nested hierarchy in source order with a named root and literal labels',()=>{
+  it('serializes the tree with stable IDs, verbatim order, and escaped labels',()=>{
+    const syntax=mindmapSyntax({id:'a',Label:'Root "quoted" #1',Children:[{id:'b',Label:'Same',Children:[{id:'c',Label:'Leaf; end'}]},{id:'d',Label:'Same'}]})
+    const lines=syntax.split('\n')
+    expect(lines[0]).toBe('mindmap')
+    expect(lines[1]).toBe('  root(("Root #quot;quoted#quot; #35;1"))')
+    expect(lines[2]).toBe('    b["Same"]')
+    expect(lines[3]).toBe('      c("Leaf#59; end")')
+    expect(lines[4]).toBe('    d["Same"]')
+  })
+
+  it('renders nested hierarchy in source order with a named root and literal labels',async()=>{
     render(<MemoryRouter><MindmapBlock root={tree}/></MemoryRouter>)
+    await screen.findByTestId('mindmap-figure')
     const block=screen.getByRole('article',{name:'Bean'})
     const branches=within(block).getAllByRole('listitem')
     expect(branches).toHaveLength(4)
@@ -182,12 +198,23 @@ describe('Mindmap Block',()=>{
     expect(block).toHaveTextContent('Declarative apps');expect(block).toHaveTextContent('Atomic activation')
   })
 
-  it('keeps hierarchy machine-readable without connectors',()=>{
+  it('keeps hierarchy machine-readable without connectors',async()=>{
     render(<MemoryRouter><MindmapBlock root={tree}/></MemoryRouter>)
+    await screen.findByTestId('mindmap-figure')
     const nested=document.querySelectorAll('.bean-mindmap-children')
     expect(nested.length).toBe(1)
     const defs=screen.getByText('<i>Entities</i>',{selector:'p'})
     expect(defs.closest('li')!.closest('ol.bean-mindmap-children')).not.toBeNull()
+  })
+
+  it('adds the mermaid figure as a decorative layer while the DOM tree stays accessible',async()=>{
+    render(<MemoryRouter><MindmapBlock root={tree}/></MemoryRouter>)
+    const figure=await screen.findByTestId('mindmap-figure')
+    expect(figure).toHaveAttribute('aria-hidden','true')
+    expect(figure.querySelector('svg[data-engine="mermaid"]')).not.toBeNull()
+    const block=screen.getByRole('article',{name:'Bean'})
+    expect(block).toHaveClass('bean-mindmap-visual')
+    expect(within(block).getAllByRole('listitem')).toHaveLength(4)
   })
 })
 

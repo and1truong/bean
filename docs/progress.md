@@ -63,7 +63,7 @@ Status: complete. Contract: [issue #60](https://github.com/and1truong/bean/issue
 Status: complete. Contract: [issue #59](https://github.com/and1truong/bean/issues/59).
 
 - Added `Block type: mindmap`: a required `root` node `{id, label, description?, children?}` with the same shape recursively — node IDs unique across the tree, verbatim labels, source order is the branch order. Bounds: root requires at least 2 branches, at most 8 children per node, 32 nodes total, depth 4; `root` is rejected on other Block types and foreign fields on `mindmap`, mirroring the Tabs/Lesson/Timeline contract.
-- Web renders `MindmapBlock` as a semantic `<article>`: a centered root card plus nested `<ol>` branch lists, so the DOM hierarchy itself carries the relationships (readable on narrow screens and for assistive technology without connector lines or color).
+- Web renders `MindmapBlock` two ways from the validated tree: a decorative Mermaid mind-map SVG on wide screens (Bean-owned serializer — node IDs as mermaid keys, quoted/escaped labels, `securityLevel: 'strict'`, engine lazy-loads as one merged chunk via the reusable `web/src/mermaid.ts` adapter seam) plus a semantic nested `<ol>` tree that stays in the accessibility tree, prints, and is the layout below 40rem.
 - Added a checked-in `bean_mindmap` demo and a twentieth presentation frame; capabilities and generated schemas publish the new type and bounds (recursive `$ref` in `block.schema.json`); AppIR v19 rejects mindmap payloads on both decoded and encoded paths.
 - Focused verification passes: compiler/AppIR/block Go tests and semantic Vitest tests. Final qualification: `make check` and `make build`.
 

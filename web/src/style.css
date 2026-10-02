@@ -423,7 +423,13 @@
   .bean-timeline-entry-title { @apply m-0 font-semibold; }
   .bean-timeline-description { @apply m-0; }
 
-  .bean-mindmap { @apply rounded-xl border p-5 shadow-sm sm:p-8; overflow-wrap: anywhere; }
+  .bean-mindmap { @apply relative rounded-xl border p-5 shadow-sm sm:p-8; overflow-wrap: anywhere; }
+  .bean-mindmap-figure { display: none; }
+  @media screen and (min-width: 40rem) {
+    .bean-mindmap-figure { display: block; text-align: center; }
+    .bean-mindmap-figure svg { max-width: 100%; height: auto; }
+    .bean-mindmap-visual .bean-mindmap-dom { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); border: 0; white-space: nowrap; }
+  }
   .bean-mindmap-root { @apply mx-auto mb-6 w-fit max-w-full rounded-xl border-2 px-6 py-4 text-center; border-color: var(--border-strong); background: var(--muted); }
   .bean-mindmap-root-label { @apply m-0 font-heading text-xl font-semibold tracking-tight sm:text-2xl; }
   .bean-mindmap-root-description { @apply m-0 mt-1 text-sm text-muted-foreground; }
