@@ -14,7 +14,7 @@ export function FlashcardBlock({title,cards}:{title:string;cards:Flashcard[]}){
   useEffect(()=>{if(!active){setRevealed(new Set())}},[active])
   const toggle=(cardID:string)=>setRevealed(previous=>{const next=new Set(previous);if(next.has(cardID)){next.delete(cardID)}else{next.add(cardID)};return next})
   return <article className="bean-flashcards" aria-labelledby={id}>
-    <div className="bean-flashcards-header"><h2 className="bean-flashcards-title" id={id}>{title}</h2><p className="bean-flashcards-count">{cards.length} cards</p></div>
+    <div className="bean-flashcards-header"><h2 className="bean-flashcards-title" id={id}>{title}</h2><div className="bean-flashcards-meta"><p className="bean-flashcards-count">{cards.length} cards</p>{revealed.size>0&&<Button type="button" variant="outline" size="sm" onClick={()=>setRevealed(new Set())}>Hide all answers</Button>}</div></div>
     <ol className="bean-flashcards-deck">{cards.map((card,index)=>{
       const shown=revealed.has(card.id)
       return <li key={card.id} className="bean-flashcard" data-revealed={shown}>
@@ -24,6 +24,5 @@ export function FlashcardBlock({title,cards}:{title:string;cards:Flashcard[]}){
         </Button>
       </li>})}
     </ol>
-    {revealed.size>0&&<Button type="button" variant="outline" className="bean-flashcards-reset" onClick={()=>setRevealed(new Set())}>Hide all answers</Button>}
   </article>
 }

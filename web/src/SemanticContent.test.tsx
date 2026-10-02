@@ -293,9 +293,9 @@ describe('Flashcard Block',()=>{
   it('keeps reveal state instance-local across two decks',()=>{
     render(<MemoryRouter><><FlashcardBlock title="One" cards={deck}/><FlashcardBlock title="Two" cards={deck}/></></MemoryRouter>)
     const one=screen.getByRole('article',{name:'One'});const two=screen.getByRole('article',{name:'Two'})
-    fireEvent.click(within(one).getAllByRole('button')[0])
-    expect(within(one).getAllByRole('button')[0]).toHaveAttribute('aria-expanded','true')
-    expect(within(two).getAllByRole('button')[0]).toHaveAttribute('aria-expanded','false')
+    fireEvent.click(within(one).getAllByRole('button',{expanded:false})[0])
+    expect(within(one).getByRole('button',{expanded:true})).toBeVisible()
+    expect(within(two).getAllByRole('button',{expanded:false})).toHaveLength(2)
     expect(two).not.toHaveTextContent('A named region')
   })
 })

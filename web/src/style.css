@@ -467,16 +467,18 @@
   .bean-mindmap-children > .bean-mindmap-branch::after { content: ""; position: absolute; left: -1rem; top: 1rem; width: calc(1rem + 1px); border-top: 2px solid var(--border-strong); }
 
   .bean-flashcards { @apply rounded-xl border p-5 shadow-sm sm:p-8; overflow-wrap: anywhere; }
+  .bean-sequence-frame .bean-flashcards { margin-bottom: auto; }
   .bean-flashcards-header { @apply mb-6 flex items-baseline justify-between gap-3 border-b pb-3; }
   .bean-flashcards-title { @apply m-0 font-heading text-2xl font-semibold tracking-tight sm:text-3xl; }
+  .bean-flashcards-meta { @apply flex shrink-0 items-center gap-3; }
   .bean-flashcards-count { @apply m-0 shrink-0 text-sm text-muted-foreground; }
-  .bean-flashcards-deck { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 0.75rem; }
+  .bean-flashcards-deck { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 0.75rem; align-items: start; }
   .bean-flashcard { min-width: 0; }
   .bean-flashcard-face-label { @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground; }
   .bean-flashcard-text { display: block; @apply font-medium; }
   .bean-flashcard-answer { @apply mt-2 border-t pt-2; border-color: var(--border-strong); }
   .bean-flashcard-answer .bean-flashcard-text { @apply font-normal text-muted-foreground; }
-  .bean-flashcards-reset { @apply mt-4; }
+
 
   .bean-formula { @apply max-w-full overflow-x-auto rounded-lg border border-dashed p-4 text-center; border-color: var(--border-strong); }
   .bean-formula:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
@@ -484,6 +486,10 @@
   .bean-formula-alt { @apply mt-3 text-sm; color: var(--text-muted); }
   .bean-lesson .bean-formula { border-color: #4d675b; }
   .bean-lesson .bean-formula-alt { color: #b9c4b8; }
+}
+
+@media (max-width: 39.99rem) {
+  .bean-flashcards-header { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
 }
 
 @media (min-width: 40rem) {

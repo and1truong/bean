@@ -71,14 +71,14 @@ Contract: [issue #59](https://github.com/and1truong/bean/issues/59). Status: in 
 
 # Literal flashcards
 
-Contract: [issue #58](https://github.com/and1truong/bean/issues/58). Status: in progress.
+Contract: [issue #58](https://github.com/and1truong/bean/issues/58). Status: complete.
 
 | Slice | Deliverable | Verification | Status |
 | --- | --- | --- | --- |
 | 1 | `Block type: flashcard` with ordered verbatim prompt/answer cards (unique IDs) | compiler/schema/source tests | done |
 | 2 | Shared React rendering: FlashcardBlock deck, per-card reveal + hide-all, visibility-reset convention | Vitest tests | done |
 | 3 | Checked-in deck plus presentation frame | app validate, Playwright journey | done |
-| 4 | Docs, compatibility gates, qualification | AppIR format tests, `make check`, `make build` | pending |
+| 4 | Docs, compatibility gates, qualification | AppIR format tests, `make check`, `make build` | done |
 
 # Content Block authoring guide
 
