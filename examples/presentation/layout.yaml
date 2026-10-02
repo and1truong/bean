@@ -175,6 +175,12 @@ layout: single-column
 regions:
   - {name: main, blocks: [history_timeline]}
 ---
+kind: Panel
+name: frame_mindmap
+layout: single-column
+regions:
+  - {name: main, blocks: [bean_mindmap]}
+---
 kind: Sequence
 name: bean_introduction
 route: /presentations/bean
@@ -201,4 +207,5 @@ frames:
   - {name: choices, title: Check one answer, direction: down, layout: statement, panel: frame_choices, notes: "Quiz state stays in this browser component and resets when the frame is left."}
   - {name: blackboard, title: "The blackboard lesson", direction: down, layout: bullets, panel: frame_blackboard, notes: "A bounded lesson renders ordered sections, a typed formula, and an illustration."}
   - {name: timeline, title: A literal timeline, direction: down, layout: bullets, panel: frame_timeline, notes: "Ordered milestones keep authored labels verbatim in source order."}
+  - {name: mindmap, title: A literal mind map, direction: down, layout: bullets, panel: frame_mindmap, notes: "Branches nest topics in authored order; the DOM hierarchy carries the relationships."}
   - {name: start, title: Start with one useful workflow, direction: next, layout: closing, panel: frame_close, notes: "Close with the shortest runnable path."}

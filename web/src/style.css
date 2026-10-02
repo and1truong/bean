@@ -423,6 +423,19 @@
   .bean-timeline-entry-title { @apply m-0 font-semibold; }
   .bean-timeline-description { @apply m-0; }
 
+  .bean-mindmap { @apply rounded-xl border p-5 shadow-sm sm:p-8; overflow-wrap: anywhere; }
+  .bean-mindmap-root { @apply mx-auto mb-6 w-fit max-w-full rounded-xl border-2 px-6 py-4 text-center; border-color: var(--border-strong); background: var(--muted); }
+  .bean-mindmap-root-label { @apply m-0 font-heading text-xl font-semibold tracking-tight sm:text-2xl; }
+  .bean-mindmap-root-description { @apply m-0 mt-1 text-sm text-muted-foreground; }
+  .bean-mindmap-branches { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 1rem; }
+  .bean-mindmap-branch { min-width: 0; }
+  .bean-mindmap-node { @apply rounded-lg border px-3 py-2; }
+  .bean-mindmap-node[data-depth='1'] { @apply border-2; border-color: var(--border-strong); }
+  .bean-mindmap-label { @apply m-0 font-semibold; }
+  .bean-mindmap-node[data-depth='1'] .bean-mindmap-label { @apply font-heading text-lg; }
+  .bean-mindmap-description { @apply m-0 mt-1 text-sm text-muted-foreground; }
+  .bean-mindmap-children { margin: 0.75rem 0 0; padding: 0 0 0 1rem; list-style: none; @apply space-y-2 border-l; }
+
   .bean-formula { @apply max-w-full overflow-x-auto rounded-lg border border-dashed p-4 text-center; border-color: var(--border-strong); }
   .bean-formula:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
   .bean-formula math { @apply mx-auto; font-size: 1.35em; }

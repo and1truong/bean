@@ -138,3 +138,33 @@ entries:
   - {id: computation, label: "Industrial Revolution", title: "Programmable machines", description: "Jacquard's loom runs patterns from punched cards."}
   - {id: computers, label: "1945", title: "ENIAC", description: "General-purpose electronic computing arrives."}
   - {id: agents, label: "Day 1", title: "Your first Bean definition", description: "Declarative metadata becomes running software."}
+---
+# The mindmap Block renders a central topic with ordered branches and nested
+# subtopics: every node carries a stable id, a verbatim label, and an optional
+# description. Source order is the branch order — the tree is never re-sorted.
+kind: Block
+name: bean_mindmap
+type: mindmap
+root:
+  id: bean
+  label: "Bean"
+  description: "Declarative semantics to running software"
+  children:
+    - id: definitions
+      label: "Definitions"
+      description: "Typed metadata in YAML"
+      children:
+        - {id: entities, label: "Entities", description: "Fields and storage"}
+        - {id: views, label: "Views", description: "Typed reads"}
+        - {id: actions, label: "Actions", description: "Typed writes"}
+    - id: compiler
+      label: "Compiler"
+      description: "Validate and normalize"
+      children:
+        - {id: diagnostics, label: "Diagnostics", description: "Field-precise errors"}
+        - {id: appir, label: "Immutable AppIR", description: "Versioned output"}
+    - id: runtime
+      label: "Runtime"
+      children:
+        - {id: policies, label: "Policies", description: "Access boundaries"}
+        - {id: activation, label: "Atomic activation", description: "All or nothing"}

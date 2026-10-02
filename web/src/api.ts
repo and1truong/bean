@@ -43,6 +43,7 @@ export type ContentElement=
 export type ContentTab={id:string;Label:string;Content:ContentElement[]}
 export type LessonSection={id:string;Heading?:string;Content:ContentElement[]}
 export type TimelineEntry={id:string;Label:string;Title:string;Description?:string}
+export type MindMapNode={id:string;Label:string;Description?:string;Children?:MindMapNode[]}
 export type ViewPresentation={Mode?:string;TitleField?:string;BodyField?:string;LinkRoute?:string;LinkField?:string;EmptyState?:string;MetaFields?:string[];RichTextFields?:string[];GroupField?:string;OrderField?:string;ParentField?:string;MoveAction?:string;Columns?:string[];MetricField?:string;MetricLabel?:string;TimeField?:string;EndField?:string;SearchFields?:string[]}
 export type Node={component:string;props?:Record<string,any>;children?:Node[]}
 export class APIError extends Error{fields?:Record<string,string>;status?:number;constructor(message:string,fields?:Record<string,string>,status?:number){super(message);this.fields=fields;this.status=status}}

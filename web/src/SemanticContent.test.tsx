@@ -6,6 +6,7 @@ import {ContentVisibility} from './ContentVisibility'
 import {LessonBlock} from './Lesson'
 import {TabsBlock} from './Tabs'
 import {TimelineBlock} from './Timeline'
+import {MindmapBlock} from './Mindmap'
 import type {ContentElement,ContentTab,FormulaNode} from './api'
 
 function content(elements:ContentElement[]){return render(<MemoryRouter><ContentBlock content={elements}/></MemoryRouter>)}
@@ -161,6 +162,32 @@ describe('Timeline Block',()=>{
     render(<MemoryRouter><TimelineBlock title="Milestones" entries={[{id:'one',Label:'1440',Title:'Movable type'}]}/></MemoryRouter>)
     const rail=screen.getByRole('list')
     expect(rail.tagName).toBe('OL');expect(rail).toHaveClass('relative','space-y-6','border-l')
+  })
+})
+
+describe('Mindmap Block',()=>{
+  const tree={id:'topic',Label:'Bean',Description:'Declarative apps',Children:[
+    {id:'definitions',Label:'Definitions',Children:[{id:'entities',Label:'<i>Entities</i>'},{id:'views',Label:'Views'}]},
+    {id:'runtime',Label:'Runtime',Description:'Atomic activation'},
+  ]}
+
+  it('renders nested hierarchy in source order with a named root and literal labels',()=>{
+    render(<MemoryRouter><MindmapBlock root={tree}/></MemoryRouter>)
+    const block=screen.getByRole('article',{name:'Bean'})
+    const branches=within(block).getAllByRole('listitem')
+    expect(branches).toHaveLength(4)
+    expect(branches[0]).toHaveTextContent('Definitions');expect(branches[0].querySelector('h3')).not.toBeNull()
+    expect(within(branches[0]).getByText('<i>Entities</i>')).toBeVisible();expect(block.querySelector('i')).toBeNull()
+    expect(block.querySelector('.bean-mindmap-branches ol')).not.toBeNull()
+    expect(block).toHaveTextContent('Declarative apps');expect(block).toHaveTextContent('Atomic activation')
+  })
+
+  it('keeps hierarchy machine-readable without connectors',()=>{
+    render(<MemoryRouter><MindmapBlock root={tree}/></MemoryRouter>)
+    const nested=document.querySelectorAll('.bean-mindmap-children')
+    expect(nested.length).toBe(1)
+    const defs=screen.getByText('<i>Entities</i>',{selector:'p'})
+    expect(defs.closest('li')!.closest('ol.bean-mindmap-children')).not.toBeNull()
   })
 })
 

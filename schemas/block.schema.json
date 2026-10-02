@@ -808,6 +808,39 @@
       ],
       "type": "object"
     },
+    "github_com_beanruntime_bean_internal_appir_MindMapNode": {
+      "additionalProperties": false,
+      "description": "Node IDs are unique across the mind map; labels are literal text kept verbatim.",
+      "properties": {
+        "children": {
+          "items": {
+            "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_MindMapNode"
+          },
+          "maxItems": 8,
+          "type": "array"
+        },
+        "description": {
+          "maxLength": 240,
+          "pattern": "\\S",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 80,
+          "pattern": "\\S",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "type": "object"
+    },
     "github_com_beanruntime_bean_internal_appir_Relation": {
       "additionalProperties": false,
       "properties": {
@@ -1039,6 +1072,11 @@
             "required": [
               "entries"
             ]
+          },
+          {
+            "required": [
+              "root"
+            ]
           }
         ]
       },
@@ -1149,6 +1187,11 @@
           {
             "required": [
               "entries"
+            ]
+          },
+          {
+            "required": [
+              "root"
             ]
           }
         ]
@@ -1261,6 +1304,11 @@
             "required": [
               "sections"
             ]
+          },
+          {
+            "required": [
+              "root"
+            ]
           }
         ]
       },
@@ -1273,6 +1321,126 @@
         "type",
         "title",
         "entries"
+      ]
+    },
+    {
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "view"
+            ]
+          },
+          {
+            "required": [
+              "display"
+            ]
+          },
+          {
+            "required": [
+              "entity"
+            ]
+          },
+          {
+            "required": [
+              "webform"
+            ]
+          },
+          {
+            "required": [
+              "action"
+            ]
+          },
+          {
+            "required": [
+              "menu"
+            ]
+          },
+          {
+            "required": [
+              "text"
+            ]
+          },
+          {
+            "required": [
+              "resource"
+            ]
+          },
+          {
+            "required": [
+              "inputs"
+            ]
+          },
+          {
+            "required": [
+              "bindings"
+            ]
+          },
+          {
+            "required": [
+              "filters"
+            ]
+          },
+          {
+            "required": [
+              "defaultFilters"
+            ]
+          },
+          {
+            "required": [
+              "presentation"
+            ]
+          },
+          {
+            "required": [
+              "content"
+            ]
+          },
+          {
+            "required": [
+              "label"
+            ]
+          },
+          {
+            "required": [
+              "orientation"
+            ]
+          },
+          {
+            "required": [
+              "variant"
+            ]
+          },
+          {
+            "required": [
+              "tabs"
+            ]
+          },
+          {
+            "required": [
+              "title"
+            ]
+          },
+          {
+            "required": [
+              "sections"
+            ]
+          },
+          {
+            "required": [
+              "entries"
+            ]
+          }
+        ]
+      },
+      "properties": {
+        "type": {
+          "const": "mindmap"
+        }
+      },
+      "required": [
+        "type",
+        "root"
       ]
     },
     {
@@ -1311,6 +1479,11 @@
           {
             "required": [
               "entries"
+            ]
+          },
+          {
+            "required": [
+              "root"
             ]
           }
         ]
@@ -1420,6 +1593,9 @@
     "resource": {
       "type": "string"
     },
+    "root": {
+      "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_MindMapNode"
+    },
     "sections": {
       "items": {
         "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_LessonSection"
@@ -1451,6 +1627,7 @@
         "entity",
         "lesson",
         "menu",
+        "mindmap",
         "resource-list",
         "tabs",
         "text",

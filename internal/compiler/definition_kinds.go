@@ -442,6 +442,11 @@ func validateBlockContentSource(source definition.Definition) []definition.Diagn
 			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec.entries", "is only supported by a timeline Block"))
 		}
 	}
+	if typeName != "mindmap" {
+		if _, present := source.Spec["root"]; present {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec.root", "is only supported by a mindmap Block"))
+		}
+	}
 	if typeName == "tabs" {
 		out = append(out, validateTabsBlockSource(source)...)
 	}
@@ -451,6 +456,74 @@ func validateBlockContentSource(source definition.Definition) []definition.Diagn
 	if typeName == "timeline" {
 		out = append(out, validateTimelineBlockSource(source)...)
 	}
+	if typeName == "mindmap" {
+		out = append(out, validateMindMapBlockSource(source)...)
+	}
+	return out
+}
+
+func validateMindMapBlockSource(source definition.Definition) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
+	allowed := map[string]bool{"type": true, "policy": true, "root": true}
+	for _, field := range keys(source.Spec) {
+		if !allowed[field] {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec."+field, "is not supported by a mindmap Block"))
+		}
+	}
+	if value, present := source.Spec["root"]; !present || value == nil {
+		out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec.root", "is required"))
+		return out
+	}
+	root, ok := source.Spec["root"].(map[string]any)
+	if !ok {
+		out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec.root", "must be a topic object"))
+		return out
+	}
+	var visit func(node map[string]any, depth int, path string)
+	visit = func(node map[string]any, depth int, path string) {
+		for _, field := range keys(node) {
+			if field != "id" && field != "label" && field != "description" && field != "children" {
+				out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path+"."+field, "is not supported by a mindmap node"))
+			}
+		}
+		for _, field := range []string{"id", "label"} {
+			if value, present := node[field]; !present || value == nil {
+				out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path+"."+field, "is required"))
+			}
+		}
+		for _, field := range []string{"id", "label", "description"} {
+			if value, present := node[field]; present && value != nil {
+				text, ok := value.(string)
+				if !ok {
+					out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path+"."+field, "must be a string"))
+				} else if field == "description" && strings.TrimSpace(text) == "" {
+					out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path+"."+field, "must not be blank when present"))
+				}
+			}
+		}
+		rawChildren, present := node["children"]
+		if !present || rawChildren == nil {
+			return
+		}
+		children, ok := rawChildren.([]any)
+		if !ok {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path+".children", "must be a list of topic objects"))
+			return
+		}
+		if depth >= beancontent.MaxMindMapDepth {
+			return
+		}
+		for index, rawChild := range children {
+			childPath := fmt.Sprintf("%s.children.%d", path, index)
+			child, ok := rawChild.(map[string]any)
+			if !ok {
+				out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, childPath, "must be an object"))
+				continue
+			}
+			visit(child, depth+1, childPath)
+		}
+	}
+	visit(root, 1, "spec.root")
 	return out
 }
 

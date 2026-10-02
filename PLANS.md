@@ -57,6 +57,17 @@ Contract: [issue #60](https://github.com/and1truong/bean/issues/60). Status: com
 | 3 | Checked-in timeline plus presentation frame | app validate, Playwright journey | done |
 | 4 | Docs, compatibility gates, qualification | AppIR format tests, `make check`, `make build` | done |
 
+# Literal mind maps
+
+Contract: [issue #59](https://github.com/and1truong/bean/issues/59). Status: complete.
+
+| Slice | Deliverable | Verification | Status |
+| --- | --- | --- | --- |
+| 1 | `Block type: mindmap` with a recursive `root` node tree (unique IDs, ordered branches) | compiler/schema/source tests | done |
+| 2 | Shared React rendering: MindmapBlock nested ordered lists | Vitest tests | done |
+| 3 | Checked-in mind map plus presentation frame | app validate, Playwright journey | done |
+| 4 | Docs, compatibility gates, qualification | AppIR format tests, `make check`, `make build` | done |
+
 # Content Block authoring guide
 
 Contract: `GOAL.md`. Status: complete.

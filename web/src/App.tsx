@@ -15,6 +15,7 @@ import {SequenceView} from './Sequence'
 import {ContentBlock} from './Content'
 import {LessonBlock} from './Lesson'
 import {TabsBlock} from './Tabs'
+import {MindmapBlock} from './Mindmap'
 import {TimelineBlock,TimelineEntries} from './Timeline'
 import {ActiveFilters,DataTable,EmptyState,ErrorAlert,Field,FilterBar,LoadingState,Page,PageHeader,SectionCard,StatusAlert} from '@/components/bean'
 import {AlertDialog,AlertDialogAction,AlertDialogCancel,AlertDialogContent,AlertDialogDescription,AlertDialogFooter,AlertDialogHeader,AlertDialogTitle} from '@/components/ui/alert-dialog'
@@ -106,6 +107,7 @@ type RenderProps={
   TabsBlock:{label?:string;orientation?:'horizontal'|'vertical';variant?:'underline'|'pills';tabs?:import('./api').ContentTab[]}
   LessonBlock:{title?:string;sections?:import('./api').LessonSection[]}
   TimelineBlock:{title?:string;entries?:import('./api').TimelineEntry[]}
+  MindmapBlock:{root?:import('./api').MindMapNode}
   Sequence:{title?:string;description?:string;profile?:string;aspectRatio?:string;protected?:boolean}
   ViewBlock:{name?:string;view?:string;display?:ViewDisplay;displayName?:string;displays?:Record<string,ViewDisplay>;filters?:Record<string,ViewFilter>;pageFilters?:Record<string,string>;fieldTypes?:Record<string,string>;presentation?:ViewPresentation;searchFields?:string[];formattedFields?:string[];fileFields?:string[];maxRows?:number}
   EntityBlock:{name?:string;entity?:string;presentation?:ViewPresentation;formattedFields?:string[];fileFields?:string[]}
@@ -125,6 +127,7 @@ const nodeRenderers:{[K in RenderComponent]:NodeRenderer<K>}={
   TabsBlock:props=><TabsBlock label={props.label||''} orientation={props.orientation} variant={props.variant} tabs={props.tabs||[]}/>,
   LessonBlock:props=><LessonBlock title={props.title||''} sections={props.sections||[]}/>,
   TimelineBlock:props=><TimelineBlock title={props.title||''} entries={props.entries||[]}/>,
+  MindmapBlock:props=><MindmapBlock root={props.root||{id:'',Label:''}}/>,
   Sequence:(props,children)=><SequenceView {...props} children={children} renderNode={node=><Renderer node={node}/>}/>,
   ViewBlock:props=><ViewBlock name={props.view||''} block={props.name||''} display={props.display} displayName={props.displayName} displays={props.displays} filters={props.filters||{}} pageFilters={props.pageFilters||noPageFilters} fieldTypes={props.fieldTypes||{}} presentation={props.presentation||{}} searchFields={props.searchFields||[]} formattedFields={props.formattedFields||[]} fileFields={props.fileFields||[]} maxRows={props.maxRows}/>,
   EntityBlock:props=><ViewBlock name={(props.entity||'')+'_list'} block={props.name||''} presentation={props.presentation||{}} formattedFields={props.formattedFields||[]} fileFields={props.fileFields||[]}/>,

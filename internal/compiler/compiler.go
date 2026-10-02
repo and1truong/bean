@@ -2253,6 +2253,9 @@ func validateBlocks(a *appir.App, _ *validationState) []definition.Diagnostic {
 		if block.Type == "timeline" {
 			out = append(out, validateTimelineBlock(name, block)...)
 		}
+		if block.Type == "mindmap" {
+			out = append(out, validateMindMapBlock(name, block)...)
+		}
 		if blockSpecification.RequiresEditorReadPolicy && (block.Policy == "" || !editorOnlyReadPolicy(a.Policies[block.Policy])) {
 			out = append(out, diagnostic("Block", name, "spec.policy", "resource-list Block must be restricted to editor and administrator roles"))
 		}
@@ -2714,6 +2717,53 @@ func validateTimelineBlock(name string, block appir.Block) []definition.Diagnost
 	return out
 }
 
+func validateMindMapBlock(name string, block appir.Block) []definition.Diagnostic {
+	if block.Root == nil {
+		return []definition.Diagnostic{requiredDiagnostic("Block", name, "spec.root", "is required")}
+	}
+	out := []definition.Diagnostic{}
+	seen := map[string]bool{}
+	nodes := 0
+	var visit func(node *appir.MindMapNode, depth int, path string)
+	visit = func(node *appir.MindMapNode, depth int, path string) {
+		nodes++
+		if nodes > beancontent.MaxMindMapNodes {
+			return
+		}
+		if !beancontent.ValidMachineID(node.ID) {
+			out = append(out, sequenceDiagnostic("Block", name, path+".id", "must be a 1-64 character machine ID"))
+		} else if seen[node.ID] {
+			out = append(out, sequenceDiagnostic("Block", name, path+".id", "duplicates another node id"))
+		}
+		seen[node.ID] = true
+		out = append(out, boundedTextDiagnostics("Block", name, path+".label", node.Label, beancontent.MaxMindMapLabelRunes)...)
+		if node.Description != "" && strings.TrimSpace(node.Description) == "" {
+			out = append(out, sequenceDiagnostic("Block", name, path+".description", "must not be blank when present"))
+		}
+		if utf8.RuneCountInString(node.Description) > beancontent.MaxMindMapDetailRunes {
+			out = append(out, sequenceDiagnostic("Block", name, path+".description", fmt.Sprintf("exceeds the maximum of %d code points", beancontent.MaxMindMapDetailRunes)))
+		}
+		if depth == 1 && len(node.Children) < beancontent.MinMindMapChildren {
+			out = append(out, sequenceDiagnostic("Block", name, path+".children", fmt.Sprintf("a mind map needs at least %d branches at the root", beancontent.MinMindMapChildren)))
+		}
+		if len(node.Children) > beancontent.MaxMindMapChildren {
+			out = append(out, sequenceDiagnostic("Block", name, path+".children", fmt.Sprintf("contains more than %d child topics", beancontent.MaxMindMapChildren)))
+		}
+		if depth >= beancontent.MaxMindMapDepth && len(node.Children) > 0 {
+			out = append(out, sequenceDiagnostic("Block", name, path+".children", fmt.Sprintf("exceeds the maximum mind map depth of %d", beancontent.MaxMindMapDepth)))
+			return
+		}
+		for index := range node.Children {
+			visit(&node.Children[index], depth+1, fmt.Sprintf("%s.children.%d", path, index))
+		}
+	}
+	visit(block.Root, 1, "spec.root")
+	if nodes > beancontent.MaxMindMapNodes {
+		out = append(out, sequenceDiagnostic("Block", name, "spec.root", fmt.Sprintf("contains more than %d nodes", beancontent.MaxMindMapNodes)))
+	}
+	return out
+}
+
 func validateTabsBlock(name string, block appir.Block) []definition.Diagnostic {
 	out := boundedTextDiagnostics("Block", name, "spec.label", block.Label, beancontent.MaxLabelRunes)
 	if block.Orientation != "horizontal" && block.Orientation != "vertical" {
@@ -3159,6 +3209,18 @@ func sequenceFrameWeight(a *appir.App, blocks []appir.Block) (int, map[string]bo
 			weight += utf8.RuneCountInString(block.Title) + len(block.Entries)*12
 			for _, entry := range block.Entries {
 				weight += utf8.RuneCountInString(entry.Label) + utf8.RuneCountInString(entry.Title) + utf8.RuneCountInString(entry.Description)
+			}
+		case "mindmap":
+			if block.Root != nil {
+				stack := []*appir.MindMapNode{block.Root}
+				for len(stack) > 0 {
+					node := stack[len(stack)-1]
+					stack = stack[:len(stack)-1]
+					weight += utf8.RuneCountInString(node.Label) + utf8.RuneCountInString(node.Description) + 12
+					for index := range node.Children {
+						stack = append(stack, &node.Children[index])
+					}
+				}
 			}
 		case "text":
 			weight += utf8.RuneCountInString(block.Text)

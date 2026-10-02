@@ -13,8 +13,8 @@ import (
 func TestEveryAcceptedBlockTypeHasRenderer(t *testing.T) {
 	app := appir.Empty()
 	app.Menus["main"] = appir.Menu{Name: "main", Items: []appir.MenuItem{{Label: "Home", Route: "/"}}}
-	tests := map[string]string{"text": "TextBlock", "content": "ContentBlock", "tabs": "TabsBlock", "lesson": "LessonBlock", "timeline": "TimelineBlock", "view": "ViewBlock", "entity": "EntityBlock", "webform": "WebformBlock", "action": "ActionBlock", "menu": "MenuBlock", "resource-list": "ResourceListBlock"}
-	wantNames := []string{"action", "content", "entity", "lesson", "menu", "resource-list", "tabs", "text", "timeline", "view", "webform"}
+	tests := map[string]string{"text": "TextBlock", "content": "ContentBlock", "tabs": "TabsBlock", "lesson": "LessonBlock", "timeline": "TimelineBlock", "mindmap": "MindmapBlock", "view": "ViewBlock", "entity": "EntityBlock", "webform": "WebformBlock", "action": "ActionBlock", "menu": "MenuBlock", "resource-list": "ResourceListBlock"}
+	wantNames := []string{"action", "content", "entity", "lesson", "menu", "mindmap", "resource-list", "tabs", "text", "timeline", "view", "webform"}
 	if got := block.Names(); !reflect.DeepEqual(got, wantNames) {
 		t.Fatalf("registered Block types=%v want=%v", got, wantNames)
 	}
