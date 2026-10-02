@@ -12,7 +12,7 @@ let counter=0
 function engine():Promise<MermaidApi>{
   if(!loaded){
     loaded=import('mermaid').then(module=>{
-      module.default.initialize({startOnLoad:false,securityLevel:'strict',theme:'neutral',logLevel:'fatal'})
+      module.default.initialize({startOnLoad:false,securityLevel:'strict',theme:'base',themeVariables:{primaryColor:'#ffffff',primaryBorderColor:'#3f3f46',primaryTextColor:'#18181b',lineColor:'#71717a',tertiaryColor:'#ffffff',noteBkgColor:'#fafafa',fontFamily:'inherit'},logLevel:'fatal'})
       return module.default
     })
   }

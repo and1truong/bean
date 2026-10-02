@@ -204,7 +204,7 @@ test('semantic content, tabs, choices, and media keep their browser contracts',a
   await expect(figure.locator('svg')).toBeVisible()
   await expect(figure).toContainText('Definitions')
   await expect(figure).toContainText('Atomic activation')
-  expect(await figure.evaluate(element=>getComputedStyle(element).display)).toBe('block')
+  expect(await figure.evaluate(element=>getComputedStyle(element).display)).toBe('flex')
   const topics=mindmap.getByRole('listitem')
   await expect(topics).toHaveCount(10)
   await expect(topics.nth(1)).toContainText('Entities')

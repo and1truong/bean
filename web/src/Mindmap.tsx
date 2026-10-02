@@ -48,6 +48,9 @@ export function MindmapBlock({root}:{root:MindMapNode}){
   const labelId=useId()
   const [svg,setSvg]=useState<string|null>(null)
   useEffect(()=>{
+    // The figure only displays at >=40rem; skip the engine download entirely on
+    // narrow screens where the DOM tree is the visible layout.
+    if(typeof window!=='undefined'&&window.matchMedia&&!window.matchMedia('(min-width: 40rem)').matches)return
     let active=true
     renderDiagram(mindmapSyntax(root)).then(result=>{if(active)setSvg(result)}).catch(()=>{})
     return ()=>{active=false}

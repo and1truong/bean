@@ -327,6 +327,13 @@
   .bean-sequence-toolbar { @apply flex flex-col gap-3 border-b bg-background px-4 py-3 lg:flex-row lg:items-center lg:justify-between; }
   .bean-sequence-stage { @apply flex flex-1 items-center justify-center p-3 sm:p-6; }
   .bean-sequence-frame { @apply relative hidden w-full max-w-7xl flex-col overflow-auto rounded-lg border bg-card p-6 text-card-foreground shadow-xl sm:p-10 lg:p-14; }
+  @media screen and (min-width: 40rem) {
+    .bean-sequence[data-aspect-ratio="wide"] .bean-sequence-frame { aspect-ratio: 16 / 9; }
+    .bean-sequence[data-aspect-ratio="standard"] .bean-sequence-frame { aspect-ratio: 4 / 3; }
+  }
+  @media screen and (max-width: 39.99rem) {
+    .bean-sequence-frame[data-active="true"] { flex: 1; }
+  }
   .bean-sequence-frame[data-active="true"] { @apply flex; }
   .bean-sequence-frame > h1 { @apply mb-6 font-heading text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl; }
   .bean-sequence-frame[data-layout="title"], .bean-sequence-frame[data-layout="section"], .bean-sequence-frame[data-layout="statement"], .bean-sequence-frame[data-layout="closing"] { @apply justify-center; }
@@ -427,20 +434,22 @@
   .bean-mindmap-figure { display: none; }
   @media screen and (min-width: 40rem) {
     .bean-mindmap-figure { display: flex; justify-content: center; }
-    .bean-mindmap-figure svg { max-width: 100%; height: auto; }
+    .bean-mindmap-figure svg { width: min(100%, 52rem); max-width: none !important; height: auto; }
     .bean-mindmap-visual .bean-mindmap-dom { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); border: 0; white-space: nowrap; }
   }
-  .bean-mindmap-root { @apply mx-auto mb-6 w-fit max-w-full rounded-xl border-2 px-6 py-4 text-center; border-color: var(--border-strong); background: var(--muted); }
+  .bean-mindmap-root { @apply relative mx-auto mb-6 w-fit max-w-full rounded-xl border-2 px-6 py-4 text-center shadow-md; border-color: var(--border-strong); background: var(--muted); }
+  .bean-mindmap-root:has(+ .bean-mindmap-branches:not(:empty))::after { content: ""; position: absolute; left: calc(50% - 1px); top: 100%; height: 1.5rem; border-left: 2px solid var(--border-strong); }
   .bean-mindmap-root-label { @apply m-0 font-heading text-xl font-semibold tracking-tight sm:text-2xl; }
   .bean-mindmap-root-description { @apply m-0 mt-1 text-sm text-muted-foreground; }
-  .bean-mindmap-branches { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 1rem; }
-  .bean-mindmap-branch { min-width: 0; }
+  .bean-mindmap-branches { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 0.75rem; }
+  .bean-mindmap-branch { min-width: 0; position: relative; }
   .bean-mindmap-node { @apply rounded-lg border px-3 py-2; }
   .bean-mindmap-node[data-depth='1'] { @apply border-2; border-color: var(--border-strong); }
   .bean-mindmap-label { @apply m-0 font-semibold; }
   .bean-mindmap-node[data-depth='1'] .bean-mindmap-label { @apply font-heading text-lg; }
   .bean-mindmap-description { @apply m-0 mt-1 text-sm text-muted-foreground; }
-  .bean-mindmap-children { margin: 0.75rem 0 0; padding: 0 0 0 1rem; list-style: none; @apply space-y-2 border-l; }
+  .bean-mindmap-children { margin: 0.5rem 0 0; padding: 0 0 0 1rem; list-style: none; @apply space-y-2 border-l-2; border-color: var(--border-strong); }
+  .bean-mindmap-children > .bean-mindmap-branch::before { content: ""; position: absolute; left: -1rem; top: 1rem; width: 1rem; border-top: 2px solid var(--border-strong); }
 
   .bean-formula { @apply max-w-full overflow-x-auto rounded-lg border border-dashed p-4 text-center; border-color: var(--border-strong); }
   .bean-formula:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
