@@ -16,7 +16,7 @@ type SourceIssue struct {
 var newElementFields = map[string]bool{
 	"level": true, "label": true, "target": true, "openIn": true, "caption": true, "columns": true, "rows": true, "rowHeader": true,
 	"title": true, "transcript": true, "videoId": true, "playlistId": true, "question": true, "choices": true, "answer": true, "explanation": true,
-	"block": true, "panel": true, "tabs": true, "content": true,
+	"block": true, "panel": true, "tabs": true, "content": true, "expr": true,
 }
 
 var elementFields = map[string]map[string]bool{
@@ -29,6 +29,7 @@ var elementFields = map[string]map[string]bool{
 	"youtube":          fields("type", "videoId", "title", "transcript"),
 	"youtube_playlist": fields("type", "playlistId", "title", "transcript"),
 	"choices":          fields("type", "question", "choices", "answer", "explanation"),
+	"formula":          fields("type", "expr", "text"),
 }
 
 var requiredElementFields = map[string][]string{
@@ -40,6 +41,7 @@ var requiredElementFields = map[string][]string{
 	"youtube":          {"videoId", "title", "transcript"},
 	"youtube_playlist": {"playlistId", "title", "transcript"},
 	"choices":          {"question", "choices", "answer"},
+	"formula":          {"expr", "text"},
 }
 
 func fields(names ...string) map[string]bool {
@@ -161,6 +163,8 @@ func validateNewElementTypes(element map[string]any, path, typeName string) []So
 		stringFields = []string{"playlistId", "title", "transcript"}
 	case "choices":
 		stringFields = []string{"question", "answer", "explanation"}
+	case "formula":
+		stringFields = []string{"text"}
 	}
 	for _, field := range stringFields {
 		if value, present := element[field]; present {
@@ -191,6 +195,131 @@ func validateNewElementTypes(element map[string]any, path, typeName string) []So
 	case "choices":
 		if value, present := element["choices"]; present && value != nil {
 			out = append(out, objectListIssues(value, path+".choices", []string{"id", "text"})...)
+		}
+	case "formula":
+		if value, present := element["expr"]; present && value != nil {
+			out = append(out, validateFormulaNodeSource(value, path+".expr")...)
+		}
+	}
+	return out
+}
+
+var formulaNodeFields = map[string]map[string]bool{
+	"literal": fields("kind", "text"),
+	"group":   fields("kind", "parts"),
+	"paren":   fields("kind", "inner", "style"),
+	"frac":    fields("kind", "numerator", "denominator"),
+	"sqrt":    fields("kind", "inner"),
+	"root":    fields("kind", "inner", "index"),
+	"sup":     fields("kind", "base", "exponent"),
+	"sub":     fields("kind", "base", "subscript"),
+	"func":    fields("kind", "name", "argument"),
+	"sum":     fields("kind", "lower", "upper", "body"),
+}
+
+var formulaNodeRequired = map[string][]string{
+	"literal": {"kind", "text"},
+	"group":   {"kind", "parts"},
+	"paren":   {"kind", "inner"},
+	"frac":    {"kind", "numerator", "denominator"},
+	"sqrt":    {"kind", "inner"},
+	"root":    {"kind", "inner", "index"},
+	"sup":     {"kind", "base", "exponent"},
+	"sub":     {"kind", "base", "subscript"},
+	"func":    {"kind", "name"},
+	"sum":     {"kind", "lower", "upper", "body"},
+}
+
+var formulaNodeChildren = map[string][]string{
+	"group": {"parts"},
+	"paren": {"inner"},
+	"frac":  {"numerator", "denominator"},
+	"sqrt":  {"inner"},
+	"root":  {"inner", "index"},
+	"sup":   {"base", "exponent"},
+	"sub":   {"base", "subscript"},
+	"func":  {"argument"},
+	"sum":   {"lower", "upper", "body"},
+}
+
+func validateFormulaNodeSource(value any, path string) []SourceIssue {
+	node, ok := value.(map[string]any)
+	if !ok {
+		return []SourceIssue{{path, "must be an object"}}
+	}
+	out := []SourceIssue{}
+	kindValue, present := node["kind"]
+	kind, stringKind := kindValue.(string)
+	if !present || kindValue == nil {
+		out = append(out, SourceIssue{path + ".kind", "is required"})
+		return out
+	}
+	if !stringKind {
+		out = append(out, SourceIssue{path + ".kind", "must be a string"})
+		return out
+	}
+	allowed, known := formulaNodeFields[kind]
+	if !known {
+		return append(out, SourceIssue{path + ".kind", "has no supported formula node kind"})
+	}
+	keys := make([]string, 0, len(node))
+	for key := range node {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if !allowed[key] {
+			out = append(out, SourceIssue{path + "." + key, "is not supported by formula node kind " + kind})
+		}
+	}
+	for _, field := range formulaNodeRequired[kind] {
+		if rawValue, exists := node[field]; !exists || rawValue == nil {
+			out = append(out, SourceIssue{path + "." + field, "is required"})
+		}
+	}
+	switch kind {
+	case "literal":
+		if rawValue, exists := node["text"]; exists && rawValue != nil {
+			if _, ok := rawValue.(string); !ok {
+				out = append(out, SourceIssue{path + ".text", "must be a string"})
+			}
+		}
+	case "paren":
+		if rawValue, exists := node["style"]; exists && rawValue != nil {
+			style, stringStyle := rawValue.(string)
+			if !stringStyle {
+				out = append(out, SourceIssue{path + ".style", "must be a string"})
+			} else if !fields(FormulaParenStyles()...)[style] {
+				out = append(out, SourceIssue{path + ".style", "has no supported value"})
+			}
+		}
+	case "func":
+		if rawValue, exists := node["name"]; exists && rawValue != nil {
+			name, stringName := rawValue.(string)
+			if !stringName {
+				out = append(out, SourceIssue{path + ".name", "must be a string"})
+			} else if !fields(FormulaFunctions()...)[name] {
+				out = append(out, SourceIssue{path + ".name", "has no supported value"})
+			}
+		}
+	case "group":
+		if rawValue, exists := node["parts"]; exists && rawValue != nil {
+			parts, listParts := rawValue.([]any)
+			if !listParts {
+				out = append(out, SourceIssue{path + ".parts", "must be a list of formula nodes"})
+			} else {
+				for index, part := range parts {
+					out = append(out, validateFormulaNodeSource(part, fmt.Sprintf("%s.parts.%d", path, index))...)
+				}
+			}
+		}
+	}
+	for _, field := range formulaNodeChildren[kind] {
+		if field == "parts" {
+			continue
+		}
+		if rawValue, exists := node[field]; exists && rawValue != nil {
+			out = append(out, validateFormulaNodeSource(rawValue, path+"."+field)...)
 		}
 	}
 	return out

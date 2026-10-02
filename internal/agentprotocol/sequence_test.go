@@ -12,7 +12,7 @@ import (
 
 func TestSequenceVocabularyReferencesAndSemanticDiffAreAgentDiscoverable(t *testing.T) {
 	capabilities := compiler.ProtocolCapabilities("bean.cli/v1alpha1", agentprotocol.APIVersion)
-	if !reflect.DeepEqual(capabilities.SequenceProfiles, []string{"presentation"}) || !reflect.DeepEqual(capabilities.SequenceAspectRatios, []string{"standard", "wide"}) || !reflect.DeepEqual(capabilities.SequenceFrameDirections, []string{"down", "next"}) || len(capabilities.SequenceFrameLayouts) != 14 || len(capabilities.ContentElementTypes) != 16 || !slices.Contains(capabilities.BlockTypes, "tabs") || !reflect.DeepEqual(capabilities.HeadingLevels, []int{2, 3, 4}) {
+	if !reflect.DeepEqual(capabilities.SequenceProfiles, []string{"presentation"}) || !reflect.DeepEqual(capabilities.SequenceAspectRatios, []string{"standard", "wide"}) || !reflect.DeepEqual(capabilities.SequenceFrameDirections, []string{"down", "next"}) || len(capabilities.SequenceFrameLayouts) != 14 || len(capabilities.ContentElementTypes) != 17 || !slices.Contains(capabilities.BlockTypes, "lesson") || !slices.Contains(capabilities.FormulaNodeKinds, "sqrt") || !reflect.DeepEqual(capabilities.HeadingLevels, []int{2, 3, 4}) {
 		t.Fatalf("Sequence capabilities=%+v", capabilities)
 	}
 	current := appir.Empty()

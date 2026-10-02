@@ -444,6 +444,260 @@
             "answer"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "expr": {
+              "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_FormulaNode"
+            },
+            "text": {
+              "maxLength": 400,
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "type": {
+              "const": "formula"
+            }
+          },
+          "required": [
+            "type",
+            "expr",
+            "text"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "github_com_beanruntime_bean_internal_appir_FormulaNode": {
+      "description": "Closed mathematical expression nodes. The compiler additionally enforces a maximum of 48 nodes and a nesting depth of 6.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "literal"
+            },
+            "text": {
+              "maxLength": 40,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "text"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "group"
+            },
+            "parts": {
+              "items": {
+                "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_FormulaNode"
+              },
+              "maxItems": 24,
+              "minItems": 1,
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "parts"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "inner": {
+              "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_FormulaNode"
+            },
+            "kind": {
+              "const": "paren"
+            },
+            "style": {
+              "default": "round",
+              "enum": [
+                "abs",
+                "brace",
+                "round",
+                "square"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "inner"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "denominator": {
+              "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_FormulaNode"
+            },
+            "kind": {
+              "const": "frac"
+            },
+            "numerator": {
+              "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_FormulaNode"
+            }
+          },
+          "required": [
+            "kind",
+            "numerator",
+            "denominator"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "inner": {
+              "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_FormulaNode"
+            },
+            "kind": {
+              "const": "sqrt"
+            }
+          },
+          "required": [
+            "kind",
+            "inner"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "index": {
+              "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_FormulaNode"
+            },
+            "inner": {
+              "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_FormulaNode"
+            },
+            "kind": {
+              "const": "root"
+            }
+          },
+          "required": [
+            "kind",
+            "inner",
+            "index"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "base": {
+              "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_FormulaNode"
+            },
+            "exponent": {
+              "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_FormulaNode"
+            },
+            "kind": {
+              "const": "sup"
+            }
+          },
+          "required": [
+            "kind",
+            "base",
+            "exponent"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "base": {
+              "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_FormulaNode"
+            },
+            "kind": {
+              "const": "sub"
+            },
+            "subscript": {
+              "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_FormulaNode"
+            }
+          },
+          "required": [
+            "kind",
+            "base",
+            "subscript"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "argument": {
+              "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_FormulaNode"
+            },
+            "kind": {
+              "const": "func"
+            },
+            "name": {
+              "enum": [
+                "arg",
+                "cos",
+                "cosh",
+                "cot",
+                "csc",
+                "deg",
+                "det",
+                "exp",
+                "gcd",
+                "inf",
+                "lim",
+                "ln",
+                "log",
+                "max",
+                "min",
+                "sec",
+                "sin",
+                "sinh",
+                "sup",
+                "tan",
+                "tanh"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "body": {
+              "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_FormulaNode"
+            },
+            "kind": {
+              "const": "sum"
+            },
+            "lower": {
+              "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_FormulaNode"
+            },
+            "upper": {
+              "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_FormulaNode"
+            }
+          },
+          "required": [
+            "kind",
+            "lower",
+            "upper",
+            "body"
+          ],
+          "type": "object"
         }
       ]
     },

@@ -392,6 +392,33 @@
   .bean-youtube-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
   .bean-speaker-notes { @apply mt-5 rounded-md border border-dashed bg-muted p-4 text-sm; }
   .bean-speaker-notes h2 { @apply mb-1 font-semibold; }
+
+  /* Blackboard lesson surface: a fixed dark board with chalk-colored ink. The
+     board owns its own color scheme so it reads the same inside light and dark
+     application themes. */
+  .bean-lesson { @apply overflow-hidden rounded-xl border p-5 shadow-md sm:p-8;
+    background: #1c2a24; border-color: #2e4038; color: #eef0e4; }
+  .bean-lesson .bean-content-block p, .bean-lesson .bean-content-block ul, .bean-lesson .bean-content-block > ol:not(.bean-content-diagram) { @apply text-base leading-7 sm:text-lg; }
+  .bean-lesson .bean-content-block h2, .bean-lesson .bean-content-block h3, .bean-lesson .bean-content-block h4 { @apply font-heading; color: #f4f6ea; }
+  .bean-lesson .bean-content-block h2 { @apply text-xl sm:text-2xl; }
+  .bean-lesson .bean-content-block h3, .bean-lesson .bean-content-block h4 { @apply text-lg sm:text-xl; }
+  .bean-lesson .bean-content-block figcaption { color: #b9c4b8; }
+  .bean-lesson .bean-content-diagram li > span:first-child { border-color: #3d5248; background: #24352e; color: #eef0e4; }
+  .bean-lesson .bean-content-callout { border-color: #8fb8a0; background: #24352e; }
+  .bean-lesson .bean-image-fallback { border-color: #3d5248; background: #24352e; color: #b9c4b8; }
+  .bean-lesson-title { @apply m-0 mb-6 border-b pb-3 font-heading text-2xl font-semibold tracking-tight sm:text-3xl; border-color: #3d5248; color: #f4f6ea; }
+  .bean-lesson-sections { @apply m-0 list-none space-y-7 p-0; counter-reset: beanLessonSection; }
+  .bean-lesson-section { @apply relative pl-9 sm:pl-11; counter-increment: beanLessonSection; }
+  .bean-lesson-section::before { @apply absolute left-0 top-0 flex h-6 w-6 items-center justify-center rounded-full border text-sm font-semibold sm:h-7 sm:w-7;
+    content: counter(beanLessonSection); border-color: #8fb8a0; color: #a7d5b9; }
+  .bean-lesson-section-heading { @apply m-0 mb-3 font-heading text-lg font-semibold sm:text-xl; color: #cde3d3; }
+
+  .bean-formula { @apply max-w-full overflow-x-auto rounded-lg border border-dashed p-4 text-center; border-color: var(--border-strong); }
+  .bean-formula:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+  .bean-formula math { @apply mx-auto; font-size: 1.35em; }
+  .bean-formula-alt { @apply mt-3 text-sm; color: var(--text-muted); }
+  .bean-lesson .bean-formula { border-color: #4d675b; }
+  .bean-lesson .bean-formula-alt { color: #b9c4b8; }
 }
 
 @media (min-width: 40rem) {

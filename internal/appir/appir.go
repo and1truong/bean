@@ -340,8 +340,10 @@ type Block struct {
 	DefaultFilters                                                                   map[string]any
 	Presentation                                                                     ViewPresentation
 	Content                                                                          []ContentElement
-	Label, Orientation, Variant                                                      string       `json:",omitempty"`
-	Tabs                                                                             []ContentTab `json:",omitempty"`
+	Label, Orientation, Variant                                                      string          `json:",omitempty"`
+	Tabs                                                                             []ContentTab    `json:",omitempty"`
+	Title                                                                            string          `json:",omitempty"`
+	Sections                                                                         []LessonSection `json:",omitempty"`
 }
 type ContentElement struct {
 	Type, Text, Attribution, Source, Alt, Language, Tone, Direction string
@@ -355,6 +357,19 @@ type ContentElement struct {
 	Columns                                                         []TableColumn   `json:",omitempty"`
 	Rows                                                            [][]string      `json:",omitempty"`
 	Choices                                                         []ContentChoice `json:",omitempty"`
+	Expr                                                            *FormulaNode    `json:",omitempty"`
+}
+
+// FormulaNode is the closed mathematical expression vocabulary for formula
+// elements. Kind selects which fields carry meaning; children are pointers so
+// invalid nesting is detectable after decoding.
+type FormulaNode struct {
+	Kind, Text, Name, Style       string
+	Parts                         []FormulaNode `json:",omitempty"`
+	Inner, Numerator, Denominator *FormulaNode  `json:",omitempty"`
+	Index, Base, Exponent         *FormulaNode  `json:",omitempty"`
+	Subscript, Argument           *FormulaNode  `json:",omitempty"`
+	Lower, Upper, Body            *FormulaNode  `json:",omitempty"`
 }
 
 func (element *ContentElement) UnmarshalJSON(data []byte) error {
@@ -412,6 +427,11 @@ type ContentChoice struct {
 type ContentTab struct {
 	ID      string `json:"id"`
 	Label   string
+	Content []ContentElement
+}
+type LessonSection struct {
+	ID      string `json:"id"`
+	Heading string `json:",omitempty"`
 	Content []ContentElement
 }
 type ViewPresentation struct {
@@ -664,18 +684,23 @@ func extendedSemanticContent(a *App) bool {
 	}
 	extended := func(elements []ContentElement) bool {
 		for _, element := range elements {
-			if element.Type == "ordered_list" || element.Type == "link" || element.Type == "divider" || element.Type == "table" || element.Type == "audio" || element.Type == "youtube" || element.Type == "youtube_playlist" || element.Type == "choices" || element.Level != 0 || element.Label != "" || element.Target != "" || element.OpenIn != "" || element.Caption != "" || element.RowHeader != "" || element.Title != "" || element.Transcript != "" || element.Question != "" || element.VideoID != "" || element.PlaylistID != "" || element.Answer != "" || element.Explanation != "" || element.Columns != nil || element.Rows != nil || element.Choices != nil {
+			if element.Type == "ordered_list" || element.Type == "link" || element.Type == "divider" || element.Type == "table" || element.Type == "audio" || element.Type == "youtube" || element.Type == "youtube_playlist" || element.Type == "choices" || element.Type == "formula" || element.Level != 0 || element.Label != "" || element.Target != "" || element.OpenIn != "" || element.Caption != "" || element.RowHeader != "" || element.Title != "" || element.Transcript != "" || element.Question != "" || element.VideoID != "" || element.PlaylistID != "" || element.Answer != "" || element.Explanation != "" || element.Columns != nil || element.Rows != nil || element.Choices != nil || element.Expr != nil {
 				return true
 			}
 		}
 		return false
 	}
 	for _, block := range a.Blocks {
-		if block.Type == "tabs" || block.Label != "" || block.Orientation != "" || block.Variant != "" || block.Tabs != nil || extended(block.Content) {
+		if block.Type == "tabs" || block.Type == "lesson" || block.Label != "" || block.Orientation != "" || block.Variant != "" || block.Tabs != nil || block.Title != "" || block.Sections != nil || extended(block.Content) {
 			return true
 		}
 		for _, tab := range block.Tabs {
 			if extended(tab.Content) {
+				return true
+			}
+		}
+		for _, section := range block.Sections {
+			if extended(section.Content) {
 				return true
 			}
 		}
@@ -894,7 +919,7 @@ func encodedExtendedSemanticFields(encoded []byte) bool {
 	blocks, _ := objectField(root, "Blocks").(map[string]any)
 	for _, rawBlock := range blocks {
 		block, _ := rawBlock.(map[string]any)
-		if hasObjectField(block, "Label", "Orientation", "Variant", "Tabs") || encodedExtendedElements(objectField(block, "Content")) {
+		if hasObjectField(block, "Label", "Orientation", "Variant", "Tabs", "Title", "Sections") || encodedExtendedElements(objectField(block, "Content")) {
 			return true
 		}
 	}
@@ -923,10 +948,10 @@ func encodedExtendedElements(raw any) bool {
 		if element == nil {
 			continue
 		}
-		if kind, _ := objectField(element, "Type").(string); kind == "ordered_list" || kind == "link" || kind == "divider" || kind == "table" || kind == "audio" || kind == "youtube" || kind == "youtube_playlist" || kind == "choices" {
+		if kind, _ := objectField(element, "Type").(string); kind == "ordered_list" || kind == "link" || kind == "divider" || kind == "table" || kind == "audio" || kind == "youtube" || kind == "youtube_playlist" || kind == "choices" || kind == "formula" {
 			return true
 		}
-		if hasObjectField(element, "Level", "Label", "Target", "OpenIn", "Caption", "RowHeader", "Title", "Transcript", "Question", "videoId", "playlistId", "Answer", "Explanation", "Columns", "Rows", "Choices") {
+		if hasObjectField(element, "Level", "Label", "Target", "OpenIn", "Caption", "RowHeader", "Title", "Transcript", "Question", "videoId", "playlistId", "Answer", "Explanation", "Columns", "Rows", "Choices", "Expr") {
 			return true
 		}
 	}

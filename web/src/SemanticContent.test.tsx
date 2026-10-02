@@ -1,10 +1,11 @@
-import {fireEvent,render,screen} from '@testing-library/react'
+import {fireEvent,render,screen,within} from '@testing-library/react'
 import {MemoryRouter} from 'react-router-dom'
 import {describe,expect,it} from 'vitest'
 import {ContentBlock} from './Content'
 import {ContentVisibility} from './ContentVisibility'
+import {LessonBlock} from './Lesson'
 import {TabsBlock} from './Tabs'
-import type {ContentElement,ContentTab} from './api'
+import type {ContentElement,ContentTab,FormulaNode} from './api'
 
 function content(elements:ContentElement[]){return render(<MemoryRouter><ContentBlock content={elements}/></MemoryRouter>)}
 
@@ -117,5 +118,55 @@ describe('Tabs Block',()=>{
     fireEvent.click(screen.getByRole('tab',{name:'Quiz'}));fireEvent.click(screen.getAllByRole('radio')[1]);fireEvent.click(screen.getByRole('button',{name:'Check answer'}));expect(screen.getByText('Correct')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('tab',{name:'Media'}));expect(document.querySelector('audio')).toBeNull()
     fireEvent.click(screen.getByRole('tab',{name:'Quiz'}));expect(screen.getAllByRole('radio')[1]).not.toBeChecked();expect(screen.queryByText('Correct')).not.toBeInTheDocument()
+  })
+})
+
+describe('Lesson Block',()=>{
+  it('renders ordered sections and keeps literal text literal',()=>{
+    render(<MemoryRouter><LessonBlock title="Worked example" sections={[
+      {id:'idea',Heading:'The idea',Content:[{Type:'paragraph',Text:'<b>literal</b> stays text'}]},
+      {id:'steps',Content:[{Type:'ordered_list',Items:['Substitute','Solve']}]},
+    ]}/></MemoryRouter>)
+    const lesson=screen.getByRole('article',{name:'Worked example'})
+    expect(lesson.querySelectorAll('li')).toHaveLength(4)
+    const headings=lesson.querySelectorAll('h2,h3');expect(headings[0]).toHaveTextContent('Worked example');expect(headings[1]).toHaveTextContent('The idea')
+    expect(screen.getByText('<b>literal</b> stays text')).toBeInTheDocument();expect(lesson.querySelector('b')).toBeNull()
+    expect(within(lesson).getAllByRole('list')[0]).toHaveClass('bean-lesson-sections')
+  })
+
+  it('renders image illustration fallback inside a section',()=>{
+    render(<MemoryRouter><LessonBlock title="Lesson" sections={[{id:'picture',Content:[{Type:'image',Source:'/missing.png',Alt:'Discriminant sketch'}]}]}/></MemoryRouter>)
+    fireEvent.error(screen.getByRole('img',{name:'Discriminant sketch'}))
+    expect(screen.getByRole('img',{name:'Discriminant sketch'})).toHaveTextContent('Discriminant sketch')
+  })
+})
+
+describe('formula content',()=>{
+  const quadratic:FormulaNode={Kind:'frac',Numerator:{Kind:'group',Parts:[{Kind:'literal',Text:'−b'},{Kind:'literal',Text:'±'},{Kind:'sqrt',Inner:{Kind:'group',Parts:[{Kind:'sup',Base:{Kind:'literal',Text:'b'},Exponent:{Kind:'literal',Text:'2'}},{Kind:'literal',Text:'−4ac'}]}}]},Denominator:{Kind:'literal',Text:'2a'}}
+  const kinds:FormulaNode={Kind:'group',Parts:[
+    {Kind:'paren',Style:'abs',Inner:{Kind:'literal',Text:'x'}},
+    {Kind:'root',Inner:{Kind:'literal',Text:'x'},Index:{Kind:'literal',Text:'3'}},
+    {Kind:'sub',Base:{Kind:'literal',Text:'x'},Subscript:{Kind:'literal',Text:'1'}},
+    {Kind:'func',Name:'sin',Argument:{Kind:'literal',Text:'θ'}},
+    {Kind:'literal',Text:'2'},
+    {Kind:'sum',Lower:{Kind:'literal',Text:'i=1'},Upper:{Kind:'literal',Text:'n'},Body:{Kind:'literal',Text:'i'}},
+  ]}
+
+  it('renders MathML structure with a visible readable fallback',()=>{
+    content([{Type:'formula',Expr:quadratic,Text:'x equals (−b ± √(b² − 4ac)) / 2a'}])
+    const formula=document.querySelector('math')!
+    expect(formula.querySelector('mfrac')).not.toBeNull();expect(formula.querySelector('msqrt')).not.toBeNull();expect(formula.querySelector('msup')).not.toBeNull()
+    expect(formula.getAttribute('aria-hidden')).toBe('true')
+    expect(screen.getByText('x equals (−b ± √(b² − 4ac)) / 2a')).toBeVisible()
+    expect(document.querySelector('.bean-formula')).toHaveAttribute('data-keyboard-scrollable','true')
+  })
+
+  it('renders every supported node kind and escapes literal content',()=>{
+    kinds.Parts!.push({Kind:'literal',Text:'<mi>'})
+    content([{Type:'formula',Expr:kinds,Text:'every kind'}])
+    const formula=document.querySelector('math')!
+    for(const tag of ['mrow','mroot','msub','munderover','mi','mo','mn'])expect(formula.querySelector(tag),tag).not.toBeNull()
+    expect(formula.textContent).toContain('<mi>')
+    expect(formula.querySelector('munderover')).toHaveTextContent('∑')
   })
 })

@@ -34,6 +34,18 @@ Contract: `GOAL.md`. Status: complete.
 | 5 | `choices` in named, inline and tab content with isolated/resettable state | compiler/schema/projection/Vitest/Playwright tests | done |
 | 6 | Presentation examples, docs, compatibility/activation/browser matrix and full qualification | generated-schema parity, browser journeys, `make check`, `make build` | done |
 
+# Blackboard lessons
+
+Contract: [issue #61](https://github.com/and1truong/bean/issues/61). Status: complete.
+
+| Slice | Deliverable | Verification | Status |
+| --- | --- | --- | --- |
+| 1 | `formula` element: bounded typed node tree, readable text fallback, compiler bounds | compiler/schema/content tests | done |
+| 2 | `Block type: lesson` with ordered sections reusing the closed element contract | compiler/schema/source tests | done |
+| 3 | Shared React rendering: LessonBlock, MathML Formula, blackboard surface | Vitest tests | done |
+| 4 | Checked-in worked lesson plus presentation frame | app validate, Playwright journey | done |
+| 5 | Docs, compatibility gates, qualification | AppIR format tests, `make check`, `make build` | done |
+
 # Content Block authoring guide
 
 Contract: `GOAL.md`. Status: complete.

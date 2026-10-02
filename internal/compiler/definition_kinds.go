@@ -420,15 +420,87 @@ func validateBlockContentSource(source definition.Definition) []definition.Diagn
 			out = append(out, contentSourceDiagnostics("Block", source.Metadata.Name, beancontent.ValidateSource(value, "spec.content"))...)
 		}
 	}
-	newFields := []string{"label", "orientation", "variant", "tabs"}
 	if typeName != "tabs" {
-		for _, field := range newFields {
+		for _, field := range []string{"label", "orientation", "variant", "tabs"} {
 			if _, present := source.Spec[field]; present {
 				out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec."+field, "is only supported by a tabs Block"))
 			}
 		}
+	}
+	if typeName != "lesson" {
+		for _, field := range []string{"title", "sections"} {
+			if _, present := source.Spec[field]; present {
+				out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec."+field, "is only supported by a lesson Block"))
+			}
+		}
+	}
+	if typeName == "tabs" {
+		out = append(out, validateTabsBlockSource(source)...)
+	}
+	if typeName == "lesson" {
+		out = append(out, validateLessonBlockSource(source)...)
+	}
+	return out
+}
+
+func validateLessonBlockSource(source definition.Definition) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
+	allowed := map[string]bool{"type": true, "policy": true, "title": true, "sections": true}
+	for _, field := range keys(source.Spec) {
+		if !allowed[field] {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec."+field, "is not supported by a lesson Block"))
+		}
+	}
+	for _, field := range []string{"title", "sections"} {
+		if value, present := source.Spec[field]; !present || value == nil {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec."+field, "is required"))
+		}
+	}
+	if value, present := source.Spec["title"]; present && value != nil {
+		if _, ok := value.(string); !ok {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec.title", "must be a string"))
+		}
+	}
+	rawSections, ok := source.Spec["sections"].([]any)
+	if !ok {
+		if _, present := source.Spec["sections"]; present && source.Spec["sections"] != nil {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec.sections", "must be a list of lesson sections"))
+		}
 		return out
 	}
+	for index, rawSection := range rawSections {
+		path := fmt.Sprintf("spec.sections.%d", index)
+		section, ok := rawSection.(map[string]any)
+		if !ok {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path, "must be an object"))
+			continue
+		}
+		for _, field := range keys(section) {
+			if field != "id" && field != "heading" && field != "content" {
+				out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path+"."+field, "is not supported by a lesson section"))
+			}
+		}
+		for _, field := range []string{"id", "content"} {
+			if value, present := section[field]; !present || value == nil {
+				out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path+"."+field, "is required"))
+			}
+		}
+		for _, field := range []string{"id", "heading"} {
+			if value, present := section[field]; present && value != nil {
+				if _, ok := value.(string); !ok {
+					out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path+"."+field, "must be a string"))
+				}
+			}
+		}
+		if value, present := section["content"]; present && value != nil {
+			out = append(out, contentSourceDiagnostics("Block", source.Metadata.Name, beancontent.ValidateSource(value, path+".content"))...)
+		}
+	}
+	return out
+}
+
+func validateTabsBlockSource(source definition.Definition) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
 	allowed := map[string]bool{"type": true, "policy": true, "label": true, "orientation": true, "variant": true, "tabs": true}
 	fieldNames := keys(source.Spec)
 	for _, field := range fieldNames {

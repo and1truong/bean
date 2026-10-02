@@ -102,6 +102,17 @@ type Capabilities struct {
 	MinTabs                    int      `json:"minTabs"`
 	MaxTabs                    int      `json:"maxTabs"`
 	MaxTabContentElements      int      `json:"maxTabContentElements"`
+	FormulaNodeKinds           []string `json:"formulaNodeKinds"`
+	FormulaFunctions           []string `json:"formulaFunctions"`
+	FormulaParenStyles         []string `json:"formulaParenStyles"`
+	MaxFormulaNodes            int      `json:"maxFormulaNodes"`
+	MaxFormulaDepth            int      `json:"maxFormulaDepth"`
+	MaxFormulaLiteralRunes     int      `json:"maxFormulaLiteralRunes"`
+	MaxFormulaAltRunes         int      `json:"maxFormulaAltRunes"`
+	MaxFormulaGroupParts       int      `json:"maxFormulaGroupParts"`
+	MinLessonSections          int      `json:"minLessonSections"`
+	MaxLessonSections          int      `json:"maxLessonSections"`
+	MaxLessonContentElements   int      `json:"maxLessonContentElements"`
 	DatabaseBackends           []string `json:"databaseBackends"`
 	MaxViewLimit               int      `json:"maxViewLimit"`
 	MaxFileBytes               int      `json:"maxFileBytes"`
@@ -227,6 +238,17 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 		MinTabs:                    beancontent.MinTabs,
 		MaxTabs:                    beancontent.MaxTabs,
 		MaxTabContentElements:      beancontent.MaxTabElements,
+		FormulaNodeKinds:           beancontent.FormulaKinds(),
+		FormulaFunctions:           beancontent.FormulaFunctions(),
+		FormulaParenStyles:         beancontent.FormulaParenStyles(),
+		MaxFormulaNodes:            beancontent.MaxFormulaNodes,
+		MaxFormulaDepth:            beancontent.MaxFormulaDepth,
+		MaxFormulaLiteralRunes:     beancontent.MaxFormulaLiteralRunes,
+		MaxFormulaAltRunes:         beancontent.MaxFormulaAltRunes,
+		MaxFormulaGroupParts:       beancontent.MaxFormulaGroupParts,
+		MinLessonSections:          beancontent.MinLessonSections,
+		MaxLessonSections:          beancontent.MaxLessonSections,
+		MaxLessonContentElements:   beancontent.MaxLessonElements,
 		DatabaseBackends:           []string{"postgresql", "sqlite"},
 		MaxViewLimit:               200,
 		MaxFileBytes:               field.MaxFileBytes,
@@ -448,13 +470,26 @@ func definitionSchema(kind string, specification reflect.Type) map[string]any {
 		tabs := properties["tabs"].(map[string]any)
 		tabs["minItems"] = beancontent.MinTabs
 		tabs["maxItems"] = beancontent.MaxTabs
+		properties["title"] = boundedString(beancontent.MaxLabelRunes)
+		sections := properties["sections"].(map[string]any)
+		sections["minItems"] = beancontent.MinLessonSections
+		sections["maxItems"] = beancontent.MaxLessonSections
 		forbidden := []any{}
 		for _, field := range []string{"view", "display", "entity", "webform", "action", "menu", "text", "resource", "inputs", "bindings", "filters", "defaultFilters", "presentation", "content"} {
 			forbidden = append(forbidden, map[string]any{"required": []string{field}})
 		}
+		tabsOnly := []any{}
+		for _, field := range []string{"label", "orientation", "variant", "tabs"} {
+			tabsOnly = append(tabsOnly, map[string]any{"required": []string{field}})
+		}
+		lessonOnly := []any{}
+		for _, field := range []string{"title", "sections"} {
+			lessonOnly = append(lessonOnly, map[string]any{"required": []string{field}})
+		}
 		document["oneOf"] = []any{
-			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "tabs"}}, "required": []string{"type", "label", "tabs"}, "not": map[string]any{"anyOf": forbidden}},
-			map[string]any{"properties": map[string]any{"type": map[string]any{"enum": without(block.Names(), "tabs")}}, "required": []string{"type"}, "not": map[string]any{"anyOf": []any{map[string]any{"required": []string{"label"}}, map[string]any{"required": []string{"orientation"}}, map[string]any{"required": []string{"variant"}}, map[string]any{"required": []string{"tabs"}}}}},
+			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "tabs"}}, "required": []string{"type", "label", "tabs"}, "not": map[string]any{"anyOf": append(append([]any{}, forbidden...), lessonOnly...)}},
+			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "lesson"}}, "required": []string{"type", "title", "sections"}, "not": map[string]any{"anyOf": append(append([]any{}, forbidden...), tabsOnly...)}},
+			map[string]any{"properties": map[string]any{"type": map[string]any{"enum": without(block.Names(), "tabs", "lesson")}}, "required": []string{"type"}, "not": map[string]any{"anyOf": append(append([]any{}, tabsOnly...), lessonOnly...)}},
 		}
 	}
 	if kind == "Rule" {
@@ -509,10 +544,14 @@ func definitionSchema(kind string, specification reflect.Type) map[string]any {
 	return document
 }
 
-func without(values []string, omitted string) []string {
+func without(values []string, omitted ...string) []string {
 	out := []string{}
 	for _, value := range values {
-		if value != omitted {
+		skip := false
+		for _, name := range omitted {
+			skip = skip || value == name
+		}
+		if !skip {
 			out = append(out, value)
 		}
 	}
@@ -547,6 +586,18 @@ func semanticContentSchemaDefinitions(definitions map[string]any) {
 			content := properties["content"].(map[string]any)
 			content["minItems"] = 1
 			content["maxItems"] = beancontent.MaxElements
+		case strings.HasSuffix(name, "internal_appir_LessonSection"):
+			schema["required"] = []string{"id", "content"}
+			schema["description"] = "Section IDs are unique within the Block; combined content contains at most 48 elements across all sections. These constraints are compiler-enforced."
+			properties := schema["properties"].(map[string]any)
+			delete(properties, "iD")
+			properties["id"] = machineIDSchema()
+			properties["heading"] = boundedString(beancontent.MaxLabelRunes)
+			content := properties["content"].(map[string]any)
+			content["minItems"] = 1
+			content["maxItems"] = beancontent.MaxElements
+		case strings.HasSuffix(name, "internal_appir_FormulaNode"):
+			definitions[name] = formulaNodeSchema(name)
 		}
 	}
 }
@@ -592,8 +643,39 @@ func contentElementSchema() map[string]any {
 		contentVariant("youtube", []string{"videoId", "title", "transcript"}, map[string]any{"videoId": map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_-]{11}$"}, "title": nonBlank(beancontent.MaxMediaTitleRunes), "transcript": nonBlank(beancontent.MaxTranscriptRunes)}),
 		contentVariant("youtube_playlist", []string{"playlistId", "title", "transcript"}, map[string]any{"playlistId": map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_-]{10,80}$"}, "title": nonBlank(beancontent.MaxMediaTitleRunes), "transcript": nonBlank(beancontent.MaxTranscriptRunes)}),
 		contentVariant("choices", []string{"question", "choices", "answer"}, map[string]any{"question": nonBlank(beancontent.MaxQuestionRunes), "choices": map[string]any{"type": "array", "minItems": beancontent.MinChoices, "maxItems": beancontent.MaxChoices, "items": map[string]any{"$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ContentChoice"}}, "answer": machineIDSchema(), "explanation": text(beancontent.MaxExplanationRunes)}),
+		contentVariant("formula", []string{"expr", "text"}, map[string]any{"expr": map[string]any{"$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_FormulaNode"}, "text": nonBlank(beancontent.MaxFormulaAltRunes)}),
 	}
 	return map[string]any{"oneOf": variants, "description": "Closed semantic content variants. The compiler additionally enforces non-blank text, URL safety, unique IDs, choices answer references, and table row widths."}
+}
+
+// formulaNodeSchema is the closed formula vocabulary: kind selects the
+// allowed field set and the compiler additionally enforces a total node count
+// and nesting depth over the recursive structure.
+func formulaNodeSchema(name string) map[string]any {
+	node := map[string]any{"$ref": "#/$defs/" + name}
+	variant := func(kind string, required []string, properties map[string]any) map[string]any {
+		allProperties := map[string]any{"kind": map[string]any{"const": kind}}
+		for field, schema := range properties {
+			allProperties[field] = schema
+		}
+		return map[string]any{"type": "object", "additionalProperties": false, "required": append([]string{"kind"}, required...), "properties": allProperties}
+	}
+	literal := map[string]any{"type": "string", "maxLength": beancontent.MaxFormulaLiteralRunes, "pattern": "\\S"}
+	return map[string]any{
+		"description": "Closed mathematical expression nodes. The compiler additionally enforces a maximum of 48 nodes and a nesting depth of 6.",
+		"oneOf": []any{
+			variant("literal", []string{"text"}, map[string]any{"text": literal}),
+			variant("group", []string{"parts"}, map[string]any{"parts": map[string]any{"type": "array", "minItems": 1, "maxItems": beancontent.MaxFormulaGroupParts, "items": node}}),
+			variant("paren", []string{"inner"}, map[string]any{"inner": node, "style": map[string]any{"type": "string", "enum": beancontent.FormulaParenStyles(), "default": "round"}}),
+			variant("frac", []string{"numerator", "denominator"}, map[string]any{"numerator": node, "denominator": node}),
+			variant("sqrt", []string{"inner"}, map[string]any{"inner": node}),
+			variant("root", []string{"inner", "index"}, map[string]any{"inner": node, "index": node}),
+			variant("sup", []string{"base", "exponent"}, map[string]any{"base": node, "exponent": node}),
+			variant("sub", []string{"base", "subscript"}, map[string]any{"base": node, "subscript": node}),
+			variant("func", []string{"name"}, map[string]any{"name": map[string]any{"type": "string", "enum": beancontent.FormulaFunctions()}, "argument": node}),
+			variant("sum", []string{"lower", "upper", "body"}, map[string]any{"lower": node, "upper": node, "body": node}),
+		},
+	}
 }
 
 func contentVariant(typeName string, required []string, properties map[string]any) map[string]any {

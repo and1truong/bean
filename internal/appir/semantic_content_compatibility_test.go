@@ -24,6 +24,15 @@ func TestExtendedSemanticContentFormatBoundaryIsImmutable(t *testing.T) {
 		{"tabs", func(app *appir.App) {
 			app.Blocks["tabs"] = appir.Block{Type: "tabs", Tabs: []appir.ContentTab{{ID: "one", Content: []appir.ContentElement{{Type: "choices"}}}}}
 		}},
+		{"formula", func(app *appir.App) {
+			app.Blocks["content"] = appir.Block{Type: "content", Content: []appir.ContentElement{{Type: "formula", Expr: &appir.FormulaNode{Kind: "literal", Text: "x"}}}}
+		}},
+		{"lesson", func(app *appir.App) {
+			app.Blocks["lesson"] = appir.Block{Type: "lesson", Title: "Lesson", Sections: []appir.LessonSection{{ID: "one", Content: []appir.ContentElement{{Type: "divider"}}}}}
+		}},
+		{"lesson section content", func(app *appir.App) {
+			app.Blocks["content"] = appir.Block{Type: "content", Sections: []appir.LessonSection{{ID: "one", Content: []appir.ContentElement{{Type: "formula", Expr: &appir.FormulaNode{Kind: "literal", Text: "x"}}}}}}
+		}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -64,6 +73,8 @@ func TestHistoricalFormatRejectsExplicitEmptyExtendedFields(t *testing.T) {
 		`{"FormatVersion":"bean/appir/v19","Blocks":{"content":{"Type":"content","Content":[{"Type":"heading","Text":"Historical","Level":0}]}}}`,
 		`{"FormatVersion":"bean/appir/v19","Blocks":{"content":{"Type":"content","Content":[{"Type":"paragraph","Text":"Historical","Explanation":""}]}}}`,
 		`{"FormatVersion":"bean/appir/v19","Blocks":{"tabs":{"Type":"content","Tabs":[]}}}`,
+		`{"FormatVersion":"bean/appir/v19","Blocks":{"content":{"Type":"content","Content":[{"Type":"formula","Expr":{"Kind":"literal","Text":"x"}}]}}}`,
+		`{"FormatVersion":"bean/appir/v19","Blocks":{"lesson":{"Type":"lesson","Sections":[{"id":"one","Content":[]}]}}}`,
 	} {
 		app, err := appir.Decode([]byte(encoded))
 		if err != nil {

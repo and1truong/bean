@@ -163,6 +163,12 @@ regions:
             answer: action
             explanation: "Views read; Actions are the write boundary."
 ---
+kind: Panel
+name: frame_blackboard
+layout: single-column
+regions:
+  - {name: main, blocks: [blackboard_lesson]}
+---
 kind: Sequence
 name: bean_introduction
 route: /presentations/bean
@@ -187,4 +193,5 @@ frames:
   - {name: tabs_horizontal, title: Horizontal application tabs, direction: next, layout: bullets, panel: frame_tabs_horizontal, notes: "Arrow keys select bounded in-payload tab content."}
   - {name: tabs_vertical, title: Vertical release tabs, direction: down, layout: bullets, panel: frame_tabs_vertical, notes: "Vertical tabs use Up and Down without taking Left and Right."}
   - {name: choices, title: Check one answer, direction: down, layout: statement, panel: frame_choices, notes: "Quiz state stays in this browser component and resets when the frame is left."}
+  - {name: blackboard, title: "The blackboard lesson", direction: down, layout: bullets, panel: frame_blackboard, notes: "A bounded lesson renders ordered sections, a typed formula, and an illustration."}
   - {name: start, title: Start with one useful workflow, direction: next, layout: closing, panel: frame_close, notes: "Close with the shortest runnable path."}

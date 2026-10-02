@@ -1,6 +1,6 @@
 # Bean Introduction
 
-A seventeen-frame, eight-chapter introduction built entirely from Bean metadata. It preserves the original frame IDs and `/presentations/bean`, and adds focused frames for heading levels, ordered lists, safe links, dividers, literal tables, image/audio/YouTube/playlist media, horizontal and vertical Tabs Blocks, and direct/tab-contained choices. The original inline composition, named `product_statement`, speaker notes, and live View-backed capability chart remain.
+An eighteen-frame, eight-chapter introduction built entirely from Bean metadata. It preserves the original frame IDs and `/presentations/bean`, and adds focused frames for heading levels, ordered lists, safe links, dividers, literal tables, image/audio/YouTube/playlist media, horizontal and vertical Tabs Blocks, direct/tab-contained choices, and a blackboard lesson with a typed formula and illustration. The original inline composition, named `product_statement`, speaker notes, and live View-backed capability chart remain.
 
 ## Definition layout
 

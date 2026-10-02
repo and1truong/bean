@@ -2,6 +2,7 @@ package compiler_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -255,6 +256,131 @@ func TestTabsBlockValidationAndSourceLocations(t *testing.T) {
 	}
 }
 
+func TestLessonBlockCompilesAndNormalizesAcrossSeams(t *testing.T) {
+	paragraph := []any{map[string]any{"type": "paragraph", "text": "A bounded step."}}
+	lesson := lessonSpec([]any{
+		lessonSection("idea", paragraph),
+		map[string]any{"id": "formula", "heading": "The formula", "content": []any{formulaElement(map[string]any{"kind": "paren", "inner": literalNode("x")}, "parenthesized x")}},
+	})
+	definitions := []definition.Definition{
+		semanticDefinition("Block", "lesson", lesson),
+		semanticDefinition("Panel", "panel", map[string]any{"layout": "single-column", "regions": []any{map[string]any{"name": "main", "blocks": []any{"lesson"}}}}),
+		semanticDefinition("Sequence", "sequence", map[string]any{"route": "/sequence", "title": "Sequence", "profile": "presentation", "aspectRatio": "wide", "frames": []any{map[string]any{"name": "frame", "title": "Frame", "layout": "bullets", "panel": "panel"}}}),
+	}
+	result := compiler.Compile("lesson", 1, definitions)
+	if len(result.Diagnostics) != 0 {
+		t.Fatal(result.Diagnostics)
+	}
+	block := result.App.Blocks["lesson"]
+	if block.Title != "Lesson" || len(block.Sections) != 2 || block.Sections[0].Heading != "" || block.Sections[1].Heading != "The formula" {
+		t.Fatalf("lesson=%+v", block)
+	}
+	formula := block.Sections[1].Content[0].Expr
+	if formula == nil || formula.Kind != "paren" || formula.Style != "round" || formula.Inner.Kind != "literal" {
+		t.Fatalf("formula defaults=%+v", formula)
+	}
+}
+
+func TestLessonAndFormulaRejectInvalidContracts(t *testing.T) {
+	paragraph := []any{map[string]any{"type": "paragraph", "text": "Step"}}
+	section := lessonSection("one", paragraph)
+	deep := literalNode("x")
+	for index := 0; index < 6; index++ {
+		deep = map[string]any{"kind": "paren", "inner": deep}
+	}
+	dense := make([]any, 7)
+	for index := range dense {
+		dense[index] = map[string]any{"type": "paragraph", "text": "Step"}
+	}
+	wide := make([]any, 25)
+	for index := range wide {
+		wide[index] = literalNode("x")
+	}
+	manyNodes := make([]any, 24)
+	for index := range manyNodes {
+		manyNodes[index] = literalNode("x")
+	}
+	tests := []struct {
+		name, path string
+		spec       map[string]any
+	}{
+		{"missing title", "spec.title", map[string]any{"type": "lesson", "sections": []any{section}}},
+		{"long title", "spec.title", map[string]any{"type": "lesson", "title": strings.Repeat("界", 121), "sections": []any{section}}},
+		{"missing sections", "spec.sections", map[string]any{"type": "lesson", "title": "Lesson"}},
+		{"empty sections", "spec.sections", lessonSpec([]any{})},
+		{"foreign content", "spec.content", map[string]any{"type": "lesson", "title": "Lesson", "sections": []any{section}, "content": paragraph}},
+		{"foreign tabs", "spec.tabs", map[string]any{"type": "lesson", "title": "Lesson", "sections": []any{section}, "tabs": []any{}}},
+		{"lesson field on content", "spec.title", map[string]any{"type": "content", "content": paragraph, "title": "Lesson"}},
+		{"lesson field on text", "spec.sections", map[string]any{"type": "text", "text": "Text", "sections": []any{section}}},
+		{"bad section id", "spec.sections.0.id", lessonSpec([]any{map[string]any{"id": "Bad", "content": paragraph}})},
+		{"duplicate section id", "spec.sections.1.id", lessonSpec([]any{section, section})},
+		{"long section heading", "spec.sections.0.heading", lessonSpec([]any{map[string]any{"id": "one", "heading": strings.Repeat("界", 121), "content": paragraph}})},
+		{"empty section content", "spec.sections.0.content", lessonSpec([]any{lessonSection("one", []any{})})},
+		{"missing formula expr", "spec.sections.0.content.0.expr", lessonSpec([]any{map[string]any{"id": "one", "content": []any{map[string]any{"type": "formula", "text": "x"}}}})},
+		{"formula alt missing", "spec.sections.0.content.0.text", lessonSpec([]any{map[string]any{"id": "one", "content": []any{map[string]any{"type": "formula", "expr": literalNode("x")}}}})},
+		{"formula alt long", "spec.sections.0.content.0.text", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(literalNode("x"), strings.Repeat("界", 401))}}})},
+		{"formula expr not object", "spec.sections.0.content.0.expr", lessonSpec([]any{map[string]any{"id": "one", "content": []any{map[string]any{"type": "formula", "expr": "x", "text": "x"}}}})},
+		{"formula node kind missing", "spec.sections.0.content.0.expr.kind", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(map[string]any{"text": "x"}, "x")}}})},
+		{"formula node kind", "spec.sections.0.content.0.expr.kind", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(map[string]any{"kind": "matrix"}, "x")}}})},
+		{"formula foreign field", "spec.sections.0.content.0.expr.inner", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(map[string]any{"kind": "literal", "text": "x", "inner": literalNode("y")}, "x")}}})},
+		{"literal blank", "spec.sections.0.content.0.expr.text", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(literalNode(" "), "x")}}})},
+		{"literal long", "spec.sections.0.content.0.expr.text", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(literalNode(strings.Repeat("x", 41)), "x")}}})},
+		{"group empty", "spec.sections.0.content.0.expr.parts", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(map[string]any{"kind": "group", "parts": []any{}}, "x")}}})},
+		{"group too wide", "spec.sections.0.content.0.expr.parts", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(map[string]any{"kind": "group", "parts": wide}, "x")}}})},
+		{"too many nodes", "spec.sections.0.content.0.expr", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(map[string]any{"kind": "group", "parts": []any{map[string]any{"kind": "group", "parts": manyNodes}, map[string]any{"kind": "group", "parts": manyNodes}}}, "x")}}})},
+		{"too deep", "spec.sections.0.content.0.expr.inner.inner.inner.inner.inner.inner", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(deep, "x")}}})},
+		{"paren style", "spec.sections.0.content.0.expr.style", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(map[string]any{"kind": "paren", "style": "curly", "inner": literalNode("x")}, "x")}}})},
+		{"paren missing inner", "spec.sections.0.content.0.expr.inner", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(map[string]any{"kind": "paren"}, "x")}}})},
+		{"frac missing denominator", "spec.sections.0.content.0.expr.denominator", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(map[string]any{"kind": "frac", "numerator": literalNode("1")}, "x")}}})},
+		{"root missing index", "spec.sections.0.content.0.expr.index", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(map[string]any{"kind": "root", "inner": literalNode("x")}, "x")}}})},
+		{"sup missing exponent", "spec.sections.0.content.0.expr.exponent", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(map[string]any{"kind": "sup", "base": literalNode("x")}, "x")}}})},
+		{"sub missing subscript", "spec.sections.0.content.0.expr.subscript", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(map[string]any{"kind": "sub", "base": literalNode("x")}, "x")}}})},
+		{"func name", "spec.sections.0.content.0.expr.name", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(map[string]any{"kind": "func", "name": "eval"}, "x")}}})},
+		{"sum missing body", "spec.sections.0.content.0.expr.body", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(map[string]any{"kind": "sum", "lower": literalNode("i=1"), "upper": literalNode("n")}, "x")}}})},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := compiler.Compile("invalid", 1, []definition.Definition{semanticDefinition("Block", "invalid", test.spec)})
+			if !hasSequenceDiagnostic(result.Diagnostics, "Block", "invalid", test.path, "BEAN-E2881") {
+				t.Fatalf("missing %s in %v", test.path, result.Diagnostics)
+			}
+		})
+	}
+
+	nineSections := make([]any, 9)
+	for index := range nineSections {
+		nineSections[index] = lessonSection(fmt.Sprintf("section_%d", index), paragraph)
+	}
+	result := compiler.Compile("invalid", 1, []definition.Definition{semanticDefinition("Block", "invalid", lessonSpec(nineSections))})
+	if !hasSequenceDiagnostic(result.Diagnostics, "Block", "invalid", "spec.sections", "BEAN-E2881") {
+		t.Fatalf("nine sections accepted: %v", result.Diagnostics)
+	}
+	eightSections := make([]any, 8)
+	for index := range eightSections {
+		eightSections[index] = lessonSection(fmt.Sprintf("section_%d", index), dense)
+	}
+	result = compiler.Compile("invalid", 1, []definition.Definition{semanticDefinition("Block", "invalid", lessonSpec(eightSections))})
+	if !hasSequenceDiagnostic(result.Diagnostics, "Block", "invalid", "spec.sections", "BEAN-E2881") {
+		t.Fatalf("56 elements across sections accepted: %v", result.Diagnostics)
+	}
+}
+
+func TestSequenceDensityCountsLessonContent(t *testing.T) {
+	long := strings.Repeat("x", 400)
+	definitions := []definition.Definition{
+		semanticDefinition("Block", "lesson", lessonSpec([]any{
+			lessonSection("one", []any{map[string]any{"type": "paragraph", "text": long}}),
+			lessonSection("two", []any{map[string]any{"type": "paragraph", "text": long}}),
+		})),
+		semanticDefinition("Panel", "panel", map[string]any{"layout": "single-column", "regions": []any{map[string]any{"name": "main", "blocks": []any{"lesson"}}}}),
+		semanticDefinition("Sequence", "sequence", map[string]any{"route": "/sequence", "title": "Sequence", "profile": "presentation", "aspectRatio": "wide", "frames": []any{map[string]any{"name": "frame", "title": "Frame", "layout": "bullets", "panel": "panel"}}}),
+	}
+	result := compiler.Compile("density", 1, definitions)
+	if !hasSequenceDiagnostic(result.Diagnostics, "Sequence", "sequence", "spec.frames.0", "BEAN-E2881") {
+		t.Fatalf("lesson content was excluded from density: %v", result.Diagnostics)
+	}
+}
+
 func TestSequenceDensityCountsAllTabContent(t *testing.T) {
 	long := strings.Repeat("x", 400)
 	definitions := []definition.Definition{
@@ -282,7 +408,24 @@ func validExtendedContent() []any {
 		map[string]any{"type": "youtube", "videoId": "M7lc1UVf-VE", "title": "Video", "transcript": "Video transcript."},
 		map[string]any{"type": "youtube_playlist", "playlistId": "PL1234567890ABCDEFG", "title": "Playlist", "transcript": "Playlist transcript."},
 		choicesElement("action", []any{map[string]any{"id": "view", "text": "View"}, map[string]any{"id": "action", "text": "Action"}}),
+		formulaElement(map[string]any{"kind": "sqrt", "inner": literalNode("x")}, "square root of x"),
 	}
+}
+
+func literalNode(text string) map[string]any {
+	return map[string]any{"kind": "literal", "text": text}
+}
+
+func formulaElement(expr map[string]any, text string) map[string]any {
+	return map[string]any{"type": "formula", "expr": expr, "text": text}
+}
+
+func lessonSection(id string, content []any) map[string]any {
+	return map[string]any{"id": id, "content": content}
+}
+
+func lessonSpec(sections []any) map[string]any {
+	return map[string]any{"type": "lesson", "title": "Lesson", "sections": sections}
 }
 
 func tableElement(columns, rows []any, rowHeader string) map[string]any {
