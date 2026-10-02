@@ -7,6 +7,7 @@ import {LessonBlock} from './Lesson'
 import {TabsBlock} from './Tabs'
 import {TimelineBlock} from './Timeline'
 import {MindmapBlock,mindmapSyntax} from './Mindmap'
+import {FlashcardBlock} from './Flashcard'
 import type {ContentElement,ContentTab,FormulaNode} from './api'
 
 function content(elements:ContentElement[]){return render(<MemoryRouter><ContentBlock content={elements}/></MemoryRouter>)}
@@ -246,5 +247,55 @@ describe('formula content',()=>{
     for(const tag of ['mrow','mroot','msub','munderover','mi','mo','mn'])expect(formula.querySelector(tag),tag).not.toBeNull()
     expect(formula.textContent).toContain('<mi>')
     expect(formula.querySelector('munderover')).toHaveTextContent('∑')
+  })
+})
+
+describe('Flashcard Block',()=>{
+  const deck=[
+    {id:'b',Prompt:'What is a Block?',Answer:'A named region of metadata-rendered content.'},
+    {id:'a',Prompt:'What is a <i>Panel</i>?',Answer:'A <b>layout</b> that hosts Blocks.'},
+  ]
+
+  it('renders an ordered deck with prompts visible and answers hidden',()=>{
+    render(<MemoryRouter><FlashcardBlock title="Bean vocabulary" cards={deck}/></MemoryRouter>)
+    const block=screen.getByRole('article',{name:'Bean vocabulary'})
+    expect(block).toHaveTextContent('2 cards')
+    const items=within(block).getAllByRole('listitem')
+    expect(items).toHaveLength(2)
+    expect(items[0]).toHaveTextContent('What is a Block?');expect(items[0]).not.toHaveTextContent('A named region')
+    const toggles=within(block).getAllByRole('button',{expanded:false})
+    expect(toggles).toHaveLength(2)
+    expect(within(block).queryByRole('button',{name:/Hide all/})).toBeNull()
+  })
+
+  it('keeps literal prompt and answer text literal',()=>{
+    render(<MemoryRouter><FlashcardBlock title="Deck" cards={deck}/></MemoryRouter>)
+    const block=screen.getByRole('article',{name:'Deck'})
+    expect(block).toHaveTextContent('What is a <i>Panel</i>?');expect(block.querySelector('i')).toBeNull()
+    fireEvent.click(within(block).getAllByRole('button')[1])
+    expect(block).toHaveTextContent('A <b>layout</b> that hosts Blocks.');expect(block.querySelector('b')).toBeNull()
+  })
+
+  it('reveals one card at a time and hides all answers from the deck',()=>{
+    render(<MemoryRouter><FlashcardBlock title="Deck" cards={deck}/></MemoryRouter>)
+    const block=screen.getByRole('article',{name:'Deck'})
+    const buttons=within(block).getAllByRole('button')
+    fireEvent.click(buttons[0])
+    expect(buttons[0]).toHaveAttribute('aria-expanded','true');expect(buttons[1]).toHaveAttribute('aria-expanded','false')
+    expect(block).toHaveTextContent('A named region of metadata-rendered content.');expect(block).not.toHaveTextContent('hosts Blocks')
+    fireEvent.click(buttons[1])
+    expect(within(block).getByRole('button',{name:/Hide all answers/})).toBeVisible()
+    fireEvent.click(within(block).getByRole('button',{name:/Hide all answers/}))
+    expect(within(block).getAllByRole('button',{expanded:false})).toHaveLength(2)
+    expect(block).not.toHaveTextContent('A named region')
+  })
+
+  it('keeps reveal state instance-local across two decks',()=>{
+    render(<MemoryRouter><><FlashcardBlock title="One" cards={deck}/><FlashcardBlock title="Two" cards={deck}/></></MemoryRouter>)
+    const one=screen.getByRole('article',{name:'One'});const two=screen.getByRole('article',{name:'Two'})
+    fireEvent.click(within(one).getAllByRole('button')[0])
+    expect(within(one).getAllByRole('button')[0]).toHaveAttribute('aria-expanded','true')
+    expect(within(two).getAllByRole('button')[0]).toHaveAttribute('aria-expanded','false')
+    expect(two).not.toHaveTextContent('A named region')
   })
 })

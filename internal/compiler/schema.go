@@ -123,6 +123,10 @@ type Capabilities struct {
 	MaxMindMapDepth            int      `json:"maxMindMapDepth"`
 	MaxMindMapLabelRunes       int      `json:"maxMindMapLabelRunes"`
 	MaxMindMapDetailRunes      int      `json:"maxMindMapDetailRunes"`
+	MinFlashcardCards          int      `json:"minFlashcardCards"`
+	MaxFlashcardCards          int      `json:"maxFlashcardCards"`
+	MaxFlashcardPromptRunes    int      `json:"maxFlashcardPromptRunes"`
+	MaxFlashcardAnswerRunes    int      `json:"maxFlashcardAnswerRunes"`
 	DatabaseBackends           []string `json:"databaseBackends"`
 	MaxViewLimit               int      `json:"maxViewLimit"`
 	MaxFileBytes               int      `json:"maxFileBytes"`
@@ -269,6 +273,10 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 		MaxMindMapDepth:            beancontent.MaxMindMapDepth,
 		MaxMindMapLabelRunes:       beancontent.MaxMindMapLabelRunes,
 		MaxMindMapDetailRunes:      beancontent.MaxMindMapDetailRunes,
+		MinFlashcardCards:          beancontent.MinFlashcardCards,
+		MaxFlashcardCards:          beancontent.MaxFlashcardCards,
+		MaxFlashcardPromptRunes:    beancontent.MaxFlashcardPromptRunes,
+		MaxFlashcardAnswerRunes:    beancontent.MaxFlashcardAnswerRunes,
 		DatabaseBackends:           []string{"postgresql", "sqlite"},
 		MaxViewLimit:               200,
 		MaxFileBytes:               field.MaxFileBytes,
@@ -497,6 +505,9 @@ func definitionSchema(kind string, specification reflect.Type) map[string]any {
 		entries := properties["entries"].(map[string]any)
 		entries["minItems"] = beancontent.MinTimelineEntries
 		entries["maxItems"] = beancontent.MaxTimelineEntries
+		cards := properties["cards"].(map[string]any)
+		cards["minItems"] = beancontent.MinFlashcardCards
+		cards["maxItems"] = beancontent.MaxFlashcardCards
 		forbidden := []any{}
 		for _, field := range []string{"view", "display", "entity", "webform", "action", "menu", "text", "resource", "inputs", "bindings", "filters", "defaultFilters", "presentation", "content"} {
 			forbidden = append(forbidden, map[string]any{"required": []string{field}})
@@ -506,15 +517,30 @@ func definitionSchema(kind string, specification reflect.Type) map[string]any {
 			tabsOnly = append(tabsOnly, map[string]any{"required": []string{field}})
 		}
 		markers := []any{}
-		for _, field := range []string{"title", "sections", "entries", "root"} {
+		for _, field := range []string{"title", "sections", "entries", "root", "cards"} {
 			markers = append(markers, map[string]any{"required": []string{field}})
 		}
+		not := func(base []any, groups ...[]any) map[string]any {
+			excluded := append([]any{}, base...)
+			for _, group := range groups {
+				excluded = append(excluded, group...)
+			}
+			return map[string]any{"anyOf": excluded}
+		}
+		forbiddenMarkers := func(indexes ...int) []any {
+			out := []any{}
+			for _, index := range indexes {
+				out = append(out, markers[index])
+			}
+			return out
+		}
 		document["oneOf"] = []any{
-			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "tabs"}}, "required": []string{"type", "label", "tabs"}, "not": map[string]any{"anyOf": append(append([]any{}, forbidden...), markers...)}},
-			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "lesson"}}, "required": []string{"type", "title", "sections"}, "not": map[string]any{"anyOf": append(append(append([]any{}, forbidden...), tabsOnly...), markers[2:4]...)}},
-			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "timeline"}}, "required": []string{"type", "title", "entries"}, "not": map[string]any{"anyOf": append(append(append(append([]any{}, forbidden...), tabsOnly...), markers[1:2]...), markers[3:4]...)}},
-			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "mindmap"}}, "required": []string{"type", "root"}, "not": map[string]any{"anyOf": append(append(append([]any{}, forbidden...), tabsOnly...), markers[:3]...)}},
-			map[string]any{"properties": map[string]any{"type": map[string]any{"enum": without(block.Names(), "tabs", "lesson", "timeline", "mindmap")}}, "required": []string{"type"}, "not": map[string]any{"anyOf": append(append([]any{}, tabsOnly...), markers...)}},
+			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "tabs"}}, "required": []string{"type", "label", "tabs"}, "not": not(forbidden, markers)},
+			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "lesson"}}, "required": []string{"type", "title", "sections"}, "not": not(forbidden, tabsOnly, forbiddenMarkers(2, 3, 4))},
+			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "timeline"}}, "required": []string{"type", "title", "entries"}, "not": not(forbidden, tabsOnly, forbiddenMarkers(1, 3, 4))},
+			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "mindmap"}}, "required": []string{"type", "root"}, "not": not(forbidden, tabsOnly, forbiddenMarkers(0, 1, 2, 4))},
+			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "flashcard"}}, "required": []string{"type", "title", "cards"}, "not": not(forbidden, tabsOnly, forbiddenMarkers(1, 2, 3))},
+			map[string]any{"properties": map[string]any{"type": map[string]any{"enum": without(block.Names(), "tabs", "lesson", "timeline", "mindmap", "flashcard")}}, "required": []string{"type"}, "not": not(nil, tabsOnly, markers)},
 		}
 	}
 	if kind == "Rule" {
@@ -639,6 +665,14 @@ func semanticContentSchemaDefinitions(definitions map[string]any) {
 			properties["label"] = boundedString(beancontent.MaxMindMapLabelRunes)
 			properties["description"] = boundedString(beancontent.MaxMindMapDetailRunes)
 			properties["children"].(map[string]any)["maxItems"] = beancontent.MaxMindMapChildren
+		case strings.HasSuffix(name, "internal_appir_Flashcard"):
+			schema["required"] = []string{"id", "prompt", "answer"}
+			schema["description"] = "Card IDs are unique within the Block; prompt and answer are literal text kept verbatim."
+			properties := schema["properties"].(map[string]any)
+			delete(properties, "iD")
+			properties["id"] = machineIDSchema()
+			properties["prompt"] = boundedString(beancontent.MaxFlashcardPromptRunes)
+			properties["answer"] = boundedString(beancontent.MaxFlashcardAnswerRunes)
 		case strings.HasSuffix(name, "internal_appir_FormulaNode"):
 			definitions[name] = formulaNodeSchema(name)
 		}

@@ -67,7 +67,18 @@ Contract: [issue #59](https://github.com/and1truong/bean/issues/59). Status: in 
 | 2 | Shared React rendering: MindmapBlock nested ordered lists (accessible/print/narrow layer) | Vitest tests | done |
 | 3 | Visual layer: mermaid.js adapter (`mindmapSyntax` serializer, strict securityLevel, lazy single chunk, decorative SVG + DOM fallback) | serializer + dual-layer Vitest, e2e figure/narrow contracts | done |
 | 4 | Checked-in mind map plus presentation frame | app validate, Playwright journey | done |
-| 5 | Docs, compatibility gates, qualification | AppIR format tests, `make check`, `make build` | pending |
+| 5 | Docs, compatibility gates, qualification | AppIR format tests, `make check`, `make build` | done |
+
+# Literal flashcards
+
+Contract: [issue #58](https://github.com/and1truong/bean/issues/58). Status: in progress.
+
+| Slice | Deliverable | Verification | Status |
+| --- | --- | --- | --- |
+| 1 | `Block type: flashcard` with ordered verbatim prompt/answer cards (unique IDs) | compiler/schema/source tests | done |
+| 2 | Shared React rendering: FlashcardBlock deck, per-card reveal + hide-all, visibility-reset convention | Vitest tests | done |
+| 3 | Checked-in deck plus presentation frame | app validate, Playwright journey | done |
+| 4 | Docs, compatibility gates, qualification | AppIR format tests, `make check`, `make build` | pending |
 
 # Content Block authoring guide
 

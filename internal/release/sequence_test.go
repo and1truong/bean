@@ -41,7 +41,7 @@ func TestCurrentAppIRPublicationSurvivesRestart(t *testing.T) {
 	}
 	active, exists := reloadedKernel.Active()
 	sequence := active.Sequences["bean_introduction"]
-	if !exists || active.FormatVersion != appir.CurrentFormat || active.ReleaseID != published.ID || len(sequence.Frames) != 20 || sequence.Frames[1].Direction != "down" || len(active.Panels["frame_architecture"].Regions[0].Items[0].Content) == 0 || len(active.Blocks["boundary_tabs"].Tabs) != 2 || len(active.Blocks["blackboard_lesson"].Sections) != 3 {
+	if !exists || active.FormatVersion != appir.CurrentFormat || active.ReleaseID != published.ID || len(sequence.Frames) != 21 || sequence.Frames[1].Direction != "down" || len(active.Panels["frame_architecture"].Regions[0].Items[0].Content) == 0 || len(active.Blocks["boundary_tabs"].Tabs) != 2 || len(active.Blocks["blackboard_lesson"].Sections) != 3 {
 		t.Fatalf("active=%+v sequence=%+v", active, sequence)
 	}
 	invalid := bundle

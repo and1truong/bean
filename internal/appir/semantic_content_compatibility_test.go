@@ -45,6 +45,12 @@ func TestExtendedSemanticContentFormatBoundaryIsImmutable(t *testing.T) {
 		{"mindmap root", func(app *appir.App) {
 			app.Blocks["content"] = appir.Block{Type: "content", Root: &appir.MindMapNode{ID: "root", Label: "Topic"}}
 		}},
+		{"flashcard", func(app *appir.App) {
+			app.Blocks["deck"] = appir.Block{Type: "flashcard", Title: "Deck", Cards: []appir.Flashcard{{ID: "one", Prompt: "Prompt?", Answer: "Answer."}, {ID: "two", Prompt: "Prompt?", Answer: "Answer."}}}
+		}},
+		{"flashcard cards", func(app *appir.App) {
+			app.Blocks["content"] = appir.Block{Type: "content", Cards: []appir.Flashcard{{ID: "one", Prompt: "Prompt?", Answer: "Answer."}}}
+		}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -89,6 +95,7 @@ func TestHistoricalFormatRejectsExplicitEmptyExtendedFields(t *testing.T) {
 		`{"FormatVersion":"bean/appir/v19","Blocks":{"lesson":{"Type":"lesson","Sections":[{"id":"one","Content":[]}]}}}`,
 		`{"FormatVersion":"bean/appir/v19","Blocks":{"timeline":{"Type":"timeline","Entries":[{"id":"one","Label":"1440","Title":"Movable type"}]}}}`,
 		`{"FormatVersion":"bean/appir/v19","Blocks":{"mindmap":{"Type":"mindmap","Root":{"id":"root","Label":"Topic"}}}}`,
+		`{"FormatVersion":"bean/appir/v19","Blocks":{"deck":{"Type":"flashcard","Cards":[{"id":"one","Prompt":"Prompt?","Answer":"Answer."}]}}}`,
 	} {
 		app, err := appir.Decode([]byte(encoded))
 		if err != nil {

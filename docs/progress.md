@@ -67,6 +67,15 @@ Status: complete. Contract: [issue #59](https://github.com/and1truong/bean/issue
 - Added a checked-in `bean_mindmap` demo and a twentieth presentation frame; capabilities and generated schemas publish the new type and bounds (recursive `$ref` in `block.schema.json`); AppIR v19 rejects mindmap payloads on both decoded and encoded paths.
 - Focused verification passes: compiler/AppIR/block Go tests and semantic Vitest tests. Final qualification: `make check` and `make build`.
 
+## Literal flashcards
+
+Status: in progress. Contract: [issue #58](https://github.com/and1truong/bean/issues/58).
+
+- Added `Block type: flashcard`: a required `title` plus 2–24 `cards` of `{id, prompt, answer}` — card IDs are unique machine IDs, prompt/answer are verbatim literal text, source order is the deck order and the deck is never shuffled. `cards` is rejected on other Block types and foreign fields on `flashcard`, mirroring the Tabs/Lesson/Timeline contract; `title` is now also valid on `flashcard`.
+- Web renders `FlashcardBlock` as a semantic `<article>` with an ordered `<ol>` of cards: each card is a disclosure button (`aria-expanded`) revealing its answer on click or keyboard, plus an optional deck-wide hide-all control. Reveal state is instance-local, resets when the enclosing Sequence frame or tab leaves (the same visibility-reset convention as quiz/media), and resets when the card payload changes; no study progress persists.
+- Added a checked-in `bean_flashcards` demo and a twenty-first presentation frame; capabilities and generated schemas publish the new type and bounds; AppIR v19 rejects flashcard payloads on both decoded and encoded paths.
+- Focused verification passes: compiler/AppIR/block Go tests and semantic Vitest tests. Final qualification: `make check` and `make build`.
+
 ## Content Block authoring guide
 
 Status: complete. Contract: [`GOAL.md`](../GOAL.md).

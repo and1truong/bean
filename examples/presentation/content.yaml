@@ -168,3 +168,27 @@ root:
       children:
         - {id: policies, label: "Policies", description: "Access boundaries"}
         - {id: activation, label: "Atomic activation", description: "All or nothing"}
+---
+# The flashcard Block renders a literal study deck: a title and ordered cards
+# carrying a stable id, a verbatim prompt, and a verbatim answer. Source order
+# is the deck order — the deck is never shuffled.
+kind: Block
+name: bean_flashcards
+type: flashcard
+title: Bean vocabulary deck
+cards:
+  - id: block
+    prompt: "What is a Block?"
+    answer: "A named region of metadata-rendered content inside a Panel."
+  - id: panel
+    prompt: "What is a Panel?"
+    answer: "A layout region that hosts Blocks and inline content."
+  - id: appir
+    prompt: "What is AppIR?"
+    answer: "The immutable compiled application, versioned per release."
+  - id: sequence
+    prompt: "What is a Sequence?"
+    answer: "An ordered frame list; a presentation is a Sequence."
+  - id: policy
+    prompt: "What is a Policy?"
+    answer: "A declared access boundary the runtime enforces."

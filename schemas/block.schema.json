@@ -547,6 +547,33 @@
       },
       "type": "object"
     },
+    "github_com_beanruntime_bean_internal_appir_Flashcard": {
+      "additionalProperties": false,
+      "description": "Card IDs are unique within the Block; prompt and answer are literal text kept verbatim.",
+      "properties": {
+        "answer": {
+          "maxLength": 480,
+          "pattern": "\\S",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        },
+        "prompt": {
+          "maxLength": 240,
+          "pattern": "\\S",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "prompt",
+        "answer"
+      ],
+      "type": "object"
+    },
     "github_com_beanruntime_bean_internal_appir_FormulaNode": {
       "description": "Closed mathematical expression nodes. The compiler additionally enforces a maximum of 48 nodes and a nesting depth of 8.",
       "oneOf": [
@@ -1077,6 +1104,11 @@
             "required": [
               "root"
             ]
+          },
+          {
+            "required": [
+              "cards"
+            ]
           }
         ]
       },
@@ -1193,6 +1225,11 @@
             "required": [
               "root"
             ]
+          },
+          {
+            "required": [
+              "cards"
+            ]
           }
         ]
       },
@@ -1308,6 +1345,11 @@
           {
             "required": [
               "root"
+            ]
+          },
+          {
+            "required": [
+              "cards"
             ]
           }
         ]
@@ -1430,6 +1472,11 @@
             "required": [
               "entries"
             ]
+          },
+          {
+            "required": [
+              "cards"
+            ]
           }
         ]
       },
@@ -1441,6 +1488,127 @@
       "required": [
         "type",
         "root"
+      ]
+    },
+    {
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "view"
+            ]
+          },
+          {
+            "required": [
+              "display"
+            ]
+          },
+          {
+            "required": [
+              "entity"
+            ]
+          },
+          {
+            "required": [
+              "webform"
+            ]
+          },
+          {
+            "required": [
+              "action"
+            ]
+          },
+          {
+            "required": [
+              "menu"
+            ]
+          },
+          {
+            "required": [
+              "text"
+            ]
+          },
+          {
+            "required": [
+              "resource"
+            ]
+          },
+          {
+            "required": [
+              "inputs"
+            ]
+          },
+          {
+            "required": [
+              "bindings"
+            ]
+          },
+          {
+            "required": [
+              "filters"
+            ]
+          },
+          {
+            "required": [
+              "defaultFilters"
+            ]
+          },
+          {
+            "required": [
+              "presentation"
+            ]
+          },
+          {
+            "required": [
+              "content"
+            ]
+          },
+          {
+            "required": [
+              "label"
+            ]
+          },
+          {
+            "required": [
+              "orientation"
+            ]
+          },
+          {
+            "required": [
+              "variant"
+            ]
+          },
+          {
+            "required": [
+              "tabs"
+            ]
+          },
+          {
+            "required": [
+              "sections"
+            ]
+          },
+          {
+            "required": [
+              "entries"
+            ]
+          },
+          {
+            "required": [
+              "root"
+            ]
+          }
+        ]
+      },
+      "properties": {
+        "type": {
+          "const": "flashcard"
+        }
+      },
+      "required": [
+        "type",
+        "title",
+        "cards"
       ]
     },
     {
@@ -1485,6 +1653,11 @@
             "required": [
               "root"
             ]
+          },
+          {
+            "required": [
+              "cards"
+            ]
           }
         ]
       },
@@ -1519,6 +1692,14 @@
         "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_ContextBinding"
       },
       "type": "object"
+    },
+    "cards": {
+      "items": {
+        "$ref": "#/$defs/github_com_beanruntime_bean_internal_appir_Flashcard"
+      },
+      "maxItems": 24,
+      "minItems": 2,
+      "type": "array"
     },
     "content": {
       "items": {
@@ -1625,6 +1806,7 @@
         "action",
         "content",
         "entity",
+        "flashcard",
         "lesson",
         "menu",
         "mindmap",

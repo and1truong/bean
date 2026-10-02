@@ -2256,6 +2256,9 @@ func validateBlocks(a *appir.App, _ *validationState) []definition.Diagnostic {
 		if block.Type == "mindmap" {
 			out = append(out, validateMindMapBlock(name, block)...)
 		}
+		if block.Type == "flashcard" {
+			out = append(out, validateFlashcardBlock(name, block)...)
+		}
 		if blockSpecification.RequiresEditorReadPolicy && (block.Policy == "" || !editorOnlyReadPolicy(a.Policies[block.Policy])) {
 			out = append(out, diagnostic("Block", name, "spec.policy", "resource-list Block must be restricted to editor and administrator roles"))
 		}
@@ -2764,6 +2767,26 @@ func validateMindMapBlock(name string, block appir.Block) []definition.Diagnosti
 	return out
 }
 
+func validateFlashcardBlock(name string, block appir.Block) []definition.Diagnostic {
+	out := boundedTextDiagnostics("Block", name, "spec.title", block.Title, beancontent.MaxLabelRunes)
+	if len(block.Cards) < beancontent.MinFlashcardCards || len(block.Cards) > beancontent.MaxFlashcardCards {
+		out = append(out, sequenceDiagnostic("Block", name, "spec.cards", fmt.Sprintf("must contain between %d and %d cards", beancontent.MinFlashcardCards, beancontent.MaxFlashcardCards)))
+	}
+	seen := map[string]bool{}
+	for index, card := range block.Cards {
+		path := fmt.Sprintf("spec.cards.%d", index)
+		if !beancontent.ValidMachineID(card.ID) {
+			out = append(out, sequenceDiagnostic("Block", name, path+".id", "must be a 1-64 character machine ID"))
+		} else if seen[card.ID] {
+			out = append(out, sequenceDiagnostic("Block", name, path+".id", "duplicates another card id"))
+		}
+		seen[card.ID] = true
+		out = append(out, boundedTextDiagnostics("Block", name, path+".prompt", card.Prompt, beancontent.MaxFlashcardPromptRunes)...)
+		out = append(out, boundedTextDiagnostics("Block", name, path+".answer", card.Answer, beancontent.MaxFlashcardAnswerRunes)...)
+	}
+	return out
+}
+
 func validateTabsBlock(name string, block appir.Block) []definition.Diagnostic {
 	out := boundedTextDiagnostics("Block", name, "spec.label", block.Label, beancontent.MaxLabelRunes)
 	if block.Orientation != "horizontal" && block.Orientation != "vertical" {
@@ -3221,6 +3244,11 @@ func sequenceFrameWeight(a *appir.App, blocks []appir.Block) (int, map[string]bo
 						stack = append(stack, &node.Children[index])
 					}
 				}
+			}
+		case "flashcard":
+			weight += utf8.RuneCountInString(block.Title) + len(block.Cards)*12
+			for _, card := range block.Cards {
+				weight += utf8.RuneCountInString(card.Prompt) + utf8.RuneCountInString(card.Answer)
 			}
 		case "text":
 			weight += utf8.RuneCountInString(block.Text)

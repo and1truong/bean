@@ -7,36 +7,36 @@ test('Bean introduction is a navigable data-backed eight-chapter presentation',a
   await expect(page.getByRole('main')).toHaveAttribute('data-profile','presentation')
   await expect(page.getByTestId('application-shell')).toHaveAttribute('data-accent','indigo')
   await expect(page.getByRole('navigation',{name:'Primary navigation'})).toHaveCount(0)
-  await expect(page.getByLabel('1 of 20: Bean')).toBeVisible()
+  await expect(page.getByLabel('1 of 21: Bean')).toBeVisible()
   await expect(page.getByText('1.1 / 8')).toBeVisible()
 
   await page.getByRole('button',{name:'Speaker notes'}).click()
   await expect(page.getByRole('heading',{name:'Speaker notes'})).toBeVisible()
   await page.getByRole('button',{name:'Down'}).click()
   await expect(page).toHaveURL(/frame=thesis/)
-  await expect(page.getByLabel('2 of 20: Why deterministic semantics')).toBeVisible()
+  await expect(page.getByLabel('2 of 21: Why deterministic semantics')).toBeVisible()
   await expect(page.getByText('1.2 / 8')).toBeVisible()
 
   await page.getByRole('button',{name:'Next'}).click()
-  await expect(page.getByLabel('3 of 20: One path to production')).toBeVisible()
+  await expect(page.getByLabel('3 of 21: One path to production')).toBeVisible()
   await page.getByRole('button',{name:'Down'}).click()
-  await expect(page.getByLabel('4 of 20: A small, complete vocabulary')).toBeVisible()
-  await page.getByLabel('4 of 20: A small, complete vocabulary').click()
+  await expect(page.getByLabel('4 of 21: A small, complete vocabulary')).toBeVisible()
+  await page.getByLabel('4 of 21: A small, complete vocabulary').click()
   await page.keyboard.press('ArrowRight')
-  await expect(page.getByLabel('6 of 20: From live data to authorized action')).toBeVisible()
+  await expect(page.getByLabel('6 of 21: From live data to authorized action')).toBeVisible()
 
   await page.keyboard.press('End')
   await expect(page).toHaveURL(/frame=start/)
-  await expect(page.getByLabel('20 of 20: Start with one useful workflow')).toBeVisible()
+  await expect(page.getByLabel('21 of 21: Start with one useful workflow')).toBeVisible()
 
   await page.getByLabel('Choose frame').selectOption('capabilities')
   await expect(page).toHaveURL(/frame=capabilities/)
-  await expect(page.getByLabel('7 of 20: Live data, same runtime')).toBeVisible()
+  await expect(page.getByLabel('7 of 21: Live data, same runtime')).toBeVisible()
   await expect(page.getByTestId('bar-chart')).toBeVisible()
   for(const area of ['application','data','operations','safety'])await expect(page.getByLabel(`${area}: 3`)).toBeVisible()
 
   await page.reload()
-  await expect(page.getByLabel('7 of 20: Live data, same runtime')).toBeVisible()
+  await expect(page.getByLabel('7 of 21: Live data, same runtime')).toBeVisible()
 })
 
 test('semantic content, tabs, choices, and media keep their browser contracts',async({page,bean})=>{
@@ -126,7 +126,7 @@ test('semantic content, tabs, choices, and media keep their browser contracts',a
   expect(browserRequests).toHaveLength(requestsBeforeQuiz)
   await page.getByLabel('Choose frame').selectOption('semantic_content')
   await expect(page).toHaveURL(/frame=semantic_content/)
-  await expect(page.getByLabel('10 of 20: Semantic content vocabulary')).toBeVisible()
+  await expect(page.getByLabel('10 of 21: Semantic content vocabulary')).toBeVisible()
   await page.getByLabel('Choose frame').selectOption('choices')
   await expect(quiz.getByRole('radio',{name:'Action'})).not.toBeChecked()
   await expect(quiz.getByText('Correct')).toHaveCount(0)
@@ -150,7 +150,7 @@ test('semantic content, tabs, choices, and media keep their browser contracts',a
   await expect(page.locator('audio')).toHaveCount(0)
 
   await page.getByLabel('Choose frame').selectOption('blackboard')
-  await expect(page.getByLabel('17 of 20: The blackboard lesson')).toBeVisible()
+  await expect(page.getByLabel('17 of 21: The blackboard lesson')).toBeVisible()
   const lesson=page.getByRole('article',{name:'Worked example: the quadratic formula'})
   await expect(lesson.getByRole('heading',{name:'The formula'})).toBeVisible()
   const math=lesson.locator('math')
@@ -170,7 +170,7 @@ test('semantic content, tabs, choices, and media keep their browser contracts',a
   await page.setViewportSize({width:1280,height:800})
 
   await page.getByLabel('Choose frame').selectOption('timeline')
-  await expect(page.getByLabel('18 of 20: A literal timeline')).toBeVisible()
+  await expect(page.getByLabel('18 of 21: A literal timeline')).toBeVisible()
   const timeline=page.getByRole('article',{name:'From writing to declarative apps'})
   const entries=timeline.getByRole('listitem')
   await expect(entries).toHaveCount(5)
@@ -198,7 +198,7 @@ test('semantic content, tabs, choices, and media keep their browser contracts',a
   await page.setViewportSize({width:1280,height:800})
 
   await page.getByLabel('Choose frame').selectOption('mindmap')
-  await expect(page.getByLabel('19 of 20: A literal mind map')).toBeVisible()
+  await expect(page.getByLabel('19 of 21: A literal mind map')).toBeVisible()
   const mindmap=page.getByRole('article',{name:'Bean'})
   const figure=mindmap.getByTestId('mindmap-figure')
   await expect(figure.locator('svg')).toBeVisible()
@@ -225,6 +225,43 @@ test('semantic content, tabs, choices, and media keep their browser contracts',a
     expect(await text.evaluate(element=>element.scrollWidth<=element.clientWidth+1,'element has internal horizontal overflow')).toBeTruthy()
     const box=await text.boundingBox()
     expect(box&&box.x>=mindmapCard.x&&box.x+box.width<=mindmapCard.x+mindmapCard.width,'text is clipped outside the card').toBeTruthy()
+  }
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true)
+  await page.setViewportSize({width:1280,height:800})
+
+  await page.getByLabel('Choose frame').selectOption('flashcards')
+  await expect(page.getByLabel('20 of 21: A literal flashcard deck')).toBeVisible()
+  const flashcards=page.getByRole('article',{name:'Bean vocabulary deck'})
+  await expect(flashcards.getByRole('listitem')).toHaveCount(5)
+  const firstCard=flashcards.getByRole('button',{name:/What is a Block\?/})
+  await expect(firstCard).toHaveAttribute('aria-expanded','false')
+  await expect(flashcards).not.toContainText('A named region of metadata-rendered content')
+  await firstCard.click()
+  await expect(firstCard).toHaveAttribute('aria-expanded','true')
+  await expect(flashcards).toContainText('A named region of metadata-rendered content')
+  await flashcards.getByRole('button',{name:/What is a Panel\?/}).click()
+  await flashcards.getByRole('button',{name:'Hide all answers'}).click()
+  await expect(flashcards).not.toContainText('A named region of metadata-rendered content')
+  await expect(flashcards.getByRole('button',{name:/What is a Block\?/})).toHaveAttribute('aria-expanded','false')
+
+  await page.setViewportSize({width:390,height:844})
+  await expect(flashcards).toBeVisible()
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true)
+
+  // Valid long unbroken tokens must wrap inside the card instead of overflowing.
+  await flashcards.locator('li').first().evaluate(item=>{
+    item.querySelector('.bean-flashcard-prompt .bean-flashcard-text').textContent='x'.repeat(240)
+  })
+  await flashcards.getByRole('button').first().click()
+  await flashcards.locator('li').first().evaluate(item=>{
+    const answer=item.querySelector('.bean-flashcard-answer .bean-flashcard-text')
+    if(answer)answer.textContent='y'.repeat(480)
+  })
+  const flashcardCard=await flashcards.boundingBox()
+  for(const text of await flashcards.locator('.bean-flashcard-text,.bean-flashcard-face-label').all()){
+    expect(await text.evaluate(element=>element.scrollWidth<=element.clientWidth+1,'element has internal horizontal overflow')).toBeTruthy()
+    const box=await text.boundingBox()
+    expect(box&&box.x>=flashcardCard.x&&box.x+box.width<=flashcardCard.x+flashcardCard.width,'text is clipped outside the card').toBeTruthy()
   }
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true)
   await page.setViewportSize({width:1280,height:800})

@@ -427,9 +427,9 @@ func validateBlockContentSource(source definition.Definition) []definition.Diagn
 			}
 		}
 	}
-	if typeName != "lesson" && typeName != "timeline" {
+	if typeName != "lesson" && typeName != "timeline" && typeName != "flashcard" {
 		if _, present := source.Spec["title"]; present {
-			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec.title", "is only supported by a lesson or timeline Block"))
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec.title", "is only supported by a lesson, timeline, or flashcard Block"))
 		}
 	}
 	if typeName != "lesson" {
@@ -447,6 +447,11 @@ func validateBlockContentSource(source definition.Definition) []definition.Diagn
 			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec.root", "is only supported by a mindmap Block"))
 		}
 	}
+	if typeName != "flashcard" {
+		if _, present := source.Spec["cards"]; present {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec.cards", "is only supported by a flashcard Block"))
+		}
+	}
 	if typeName == "tabs" {
 		out = append(out, validateTabsBlockSource(source)...)
 	}
@@ -458,6 +463,9 @@ func validateBlockContentSource(source definition.Definition) []definition.Diagn
 	}
 	if typeName == "mindmap" {
 		out = append(out, validateMindMapBlockSource(source)...)
+	}
+	if typeName == "flashcard" {
+		out = append(out, validateFlashcardBlockSource(source)...)
 	}
 	return out
 }
@@ -576,6 +584,59 @@ func validateTimelineBlockSource(source definition.Definition) []definition.Diag
 					out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path+"."+field, "must be a string"))
 				} else if field == "description" && strings.TrimSpace(text) == "" {
 					out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path+"."+field, "must not be blank when present"))
+				}
+			}
+		}
+	}
+	return out
+}
+
+func validateFlashcardBlockSource(source definition.Definition) []definition.Diagnostic {
+	out := []definition.Diagnostic{}
+	allowed := map[string]bool{"type": true, "policy": true, "title": true, "cards": true}
+	for _, field := range keys(source.Spec) {
+		if !allowed[field] {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec."+field, "is not supported by a flashcard Block"))
+		}
+	}
+	for _, field := range []string{"title", "cards"} {
+		if value, present := source.Spec[field]; !present || value == nil {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec."+field, "is required"))
+		}
+	}
+	if value, present := source.Spec["title"]; present && value != nil {
+		if _, ok := value.(string); !ok {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec.title", "must be a string"))
+		}
+	}
+	rawCards, ok := source.Spec["cards"].([]any)
+	if !ok {
+		if _, present := source.Spec["cards"]; present && source.Spec["cards"] != nil {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, "spec.cards", "must be a list of flashcard cards"))
+		}
+		return out
+	}
+	for index, rawCard := range rawCards {
+		path := fmt.Sprintf("spec.cards.%d", index)
+		card, ok := rawCard.(map[string]any)
+		if !ok {
+			out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path, "must be an object"))
+			continue
+		}
+		for _, field := range keys(card) {
+			if field != "id" && field != "prompt" && field != "answer" {
+				out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path+"."+field, "is not supported by a flashcard card"))
+			}
+		}
+		for _, field := range []string{"id", "prompt", "answer"} {
+			if value, present := card[field]; !present || value == nil {
+				out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path+"."+field, "is required"))
+			}
+		}
+		for _, field := range []string{"id", "prompt", "answer"} {
+			if value, present := card[field]; present && value != nil {
+				if _, ok := value.(string); !ok {
+					out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path+"."+field, "must be a string"))
 				}
 			}
 		}

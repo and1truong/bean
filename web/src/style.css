@@ -466,6 +466,18 @@
   .bean-mindmap-children > .bean-mindmap-branch:last-child::before { bottom: auto; height: calc(1.5rem + 2px); }
   .bean-mindmap-children > .bean-mindmap-branch::after { content: ""; position: absolute; left: -1rem; top: 1rem; width: calc(1rem + 1px); border-top: 2px solid var(--border-strong); }
 
+  .bean-flashcards { @apply rounded-xl border p-5 shadow-sm sm:p-8; overflow-wrap: anywhere; }
+  .bean-flashcards-header { @apply mb-6 flex items-baseline justify-between gap-3 border-b pb-3; }
+  .bean-flashcards-title { @apply m-0 font-heading text-2xl font-semibold tracking-tight sm:text-3xl; }
+  .bean-flashcards-count { @apply m-0 shrink-0 text-sm text-muted-foreground; }
+  .bean-flashcards-deck { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 0.75rem; }
+  .bean-flashcard { min-width: 0; }
+  .bean-flashcard-face-label { @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground; }
+  .bean-flashcard-text { display: block; @apply font-medium; }
+  .bean-flashcard-answer { @apply mt-2 border-t pt-2; border-color: var(--border-strong); }
+  .bean-flashcard-answer .bean-flashcard-text { @apply font-normal text-muted-foreground; }
+  .bean-flashcards-reset { @apply mt-4; }
+
   .bean-formula { @apply max-w-full overflow-x-auto rounded-lg border border-dashed p-4 text-center; border-color: var(--border-strong); }
   .bean-formula:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
   .bean-formula math { @apply mx-auto; font-size: 1.35em; }
