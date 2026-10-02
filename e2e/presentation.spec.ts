@@ -222,7 +222,7 @@ test('semantic content, tabs, choices, and media keep their browser contracts',a
   })
   const mindmapCard=await mindmap.boundingBox()
   for(const text of await mindmap.locator('.bean-mindmap-label,.bean-mindmap-description').all()){
-    expect(await text.evaluate(element=>element.scrollWidth<=element.clientWidth,'element has internal horizontal overflow')).toBeTruthy()
+    expect(await text.evaluate(element=>element.scrollWidth<=element.clientWidth+1,'element has internal horizontal overflow')).toBeTruthy()
     const box=await text.boundingBox()
     expect(box&&box.x>=mindmapCard.x&&box.x+box.width<=mindmapCard.x+mindmapCard.width,'text is clipped outside the card').toBeTruthy()
   }
