@@ -113,6 +113,10 @@ type Capabilities struct {
 	MinLessonSections          int      `json:"minLessonSections"`
 	MaxLessonSections          int      `json:"maxLessonSections"`
 	MaxLessonContentElements   int      `json:"maxLessonContentElements"`
+	MinTimelineEntries         int      `json:"minTimelineEntries"`
+	MaxTimelineEntries         int      `json:"maxTimelineEntries"`
+	MaxTimelineLabelRunes      int      `json:"maxTimelineLabelRunes"`
+	MaxTimelineDetailRunes     int      `json:"maxTimelineDetailRunes"`
 	DatabaseBackends           []string `json:"databaseBackends"`
 	MaxViewLimit               int      `json:"maxViewLimit"`
 	MaxFileBytes               int      `json:"maxFileBytes"`
@@ -249,6 +253,10 @@ func ProtocolCapabilities(cliAPIVersion, agentProtocolAPIVersion string) Capabil
 		MinLessonSections:          beancontent.MinLessonSections,
 		MaxLessonSections:          beancontent.MaxLessonSections,
 		MaxLessonContentElements:   beancontent.MaxLessonElements,
+		MinTimelineEntries:         beancontent.MinTimelineEntries,
+		MaxTimelineEntries:         beancontent.MaxTimelineEntries,
+		MaxTimelineLabelRunes:      beancontent.MaxTimelineLabelRunes,
+		MaxTimelineDetailRunes:     beancontent.MaxTimelineDetailRunes,
 		DatabaseBackends:           []string{"postgresql", "sqlite"},
 		MaxViewLimit:               200,
 		MaxFileBytes:               field.MaxFileBytes,
@@ -474,6 +482,9 @@ func definitionSchema(kind string, specification reflect.Type) map[string]any {
 		sections := properties["sections"].(map[string]any)
 		sections["minItems"] = beancontent.MinLessonSections
 		sections["maxItems"] = beancontent.MaxLessonSections
+		entries := properties["entries"].(map[string]any)
+		entries["minItems"] = beancontent.MinTimelineEntries
+		entries["maxItems"] = beancontent.MaxTimelineEntries
 		forbidden := []any{}
 		for _, field := range []string{"view", "display", "entity", "webform", "action", "menu", "text", "resource", "inputs", "bindings", "filters", "defaultFilters", "presentation", "content"} {
 			forbidden = append(forbidden, map[string]any{"required": []string{field}})
@@ -482,14 +493,15 @@ func definitionSchema(kind string, specification reflect.Type) map[string]any {
 		for _, field := range []string{"label", "orientation", "variant", "tabs"} {
 			tabsOnly = append(tabsOnly, map[string]any{"required": []string{field}})
 		}
-		lessonOnly := []any{}
-		for _, field := range []string{"title", "sections"} {
-			lessonOnly = append(lessonOnly, map[string]any{"required": []string{field}})
+		markers := []any{}
+		for _, field := range []string{"title", "sections", "entries"} {
+			markers = append(markers, map[string]any{"required": []string{field}})
 		}
 		document["oneOf"] = []any{
-			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "tabs"}}, "required": []string{"type", "label", "tabs"}, "not": map[string]any{"anyOf": append(append([]any{}, forbidden...), lessonOnly...)}},
-			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "lesson"}}, "required": []string{"type", "title", "sections"}, "not": map[string]any{"anyOf": append(append([]any{}, forbidden...), tabsOnly...)}},
-			map[string]any{"properties": map[string]any{"type": map[string]any{"enum": without(block.Names(), "tabs", "lesson")}}, "required": []string{"type"}, "not": map[string]any{"anyOf": append(append([]any{}, tabsOnly...), lessonOnly...)}},
+			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "tabs"}}, "required": []string{"type", "label", "tabs"}, "not": map[string]any{"anyOf": append(append([]any{}, forbidden...), markers...)}},
+			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "lesson"}}, "required": []string{"type", "title", "sections"}, "not": map[string]any{"anyOf": append(append(append([]any{}, forbidden...), tabsOnly...), markers[2:3]...)}},
+			map[string]any{"properties": map[string]any{"type": map[string]any{"const": "timeline"}}, "required": []string{"type", "title", "entries"}, "not": map[string]any{"anyOf": append(append(append([]any{}, forbidden...), tabsOnly...), markers[1:2]...)}},
+			map[string]any{"properties": map[string]any{"type": map[string]any{"enum": without(block.Names(), "tabs", "lesson", "timeline")}}, "required": []string{"type"}, "not": map[string]any{"anyOf": append(append([]any{}, tabsOnly...), markers...)}},
 		}
 	}
 	if kind == "Rule" {
@@ -596,6 +608,15 @@ func semanticContentSchemaDefinitions(definitions map[string]any) {
 			content := properties["content"].(map[string]any)
 			content["minItems"] = 1
 			content["maxItems"] = beancontent.MaxElements
+		case strings.HasSuffix(name, "internal_appir_TimelineEntry"):
+			schema["required"] = []string{"id", "label", "title"}
+			schema["description"] = "Entry IDs are unique within the Block; the label is a literal display label preserved verbatim (no date parsing)."
+			properties := schema["properties"].(map[string]any)
+			delete(properties, "iD")
+			properties["id"] = machineIDSchema()
+			properties["label"] = boundedString(beancontent.MaxTimelineLabelRunes)
+			properties["title"] = boundedString(beancontent.MaxLabelRunes)
+			properties["description"] = boundedString(beancontent.MaxTimelineDetailRunes)
 		case strings.HasSuffix(name, "internal_appir_FormulaNode"):
 			definitions[name] = formulaNodeSchema(name)
 		}

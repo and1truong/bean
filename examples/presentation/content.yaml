@@ -123,3 +123,18 @@ sections:
     heading: From form to roots
     content:
       - {type: diagram, direction: horizontal, items: ["ax²+bx+c=0", "b²−4ac", "(−b±√Δ)/2a"]}
+---
+# The timeline Block renders ordered literal milestones: each entry carries a
+# stable id, a display label kept verbatim (a year, an era name, or a relative
+# marker — never date-parsed), a title, and an optional description. Source
+# order is the chronology.
+kind: Block
+name: history_timeline
+type: timeline
+title: "From writing to declarative apps"
+entries:
+  - {id: writing, label: "~3400 BCE", title: "Writing encodes knowledge", description: "Clay tablets turn memory into durable shared records."}
+  - {id: printing, label: "1440", title: "Movable type", description: "Gutenberg's press makes text reproducible at scale."}
+  - {id: computation, label: "Industrial Revolution", title: "Programmable machines", description: "Jacquard's loom runs patterns from punched cards."}
+  - {id: computers, label: "1945", title: "ENIAC", description: "General-purpose electronic computing arrives."}
+  - {id: agents, label: "Day 1", title: "Your first Bean definition", description: "Declarative metadata becomes running software."}

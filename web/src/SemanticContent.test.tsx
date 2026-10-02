@@ -5,6 +5,7 @@ import {ContentBlock} from './Content'
 import {ContentVisibility} from './ContentVisibility'
 import {LessonBlock} from './Lesson'
 import {TabsBlock} from './Tabs'
+import {TimelineBlock} from './Timeline'
 import type {ContentElement,ContentTab,FormulaNode} from './api'
 
 function content(elements:ContentElement[]){return render(<MemoryRouter><ContentBlock content={elements}/></MemoryRouter>)}
@@ -138,6 +139,28 @@ describe('Lesson Block',()=>{
     render(<MemoryRouter><LessonBlock title="Lesson" sections={[{id:'picture',Content:[{Type:'image',Source:'/missing.png',Alt:'Discriminant sketch'}]}]}/></MemoryRouter>)
     fireEvent.error(screen.getByRole('img',{name:'Discriminant sketch'}))
     expect(screen.getByRole('img',{name:'Discriminant sketch'})).toHaveTextContent('Discriminant sketch')
+  })
+})
+
+describe('Timeline Block',()=>{
+  it('keeps source order and verbatim labels, and keeps literal text literal',()=>{
+    render(<MemoryRouter><TimelineBlock title="Milestones" entries={[
+      {id:'b',Label:'Day 1',Title:'Second'},
+      {id:'a',Label:'5th century BCE',Title:'First',Description:'<i>literal</i> stays text'},
+    ]}/></MemoryRouter>)
+    const block=screen.getByRole('article',{name:'Milestones'})
+    const items=within(block).getAllByRole('listitem')
+    expect(items).toHaveLength(2)
+    expect(items[0].querySelector('h3')).toHaveTextContent('Second');expect(items[0]).toHaveTextContent('Day 1')
+    expect(items[1].querySelector('h3')).toHaveTextContent('First');expect(items[1]).toHaveTextContent('5th century BCE')
+    expect(items[1]).toHaveTextContent('<i>literal</i> stays text');expect(block.querySelector('i')).toBeNull()
+    expect(block.querySelector('time')).toBeNull()
+  })
+
+  it('reuses the ordered rail structure shared with the record-backed timeline view',()=>{
+    render(<MemoryRouter><TimelineBlock title="Milestones" entries={[{id:'one',Label:'1440',Title:'Movable type'}]}/></MemoryRouter>)
+    const rail=screen.getByRole('list')
+    expect(rail.tagName).toBe('OL');expect(rail).toHaveClass('relative','space-y-6','border-l')
   })
 })
 

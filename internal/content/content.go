@@ -42,6 +42,10 @@ const (
 	MinLessonSections      = 1
 	MaxLessonSections      = 8
 	MaxLessonElements      = 48
+	MinTimelineEntries     = 1
+	MaxTimelineEntries     = 16
+	MaxTimelineLabelRunes  = 80
+	MaxTimelineDetailRunes = 400
 )
 
 var machineID = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)

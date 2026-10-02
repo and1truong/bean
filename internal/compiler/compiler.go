@@ -2250,6 +2250,9 @@ func validateBlocks(a *appir.App, _ *validationState) []definition.Diagnostic {
 		if block.Type == "lesson" {
 			out = append(out, validateLessonBlock(name, block)...)
 		}
+		if block.Type == "timeline" {
+			out = append(out, validateTimelineBlock(name, block)...)
+		}
 		if blockSpecification.RequiresEditorReadPolicy && (block.Policy == "" || !editorOnlyReadPolicy(a.Policies[block.Policy])) {
 			out = append(out, diagnostic("Block", name, "spec.policy", "resource-list Block must be restricted to editor and administrator roles"))
 		}
@@ -2681,6 +2684,32 @@ func validateLessonBlock(name string, block appir.Block) []definition.Diagnostic
 	}
 	if total > beancontent.MaxLessonElements {
 		out = append(out, sequenceDiagnostic("Block", name, "spec.sections", fmt.Sprintf("contains more than %d content elements across sections", beancontent.MaxLessonElements)))
+	}
+	return out
+}
+
+func validateTimelineBlock(name string, block appir.Block) []definition.Diagnostic {
+	out := boundedTextDiagnostics("Block", name, "spec.title", block.Title, beancontent.MaxLabelRunes)
+	if len(block.Entries) < beancontent.MinTimelineEntries || len(block.Entries) > beancontent.MaxTimelineEntries {
+		out = append(out, sequenceDiagnostic("Block", name, "spec.entries", fmt.Sprintf("must contain between %d and %d entries", beancontent.MinTimelineEntries, beancontent.MaxTimelineEntries)))
+	}
+	seen := map[string]bool{}
+	for index, entry := range block.Entries {
+		path := fmt.Sprintf("spec.entries.%d", index)
+		if !beancontent.ValidMachineID(entry.ID) {
+			out = append(out, sequenceDiagnostic("Block", name, path+".id", "must be a 1-64 character machine ID"))
+		} else if seen[entry.ID] {
+			out = append(out, sequenceDiagnostic("Block", name, path+".id", "duplicates another entry id"))
+		}
+		seen[entry.ID] = true
+		out = append(out, boundedTextDiagnostics("Block", name, path+".label", entry.Label, beancontent.MaxTimelineLabelRunes)...)
+		out = append(out, boundedTextDiagnostics("Block", name, path+".title", entry.Title, beancontent.MaxLabelRunes)...)
+		if entry.Description != "" && strings.TrimSpace(entry.Description) == "" {
+			out = append(out, sequenceDiagnostic("Block", name, path+".description", "must not be blank when present"))
+		}
+		if utf8.RuneCountInString(entry.Description) > beancontent.MaxTimelineDetailRunes {
+			out = append(out, sequenceDiagnostic("Block", name, path+".description", fmt.Sprintf("exceeds the maximum of %d code points", beancontent.MaxTimelineDetailRunes)))
+		}
 	}
 	return out
 }
@@ -3125,6 +3154,11 @@ func sequenceFrameWeight(a *appir.App, blocks []appir.Block) (int, map[string]bo
 				for _, element := range section.Content {
 					features[element.Type] = true
 				}
+			}
+		case "timeline":
+			weight += utf8.RuneCountInString(block.Title) + len(block.Entries)*12
+			for _, entry := range block.Entries {
+				weight += utf8.RuneCountInString(entry.Label) + utf8.RuneCountInString(entry.Title) + utf8.RuneCountInString(entry.Description)
 			}
 		case "text":
 			weight += utf8.RuneCountInString(block.Text)
