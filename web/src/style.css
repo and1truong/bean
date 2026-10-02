@@ -403,8 +403,12 @@
   .bean-lesson .bean-content-block h2 { @apply text-xl sm:text-2xl; }
   .bean-lesson .bean-content-block h3, .bean-lesson .bean-content-block h4 { @apply text-lg sm:text-xl; }
   .bean-lesson .bean-content-block figcaption { color: #b9c4b8; }
-  .bean-lesson .bean-content-diagram li > span:first-child { border-color: #3d5248; background: #24352e; color: #eef0e4; }
+  .bean-lesson .bean-content-diagram { @apply flex-wrap; }
+  .bean-lesson .bean-content-diagram li { @apply min-w-0 max-w-full; }
+  .bean-lesson .bean-content-diagram li > span:first-child { @apply min-w-0 max-w-full break-words; border-color: #3d5248; background: #24352e; color: #eef0e4; }
   .bean-lesson .bean-content-callout { border-color: #8fb8a0; background: #24352e; }
+  .bean-lesson .bean-content-callout[data-tone="success"] { color: #9fdcb6; background: color-mix(in srgb, #9fdcb6 12%, #24352e); }
+  .bean-lesson .bean-content-callout[data-tone="warning"] { color: #f0c37f; background: color-mix(in srgb, #f0c37f 12%, #24352e); }
   .bean-lesson .bean-image-fallback { border-color: #3d5248; background: #24352e; color: #b9c4b8; }
   .bean-lesson-title { @apply m-0 mb-6 border-b pb-3 font-heading text-2xl font-semibold tracking-tight sm:text-3xl; border-color: #3d5248; color: #f4f6ea; }
   .bean-lesson-sections { @apply m-0 list-none space-y-7 p-0; counter-reset: beanLessonSection; }

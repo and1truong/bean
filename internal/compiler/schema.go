@@ -662,7 +662,7 @@ func formulaNodeSchema(name string) map[string]any {
 	}
 	literal := map[string]any{"type": "string", "maxLength": beancontent.MaxFormulaLiteralRunes, "pattern": "\\S"}
 	return map[string]any{
-		"description": "Closed mathematical expression nodes. The compiler additionally enforces a maximum of 48 nodes and a nesting depth of 6.",
+		"description": "Closed mathematical expression nodes. The compiler additionally enforces a maximum of 48 nodes and a nesting depth of 8.",
 		"oneOf": []any{
 			variant("literal", []string{"text"}, map[string]any{"text": literal}),
 			variant("group", []string{"parts"}, map[string]any{"parts": map[string]any{"type": "array", "minItems": 1, "maxItems": beancontent.MaxFormulaGroupParts, "items": node}}),

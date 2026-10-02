@@ -285,7 +285,7 @@ func TestLessonAndFormulaRejectInvalidContracts(t *testing.T) {
 	paragraph := []any{map[string]any{"type": "paragraph", "text": "Step"}}
 	section := lessonSection("one", paragraph)
 	deep := literalNode("x")
-	for index := 0; index < 6; index++ {
+	for index := 0; index < 8; index++ {
 		deep = map[string]any{"kind": "paren", "inner": deep}
 	}
 	dense := make([]any, 7)
@@ -328,7 +328,7 @@ func TestLessonAndFormulaRejectInvalidContracts(t *testing.T) {
 		{"group empty", "spec.sections.0.content.0.expr.parts", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(map[string]any{"kind": "group", "parts": []any{}}, "x")}}})},
 		{"group too wide", "spec.sections.0.content.0.expr.parts", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(map[string]any{"kind": "group", "parts": wide}, "x")}}})},
 		{"too many nodes", "spec.sections.0.content.0.expr", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(map[string]any{"kind": "group", "parts": []any{map[string]any{"kind": "group", "parts": manyNodes}, map[string]any{"kind": "group", "parts": manyNodes}}}, "x")}}})},
-		{"too deep", "spec.sections.0.content.0.expr.inner.inner.inner.inner.inner.inner", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(deep, "x")}}})},
+		{"too deep", "spec.sections.0.content.0.expr.inner.inner.inner.inner.inner.inner.inner.inner", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(deep, "x")}}})},
 		{"paren style", "spec.sections.0.content.0.expr.style", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(map[string]any{"kind": "paren", "style": "curly", "inner": literalNode("x")}, "x")}}})},
 		{"paren missing inner", "spec.sections.0.content.0.expr.inner", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(map[string]any{"kind": "paren"}, "x")}}})},
 		{"frac missing denominator", "spec.sections.0.content.0.expr.denominator", lessonSpec([]any{map[string]any{"id": "one", "content": []any{formulaElement(map[string]any{"kind": "frac", "numerator": literalNode("1")}, "x")}}})},

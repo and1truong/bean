@@ -148,7 +148,7 @@ Choices use native radios in `fieldset`/`legend`. Selection does not grade until
 | `func` | `name` | `argument` | A closed function set (`sin`–`tan`, `ln`, `log`, `exp`, `lim`, `min`, `max`, and related) rendered upright, optionally followed by an argument node. |
 | `sum` | `lower`, `upper`, `body` | — | Summation with `∑` under/over scripts. |
 
-An expression holds at most 48 nodes nested at most 6 deep, a `literal` is at most 40 code points, and `text` is a non-blank readable fallback of at most 400 code points. The fallback is always rendered visibly as the formula caption — it is the accessible name, the print representation, and the rendering on clients without MathML. The visual `<math>` tree is `aria-hidden`; node text is literal element content, so markup inside a literal stays text. Keep the fallback equivalent to the expression; the compiler cannot verify prose accuracy.
+An expression holds at most 48 nodes nested at most 8 deep, a `literal` is at most 40 code points, and `text` is a non-blank readable fallback of at most 400 code points. The fallback is always rendered visibly as the formula caption — it is the accessible name, the print representation, and the rendering on clients without MathML. The visual `<math>` tree is `aria-hidden`; node text is literal element content, so markup inside a literal stays text. Keep the fallback equivalent to the expression; the compiler cannot verify prose accuracy.
 
 ## Lessons
 

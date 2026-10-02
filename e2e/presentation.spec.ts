@@ -153,11 +153,20 @@ test('semantic content, tabs, choices, and media keep their browser contracts',a
   await expect(page.getByLabel('17 of 18: The blackboard lesson')).toBeVisible()
   const lesson=page.getByRole('article',{name:'Worked example: the quadratic formula'})
   await expect(lesson.getByRole('heading',{name:'The formula'})).toBeVisible()
-  await expect(lesson.locator('math')).toHaveCount(1)
+  const math=lesson.locator('math')
+  await expect(math).toHaveCount(1)
+  expect((await math.textContent()).replace(/\s/g,'')).toMatch(/^x=.+2a$/)
   await expect(lesson.getByText('x equals (−b ± √(b² − 4ac)) / 2a')).toBeVisible()
   await expect(lesson.getByText('(−b±√Δ)/2a',{exact:true})).toBeVisible()
+  const callout=lesson.locator('.bean-content-callout[data-tone="warning"]')
+  expect(await callout.evaluate(element=>getComputedStyle(element).color)).toBe('rgb(240, 195, 127)')
   await page.setViewportSize({width:390,height:844})
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true)
+  const board=await lesson.boundingBox()
+  for(const item of await lesson.locator('.bean-content-diagram li > span:first-child').all()){
+    const box=await item.boundingBox()
+    expect(box&&box.x>=board.x&&box.x+box.width<=board.x+board.width,'diagram item is clipped inside the lesson').toBeTruthy()
+  }
   await page.setViewportSize({width:1280,height:800})
 
   await page.getByLabel('Choose frame').selectOption('tabs_horizontal')

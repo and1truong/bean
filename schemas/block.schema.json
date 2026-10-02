@@ -548,7 +548,7 @@
       "type": "object"
     },
     "github_com_beanruntime_bean_internal_appir_FormulaNode": {
-      "description": "Closed mathematical expression nodes. The compiler additionally enforces a maximum of 48 nodes and a nesting depth of 6.",
+      "description": "Closed mathematical expression nodes. The compiler additionally enforces a maximum of 48 nodes and a nesting depth of 8.",
       "oneOf": [
         {
           "additionalProperties": false,

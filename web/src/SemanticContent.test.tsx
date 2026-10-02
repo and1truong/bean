@@ -142,7 +142,7 @@ describe('Lesson Block',()=>{
 })
 
 describe('formula content',()=>{
-  const quadratic:FormulaNode={Kind:'frac',Numerator:{Kind:'group',Parts:[{Kind:'literal',Text:'−b'},{Kind:'literal',Text:'±'},{Kind:'sqrt',Inner:{Kind:'group',Parts:[{Kind:'sup',Base:{Kind:'literal',Text:'b'},Exponent:{Kind:'literal',Text:'2'}},{Kind:'literal',Text:'−4ac'}]}}]},Denominator:{Kind:'literal',Text:'2a'}}
+  const quadratic:FormulaNode={Kind:'group',Parts:[{Kind:'literal',Text:'x'},{Kind:'literal',Text:'='},{Kind:'frac',Numerator:{Kind:'group',Parts:[{Kind:'literal',Text:'−b'},{Kind:'literal',Text:'±'},{Kind:'sqrt',Inner:{Kind:'group',Parts:[{Kind:'sup',Base:{Kind:'literal',Text:'b'},Exponent:{Kind:'literal',Text:'2'}},{Kind:'literal',Text:'−4ac'}]}}]},Denominator:{Kind:'literal',Text:'2a'}}]}
   const kinds:FormulaNode={Kind:'group',Parts:[
     {Kind:'paren',Style:'abs',Inner:{Kind:'literal',Text:'x'}},
     {Kind:'root',Inner:{Kind:'literal',Text:'x'},Index:{Kind:'literal',Text:'3'}},
@@ -156,6 +156,7 @@ describe('formula content',()=>{
     content([{Type:'formula',Expr:quadratic,Text:'x equals (−b ± √(b² − 4ac)) / 2a'}])
     const formula=document.querySelector('math')!
     expect(formula.querySelector('mfrac')).not.toBeNull();expect(formula.querySelector('msqrt')).not.toBeNull();expect(formula.querySelector('msup')).not.toBeNull()
+    expect(formula.textContent.replace(/\s/g,'')).toMatch(/^x=.+2a$/)
     expect(formula.getAttribute('aria-hidden')).toBe('true')
     expect(screen.getByText('x equals (−b ± √(b² − 4ac)) / 2a')).toBeVisible()
     expect(document.querySelector('.bean-formula')).toHaveAttribute('data-keyboard-scrollable','true')

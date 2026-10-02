@@ -38,7 +38,7 @@ const (
 	MaxFormulaLiteralRunes = 40
 	MaxFormulaGroupParts   = 24
 	MaxFormulaNodes        = 48
-	MaxFormulaDepth        = 6
+	MaxFormulaDepth        = 8
 	MinLessonSections      = 1
 	MaxLessonSections      = 8
 	MaxLessonElements      = 48
