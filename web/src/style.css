@@ -441,7 +441,7 @@
     .bean-mindmap-figure .section-root rect, .bean-mindmap-figure .section-root circle, .bean-mindmap-figure .section-root ellipse, .bean-mindmap-figure .section-root polygon { fill: var(--primary) !important; stroke: var(--primary) !important; }
     .bean-mindmap-figure .section-root .nodeLabel { color: var(--primary-foreground) !important; }
     .bean-mindmap-figure .nodeLabel { color: var(--foreground) !important; }
-    .bean-mindmap-figure .edgePaths path { stroke: var(--border-color) !important; stroke-width: 3px !important; fill: none !important; }
+    .bean-mindmap-figure .edgePaths path { stroke: var(--border-strong) !important; stroke-width: 3px !important; fill: none !important; }
     .bean-mindmap-visual .bean-mindmap-dom { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); border: 0; white-space: nowrap; }
   }
   .bean-mindmap-dom { padding-bottom: 1.5rem; }
@@ -456,8 +456,8 @@
   .bean-mindmap-branches > .bean-mindmap-branch:last-child::before { bottom: auto; height: calc(1.75rem + 1px); }
   .bean-mindmap-branches > .bean-mindmap-branch::after { content: ""; position: absolute; left: -1rem; top: 1rem; width: calc(1rem + 1px); border-top: 2px solid var(--border-strong); }
   .bean-mindmap-branch { min-width: 0; position: relative; }
-  .bean-mindmap-node { @apply rounded-lg border px-3 py-2; }
-  .bean-mindmap-node[data-depth='1'] { @apply border-2; border-color: var(--border-strong); }
+  .bean-mindmap-node { @apply rounded-lg border px-3 py-2; border-color: var(--border-strong); }
+  .bean-mindmap-node[data-depth='1'] { @apply border-2; }
   .bean-mindmap-label { @apply m-0 font-semibold; }
   .bean-mindmap-node[data-depth='1'] .bean-mindmap-label { @apply font-heading text-lg; }
   .bean-mindmap-description { @apply m-0 mt-1 text-sm text-muted-foreground; }
