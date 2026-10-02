@@ -180,6 +180,21 @@ test('semantic content, tabs, choices, and media keep their browser contracts',a
   expect(await timeline.locator('time').count()).toBe(0)
   await page.setViewportSize({width:390,height:844})
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true)
+
+  // Valid long unbroken tokens must wrap inside the card instead of overflowing.
+  await timeline.locator('li').first().evaluate(item=>{
+    item.querySelector('.bean-timeline-label').textContent='~'+('x'.repeat(78))+'B'
+    item.querySelector('.bean-timeline-entry-title').textContent='y'.repeat(120)
+    const description=item.querySelector('.bean-timeline-description')
+    if(description)description.textContent='z'.repeat(400)
+  })
+  const card=await timeline.boundingBox()
+  for(const text of await timeline.locator('.bean-timeline-label,.bean-timeline-entry-title,.bean-timeline-description').all()){
+    expect(await text.evaluate(element=>element.scrollWidth<=element.clientWidth,'element has internal horizontal overflow')).toBeTruthy()
+    const box=await text.boundingBox()
+    expect(box&&box.x>=card.x&&box.x+box.width<=card.x+card.width,'text is clipped outside the card').toBeTruthy()
+  }
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true)
   await page.setViewportSize({width:1280,height:800})
 
   await page.getByLabel('Choose frame').selectOption('tabs_horizontal')

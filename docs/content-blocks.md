@@ -180,7 +180,7 @@ entries:
   - {id: agents, label: "Day 1", title: "Your first Bean definition", description: "Metadata becomes running software."}
 ```
 
-Bounds: `title` and entry `title` at most 120 code points, `label` at most 80, `description` at most 400; entry IDs are unique machine IDs. `entries` is rejected on every other Block type, other Block payload fields are rejected on `timeline`, and `title` is only valid on `lesson` and `timeline` Blocks. The block renders a semantic `<article>` with an ordered `<ol>` rail — the same rail markup the record-backed View timeline uses — so it stays readable on narrow screens and announces its ordering. Use a `timeline` Block for authored literal content (a syllabus, a history, a roadmap); use a View `timeline` display when the entries live in stored records, since that path queries and formats `TimeField` values.
+Bounds: `title` and entry `title` at most 120 code points, `label` at most 80, `description` at most 400 and non-blank when present; entry IDs are unique machine IDs. `entries` is rejected on every other Block type, other Block payload fields are rejected on `timeline`, and `title` is only valid on `lesson` and `timeline` Blocks. The block renders a semantic `<article>` with an ordered `<ol>` rail — the same rail markup the record-backed View timeline uses — so it stays readable on narrow screens and announces its ordering. Use a `timeline` Block for authored literal content (a syllabus, a history, a roadmap); use a View `timeline` display when the entries live in stored records, since that path queries and formats `TimeField` values.
 
 ## Exact versioned reference
 

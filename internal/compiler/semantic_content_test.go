@@ -431,6 +431,8 @@ func TestTimelineRejectsInvalidContracts(t *testing.T) {
 		{"long label", "spec.entries.0.label", timelineSpec([]any{timelineEntry("one", strings.Repeat("界", 81), "T", "")})},
 		{"long entry title", "spec.entries.0.title", timelineSpec([]any{timelineEntry("one", "1440", strings.Repeat("界", 121), "")})},
 		{"long description", "spec.entries.0.description", timelineSpec([]any{timelineEntry("one", "1440", "T", strings.Repeat("界", 401))})},
+		{"empty description", "spec.entries.0.description", timelineSpec([]any{map[string]any{"id": "one", "label": "1440", "title": "T", "description": ""}})},
+		{"blank description", "spec.entries.0.description", timelineSpec([]any{map[string]any{"id": "one", "label": "1440", "title": "T", "description": "  "}})},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

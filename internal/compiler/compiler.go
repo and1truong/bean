@@ -2704,6 +2704,9 @@ func validateTimelineBlock(name string, block appir.Block) []definition.Diagnost
 		seen[entry.ID] = true
 		out = append(out, boundedTextDiagnostics("Block", name, path+".label", entry.Label, beancontent.MaxTimelineLabelRunes)...)
 		out = append(out, boundedTextDiagnostics("Block", name, path+".title", entry.Title, beancontent.MaxLabelRunes)...)
+		if entry.Description != "" && strings.TrimSpace(entry.Description) == "" {
+			out = append(out, sequenceDiagnostic("Block", name, path+".description", "must not be blank when present"))
+		}
 		if utf8.RuneCountInString(entry.Description) > beancontent.MaxTimelineDetailRunes {
 			out = append(out, sequenceDiagnostic("Block", name, path+".description", fmt.Sprintf("exceeds the maximum of %d code points", beancontent.MaxTimelineDetailRunes)))
 		}

@@ -498,8 +498,11 @@ func validateTimelineBlockSource(source definition.Definition) []definition.Diag
 		}
 		for _, field := range []string{"id", "label", "title", "description"} {
 			if value, present := entry[field]; present && value != nil {
-				if _, ok := value.(string); !ok {
+				text, ok := value.(string)
+				if !ok {
 					out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path+"."+field, "must be a string"))
+				} else if field == "description" && strings.TrimSpace(text) == "" {
+					out = append(out, sequenceDiagnostic("Block", source.Metadata.Name, path+"."+field, "must not be blank when present"))
 				}
 			}
 		}
