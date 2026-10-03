@@ -1,5 +1,18 @@
 > Completed plans are archived in [`docs/plans/completed.md`](docs/plans/completed.md).
 
+# Browser WASM playground
+
+Contract: [issue #66](https://github.com/and1truong/bean/issues/66) and `GOAL.md`. Docs: [`docs/playground.md`](docs/playground.md).
+
+| Slice | Deliverable | Verification | Status |
+| --- | --- | --- | --- |
+| 1 | `internal/playground`: bounded virtual FS, versioned bridge (`compile`/`render`), stable `BEAN-P41xx/P42xx` codes, backend-dependent blocks marked `UnsupportedBlock`, last-clean-compile session | Go tests: compile/render round-trip, native tree + diagnostics parity, limits, failure paths | done |
+| 2 | `cmd/beanwasm` js/wasm entry exposing `beanPlayground` (+ native stub) | wasm build + Go tests | done |
+| 3 | Shared render registry (`web/src/registry.tsx`) + Web Worker + typed bridge client (request ids, stale rejection, timeouts, fatal/restart) | existing web suite regression | done |
+| 4 | Playground UI: multi-file editor, examples, zip/JSON import/export, diagnostics, route select, unsupported notices, in-memory drafts | zip vitest + e2e journeys | done |
+| 5 | Reproducible static dist (`make playground`), examples bundler, docs, browser e2e on the real bundle | `e2e/playground.spec.ts` (7 journeys), `make check`, `make build` | done |
+| 6 | Agent surface (WebMCP tools + `window.bean` + `/llms.txt`) and GitHub Pages deploy workflow | `mcp.test.ts` (3), agent-loop e2e journey, workflow review | done |
+
 # Visual agentic browser testing
 
 Contract: `GOAL.md`. Status: in progress. Epic: <https://github.com/and1truong/bean/issues/20>; slices ship as PRs into `epic/browser-testing`.
