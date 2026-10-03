@@ -58,6 +58,15 @@ The Go bridge has no filesystem, network, or database access — the virtual fil
 
 `bean.wasm` is ~10 MB (release flags: `-trimpath -ldflags "-s -w"`). It downloads once per tab; typical static-host caching keeps revisits fast. Inside the worker the Go runtime starts in ~1–3 s cold, then each compile of a small example completes in tens of milliseconds (measured ~40–70 ms for the starter and the presentation example). The deferred mermaid chunk (~5 MB) loads only when a diagram or mind map block renders.
 
+## Agent interface (WebMCP + `window.bean`)
+
+The page is an agent surface: a browser agent can compose a Bean app on it without any backend.
+
+- **WebMCP** — when `document.modelContext` exists (the WICG draft; `navigator.modelContext` is the deprecated spell), the page registers six tools: `bean_state`, `bean_compile`, `bean_render`, `bean_navigate`, `bean_list_examples`, `bean_load_example`. Each carries a JSON input schema and descriptions; `bean_compile` takes `{files, manifest}` and returns `{ok, diagnostics, app}`.
+- **`window.bean`** — always present: `bean.v` (1), `bean.webmcp` (registration succeeded), `bean.tools` (names), plus both the `bean_*` tool names and camelCase methods (`bean.compile(...)`, `bean.state()`, ...).
+
+`/llms.txt` on the same host documents the tool contract, source limits, and error codes for agents that discover the site. A Playwright journey drives the full agent loop (`bean_compile` with new sources → `bean_navigate` → `bean_render` → `bean_state`) against the real WASM build.
+
 ## GitHub Pages
 
 `.github/workflows/pages.yml` builds the same `make playground` bundle and deploys it to GitHub Pages on every push to `main` (or manually via *Actions → pages → Run workflow*). One-time repo setup: **Settings → Pages → Source: GitHub Actions**. The deployed URL is `https://<owner>.github.io/<repo>/` — a subdirectory, which the bundle handles via `base: './'` and hash routing.

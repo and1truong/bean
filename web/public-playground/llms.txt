@@ -1,0 +1,46 @@
+# Bean playground
+
+> A fully static, backend-free build of the Bean application compiler and
+> semantic-content renderer. The real Go compiler runs as WebAssembly inside a
+> Web Worker; this page never issues `/api` requests.
+
+## For agents
+
+This page is an agent surface. Two interchangeable interfaces expose the same
+tools — use whichever your runtime supports:
+
+1. **WebMCP** — when `document.modelContext` exists, the page registers the
+   tools below so in-browser agents (e.g. a Gemini sidebar agent) can call them
+   natively.
+2. **`window.bean`** — always present; callable from JavaScript:
+
+   ```js
+   await bean.compile({
+     files: {'app.yaml': 'apiVersion: bean/v1alpha1\nname: Demo\n...'},
+     manifest: 'app.yaml',
+   })
+   ```
+
+`bean.webmcp` reports whether WebMCP registration succeeded; `bean.tools` lists
+the registered tool names.
+
+## Tools
+
+- `bean_state()` → `{manifest, files: {path: {bytes}}, app, diagnostics, unsupported, route}` — current editor sources, compiled app summary, and preview route.
+- `bean_compile({files?, manifest?})` → `{ok, diagnostics, app, error}` — compile sources with the real Go compiler. Passing `files` replaces the editor sources (composing a new app); omitting them recompiles the current ones. The preview and `bean_state().app` update only when `diagnostics` is empty.
+- `bean_render({path, query?})` → `{ok, tree, unsupported, error}` — render one route to the Bean semantic tree. Backend-dependent components arrive as `UnsupportedBlock` entries, never simulated.
+- `bean_navigate({path})` → `{ok, path}` — switch the on-screen preview to a route.
+- `bean_list_examples()` → `[{name, title}]` — bundled example apps.
+- `bean_load_example({name})` → `{load, files, manifest}` — load a bundled example and compile it.
+
+## Source contract
+
+- `files` maps relative paths to UTF-8 text; `.yaml`, `.yml`, `.json` only — no `..`, no absolute paths, ≤64 files, ≤256 KiB each, ≤1 MiB total.
+- `manifest` names the entry document (typically `app.yaml`); it is a multi-document YAML stream of Bean `kind:` resources (`App`, `Block`, `Panel`, `Page`, `Sequence`, `View`, `Action`, `Menu`, `Theme`).
+- Diagnostics carry stable `BEAN-*` codes plus `source: {path, line, column}`; failures return `error: {code: 'BEAN-P41xx'|'BEAN-P42xx', message}`.
+- Everything lives in memory only — edits do not persist across reloads.
+
+## Links
+
+- Renderable examples: `examples/index.json`, `examples/<name>.json` ({manifest, files} bundles).
+- Full documentation: `docs/playground.md` in the Bean repository.

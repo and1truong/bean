@@ -3,7 +3,8 @@ import {useLocation,useNavigate} from 'react-router-dom'
 import {DownloadIcon,FilePlusIcon,FolderOpenIcon,MoonIcon,PlayIcon,RefreshCwIcon,SunIcon,Trash2Icon} from 'lucide-react'
 import type {Node} from '../api'
 import {humanize,Renderer} from '../registry'
-import {Bridge,type BridgeApp,type BridgeDiagnostic,type BridgeFailure,type BridgeUnsupported} from './bridge'
+import {Bridge,type BridgeApp,type BridgeDiagnostic,type BridgeFailure,type BridgeResponse,type BridgeUnsupported} from './bridge'
+import {exposeAgentTools} from './mcp'
 import {readZip,writeZip} from './zip'
 import {Field,Page} from '@/components/bean'
 import {Button} from '@/components/ui/button'
@@ -75,21 +76,27 @@ export default function PlaygroundApp(){
   const generation=useRef(0)
   const filesRef=useRef(files);filesRef.current=files
   const manifestRef=useRef(manifest);manifestRef.current=manifest
+  const appRef=useRef(app);appRef.current=app
+  const diagnosticsRef=useRef(diagnostics);diagnosticsRef.current=diagnostics
+  const unsupportedRef=useRef(unsupported);unsupportedRef.current=unsupported
+  const locationRef=useRef(location);locationRef.current=location
+  const examplesRef=useRef(examples);examplesRef.current=examples
 
-  const compile=useCallback(async(sourceFiles?:Record<string,string>,sourceManifest?:string)=>{
+  const compile=useCallback(async(sourceFiles?:Record<string,string>,sourceManifest?:string):Promise<BridgeResponse>=>{
     const bridge=bridgeRef.current
-    if(!bridge||!bridge.isReady())return
+    if(!bridge||!bridge.isReady())return{v:1,ok:false,error:{code:'BEAN-P4206',message:'the compiler is not ready yet'}}
     const id=++generation.current
     setBusy('compiling')
     setEditorError(null)
     const started=performance.now()
     const response=await bridge.call({v:1,op:'compile',files:sourceFiles||filesRef.current,manifest:sourceManifest||manifestRef.current})
-    if(id!==generation.current)return
+    if(id!==generation.current)return{v:1,ok:false,error:{code:'BEAN-P4205',message:'superseded by a newer compile'}}
     setCompileMs(Math.round(performance.now()-started))
     setBusy('')
-    if(response.error){setEditorError(response.error);return}
+    if(response.error){setEditorError(response.error);return response}
     setDiagnostics(response.diagnostics||[])
     if(response.ok&&response.app)setApp(response.app)
+    return response
   },[])
 
   useEffect(()=>{
@@ -148,7 +155,7 @@ export default function PlaygroundApp(){
       .catch((error:Error)=>{setFatal(error.message);setBusy('')})
   }
 
-  const loadExample=async(name:string)=>{
+  const loadExample=useCallback(async(name:string):Promise<BridgeResponse|null>=>{
     try{
       const bundle=await fetch(assetURL(`examples/${name}.json`)).then(response=>{
         if(!response.ok)throw new Error('HTTP '+response.status)
@@ -156,11 +163,38 @@ export default function PlaygroundApp(){
       })
       setFiles(bundle.files);setManifest(bundle.manifest);setActiveFile(bundle.manifest)
       setApp(null);setTree(null);setDiagnostics([]);setRenderError(null);setEditorError(null)
-      void compile(bundle.files,bundle.manifest)
+      return await compile(bundle.files,bundle.manifest)
     }catch{
       setEditorError({code:'BEAN-P4100',message:`Could not load the "${name}" example from this host.`})
+      return null
     }
-  }
+  },[compile])
+
+  useEffect(()=>exposeAgentTools({
+    state:()=>({
+      manifest:manifestRef.current,
+      files:Object.fromEntries(Object.keys(filesRef.current).map(name=>[name,{bytes:filesRef.current[name].length}])),
+      app:appRef.current,
+      diagnostics:diagnosticsRef.current,
+      unsupported:unsupportedRef.current,
+      route:locationRef.current.pathname+locationRef.current.search,
+    }),
+    compile:input=>{
+      const sourceFiles=input?.files
+      let sourceManifest=input?.manifest
+      if(sourceFiles){
+        if(!sourceManifest||sourceFiles[sourceManifest]===undefined){
+          sourceManifest=sourceFiles['app.yaml']!==undefined?'app.yaml':Object.keys(sourceFiles).filter(name=>/\.(yaml|yml)$/i.test(name)).sort()[0]||''
+        }
+        setFiles(sourceFiles);setManifest(sourceManifest);setActiveFile(sourceManifest||Object.keys(sourceFiles)[0])
+      }
+      return compile(sourceFiles,sourceManifest)
+    },
+    render:input=>bridgeRef.current?bridgeRef.current.call({v:1,op:'render',path:input.path,query:input.query||{}}):Promise.resolve({v:1,ok:false,error:{code:'BEAN-P4205',message:'the compiler worker is not running'}}),
+    navigate:input=>{navigate(input.path);return{ok:true,path:input.path}},
+    listExamples:()=>examplesRef.current,
+    loadExample:async input=>({load:await loadExample(input.name),files:Object.keys(filesRef.current),manifest:manifestRef.current}),
+  }),[compile,loadExample,navigate])
 
   const importFiles=async(list:FileList|null)=>{
     setEditorError(null)

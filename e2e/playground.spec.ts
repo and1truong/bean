@@ -90,6 +90,28 @@ test.describe('browser playground',()=>{
     await expect(page.getByText('page two',{exact:true})).toBeVisible()
   })
 
+  test('agent surface composes and renders an app via window.bean',async({page})=>{
+    await page.goto(server.url+'/')
+    await expect(page.getByRole('button',{name:'Compile & preview'})).toBeEnabled({timeout:60_000})
+    const meta=await page.evaluate(()=>{
+      const bean=(window as unknown as{bean:{v:number;webmcp:boolean;tools:string[]}}).bean
+      return{v:bean.v,webmcp:bean.webmcp,tools:bean.tools}
+    })
+    expect(meta.v).toBe(1)
+    expect(meta.tools).toEqual(['bean_state','bean_compile','bean_render','bean_navigate','bean_list_examples','bean_load_example'])
+    const compile=await page.evaluate(source=>(window as unknown as{bean:{bean_compile(i?:unknown):Promise<{ok:boolean;app?:{routes:{path:string}[]}}>}}).bean.bean_compile({files:{'app.yaml':source},manifest:'app.yaml'}),TWO_ROUTES)
+    expect(compile.ok).toBe(true)
+    expect(compile.app?.routes.map(route=>route.path)).toEqual(['/','/about'])
+    await page.evaluate(()=>(window as unknown as{bean:{bean_navigate(i:{path:string}):unknown}}).bean.bean_navigate({path:'/about'}))
+    await expect(page.getByText('page two',{exact:true})).toBeVisible()
+    expect(page.url()).toContain('#/about')
+    const render=await page.evaluate(()=>(window as unknown as{bean:{bean_render(i:{path:string}):Promise<{ok:boolean;tree?:unknown}>}}).bean.bean_render({path:'/'}))
+    expect(render.ok).toBe(true)
+    const state=await page.evaluate(()=>(window as unknown as{bean:{bean_state():{manifest:string;files:Record<string,{bytes:number}>}}}).bean.bean_state())
+    expect(state.manifest).toBe('app.yaml')
+    expect(Object.keys(state.files)).toEqual(['app.yaml'])
+  })
+
   test('zip export downloads a sources archive',async({page})=>{
     await page.goto(server.url+'/')
     await expect(page.getByRole('button',{name:'Compile & preview'})).toBeEnabled({timeout:60_000})
